@@ -1,0 +1,211 @@
+version: 2
+
+models:
+  # ------------------------------------------------------------------ eod_prices
+  - name: eod_prices
+    description: >
+      Deduped, primary-keyed daily OHLCV for each (ticker, date). One row per
+      natural key, keeping the latest ingested version.
+    config:
+      contract:
+        enforced: true
+    constraints:
+      - type: primary_key
+        columns: [ticker, date]
+    columns:
+      - name: ticker
+        data_type: text
+        constraints:
+          - type: not_null
+      - name: date
+        data_type: date
+        constraints:
+          - type: not_null
+      - name: open
+        data_type: numeric
+      - name: high
+        data_type: numeric
+      - name: low
+        data_type: numeric
+      - name: close
+        data_type: numeric
+      - name: adj_close
+        data_type: numeric
+      - name: volume
+        data_type: bigint
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+              config:
+                where: "volume is not null"
+      - name: currency
+        data_type: text
+      - name: source
+        data_type: text
+        constraints:
+          - type: not_null
+      - name: ingested_at
+        data_type: timestamp with time zone
+        constraints:
+          - type: not_null
+      - name: load_id
+        data_type: uuid
+      - name: source_file
+        data_type: text
+    data_tests:
+      - unique:
+          column_name: "(ticker || '|' || date::text)"
+      - dbt_utils.expression_is_true:
+          expression: "high >= low"
+          config:
+            where: "high is not null and low is not null"
+      - dbt_utils.expression_is_true:
+          expression: "close >= 0"
+          config:
+            severity: warn
+            where: "close is not null"
+
+  # ----------------------------------------------------------- corporate_actions
+  - name: corporate_actions
+    description: Deduped dividends/splits, one row per (ticker, date, action_type).
+    config:
+      contract:
+        enforced: true
+    constraints:
+      - type: primary_key
+        columns: [ticker, date, action_type]
+    columns:
+      - name: ticker
+        data_type: text
+        constraints:
+          - type: not_null
+      - name: date
+        data_type: date
+        constraints:
+          - type: not_null
+      - name: action_type
+        data_type: text
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              values: [dividend, split]
+      - name: value
+        data_type: numeric
+      - name: source
+        data_type: text
+        constraints:
+          - type: not_null
+      - name: ingested_at
+        data_type: timestamp with time zone
+        constraints:
+          - type: not_null
+      - name: load_id
+        data_type: uuid
+      - name: source_file
+        data_type: text
+    data_tests:
+      - unique:
+          column_name: "(ticker || '|' || date::text || '|' || action_type)"
+
+  # -------------------------------------------------------- financial_statements
+  - name: financial_statements
+    description: >
+      Deduped long financials, one row per
+      (ticker, statement, freq, period_end, line_item).
+    config:
+      contract:
+        enforced: true
+    constraints:
+      - type: primary_key
+        columns: [ticker, statement, freq, period_end, line_item]
+    columns:
+      - name: ticker
+        data_type: text
+        constraints:
+          - type: not_null
+      - name: statement
+        data_type: text
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              values: [balance_sheet, income_statement, cash_flow]
+      - name: freq
+        data_type: text
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              values: [annual, quarterly]
+      - name: period_end
+        data_type: date
+        constraints:
+          - type: not_null
+      - name: line_item
+        data_type: text
+        constraints:
+          - type: not_null
+      - name: value
+        data_type: numeric
+      - name: currency
+        data_type: text
+      - name: source
+        data_type: text
+        constraints:
+          - type: not_null
+      - name: ingested_at
+        data_type: timestamp with time zone
+        constraints:
+          - type: not_null
+      - name: load_id
+        data_type: uuid
+      - name: source_file
+        data_type: text
+    data_tests:
+      - unique:
+          column_name: >
+            (ticker || '|' || statement || '|' || freq || '|'
+             || period_end::text || '|' || line_item)
+      - dbt_utils.expression_is_true:
+          expression: "period_end <= current_date"
+          config:
+            severity: warn
+
+  # ------------------------------------------------------------- company_profile
+  - name: company_profile
+    description: Deduped company profile, one row per ticker.
+    config:
+      contract:
+        enforced: true
+    constraints:
+      - type: primary_key
+        columns: [ticker]
+    columns:
+      - name: ticker
+        data_type: text
+        constraints:
+          - type: not_null
+        data_tests:
+          - unique
+      - name: company_name
+        data_type: text
+      - name: sector
+        data_type: text
+      - name: industry
+        data_type: text
+      - name: currency
+        data_type: text
+      - name: exchange
+        data_type: text
+      - name: country
+        data_type: text
+      - name: ingested_at
+        data_type: timestamp with time zone
+        constraints:
+          - type: not_null
+      - name: load_id
+        data_type: uuid
+      - name: source_file
+        data_type: text

@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: raw_yfinance
+    description: >
+      Append-only bronze landing zone loaded by the LOAD stage (§2). Tables may
+      legitimately contain duplicate / restated rows per natural key — dedup is
+      the job of the fact_yfinance layer, so uniqueness is NOT tested here.
+    schema: raw_yfinance
+    # "Is the data stale?" as a first-class, testable question (§3.2).
+    loaded_at_field: ingested_at
+    freshness:
+      warn_after: { count: 30, period: hour }
+    tables:
+      - name: eod_prices
+        description: One raw row per (ticker, date) pull of daily OHLCV + adj_close.
+      - name: corporate_actions
+        description: Dividends and splits, one raw row per (ticker, date, action_type).
+      - name: financial_statements
+        description: >
+          Long/tidy financials for all three statements in one table,
+          discriminated by statement and freq.
+      - name: company_profile
+        description: Company profile snapshot, one raw row per ticker per pull.

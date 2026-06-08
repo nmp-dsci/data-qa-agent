@@ -1,0 +1,18 @@
+data_qa_agent:
+  target: postgres
+  outputs:
+    postgres:
+      type: postgres
+      # Local docker Postgres — matches .env DATABASE_URL and docker-compose.yml
+      # (postgresql://postgres:postgres@localhost:5432/data_qa). Hardcoded local
+      # dev values; no secrets beyond the local docker defaults.
+      host: localhost
+      port: 5432
+      user: postgres
+      password: postgres
+      dbname: data_qa
+      # Default/target schema. The generate_schema_name override emits custom
+      # schema names verbatim, so models with +schema land in fact_yfinance /
+      # analytics_yfinance; anything WITHOUT a custom schema falls back here.
+      schema: public
+      threads: 4

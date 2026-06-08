@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: dim_company
+    description: Conformed company dimension (profile + S&P 500 seed).
+    columns:
+      - name: ticker
+        description: Primary key of the company dimension.
+        data_tests:
+          - unique
+          - not_null
+
+  - name: fct_daily_prices
+    description: Daily OHLCV with split/dividend-adjusted prices and returns.
+    columns:
+      - name: ticker
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_company')
+              field: ticker
+      - name: date
+        data_tests:
+          - not_null
+      - name: volume
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+              config:
+                where: "volume is not null"
+    data_tests:
+      - unique:
+          column_name: "(ticker || '|' || date::text)"
+      - dbt_utils.expression_is_true:
+          expression: "high >= low"
+          config:
+            where: "high is not null and low is not null"
+
+  - name: fct_valuation_metrics
+    description: Valuation ratios fusing price x fundamentals per reported period.
+    columns:
+      - name: ticker
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_company')
+              field: ticker
+      - name: period_end
+        data_tests:
+          - not_null
+    data_tests:
+      - unique:
+          column_name: "(ticker || '|' || freq || '|' || period_end::text)"

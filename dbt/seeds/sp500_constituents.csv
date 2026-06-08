@@ -1,0 +1,4 @@
+ticker,company_name,gics_sector,gics_sub_industry,date_added,cik,retrieved_at
+AAPL,Apple Inc.,Information Technology,Technology Hardware Storage & Peripherals,1982-11-30,0000320193,2026-06-04T00:00:00+00:00
+BRK-B,Berkshire Hathaway,Financials,Multi-Sector Holdings,2010-02-16,0001067983,2026-06-04T00:00:00+00:00
+MSFT,Microsoft,Information Technology,Systems Software,1994-06-01,0000789019,2026-06-04T00:00:00+00:00

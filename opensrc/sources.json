@@ -1,7 +1,0 @@
-[
-  { "repo": "langchain-ai/langgraph", "version": "1.2.4" },
-  { "repo": "pydantic/pydantic", "version": "2.13.4" },
-  { "repo": "dbt-labs/dbt-core", "version": "" },
-  { "repo": "postgres/postgres", "version": "" },
-  { "repo": "ranaroussi/yfinance", "version": "" }
-]

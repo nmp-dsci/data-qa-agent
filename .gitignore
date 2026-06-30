@@ -1,8 +1,3 @@
-# opensrc — ignore fetched source repos, keep the manifest + setup script
-opensrc/*/
-!opensrc/setup_opensrc.sh
-!opensrc/sources.json
-
 # Python
 __pycache__/
 *.py[cod]
@@ -17,15 +12,6 @@ venv/
 .env
 .env.*
 !.env.example
-
-# dbt
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-dbt/.user.yml
-
-# raw landing zone — append-only pulls; the committed seed lives in dbt/seeds/
-data/raw/
 
 # OS / editor
 .DS_Store

@@ -67,12 +67,12 @@ live in code.
 
 ### Run fully locally
 
-**Built and working (Phase 0 slice + Phase 1 auth + Phase 2 migrations).** `make up` boots the whole app on
-`localhost` with no Azure: Postgres+pgvector, a one-shot **Alembic migration job**, backend-api, data-agent,
-and frontend (see README for details). The `migrate` service runs `alembic upgrade head` (schema + RLS + seed,
-the `0001_phase0_init` baseline of `db/init/*.sql`) then loads `data/incoming/housing.csv`; the services wait
-for it. `make smoke` runs the end-to-end test (login → ask → response, SQL audit trail, and RLS isolation of
-user2); `uv run pytest` also runs the `evals/journeys.yaml` user-journey suite against a running stack.
+**Built and working (Phase 0 slice + Phase 1 auth + Phase 2 migrations + Phase 2b pipeline).** `make up` boots
+the whole app on `localhost` with no Azure: Postgres+pgvector, a one-shot **Alembic migration job**, the
+**dlt+dbt pipeline job**, backend-api, data-agent, and frontend (see README for details). `migrate` runs
+`alembic upgrade head` (schema + RLS + seed) then `pipeline` builds the growth marts from the committed sample;
+the services wait for both. `make smoke` runs the end-to-end test (login → ask top growth suburbs → response,
+SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/journeys.yaml` suite.
 
 - **Migrations (Phase 2):** Alembic is the single source of truth (`services/db-migrate/`). The same
   `alembic upgrade head` runs locally and as the Azure Container Apps job. Migrations run as a privileged
@@ -86,8 +86,12 @@ user2); `uv run pytest` also runs the `evals/journeys.yaml` user-journey suite a
   Protected `/me` returns the current user in both modes.
 - **Agent:** answers offline via a deterministic NL→SQL stub (`agent/nl2sql.py`); set `ANTHROPIC_API_KEY`
   (+ `--extra llm`) to use Claude (`agent/claude_agent.py`) — provider is abstracted (Decision G).
-- **Pipeline:** the `migrate` job's `seed_data.py` loads the CSV into `raw.housing` and builds `marts.housing`
-  (a Phase-0 stand-in). The real **dlt + dbt** pipeline is Phase 2b. Secrets come from `.env`, not Key Vault.
+- **Pipeline (Phase 2b):** the `pipeline` job (`services/data-pipeline/`) runs **dlt** (CSVs → `raw`) then
+  **dbt build** (`raw → staging → marts`, tests + docs). The two datasets `nsw_sales` / `nsw_rent` build
+  `marts.mart_sales_growth` / `marts.mart_rent_growth`, each one row per `suburb` and RLS-scoped by a dbt
+  post-hook, so the agent JOINs them on `suburb` for the "top growth suburbs" view. Runs on the small committed
+  sample by default (`data/samples/`); `make pipeline-full` loads the full CSVs (`data/*.csv`, gitignored).
+  The agent reads the dbt manifest (`get_schema()`) to ground the LLM. Secrets come from `.env`, not Key Vault.
 - **Note:** the dev DB publishes host port **5434** (5432/5433 were taken by other local containers); internal
   networking still uses `db:5432`.
 
@@ -96,10 +100,12 @@ user2); `uv run pytest` also runs the `evals/journeys.yaml` user-journey suite a
 ```
 services/backend-api/   FastAPI: dev-auth + Entra JWT validation, RLS context, /ask, /events, admin
 services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails
-services/db-migrate/    Alembic migrations + data seed (the `migrate` job; runs local + cloud)
+services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
+services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
 frontend/               React + Vite: login (dev stub or MSAL) + chat + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
-evals/                  journeys.yaml — user-journey evals (auth + RLS now; grows every phase)
+data/samples/           small committed NSW sample CSVs (full data is gitignored)
+evals/                  journeys.yaml — user-journey evals (auth + RLS + growth; grows every phase)
 db/init/                schema + RLS + roles + seed + housing load (run on first `make up`)
 config/                 datasets.yaml, users.seed.yaml
 data/incoming/          housing.csv (generate with scripts/generate_housing.py)
@@ -255,8 +261,8 @@ see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failur
 | **0 · Scaffold** | uv monorepo (api + agent), FastAPI hello, React Vite, Postgres via docker-compose — all on localhost | ✅ done |
 | **1 · Auth** | Entra JWT validation + JIT provisioning, MSAL login (dev stub fallback), protected `/me`, `/auth/config`, journey evals; 3 seeded users | ✅ done (live tenant pending) |
 | **2 · Data + RLS** | Schema + Alembic migrations (all tables above), RLS policies, session-variable middleware, isolation tests | ✅ done |
-| **2b · Pipeline** | `data/incoming` + `config/datasets.yaml`; dlt CSV→raw; dbt raw→marts with tests/docs; `datasets`/`dataset_access` populated | ⬜ todo |
-| **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ⏳ partial (SQL stub + guardrails) |
+| **2b · Pipeline** | dlt CSV→raw; dbt raw→staging→marts with tests/docs; suburb-keyed growth marts; `datasets`/`dataset_access` populated | ✅ done |
+| **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ⏳ partial (SQL stub + guardrails; manifest-grounded Claude path) |
 | **3b · Tracking + admin** | Event taxonomy + `POST /events`, `events` table, admin-only dashboard (feed, users, datasets, metrics) | ⏳ partial |
 | **4 · Azure** | Bicep: Container Apps env + job, ACR, PostgreSQL Flexible (+pgvector), Key Vault, managed identity | ⬜ scaffolded |
 | **5 · CI/CD** | GitHub Actions: build/push, Ruff/mypy/pytest + **journey evals** (pydantic_evals), deploy on merge to `main` | ⏳ partial |

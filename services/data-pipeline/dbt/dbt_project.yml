@@ -1,0 +1,26 @@
+name: nsw_property
+version: "1.0.0"
+config-version: 2
+profile: nsw_property
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Minimum rows in a (suburb|postcode, year) bucket to trust that year's median.
+  min_sales_year: 3
+  min_rent_year: 3
+
+models:
+  nsw_property:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table

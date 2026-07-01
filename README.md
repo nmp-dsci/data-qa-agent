@@ -10,27 +10,38 @@ answers with the result.
 
 ## Quick start (fully local, no cloud)
 
-Requires Docker. One command boots the whole stack — Postgres+pgvector, the Alembic migration job,
-backend-api, data-agent, frontend:
+Requires Docker. One command boots the whole stack — Postgres+pgvector, the Alembic migration job, the
+dlt+dbt pipeline, backend-api, data-agent, frontend:
 
 ```bash
-make data     # generate the sample housing.csv (committed already; re-run to regenerate)
-make up       # build + start everything (the migrate job runs first, then the services start)
+make up       # build + start everything (migrate + pipeline run first, then the services start)
 ```
 
-On startup a one-shot **`migrate`** job runs `alembic upgrade head` (schema + RLS + seed) and loads the
-housing data; the services wait for it to finish. Run it alone with `make migrate`.
+On startup two one-shot jobs run in order: **`migrate`** (`alembic upgrade head` — schema + RLS + seed) then
+**`pipeline`** (dlt ingests the CSVs into `raw`, dbt builds the growth marts). By default the pipeline uses the
+small committed **sample** so `make up` is fast; load the full real datasets with `make pipeline-full`.
 
 Then open **http://localhost:5230** and sign in as a test user:
 
 | User   | Role  | Sees |
 |--------|-------|------|
 | admin  | admin | all data |
-| user1  | user  | the housing dataset |
+| user1  | user  | the `nsw_sales` + `nsw_rent` datasets |
 | user2  | user  | **nothing** — demonstrates row-level isolation |
 
-Ask e.g. *"What is the average sale price by suburb?"* or *"What are the 5 most expensive properties?"*
-Sign in as `user2` and ask the same thing — you'll get zero rows, because Row-Level Security isolates them.
+Ask e.g. *"What are the top growth suburbs for sale price and rent?"* — the agent JOINs the sales and rent
+growth marts on `suburb`. Sign in as `user2` and ask the same thing: you'll get zero rows, because Row-Level
+Security isolates them.
+
+### The data
+
+Two real NSW datasets (place the CSVs in `data/`, they are gitignored — too big to commit):
+
+- `data/nswgov_df.csv` — NSW Government property **sales** (~516 MB) → `marts.mart_sales_growth`
+- `data/rentboard_df.csv` — NSW Rental Bond Board **rent** (~63 MB) → `marts.mart_rent_growth`
+
+Small committed **samples** live in `data/samples/` (regenerate from the full files with `make samples`); they
+keep `make up` and CI fast while preserving suburbs present in both datasets across the growth window.
 
 ```bash
 make smoke    # end-to-end test: login -> ask -> response, query audit, and RLS isolation
@@ -45,7 +56,9 @@ make reset    # stop AND wipe the db volume (re-seeds + reloads on next `make up
 Three services + one database, matching the locked design (see `AGENTS.md` for the full picture):
 
 ```
-frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL)
+   data-pipeline (dlt + dbt)  ──build──►  marts.*
+        (raw → staging → marts)               ▲
+frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / Claude)
       :5230                     :8000                     :8100
                                    │                         │
                                    └──────► Postgres + pgvector (RLS) ◄──────┘
@@ -55,8 +68,11 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL)
 - **frontend** — login + chat UI, fires product-analytics events, includes an admin dashboard.
 - **backend-api** — validates the JWT, sets the per-request RLS context, orchestrates the agent, records
   conversations/messages/events.
-- **data-agent** — turns the question into a single read-only `SELECT`, runs it under RLS, phrases the answer.
-  Offline by default; uses Claude when a key is set (provider is abstracted — Decision G).
+- **data-pipeline** — dlt ingests the CSVs into `raw`; dbt transforms `raw → staging → marts` (tests + docs),
+  building the two suburb-keyed growth marts with RLS applied by post-hooks.
+- **data-agent** — turns the question into a single read-only `SELECT` (JOINing the marts on `suburb` for the
+  combined view), runs it under RLS, phrases the answer. Offline stub by default; Claude when a key is set,
+  grounded in the dbt manifest (Decision G).
 - **Postgres** — one DB, schemas `app` / `raw` / `staging` / `marts`; RLS enforces who sees which rows.
 
 ### How a question flows
@@ -82,15 +98,30 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL)
 ```
 services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin endpoints
 services/data-agent/    NL→SQL stub + Claude path; read-only SQL under RLS with guardrails
-services/db-migrate/    Alembic migrations + data seed (the `migrate` job; runs local + cloud)
+services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
+services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
 frontend/               React + Vite: login (dev stub or MSAL) + chat + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
-data/incoming/          housing.csv (generate with scripts/generate_housing.py)
+data/                   full NSW CSVs (gitignored) + data/samples/ (small committed samples)
 evals/                  journeys.yaml — user-journey evals (grows every phase)
-scripts/                generate_housing.py, smoke_test.py
+scripts/                make_samples.py, smoke_test.py
 docker-compose.yml      the local dev stack;  Makefile has the shortcuts
 ```
+
+## Data pipeline (dlt + dbt)
+
+`services/data-pipeline/` is the `pipeline` job. `run.py` runs **dlt** (CSV → `raw.sales` / `raw.rent`) then
+`dbt build` over `services/data-pipeline/dbt/`:
+
+- `stg_sales` / `stg_rent` clean the raw rows; `int_*` models compute per-year medians and a
+  suburb→dominant-postcode map.
+- `mart_sales_growth` and `mart_rent_growth` are **one row per `suburb`** so the agent can JOIN them; each is
+  scoped to its dataset (`nsw_sales` / `nsw_rent`) by an RLS **post-hook**.
+- `dbt docs generate` writes the manifest the agent reads (`get_schema()`), grounding the LLM in the real marts.
+
+Run on the sample with `make pipeline`, on the full data with `make pipeline-full`. dbt tests run as part of
+`dbt build`.
 
 ## Admin Dashboard
 
@@ -128,9 +159,9 @@ extra. The provider sits behind an abstraction, so this is a config change (Deci
 - **Port already in use** — the dev DB uses host port **5434** (5432/5433 were taken by other local
   containers). If 5230/8000/8100 clash, change the left-hand side of the `ports:` mapping in
   `docker-compose.yml`.
-- **DB didn't re-seed** — the `migrate` job loads housing only when `marts.housing` is empty. For a clean
-  slate run `make reset` then `make up` (wipes the volume so migrations re-run), or `make migrate` to re-run
-  the job against the current DB.
+- **Empty marts / no data** — the `pipeline` job builds the marts. Re-run it with `make pipeline` (sample) or
+  `make pipeline-full` (real data), or `make reset` then `make up` for a clean slate (wipes the volume so
+  migrations + pipeline re-run).
 - **Frontend can't reach the API** — CORS allows `http://localhost:5230`; if you change the frontend port,
   update `cors_origins` in `services/backend-api/app/config.py` and rebuild backend-api.
 

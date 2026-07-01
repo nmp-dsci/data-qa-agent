@@ -30,7 +30,7 @@ class UserCtx(BaseModel):
 class AskRequest(BaseModel):
     question: str
     user: UserCtx
-    dataset_slug: str = "housing"
+    dataset_slug: str = "nsw_sales"
 
 
 class AgentAnswer(BaseModel):

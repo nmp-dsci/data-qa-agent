@@ -8,8 +8,8 @@ users:
   - username: user1
     email: user1@example.com
     display_name: User One
-    role: user         # granted housing access
+    role: user         # granted nsw_sales + nsw_rent (can JOIN both marts)
   - username: user2
     email: user2@example.com
     display_name: User Two
-    role: user         # NO housing access — proves row-level isolation
+    role: user         # NO dataset access — proves row-level isolation

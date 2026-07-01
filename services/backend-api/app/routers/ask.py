@@ -14,7 +14,9 @@ from ..db import rls_connection
 
 router = APIRouter(tags=["ask"])
 
-DATASET_SLUG = "housing"
+# Conversations/audit are attributed to the sales dataset; the agent's SQL may
+# span both marts and RLS still scopes rows per the user's grants on each.
+DATASET_SLUG = "nsw_sales"
 
 
 class AskRequest(BaseModel):

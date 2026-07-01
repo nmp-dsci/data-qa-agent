@@ -14,15 +14,19 @@ from typing import Any
 
 from .config import settings
 from .db import run_select
-from .schema import SCHEMA_DOC
+from .schema import get_schema
 
-SYSTEM_PROMPT = f"""\
-You are a data analyst. Answer the user's question about the housing dataset by
-calling the run_sql tool with a single read-only SELECT, then summarising the
-result in one or two sentences. Never invent numbers — only report what run_sql
-returns. If run_sql returns zero rows, say the user has no access to that data.
 
-{SCHEMA_DOC}
+def _system_prompt() -> str:
+    return f"""\
+You are a data analyst for a NSW property-market app. Answer the user's question
+by calling the run_sql tool with a single read-only SELECT, then summarising the
+result in one or two sentences. To compare sale-price and rent growth (e.g. top
+growth suburbs), JOIN the two marts on `suburb`. Never invent numbers — only
+report what run_sql returns. If run_sql returns zero rows, say the user has no
+access to that data.
+
+{get_schema()}
 """
 
 
@@ -42,7 +46,7 @@ async def maybe_answer_with_claude(question: str, *, user_id: str) -> dict[str, 
         agent: Agent[_Deps, str] = Agent(
             f"anthropic:{settings.model}",
             deps_type=_Deps,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=_system_prompt(),
         )
 
         @agent.tool

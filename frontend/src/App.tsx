@@ -23,15 +23,15 @@ interface ChatMsg {
 
 const TEST_USERS = [
   { username: "admin", label: "Admin", hint: "sees all data" },
-  { username: "user1", label: "User One", hint: "has housing access" },
-  { username: "user2", label: "User Two", hint: "no housing access (isolated)" },
+  { username: "user1", label: "User One", hint: "has property data access" },
+  { username: "user2", label: "User Two", hint: "no data access (isolated)" },
 ];
 
 const SUGGESTIONS = [
-  "What is the average sale price by suburb?",
-  "How many properties are there?",
-  "What are the 5 most expensive properties?",
-  "Average price by property type?",
+  "What are the top growth suburbs for sale price and rent?",
+  "Which suburbs have the highest rent growth?",
+  "Top suburbs by sale price growth?",
+  "How many suburbs do we have?",
 ];
 
 export default function App() {
@@ -217,7 +217,7 @@ export default function App() {
         >
           <input
             value={input}
-            placeholder="Ask a question about the housing data…"
+            placeholder="Ask about NSW property growth by suburb…"
             onChange={(e) => setInput(e.target.value)}
           />
           <button type="submit" disabled={loading}>

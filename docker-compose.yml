@@ -18,21 +18,35 @@ services:
       timeout: 3s
       retries: 30
 
-  # One-shot job: applies Alembic migrations (schema/RLS/seed) then loads the
-  # housing data. Runs the SAME migrations as the Azure db-migrate job.
+  # One-shot job: applies Alembic migrations (schema + RLS + seed). Runs the SAME
+  # migrations as the Azure db-migrate job. Dataset data is loaded by `pipeline`.
   migrate:
     build:
       context: .
       dockerfile: services/db-migrate/Dockerfile
     environment:
       ADMIN_DATABASE_URL: postgresql://postgres:postgres@db:5432/dataqa
-      HOUSING_CSV: /data/incoming/housing.csv
-    volumes:
-      - ./data:/data:ro
     restart: "no"
     depends_on:
       db:
         condition: service_healthy
+
+  # One-shot job: dlt ingests the CSVs into `raw`, then dbt builds the marts.
+  # Defaults to the small committed sample; `make pipeline` loads the full CSVs.
+  pipeline:
+    build:
+      context: .
+      dockerfile: services/data-pipeline/Dockerfile
+    environment:
+      ADMIN_DATABASE_URL: postgresql://postgres:postgres@db:5432/dataqa
+      PIPELINE_SOURCE: ${PIPELINE_SOURCE:-sample}
+    volumes:
+      - ./data:/data:ro
+      - dbt_target:/app/dbt/target
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   backend-api:
     build: ./services/backend-api
@@ -51,7 +65,7 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      migrate:
+      pipeline:
         condition: service_completed_successfully
 
   data-agent:
@@ -59,12 +73,16 @@ services:
     environment:
       APP_ENV: dev
       AGENT_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa
+      # The dbt manifest lets get_schema() ground the LLM in the real marts.
+      DBT_MANIFEST: /dbt-target/manifest.json
       # Set ANTHROPIC_API_KEY in your shell/.env to use Claude; empty = offline stub.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - dbt_target:/dbt-target:ro
     ports:
       - "8100:8100"
     depends_on:
-      migrate:
+      pipeline:
         condition: service_completed_successfully
 
   frontend:
@@ -83,3 +101,4 @@ services:
 
 volumes:
   dbdata:
+  dbt_target:   # dbt manifest/catalog shared from pipeline -> data-agent

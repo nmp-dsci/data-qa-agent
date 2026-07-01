@@ -51,17 +51,23 @@ def main() -> int:
             failures += 1
         print(f"  [{status}] {name} {extra}")
 
-    print("1. user1 (has housing access) asks a question")
+    growth_q = "What are the top growth suburbs for sale price and rent?"
+
+    print("1. user1 (has property data access) asks for top growth suburbs")
     t1 = login("user1")
-    r1 = ask(t1, "What is the average sale price by suburb?")
+    r1 = ask(t1, growth_q)
     print(f"     answer: {r1['answer'][:90]}")
     check("user1 gets rows back", r1["row_count"] > 0, f"(row_count={r1['row_count']})")
     check("user1 answer is non-empty", bool(r1["answer"].strip()))
     check("sql is a SELECT", (r1.get("sql") or "").lower().lstrip().startswith("select"))
+    check(
+        "answer combines sales + rent growth",
+        {"sales_growth_pct", "rent_growth_pct"} <= set(r1.get("columns", [])),
+    )
 
-    print("2. user2 (NO housing access) asks the same question -> RLS should hide rows")
+    print("2. user2 (NO access) asks the same question -> RLS should hide rows")
     t2 = login("user2")
-    r2 = ask(t2, "What is the average sale price by suburb?")
+    r2 = ask(t2, growth_q)
     print(f"     answer: {r2['answer'][:90]}")
     check(
         "user2 sees zero rows (isolation)", r2["row_count"] == 0, f"(row_count={r2['row_count']})"
@@ -69,7 +75,7 @@ def main() -> int:
 
     print("3. admin asks a count question -> sees data")
     ta = login("admin")
-    ra = ask(ta, "How many properties are there?")
+    ra = ask(ta, "How many suburbs do we have?")
     print(f"     answer: {ra['answer'][:90]}")
     check("admin gets a count", ra["row_count"] > 0)
 

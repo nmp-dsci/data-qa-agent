@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: mart_sales_growth
+    description: >
+      Residential sale-price growth by NSW suburb. One row per suburb, keyed by
+      `suburb`. Belongs to the `nsw_sales` dataset (RLS-scoped). Join to
+      mart_rent_growth on `suburb` to compare sales and rent growth together.
+    columns:
+      - name: suburb
+        description: Suburb name (Title Case). Join key across the property marts.
+        data_tests: [not_null, unique]
+      - name: postcode
+        description: Dominant postcode for the suburb (most sales).
+      - name: first_year
+        description: First year in the window with enough sales to measure.
+      - name: last_year
+        description: Last year in the window with enough sales to measure.
+      - name: first_median_price
+        description: Median sale price (AUD) in first_year.
+      - name: last_median_price
+        description: Median sale price (AUD) in last_year.
+      - name: sales_growth_pct
+        description: Percent change in median sale price from first_year to last_year.
+        data_tests: [not_null]
+      - name: n_sales
+        description: Number of sales contributing across the window.
+
+  - name: mart_rent_growth
+    description: >
+      Weekly-rent growth by NSW suburb (rent is measured at postcode level and
+      attached to a suburb via its dominant postcode). One row per suburb, keyed
+      by `suburb`. Belongs to the `nsw_rent` dataset (RLS-scoped). Join to
+      mart_sales_growth on `suburb`.
+    columns:
+      - name: suburb
+        description: Suburb name (Title Case). Join key across the property marts.
+        data_tests: [not_null, unique]
+      - name: postcode
+        description: Postcode the rent figures are measured over.
+      - name: first_year
+        description: First year in the window with enough bonds to measure.
+      - name: last_year
+        description: Last year in the window with enough bonds to measure.
+      - name: first_median_rent
+        description: Median weekly rent (AUD) in first_year.
+      - name: last_median_rent
+        description: Median weekly rent (AUD) in last_year.
+      - name: rent_growth_pct
+        description: Percent change in median weekly rent from first_year to last_year.
+        data_tests: [not_null]
+      - name: n_bonds
+        description: Number of rental bonds contributing across the window.

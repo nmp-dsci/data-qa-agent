@@ -9,6 +9,9 @@ venv/
 *.egg-info/
 
 data/*
+# …but keep the small committed samples used by CI + a fast `make up`.
+!data/samples/
+!data/samples/*.csv
 
 # Per-service uv locks (builds resolve from pyproject; only the root lock is tracked)
 services/*/uv.lock

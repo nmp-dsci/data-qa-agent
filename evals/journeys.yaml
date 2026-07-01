@@ -27,17 +27,17 @@ journeys:
       - login_succeeds
       - me_role: user
 
-  - name: user1 can query housing data
+  - name: user1 sees top growth suburbs for sales and rent
     as_user: user1
-    question: What is the average sale price by suburb?
+    question: What are the top growth suburbs for sale price and rent?
     expect:
       - agent_answers_successfully
       - sql_is_select_only
       - mentions: [suburb]
 
-  - name: user2 is isolated from housing (RLS)
+  - name: user2 is isolated from the property data (RLS)
     as_user: user2
-    question: What is the average sale price by suburb?
+    question: What are the top growth suburbs for sale price and rent?
     expect:
       - no_rows_or_access_denied
 

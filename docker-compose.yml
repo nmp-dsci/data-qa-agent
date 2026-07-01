@@ -24,10 +24,16 @@ services:
     build: ./services/backend-api
     environment:
       APP_ENV: dev
-      AUTH_MODE: dev
+      # AUTH_MODE=dev uses the local dev-auth stub. Set AUTH_MODE=entra plus the
+      # ENTRA_* vars (in .env) to switch to real Microsoft Entra External ID.
+      AUTH_MODE: ${AUTH_MODE:-dev}
       DATABASE_URL: postgresql+asyncpg://app_user:app_pw@db:5432/dataqa
       AGENT_URL: http://data-agent:8100
       JWT_SECRET: dev-secret-change-me
+      ENTRA_AUTHORITY: ${ENTRA_AUTHORITY:-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+      ENTRA_AUDIENCE: ${ENTRA_AUDIENCE:-}
+      ENTRA_ADMIN_ROLE: ${ENTRA_ADMIN_ROLE:-admin}
     ports:
       - "8000:8000"
     depends_on:

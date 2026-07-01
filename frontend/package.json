@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@azure/msal-browser": "^4.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

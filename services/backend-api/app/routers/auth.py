@@ -29,6 +29,30 @@ class TokenResponse(BaseModel):
     user: UserOut
 
 
+class AuthConfig(BaseModel):
+    auth_mode: str
+    authority: str | None = None
+    client_id: str | None = None
+    scopes: list[str] = []
+
+
+@router.get("/auth/config", response_model=AuthConfig)
+async def auth_config() -> AuthConfig:
+    """Lets the frontend configure its login flow at runtime (no rebuild to flip).
+
+    Dev mode returns just the mode; Entra mode returns the MSAL parameters.
+    """
+    if settings.auth_mode == "entra":
+        scope = f"api://{settings.entra_client_id}/access_as_user"
+        return AuthConfig(
+            auth_mode="entra",
+            authority=settings.entra_authority,
+            client_id=settings.entra_client_id,
+            scopes=[scope],
+        )
+    return AuthConfig(auth_mode="dev")
+
+
 @router.post("/auth/dev-login", response_model=TokenResponse)
 async def dev_login(body: DevLoginRequest) -> TokenResponse:
     """Local dev-auth stub. In production this is replaced by Entra OIDC."""

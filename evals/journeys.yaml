@@ -1,0 +1,52 @@
+# User-journey evals — login -> ask -> agent answers, plus RLS isolation.
+# Introduced in Phase 1 (auth); this suite grows every phase. Add a journey to
+# add coverage. Runs via `tests/test_journeys.py` against a running stack
+# (`make up`); it skips automatically when the stack is not reachable.
+#
+# Each journey signs in (dev-auth stub) as `as_user` — or is `anonymous` — then
+# asserts every item under `expect`. Supported expectations:
+#   login_succeeds            dev-login returns a token + user
+#   login_rejected            dev-login is refused (unknown user)
+#   me_role: <role>           GET /me returns this role
+#   unauthenticated_rejected  GET /me without a token returns 401
+#   agent_answers_successfully  /ask returns a non-empty answer with rows
+#   sql_is_select_only        the generated SQL is a single SELECT
+#   mentions: [a, b]          each term appears in the answer or a column name
+#   no_rows_or_access_denied  /ask returns zero rows (RLS isolation)
+
+journeys:
+  - name: admin signs in and is recognised as admin
+    as_user: admin
+    expect:
+      - login_succeeds
+      - me_role: admin
+
+  - name: user1 signs in as a regular user
+    as_user: user1
+    expect:
+      - login_succeeds
+      - me_role: user
+
+  - name: user1 can query housing data
+    as_user: user1
+    question: What is the average sale price by suburb?
+    expect:
+      - agent_answers_successfully
+      - sql_is_select_only
+      - mentions: [suburb]
+
+  - name: user2 is isolated from housing (RLS)
+    as_user: user2
+    question: What is the average sale price by suburb?
+    expect:
+      - no_rows_or_access_denied
+
+  - name: unknown user cannot sign in
+    as_user: nobody
+    expect:
+      - login_rejected
+
+  - name: unauthenticated requests are rejected
+    anonymous: true
+    expect:
+      - unauthenticated_rejected

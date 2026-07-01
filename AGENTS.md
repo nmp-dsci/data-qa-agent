@@ -67,13 +67,18 @@ live in code.
 
 ### Run fully locally
 
-**Built and working (Phase 0 vertical slice).** `make up` boots the whole app on `localhost` with no Azure:
-Postgres+pgvector, backend-api, data-agent, and frontend (see README for details). The DB `db/init/*.sql`
+**Built and working (Phase 0 slice + Phase 1 auth).** `make up` boots the whole app on `localhost` with no
+Azure: Postgres+pgvector, backend-api, data-agent, and frontend (see README for details). The DB `db/init/*.sql`
 scripts create the schema + RLS, seed the 3 users, and load `data/incoming/housing.csv` on first start.
-`make smoke` runs the end-to-end test (login → ask → response, SQL audit trail, and RLS isolation of user2).
+`make smoke` runs the end-to-end test (login → ask → response, SQL audit trail, and RLS isolation of user2);
+`uv run pytest` also runs the `evals/journeys.yaml` user-journey suite against a running stack.
 
-- **Auth:** Entra is cloud-only, so local uses a **dev-auth stub** (`app/routers/auth.py`) that mints a
-  signed dev JWT for `admin`/`user1`/`user2` (`AUTH_MODE=dev`); flip config for real Entra with no code change.
+- **Auth (Phase 1):** two runtime-selected modes — `dev` (default) mints a signed HS256 token for
+  `admin`/`user1`/`user2`; `entra` validates real **Microsoft Entra External ID** RS256 tokens against the
+  tenant JWKS (`app/auth.py`) and just-in-time provisions users into `app.users` by `oid`. The frontend reads
+  `GET /auth/config` and uses MSAL (`@azure/msal-browser`) in `entra` mode — flipping needs **no rebuild**, only
+  `AUTH_MODE=entra` + `ENTRA_*` config. A live tenant + SPA/API app registrations are needed for real login.
+  Protected `/me` returns the current user in both modes.
 - **Agent:** answers offline via a deterministic NL→SQL stub (`agent/nl2sql.py`); set `ANTHROPIC_API_KEY`
   (+ `--extra llm`) to use Claude (`agent/claude_agent.py`) — provider is abstracted (Decision G).
 - **Pipeline:** Phase 0 loads the CSV via `db/init/04_load_housing.sql`. The real **dlt + dbt** pipeline is
@@ -84,9 +89,10 @@ scripts create the schema + RLS, seed the 3 users, and load `data/incoming/housi
 ### Repo layout (as built)
 
 ```
-services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin endpoints
+services/backend-api/   FastAPI: dev-auth + Entra JWT validation, RLS context, /ask, /events, admin
 services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails
-frontend/               React + Vite: login + chat + event tracking
+frontend/               React + Vite: login (dev stub or MSAL) + chat + event tracking
+evals/                  journeys.yaml — user-journey evals (auth + RLS now; grows every phase)
 db/init/                schema + RLS + roles + seed + housing load (run on first `make up`)
 config/                 datasets.yaml, users.seed.yaml
 data/incoming/          housing.csv (generate with scripts/generate_housing.py)
@@ -237,17 +243,17 @@ see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failur
 
 ## Build plan (iterative, local-first)
 
-| Phase | Deliverable |
-|-------|-------------|
-| **0 · Scaffold** | uv monorepo (api + agent), FastAPI hello, React Vite, Postgres via docker-compose — all on localhost |
-| **1 · Auth** | Entra tenant, MSAL login, JWT validation dependency, protected `/me`; seed 3 users (admin/user1/user2) |
-| **2 · Data + RLS** | Schema + Alembic migrations (all tables above), RLS policies, session-variable middleware, isolation tests |
-| **2b · Pipeline** | `data/incoming` + `config/datasets.yaml`; dlt CSV→raw; dbt raw→marts with tests/docs; `datasets`/`dataset_access` populated |
-| **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` |
-| **3b · Tracking + admin** | Event taxonomy + `POST /events`, `events` table, admin-only dashboard (feed, users, datasets, metrics) |
-| **4 · Azure** | Bicep: Container Apps env + job, ACR, PostgreSQL Flexible (+pgvector), Key Vault, managed identity |
-| **5 · CI/CD** | GitHub Actions: build/push, Ruff/mypy/pytest + **journey evals** (pydantic_evals), deploy on merge to `main` |
-| **6 · Harden** | Front Door + WAF, rate limits, statement timeouts, LLM cost guards, dashboards |
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| **0 · Scaffold** | uv monorepo (api + agent), FastAPI hello, React Vite, Postgres via docker-compose — all on localhost | ✅ done |
+| **1 · Auth** | Entra JWT validation + JIT provisioning, MSAL login (dev stub fallback), protected `/me`, `/auth/config`, journey evals; 3 seeded users | ✅ done (live tenant pending) |
+| **2 · Data + RLS** | Schema + Alembic migrations (all tables above), RLS policies, session-variable middleware, isolation tests | ⏳ partial (schema/RLS/seed via `db/init`; Alembic pending) |
+| **2b · Pipeline** | `data/incoming` + `config/datasets.yaml`; dlt CSV→raw; dbt raw→marts with tests/docs; `datasets`/`dataset_access` populated | ⬜ todo |
+| **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ⏳ partial (SQL stub + guardrails) |
+| **3b · Tracking + admin** | Event taxonomy + `POST /events`, `events` table, admin-only dashboard (feed, users, datasets, metrics) | ⏳ partial |
+| **4 · Azure** | Bicep: Container Apps env + job, ACR, PostgreSQL Flexible (+pgvector), Key Vault, managed identity | ⬜ scaffolded |
+| **5 · CI/CD** | GitHub Actions: build/push, Ruff/mypy/pytest + **journey evals** (pydantic_evals), deploy on merge to `main` | ⏳ partial |
+| **6 · Harden** | Front Door + WAF, rate limits, statement timeouts, LLM cost guards, dashboards | ⬜ todo |
 
 Evaluation (`evals/journeys.yaml`) is introduced in Phase 1 and grows every phase. Each phase ships something
 runnable. Pause after each so the changes can be learned before extending.

@@ -6,15 +6,14 @@ import {
   AdminUser,
   ask,
   AskResult,
-  devLogin,
   getAdminDatasets,
   getAdminEvents,
   getAdminQueryRuns,
   getAdminUsers,
-  setToken,
   track,
   User,
 } from "./api";
+import { bootstrap, loadAuthConfig, loginDev, loginEntra, logout as authLogout } from "./auth";
 
 interface ChatMsg {
   role: "user" | "assistant";
@@ -37,6 +36,7 @@ const SUGGESTIONS = [
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [authMode, setAuthMode] = useState<"dev" | "entra">("dev");
   const [view, setView] = useState<"chat" | "admin">("chat");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -46,25 +46,46 @@ export default function App() {
 
   useEffect(() => {
     track("login_screen_view");
+    // Discover the auth backend and, for Entra, restore an existing session.
+    loadAuthConfig()
+      .then(async (cfg) => {
+        setAuthMode(cfg.auth_mode);
+        if (cfg.auth_mode === "entra") {
+          const existing = await bootstrap();
+          if (existing) enterApp(existing);
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  async function handleLogin(username: string) {
+  function enterApp(u: User) {
+    setUser(u);
+    setView("chat");
+    setMessages([]);
+    setConversationId(null);
+    track("home_view", { username: u.username });
+  }
+
+  async function handleDevLogin(username: string) {
     setError(null);
     try {
-      const { access_token, user } = await devLogin(username);
-      setToken(access_token);
-      setUser(user);
-      setView("chat");
-      setMessages([]);
-      setConversationId(null);
-      track("home_view", { username });
+      enterApp(await loginDev(username));
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
-  function logout() {
-    setToken(null);
+  async function handleEntraLogin() {
+    setError(null);
+    try {
+      enterApp(await loginEntra());
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function logout() {
+    await authLogout();
     setUser(null);
     setView("chat");
     setMessages([]);
@@ -99,17 +120,33 @@ export default function App() {
       <div className="login">
         <div className="login-card">
           <h1>data-qa-agent</h1>
-          <p className="sub">Ask questions about your data. Sign in as a test user:</p>
-          <div className="users">
-            {TEST_USERS.map((u) => (
-              <button key={u.username} onClick={() => handleLogin(u.username)}>
-                <strong>{u.label}</strong>
-                <span>{u.hint}</span>
-              </button>
-            ))}
-          </div>
-          {error && <p className="error">{error}</p>}
-          <p className="foot">Dev-auth stub · production uses Microsoft Entra External ID</p>
+          {authMode === "entra" ? (
+            <>
+              <p className="sub">Sign in to ask questions about your data.</p>
+              <div className="users">
+                <button onClick={handleEntraLogin}>
+                  <strong>Sign in with Microsoft</strong>
+                  <span>Entra External ID</span>
+                </button>
+              </div>
+              {error && <p className="error">{error}</p>}
+              <p className="foot">Secured by Microsoft Entra External ID</p>
+            </>
+          ) : (
+            <>
+              <p className="sub">Ask questions about your data. Sign in as a test user:</p>
+              <div className="users">
+                {TEST_USERS.map((u) => (
+                  <button key={u.username} onClick={() => handleDevLogin(u.username)}>
+                    <strong>{u.label}</strong>
+                    <span>{u.hint}</span>
+                  </button>
+                ))}
+              </div>
+              {error && <p className="error">{error}</p>}
+              <p className="foot">Dev-auth stub · production uses Microsoft Entra External ID</p>
+            </>
+          )}
         </div>
       </div>
     );

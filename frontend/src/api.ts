@@ -8,6 +8,13 @@ export interface User {
   role: string;
 }
 
+export interface AuthConfig {
+  auth_mode: "dev" | "entra";
+  authority?: string | null;
+  client_id?: string | null;
+  scopes: string[];
+}
+
 export interface AskResult {
   conversation_id: string;
   message_id: string;
@@ -68,6 +75,12 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export async function getAuthConfig(): Promise<AuthConfig> {
+  const resp = await fetch(`${API}/auth/config`);
+  if (!resp.ok) throw new Error(`Could not load auth config (${resp.status})`);
+  return resp.json();
+}
+
 export async function devLogin(username: string): Promise<{ access_token: string; user: User }> {
   const resp = await fetch(`${API}/auth/dev-login`, {
     method: "POST",
@@ -75,6 +88,12 @@ export async function devLogin(username: string): Promise<{ access_token: string
     body: JSON.stringify({ username }),
   });
   if (!resp.ok) throw new Error(`Login failed (${resp.status})`);
+  return resp.json();
+}
+
+export async function getMe(): Promise<User> {
+  const resp = await fetch(`${API}/me`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load profile (${resp.status})`);
   return resp.json();
 }
 

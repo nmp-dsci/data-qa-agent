@@ -30,7 +30,7 @@ Sign in as `user2` and ask the same thing — you'll get zero rows, because Row-
 
 ```bash
 make smoke    # end-to-end test: login -> ask -> response, query audit, and RLS isolation
-uv run pytest -q  # focused unit tests for SQL guardrails and NL->SQL routing
+uv run pytest -q  # unit tests (guardrails/NL->SQL) + journey evals (skip if stack down)
 make logs     # tail service logs
 make down     # stop the stack
 make reset    # stop AND wipe the db volume (re-seeds + reloads on next `make up`)
@@ -69,7 +69,7 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL)
 | Service | URL | Notes |
 |---------|-----|-------|
 | Frontend | http://localhost:5230 | React + Vite dev server |
-| Backend API | http://localhost:8000 | `/health`, `/auth/dev-login`, `/ask`, `/events`, `/admin/*` |
+| Backend API | http://localhost:8000 | `/health`, `/auth/config`, `/auth/dev-login`, `/me`, `/ask`, `/events`, `/admin/*` |
 | Data agent | http://localhost:8100 | `/health`, `/agent/ask` |
 | Postgres | `localhost:5434` | user `postgres` / `postgres`, db `dataqa` (5432/5433 were in use) |
 
@@ -78,10 +78,11 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL)
 ```
 services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin endpoints
 services/data-agent/    NL→SQL stub + Claude path; read-only SQL under RLS with guardrails
-frontend/               React + Vite: login + chat + event tracking
+frontend/               React + Vite: login (dev stub or MSAL) + chat + event tracking
 db/init/                schema + RLS + roles + seed + housing load (run on first `make up`)
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
 data/incoming/          housing.csv (generate with scripts/generate_housing.py)
+evals/                  journeys.yaml — user-journey evals (grows every phase)
 scripts/                generate_housing.py, smoke_test.py
 docker-compose.yml      the local dev stack;  Makefile has the shortcuts
 ```
@@ -91,6 +92,25 @@ docker-compose.yml      the local dev stack;  Makefile has the shortcuts
 Sign in as `admin` and use the **Admin** button to inspect the live events feed, users, datasets, and audited
 agent query runs. Each answered question writes a `query_runs` row with the user, dataset, SQL, row count,
 latency, and engine.
+
+## Authentication (dev stub → Microsoft Entra External ID)
+
+Auth runs in one of two modes, chosen at runtime — the frontend reads `GET /auth/config` and adapts, so
+**flipping to real auth needs no rebuild**:
+
+- **`dev` (default)** — a local dev-auth stub. The login screen shows the three seeded users; the backend
+  mints a signed HS256 token. Everything runs offline.
+- **`entra`** — real **Microsoft Entra External ID** (OIDC). The frontend signs in via MSAL
+  (`@azure/msal-browser`); the backend validates the RS256 token against the tenant's public **JWKS**
+  (no client secret needed), then **just-in-time provisions** the user into `app.users` keyed by their Entra
+  `oid`, so RLS and the admin role stay driven by our own database. An app role (default value `admin`) in the
+  token maps to the admin role.
+
+To switch, set `AUTH_MODE=entra` and the `ENTRA_*` values in `.env` (see `.env.example`), then restart
+backend-api. A real Entra External ID tenant + two app registrations (SPA + API) are required for live login;
+until then, `dev` mode is the working local experience.
+
+The `/me` endpoint returns the current user's profile in both modes.
 
 ## Using Claude instead of the offline agent
 

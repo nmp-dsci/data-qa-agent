@@ -9,18 +9,31 @@ target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
 vars:
-  # Minimum rows in a (suburb|postcode, year) bucket to trust that year's median.
-  min_sales_year: 3
-  min_rent_year: 3
+  # Minimum rows in a (postcode, property_type, year) bucket to trust that
+  # year's median. NSW sale records can include split/partial-interest line
+  # items (same property, same date, wildly different fractional prices) —
+  # a low threshold lets a single such artifact dominate a thin bucket's
+  # median (e.g. one postcode's 2010 bucket had 6 rows from ONE split
+  # settlement, pricing a house at $41k and producing a bogus +2628% "growth"
+  # figure). 15 suppresses that class of outlier while still keeping most
+  # postcode/year coverage.
+  min_sales_year: 15
+  min_rent_year: 15
 
 models:
   nsw_property:
+    # Materialized as tables, not views: each staging/intermediate model is
+    # referenced multiple times downstream (e.g. int_sales_yearly is self-joined
+    # for both first_year and last_year). Views get inlined per reference, which
+    # re-runs the full percentile_cont aggregation over the raw ~2.7M rows every
+    # time — materializing computes each layer once and reuses the (much
+    # smaller) result.
     staging:
       +schema: staging
-      +materialized: view
+      +materialized: table
     intermediate:
       +schema: staging
-      +materialized: view
+      +materialized: table
     marts:
       +schema: marts
       +materialized: table

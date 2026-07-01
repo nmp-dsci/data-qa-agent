@@ -41,6 +41,20 @@ journeys:
     expect:
       - no_rows_or_access_denied
 
+  - name: user1 sees rental yield (combines both datasets)
+    as_user: user1
+    question: What are the best suburbs for rental yield?
+    expect:
+      - agent_answers_successfully
+      - sql_is_select_only
+      - mentions: [suburb]
+
+  - name: user2 is isolated from rental yield (needs both grants)
+    as_user: user2
+    question: What are the best suburbs for rental yield?
+    expect:
+      - no_rows_or_access_denied
+
   - name: unknown user cannot sign in
     as_user: nobody
     expect:

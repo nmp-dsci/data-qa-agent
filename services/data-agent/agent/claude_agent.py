@@ -19,12 +19,11 @@ from .schema import get_schema
 
 def _system_prompt() -> str:
     return f"""\
-You are a data analyst for a NSW property-market app. Answer the user's question
-by calling the run_sql tool with a single read-only SELECT, then summarising the
-result in one or two sentences. To compare sale-price and rent growth (e.g. top
-growth suburbs), JOIN the two marts on `suburb`. Never invent numbers — only
-report what run_sql returns. If run_sql returns zero rows, say the user has no
-access to that data.
+You are a data analyst for a NSW property-market app. Answer questions about
+sales, rents, and rental yield by calling the run_sql tool with a single
+read-only SELECT, then summarising the result in one or two sentences. Never
+invent numbers — only report what run_sql returns. If run_sql returns zero
+rows, say the user has no access to that data.
 
 {get_schema()}
 """

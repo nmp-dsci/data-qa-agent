@@ -12,14 +12,37 @@ from agent.nl2sql import build_sql  # noqa: E402
 from agent.sql_guardrails import UnsafeSQLError, validate_select  # noqa: E402
 
 
-def test_growth_suburbs_joins_both_marts() -> None:
+def test_growth_suburbs_joins_both_marts_on_postcode_and_type() -> None:
     sql, intent = build_sql("What are the top growth suburbs for sale price and rent?")
     assert intent == "combined"
     lower = validate_select(sql).lower()
     assert lower.startswith("select")
     assert "marts.mart_sales_growth" in lower
     assert "marts.mart_rent_growth" in lower
-    assert "join" in lower and "using (suburb)" in lower
+    assert "join" in lower
+    assert "r.postcode = s.postcode" in lower
+    assert "r.property_type = s.property_type" in lower
+    # No type mentioned -> blended 'ALL' row, not a specific type.
+    assert "property_type = 'all'" in lower
+
+
+def test_property_type_filter_detected() -> None:
+    sql, intent = build_sql("Top growth suburbs for houses, sale price and rent")
+    assert intent == "combined"
+    assert "property_type = 'house'" in validate_select(sql).lower()
+
+    sql, _ = build_sql("Top growth suburbs for units")
+    assert "property_type = 'unit'" in validate_select(sql).lower()
+
+
+def test_yield_question_targets_yield_mart() -> None:
+    sql, intent = build_sql("What are the best suburbs for rental yield?")
+    assert intent == "yield"
+    lower = validate_select(sql).lower()
+    assert lower.startswith("select")
+    assert "marts.mart_property_yield" in lower
+    assert "gross_yield_pct" in lower
+    assert "order by gross_yield_pct desc" in lower
 
 
 @pytest.mark.parametrize(

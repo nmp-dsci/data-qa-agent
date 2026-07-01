@@ -3,15 +3,21 @@ version: 2
 models:
   - name: mart_sales_growth
     description: >
-      Residential sale-price growth by NSW suburb. One row per suburb, keyed by
-      `suburb`. Belongs to the `nsw_sales` dataset (RLS-scoped). Join to
-      mart_rent_growth on `suburb` to compare sales and rent growth together.
+      Residential sale-price growth by NSW postcode + property_type. One row per
+      (postcode, property_type); property_type is 'house', 'unit', or 'ALL'
+      (blended across both). Belongs to the `nsw_sales` dataset (RLS-scoped).
+      Join to mart_rent_growth or mart_property_yield on (postcode, property_type)
+      to compare sales, rent, and yield together — suburb is a label, not the
+      join key (postcode<->suburb is not 1:1 in this data).
     columns:
-      - name: suburb
-        description: Suburb name (Title Case). Join key across the property marts.
-        data_tests: [not_null, unique]
       - name: postcode
-        description: Dominant postcode for the suburb (most sales).
+        description: Postcode. Join key across the property marts.
+        data_tests: [not_null]
+      - name: suburb
+        description: Dominant suburb name for the postcode (most sales) — a label only.
+      - name: property_type
+        description: "'house', 'unit', or 'ALL' (blended across both)."
+        data_tests: [not_null]
       - name: first_year
         description: First year in the window with enough sales to measure.
       - name: last_year
@@ -28,16 +34,19 @@ models:
 
   - name: mart_rent_growth
     description: >
-      Weekly-rent growth by NSW suburb (rent is measured at postcode level and
-      attached to a suburb via its dominant postcode). One row per suburb, keyed
-      by `suburb`. Belongs to the `nsw_rent` dataset (RLS-scoped). Join to
-      mart_sales_growth on `suburb`.
+      Weekly-rent growth by NSW postcode + property_type. One row per (postcode,
+      property_type); property_type is 'house', 'unit', or 'ALL' (blended).
+      Belongs to the `nsw_rent` dataset (RLS-scoped). Join to mart_sales_growth
+      or mart_property_yield on (postcode, property_type).
     columns:
-      - name: suburb
-        description: Suburb name (Title Case). Join key across the property marts.
-        data_tests: [not_null, unique]
       - name: postcode
-        description: Postcode the rent figures are measured over.
+        description: Postcode. Join key across the property marts.
+        data_tests: [not_null]
+      - name: suburb
+        description: Dominant suburb name for the postcode (most sales) — a label only.
+      - name: property_type
+        description: "'house', 'unit', or 'ALL' (blended across both)."
+        data_tests: [not_null]
       - name: first_year
         description: First year in the window with enough bonds to measure.
       - name: last_year
@@ -51,3 +60,34 @@ models:
         data_tests: [not_null]
       - name: n_bonds
         description: Number of rental bonds contributing across the window.
+
+  - name: mart_property_yield
+    description: >
+      Gross rental yield by NSW postcode + property_type + year: (median weekly
+      rent * 52) / median sale price, as a percentage. One row per (postcode,
+      property_type, year); property_type is 'house', 'unit', or 'ALL' (blended).
+      Spans both datasets — requires nsw_sales AND nsw_rent access (RLS). Filter
+      to the latest year for "current" yield, or compare years for a trend.
+    columns:
+      - name: postcode
+        description: Postcode. Join key across the property marts.
+        data_tests: [not_null]
+      - name: suburb
+        description: Dominant suburb name for the postcode (most sales) — a label only.
+      - name: property_type
+        description: "'house', 'unit', or 'ALL' (blended across both)."
+        data_tests: [not_null]
+      - name: year
+        description: Calendar year the price/rent/yield were measured in.
+        data_tests: [not_null]
+      - name: median_price
+        description: Median sale price (AUD) that year.
+      - name: median_rent
+        description: Median weekly rent (AUD) that year.
+      - name: gross_yield_pct
+        description: Gross rental yield percentage = (median_rent * 52 / median_price) * 100.
+        data_tests: [not_null]
+      - name: n_sales
+        description: Number of sales contributing to median_price that year.
+      - name: n_bonds
+        description: Number of rental bonds contributing to median_rent that year.

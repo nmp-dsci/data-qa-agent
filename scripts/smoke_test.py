@@ -79,9 +79,16 @@ def main() -> int:
     print(f"     answer: {ra['answer'][:90]}")
     check("admin gets a count", ra["row_count"] > 0)
 
-    print("4. admin audit view includes query runs")
+    print("4. user1 asks for rental yield -> combines sales + rent (both datasets)")
+    ry = ask(t1, "What are the best suburbs for rental yield?")
+    print(f"     answer: {ry['answer'][:90]}")
+    check("user1 gets yield rows back", ry["row_count"] > 0, f"(row_count={ry['row_count']})")
+    check("yield sql is a SELECT", (ry.get("sql") or "").lower().lstrip().startswith("select"))
+    check("answer includes gross_yield_pct", "gross_yield_pct" in ry.get("columns", []))
+
+    print("5. admin audit view includes query runs")
     query_runs = _get("/admin/query-runs", ta)
-    check("query run audit has entries", len(query_runs) >= 3, f"(count={len(query_runs)})")
+    check("query run audit has entries", len(query_runs) >= 4, f"(count={len(query_runs)})")
     check(
         "latest audit row includes SQL",
         bool(query_runs and query_runs[0].get("sql_text")),

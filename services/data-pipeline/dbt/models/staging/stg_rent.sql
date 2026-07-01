@@ -1,4 +1,9 @@
--- Clean rental bond lodgements: derive lodgement year, keep positive weekly rents.
+-- Clean rental bond lodgements: derive lodgement year, keep positive weekly rents,
+-- and derive house/unit so rent can be compared like-for-like with sales.
+--
+-- property_type: per docs/property_data/profile_rentboard.py, House + Townhouse
+-- bonds are grouped as 'house'; Flat/Unit/Other as 'unit' (mirrors stg_sales so
+-- the two marts share a join key).
 with src as (
     select
         lodgement_dt,
@@ -11,7 +16,8 @@ with src as (
 select
     left(lodgement_dt, 4)::int as rent_year,
     postcode,
-    upper(property_type) as property_type,
+    upper(property_type) as property_type_code,
+    case when upper(property_type) in ('H', 'T') then 'house' else 'unit' end as property_type,
     case when bedrooms ~ '^[0-9]+$' then bedrooms::int end as bedrooms,
     weekly_rent::numeric as weekly_rent
 from src

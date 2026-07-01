@@ -29,8 +29,12 @@ WINDOW = (2016, 2024)
 SAMPLE_YEARS = {2016, 2017, 2023, 2024}
 N_POSTCODES = 25  # how many overlapping postcodes to keep
 N_SUBURBS = 24  # keep the best-covered suburbs (volume at both ends)
-PER_SUBURB_YEAR = 15  # cap sales rows per (suburb, year)
+# dbt's min_sales_year/min_rent_year vars require >=15 rows in a bucket to trust
+# it (see dbt_project.yml) — cap comfortably above that so the sample's blended
+# 'ALL' property_type rows (house+unit combined) clear the threshold.
+PER_SUBURB_YEAR = 20  # cap sales rows per (suburb, year)
 PER_POSTCODE_YEAR = 30  # cap rent rows per (postcode, year)
+MIN_BUCKET_VOLUME = 20  # only pick suburbs/postcodes with at least this many real rows
 
 
 def _is_start(year: int) -> bool:
@@ -123,7 +127,7 @@ def pick_suburbs(postcodes: set[str]) -> set[str]:
                 continue
             suburb, year = hit
             (start if _is_start(year) else end)[suburb] += 1
-    both = [s for s in start if end[s] >= 3 and start[s] >= 3]
+    both = [s for s in start if end[s] >= MIN_BUCKET_VOLUME and start[s] >= MIN_BUCKET_VOLUME]
     both.sort(key=lambda s: min(start[s], end[s]), reverse=True)
     return set(both[:N_SUBURBS])
 

@@ -1,0 +1,65 @@
+# data-qa-agent :: local dev stack (Decision E: Phase 0, all in `dev`).
+# `docker compose up --build` boots the whole app on localhost.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dataqa
+    ports:
+      - "5434:5432"   # 5432/5433 are used by other local containers; internal net still uses db:5432
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - ./data:/data:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dataqa"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  backend-api:
+    build: ./services/backend-api
+    environment:
+      APP_ENV: dev
+      AUTH_MODE: dev
+      DATABASE_URL: postgresql+asyncpg://app_user:app_pw@db:5432/dataqa
+      AGENT_URL: http://data-agent:8100
+      JWT_SECRET: dev-secret-change-me
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  data-agent:
+    build: ./services/data-agent
+    environment:
+      APP_ENV: dev
+      AGENT_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa
+      # Set ANTHROPIC_API_KEY in your shell/.env to use Claude; empty = offline stub.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "8100:8100"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5230:5230"
+    depends_on:
+      - backend-api
+
+volumes:
+  dbdata:

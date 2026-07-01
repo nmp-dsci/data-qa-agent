@@ -1,0 +1,154 @@
+from __future__ import annotations
+
+import time
+from typing import Any
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import text
+
+from ..agent_client import ask_agent
+from ..auth import CurrentUser, get_current_user
+from ..db import rls_connection
+
+router = APIRouter(tags=["ask"])
+
+DATASET_SLUG = "housing"
+
+
+class AskRequest(BaseModel):
+    question: str
+    conversation_id: str | None = None
+
+
+class AskResponse(BaseModel):
+    conversation_id: str
+    message_id: str
+    answer: str
+    sql: str | None = None
+    columns: list[str] = []
+    rows: list[list[Any]] = []
+    row_count: int = 0
+    engine: str = "stub"
+
+
+async def _log_event(conn: Any, user_id: str, event_type: str, payload: dict | None = None) -> None:
+    await conn.execute(
+        text(
+            "INSERT INTO app.events (user_id, event_type, payload) "
+            "VALUES (:uid, :etype, CAST(:payload AS jsonb))"
+        ),
+        {"uid": user_id, "etype": event_type, "payload": _json(payload or {})},
+    )
+
+
+def _json(obj: dict) -> str:
+    import json
+
+    return json.dumps(obj)
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask(body: AskRequest, user: CurrentUser = Depends(get_current_user)) -> AskResponse:
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question must not be empty")
+
+    # tx1: ensure conversation, record the user's message, mark agent as started.
+    async with rls_connection(user.id) as conn:
+        conversation_id = body.conversation_id
+        if conversation_id is None:
+            conversation_id = str(
+                (
+                    await conn.execute(
+                        text(
+                            "INSERT INTO app.conversations (user_id, dataset_id, title) "
+                            "VALUES (:uid, (SELECT id FROM app.datasets WHERE slug = :slug), "
+                            ":title) RETURNING id"
+                        ),
+                        {"uid": user.id, "slug": DATASET_SLUG, "title": question[:60]},
+                    )
+                ).scalar_one()
+            )
+        await conn.execute(
+            text(
+                "INSERT INTO app.messages (conversation_id, user_id, role, content) "
+                "VALUES (:cid, :uid, 'user', :content)"
+            ),
+            {"cid": conversation_id, "uid": user.id, "content": question},
+        )
+        await _log_event(conn, user.id, "agent_started", {"question": question})
+
+    # Delegate to the agent (its own connection enforces the same RLS).
+    started = time.perf_counter()
+    try:
+        result = await ask_agent(
+            question=question, user_id=user.id, role=user.role, dataset_slug=DATASET_SLUG
+        )
+    except httpx.HTTPError as exc:  # noqa: BLE001
+        async with rls_connection(user.id) as conn:
+            await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
+        raise HTTPException(status_code=502, detail=f"Agent unavailable: {exc}") from exc
+    latency_ms = int((time.perf_counter() - started) * 1000)
+
+    answer = result.get("answer", "")
+    sql = result.get("sql")
+    engine = result.get("engine", "stub")
+    row_count = int(result.get("row_count", 0))
+
+    # tx2: record the assistant's answer and mark agent as finished.
+    async with rls_connection(user.id) as conn:
+        message_id = str(
+            (
+                await conn.execute(
+                    text(
+                        "INSERT INTO app.messages "
+                        "(conversation_id, user_id, role, content, sql_generated, latency_ms) "
+                        "VALUES (:cid, :uid, 'assistant', :content, :sql, :lat) RETURNING id"
+                    ),
+                    {
+                        "cid": conversation_id,
+                        "uid": user.id,
+                        "content": answer,
+                        "sql": sql,
+                        "lat": latency_ms,
+                    },
+                )
+            ).scalar_one()
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO app.query_runs "
+                "(conversation_id, message_id, user_id, dataset_id, question, sql_text, "
+                "engine, row_count, latency_ms, status) "
+                "VALUES (:cid, :mid, :uid, "
+                "(SELECT id FROM app.datasets WHERE slug = :slug), :question, :sql, "
+                ":engine, :row_count, :lat, 'success')"
+            ),
+            {
+                "cid": conversation_id,
+                "mid": message_id,
+                "uid": user.id,
+                "slug": DATASET_SLUG,
+                "question": question,
+                "sql": sql,
+                "engine": engine,
+                "row_count": row_count,
+                "lat": latency_ms,
+            },
+        )
+        await _log_event(
+            conn, user.id, "agent_answered", {"latency_ms": latency_ms, "engine": engine}
+        )
+
+    return AskResponse(
+        conversation_id=conversation_id,
+        message_id=message_id,
+        answer=answer,
+        sql=sql,
+        columns=result.get("columns", []),
+        rows=result.get("rows", []),
+        row_count=row_count,
+        engine=engine,
+    )

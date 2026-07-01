@@ -1,0 +1,95 @@
+name: Deploy (dev)
+
+# Manual trigger — deploys to the Azure `dev` environment. Costs money, so it's
+# opt-in rather than on every push. Auth is via GitHub OIDC (no stored secrets).
+on:
+  workflow_dispatch:
+    inputs:
+      imageTag:
+        description: "Image tag to build & deploy"
+        default: "latest"
+
+permissions:
+  id-token: write   # required for OIDC login to Azure
+  contents: read
+
+env:
+  ENVIRONMENT: dev
+  NAME_PREFIX: ${{ vars.NAME_PREFIX }}          # e.g. dataqa
+  RESOURCE_GROUP: ${{ vars.RESOURCE_GROUP }}    # e.g. dataqa-dev-rg
+  LOCATION: ${{ vars.LOCATION }}                # e.g. australiaeast
+  TAG: ${{ github.event.inputs.imageTag }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure resource group
+        run: az group create -n "$RESOURCE_GROUP" -l "$LOCATION" -o none
+
+      - name: Phase 1 — deploy platform (no apps yet)
+        env:
+          PG_ADMIN_PW: ${{ secrets.PG_ADMIN_PW }}
+          APP_USER_PW: ${{ secrets.APP_USER_PW }}
+          AGENT_RO_PW: ${{ secrets.AGENT_RO_PW }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          outputs=$(az deployment group create \
+            -g "$RESOURCE_GROUP" -f infra/main.bicep \
+            -p env="$ENVIRONMENT" namePrefix="$NAME_PREFIX" imageTag="$TAG" deployApps=false \
+               postgresAdminPassword="$PG_ADMIN_PW" appUserPassword="$APP_USER_PW" \
+               agentRoPassword="$AGENT_RO_PW" jwtSecret="$JWT_SECRET" \
+               anthropicApiKey="$ANTHROPIC_API_KEY" \
+            --query properties.outputs -o json)
+          echo "ACR_NAME=$(echo "$outputs" | jq -r .acrName.value)"       >> "$GITHUB_ENV"
+          echo "ACR_SERVER=$(echo "$outputs" | jq -r .acrLoginServer.value)" >> "$GITHUB_ENV"
+          echo "API_URL=$(echo "$outputs" | jq -r .apiUrl.value)"         >> "$GITHUB_ENV"
+          echo "FRONTEND_URL=$(echo "$outputs" | jq -r .frontendUrl.value)" >> "$GITHUB_ENV"
+
+      - name: Build & push images
+        run: |
+          az acr login --name "$ACR_NAME"
+          docker build -t "$ACR_SERVER/backend-api:$TAG" services/backend-api
+          docker build -t "$ACR_SERVER/data-agent:$TAG" services/data-agent
+          docker build -t "$ACR_SERVER/frontend:$TAG" --build-arg VITE_API_URL="$API_URL" frontend
+          docker build -t "$ACR_SERVER/db-migrate:$TAG" -f services/db-migrate/Dockerfile .
+          docker push "$ACR_SERVER/backend-api:$TAG"
+          docker push "$ACR_SERVER/data-agent:$TAG"
+          docker push "$ACR_SERVER/frontend:$TAG"
+          docker push "$ACR_SERVER/db-migrate:$TAG"
+
+      - name: Phase 2 — deploy apps
+        env:
+          PG_ADMIN_PW: ${{ secrets.PG_ADMIN_PW }}
+          APP_USER_PW: ${{ secrets.APP_USER_PW }}
+          AGENT_RO_PW: ${{ secrets.AGENT_RO_PW }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          az deployment group create \
+            -g "$RESOURCE_GROUP" -f infra/main.bicep \
+            -p env="$ENVIRONMENT" namePrefix="$NAME_PREFIX" imageTag="$TAG" deployApps=true \
+               postgresAdminPassword="$PG_ADMIN_PW" appUserPassword="$APP_USER_PW" \
+               agentRoPassword="$AGENT_RO_PW" jwtSecret="$JWT_SECRET" \
+               anthropicApiKey="$ANTHROPIC_API_KEY" \
+            -o none
+
+      - name: Run DB migration job
+        run: |
+          az containerapp job start -g "$RESOURCE_GROUP" -n "${NAME_PREFIX}-${ENVIRONMENT}-migrate" -o none
+          echo "Migration job started (idempotent — safe to re-run)."
+
+      - name: Show URLs
+        run: |
+          echo "Frontend: $FRONTEND_URL"
+          echo "API:      $API_URL"

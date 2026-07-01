@@ -1,0 +1,12 @@
+# Dataset registry — the pipeline ingests these and the agent answers over them.
+# Add a dataset by dropping a CSV in data/incoming/ and registering it here.
+datasets:
+  - slug: housing
+    name: Housing sales
+    csv: data/incoming/housing.csv
+    description: >
+      Residential property sales in inner-Melbourne suburbs: price, bedrooms,
+      bathrooms, car spaces, land size, property type, year built and sale date.
+    access:
+      roles: [admin]      # admins see every dataset
+      users: [user1]      # user1 granted; user2 intentionally excluded (demonstrates RLS)

@@ -141,8 +141,8 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // ---- migration / seed job (manual trigger) --------------------------------
-// Runs the schema + role creation + housing load against Azure Postgres.
-// Follow-up: replace the init-SQL image with Alembic migrations.
+// Runs `alembic upgrade head` (schema/RLS/seed) + housing load against Azure
+// Postgres — the same migrations as local dev (services/db-migrate/).
 resource migrate 'Microsoft.App/jobs@2024-03-01' = {
   name: '${namePrefix}-${env}-migrate'
   location: location

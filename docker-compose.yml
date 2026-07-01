@@ -12,13 +12,27 @@ services:
       - "5434:5432"   # 5432/5433 are used by other local containers; internal net still uses db:5432
     volumes:
       - dbdata:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d:ro
-      - ./data:/data:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d dataqa"]
       interval: 3s
       timeout: 3s
       retries: 30
+
+  # One-shot job: applies Alembic migrations (schema/RLS/seed) then loads the
+  # housing data. Runs the SAME migrations as the Azure db-migrate job.
+  migrate:
+    build:
+      context: .
+      dockerfile: services/db-migrate/Dockerfile
+    environment:
+      ADMIN_DATABASE_URL: postgresql://postgres:postgres@db:5432/dataqa
+      HOUSING_CSV: /data/incoming/housing.csv
+    volumes:
+      - ./data:/data:ro
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
 
   backend-api:
     build: ./services/backend-api
@@ -37,8 +51,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   data-agent:
     build: ./services/data-agent
@@ -50,8 +64,8 @@ services:
     ports:
       - "8100:8100"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   frontend:
     image: node:22-bookworm-slim

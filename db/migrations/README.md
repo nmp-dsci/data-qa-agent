@@ -1,11 +1,25 @@
 # DB Migrations
 
-Phase 0 still uses the Postgres entrypoint SQL files in `db/init/` for local bootstrapping, but the schema now
-records applied versions in `app.schema_migrations`.
+Migrations are managed by **Alembic**, run by the `db-migrate` job in
+[`services/db-migrate/`](../../services/db-migrate/). The same `alembic upgrade head`
+runs locally (the `migrate` compose service) and in Azure (the Container Apps job) — there is no
+Postgres auto-init anymore.
 
-Current version:
+Migrations run as a **privileged connection** (`ADMIN_DATABASE_URL`) so they can create extensions, roles,
+and schemas, and so tables are owned by the admin role — which is what makes RLS apply to the non-owner
+`app_user` / `agent_ro` roles.
 
-- `0001_phase0_init` — app schemas, roles, RLS policies, seed users, housing load, and SQL audit tables.
+## Current revisions
 
-Follow-up migrations should be additive SQL files or Alembic revisions that insert their version into
-`app.schema_migrations` in the same transaction as the schema change.
+- `0001_phase0_init` — baseline. Applies the canonical DDL in [`db/init/`](.) (`01_schema.sql`,
+  `02_rls.sql`, `03_seed.sql`): app schemas, roles, tables, helper functions, RLS policies, and seed
+  users/datasets. Housing **data** is loaded separately by `seed_data.py` (it is pipeline output, not schema).
+
+The `db/init/*.sql` files remain the single source of truth for the baseline schema; the `0001` revision
+executes them, and they are baked into the migration image.
+
+## Adding a migration
+
+Author a new revision under `services/db-migrate/migrations/versions/` (e.g. `0002_*.py`) using `op.*` or
+`op.execute(...)`. Run it with `make migrate` (local) or let the deploy job apply it. Prefer additive,
+reversible changes.

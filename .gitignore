@@ -8,6 +8,8 @@ venv/
 .pytest_cache/
 *.egg-info/
 
+data/*
+
 # Per-service uv locks (builds resolve from pyproject; only the root lock is tracked)
 services/*/uv.lock
 

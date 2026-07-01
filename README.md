@@ -10,12 +10,16 @@ answers with the result.
 
 ## Quick start (fully local, no cloud)
 
-Requires Docker. One command boots the whole stack — Postgres+pgvector, backend-api, data-agent, frontend:
+Requires Docker. One command boots the whole stack — Postgres+pgvector, the Alembic migration job,
+backend-api, data-agent, frontend:
 
 ```bash
 make data     # generate the sample housing.csv (committed already; re-run to regenerate)
-make up       # build + start everything (first run pulls images / installs deps)
+make up       # build + start everything (the migrate job runs first, then the services start)
 ```
+
+On startup a one-shot **`migrate`** job runs `alembic upgrade head` (schema + RLS + seed) and loads the
+housing data; the services wait for it to finish. Run it alone with `make migrate`.
 
 Then open **http://localhost:5230** and sign in as a test user:
 
@@ -78,8 +82,9 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL)
 ```
 services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin endpoints
 services/data-agent/    NL→SQL stub + Claude path; read-only SQL under RLS with guardrails
+services/db-migrate/    Alembic migrations + data seed (the `migrate` job; runs local + cloud)
 frontend/               React + Vite: login (dev stub or MSAL) + chat + event tracking
-db/init/                schema + RLS + roles + seed + housing load (run on first `make up`)
+db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
 data/incoming/          housing.csv (generate with scripts/generate_housing.py)
 evals/                  journeys.yaml — user-journey evals (grows every phase)
@@ -123,7 +128,9 @@ extra. The provider sits behind an abstraction, so this is a config change (Deci
 - **Port already in use** — the dev DB uses host port **5434** (5432/5433 were taken by other local
   containers). If 5230/8000/8100 clash, change the left-hand side of the `ports:` mapping in
   `docker-compose.yml`.
-- **DB didn't re-seed** — init SQL only runs on a fresh volume. Run `make reset` then `make up`.
+- **DB didn't re-seed** — the `migrate` job loads housing only when `marts.housing` is empty. For a clean
+  slate run `make reset` then `make up` (wipes the volume so migrations re-run), or `make migrate` to re-run
+  the job against the current DB.
 - **Frontend can't reach the API** — CORS allows `http://localhost:5230`; if you change the frontend port,
   update `cors_origins` in `services/backend-api/app/config.py` and rebuild backend-api.
 
@@ -132,8 +139,8 @@ extra. The provider sits behind an abstraction, so this is a config change (Deci
 Infra-as-code (Bicep) + a GitHub Actions deploy are scaffolded under [`infra/`](./infra/README.md).
 `dev` is the same logical environment whether it runs locally or in Azure — only *where config comes from*
 changes (`.env` locally vs Key Vault in the cloud). `staging`/`prod` are the same template with a different
-`env`. See `infra/README.md` for prerequisites (OIDC, GitHub vars/secrets), the two-phase deploy, and the
-one known gap (the DB migration image).
+`env`. See `infra/README.md` for prerequisites (OIDC, GitHub vars/secrets) and the two-phase deploy. The
+`db-migrate` Container Apps job runs the same Alembic migrations as local (`alembic upgrade head`).
 
 ## Tooling & conventions
 

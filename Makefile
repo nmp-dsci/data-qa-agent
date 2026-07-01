@@ -1,10 +1,11 @@
-.PHONY: help up down reset logs ps data smoke
+.PHONY: help up down reset logs ps data migrate smoke
 
 help:
 	@echo "make data    - (re)generate the sample housing.csv"
-	@echo "make up      - build + start the whole stack (db, backend-api, data-agent, frontend)"
+	@echo "make up      - build + start the whole stack (db, migrate, backend-api, data-agent, frontend)"
+	@echo "make migrate - run the Alembic migration + seed job on its own (against a running db)"
 	@echo "make down    - stop the stack"
-	@echo "make reset   - stop and wipe the database volume (re-runs seed + load on next up)"
+	@echo "make reset   - stop and wipe the database volume (re-runs migrations on next up)"
 	@echo "make logs    - tail logs"
 	@echo "make smoke   - run the end-to-end smoke test against a running stack"
 	@echo ""
@@ -12,6 +13,9 @@ help:
 
 data:
 	python3 scripts/generate_housing.py 300
+
+migrate:
+	docker compose run --rm --build migrate
 
 up:
 	docker compose up --build

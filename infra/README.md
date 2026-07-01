@@ -74,9 +74,10 @@ Same `APP_ENV=dev`; only *where config comes from* differs.
 
 ## Migrations
 
-The `db-migrate` image (`services/db-migrate/`) runs the schema/RLS/seed + housing load, records
-`0001_phase0_init` in `app.schema_migrations`, and rotates the app role passwords every time it runs. It's a
-Phase-0 stand-in; **Alembic** proper is the Phase-2 follow-up for richer incremental migrations.
+The `db-migrate` image (`services/db-migrate/`) runs **Alembic** (`alembic upgrade head`) to apply the
+schema/RLS/seed, then loads the housing data and rotates the app role passwords to the Key Vault values. It's
+the same migration path as local dev, so `dev`/`staging`/`prod` all converge on one mechanism; add revisions
+under `services/db-migrate/migrations/versions/`.
 
 ## Cost & teardown
 

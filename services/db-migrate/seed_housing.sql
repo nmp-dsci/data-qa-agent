@@ -1,6 +1,6 @@
--- Cloud load step: raw.housing is populated by \copy (client-side) in the
--- entrypoint; this builds the marts table and updates the registry count.
--- (Local dev does the equivalent via db/init/04_load_housing.sql.)
+-- Build marts.housing from the freshly-\copied raw.housing and update the
+-- dataset registry row count. Runs after the CSV load in seed_data.py.
+-- (This is a Phase-0 stand-in for the dlt + dbt pipeline arriving in Phase 2b.)
 
 INSERT INTO marts.housing (id, dataset_id, suburb, property_type, price, bedrooms,
                            bathrooms, car_spaces, land_size_sqm, year_built, sale_date)
@@ -13,7 +13,3 @@ WHERE d.slug = 'housing';
 UPDATE app.datasets
 SET row_count = (SELECT count(*) FROM marts.housing)
 WHERE slug = 'housing';
-
-INSERT INTO app.schema_migrations (version)
-VALUES ('0001_phase0_init')
-ON CONFLICT (version) DO NOTHING;

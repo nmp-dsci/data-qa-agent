@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Landing tables loaded by dlt from the NSW CSVs.
+    schema: raw
+    tables:
+      - name: sales
+        description: NSW Government property sales (dealing-level), one row per sale.
+      - name: rent
+        description: NSW Rental Bond Board lodgements, one row per bond.

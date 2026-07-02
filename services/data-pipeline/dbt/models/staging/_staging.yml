@@ -1,0 +1,112 @@
+version: 2
+
+models:
+  - name: stg_sales
+    description: >
+      Record-grain NSW residential sales — one row per sale, cleaned and
+      typed from raw.sales (dates parsed, postcode normalised, non-market
+      transfers filtered, house/unit derived). This is the clean, verified
+      mirror of raw.sales, kept as wide as relevant rather than a curated
+      subset. Most questions are better answered by mart_sales_summary (a
+      small precomputed rollup) — use this table only when a question is
+      genuinely about individual records or a metric the marts don't carry:
+      "top 10 addresses by sale price in a suburb", "average price by lot
+      size band", "list sales over $2M in a postcode". Always filter by
+      postcode and/or sale_month first — this table is ~3M rows. Belongs to
+      the `nsw_sales` dataset (RLS-scoped). Verified by
+      assert_sales_summary_has_coverage indirectly (built from this table).
+    columns:
+      - name: sale_id
+        description: Surrogate key, unique per row (property_id alone isn't unique — split/fractional-interest sales share it).
+        data_tests: [not_null, unique]
+      - name: property_id
+        description: NSW Valuer-General property identifier. Not unique per row — see sale_id.
+      - name: suburb
+        description: Suburb name — a label, not the join key (postcode<->suburb is not 1:1 in this data).
+      - name: postcode
+        description: Postcode. Join key across sales/rent (with property_type and sale_month).
+        data_tests: [not_null]
+      - name: property_type
+        description: "'house' or 'unit', derived from strata_no. Standardised identically to stg_rent.property_type so the two can be joined."
+        data_tests: [not_null]
+      - name: sale_date
+        description: Full contract date.
+      - name: sale_year
+        description: Calendar year of sale_date.
+      - name: sale_month
+        description: First-of-month date, sale_date truncated to month. Join key across sales/rent (with postcode and property_type).
+        data_tests: [not_null]
+      - name: sale_price
+        description: Sale price (AUD). Filtered to $10,000-$8,000,000 to exclude non-market transfers (see model SQL comments).
+        data_tests: [not_null]
+      - name: area_sqm
+        description: Land/property area in square metres, where the source value was numeric. Null if missing or unparseable — check area_band for a coarser, always-comparable cut.
+      - name: area_band
+        description: "Standardised size band: '<400', '400-700', '700-1000', or '1000+' sqm. Use this instead of bucketing area_sqm yourself, so band boundaries stay consistent across questions."
+      - name: area_type
+        description: Source qualifier for how area_sqm was measured.
+      - name: zoning
+        description: "NSW planning zone code (e.g. R2, RU5, RU2) — lets you segment by land use, not just postcode."
+      - name: house_no
+        description: Street number, for record-level address lookups.
+      - name: street_name
+        description: Street name, for record-level address lookups.
+      - name: unit_no
+        description: Unit/lot number, where applicable.
+      - name: prop_name
+        description: Property name, where the source recorded one (usually blank for standard residential sales).
+
+  - name: stg_rent
+    description: >
+      Record-grain NSW rental bond lodgements — one row per bond, cleaned
+      and typed from raw.rent (all 5 raw columns are used; nothing was left
+      out). Same role as stg_sales — the clean mirror of raw.rent. Most
+      questions are better answered by mart_rent_summary; use this table for
+      record-level questions raw.rent's own columns can answer, e.g.
+      "2-bedroom vs 3-bedroom rent in a suburb". Always filter by postcode
+      and/or rent_month first — this table is ~3M rows. Belongs to the
+      `nsw_rent` dataset (RLS-scoped).
+    columns:
+      - name: rent_id
+        description: Surrogate key, unique per row (raw.rent has no natural id column, and two distinct bonds can legitimately share every other value).
+        data_tests: [not_null, unique]
+      - name: rent_date
+        description: Full lodgement date.
+      - name: rent_year
+        description: Calendar year of rent_date.
+      - name: rent_month
+        description: First-of-month date, rent_date truncated to month. Join key across sales/rent (with postcode and property_type).
+        data_tests: [not_null]
+      - name: postcode
+        description: Postcode. Join key across sales/rent (with property_type and rent_month).
+        data_tests: [not_null]
+      - name: property_type_code
+        description: Raw source code (H/T/F/U/O) before standardisation — see property_type for the standardised value.
+      - name: property_type
+        description: "'house' (House/Townhouse) or 'unit' (Flat/Unit/Other). Standardised identically to stg_sales.property_type so the two can be joined."
+        data_tests: [not_null]
+      - name: bedrooms
+        description: Bedroom count, where the source value was numeric.
+      - name: weekly_rent
+        description: Weekly rent (AUD). Filtered to positive values only.
+        data_tests: [not_null]
+
+  - name: int_postcode_geo
+    description: >
+      Postcode <-> suburb bridge: every (postcode, suburb) pair seen in the
+      sale records, with a sale count. Does NOT collapse to one suburb per
+      postcode — postcode <-> suburb is not 1:1, so every locality is present.
+      Use it to resolve a suburb name to its postcode(s), especially for rent
+      questions: mart_rent_summary has no suburb (raw.rent has no locality), so
+      "rent in <suburb>" means looking the suburb up here to get its
+      postcode(s), then querying rent by postcode. Belongs to the `nsw_sales`
+      dataset (RLS-scoped, since it's derived from sales).
+    columns:
+      - name: postcode
+        description: Postcode.
+        data_tests: [not_null]
+      - name: suburb
+        description: Suburb/locality sharing that postcode.
+        data_tests: [not_null]
+      - name: n_sales
+        description: Number of sales carrying this postcode/suburb pairing (order by it desc for the dominant suburb).

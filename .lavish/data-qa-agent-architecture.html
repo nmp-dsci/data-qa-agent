@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>data-qa-agent — Azure v1 Architecture & End-to-End Flow</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  .mermaid { background: var(--color-base-100); border-radius: 1rem; padding: 1rem; overflow-x: auto; }
+  .section-num { font-variant-numeric: tabular-nums; }
+  code { font-size: 0.85em; }
+</style>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "strict",
+    themeVariables: { fontFamily: "ui-sans-serif, system-ui, sans-serif", primaryColor: "#1a1a17", lineColor: "#b48a3f", fontSize: "15px" }
+  });
+</script>
+</head>
+<body class="bg-base-200 text-base-content">
+
+<main class="mx-auto max-w-6xl p-5 lg:p-10 space-y-12">
+
+  <!-- HERO -->
+  <header class="space-y-5">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="badge badge-primary badge-lg">v1 Architecture Proposal</span>
+      <span class="badge badge-soft badge-info">Azure · Microservices</span>
+      <span class="badge badge-soft badge-warning">Iterative — built to evolve</span>
+    </div>
+    <h1 class="text-4xl lg:text-5xl font-bold tracking-tight">data-qa-agent</h1>
+    <p class="text-xl text-base-content/80 max-w-3xl">
+      An end-to-end web app that <strong>automates data science through a conversational data agent</strong> —
+      users log in, ask questions in natural language, and an AI agent turns them into governed SQL/analysis over their own data.
+    </p>
+    <p class="text-sm text-base-content/50 max-w-3xl">
+      This is a review surface, not final code. Scan the architecture, then use the <a class="link link-primary" href="#decisions">Decisions</a> section
+      at the bottom to lock choices — each answer queues a prompt back to me so we build v1 exactly the way you want.
+    </p>
+  </header>
+
+  <!-- LOCKED DECISIONS -->
+  <section class="space-y-3">
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="badge badge-success badge-lg">✓ Decisions locked</span>
+      <span class="text-sm text-base-content/60">Your v1 choices — change any in §13.</span>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">A · RLS</span><span class="text-sm font-medium">Isolation + admin sees all</span></div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">B · Compute</span><span class="text-sm font-medium">Azure Container Apps</span></div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">C · Services</span><span class="text-sm font-medium">3 · frontend / api / agent</span></div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">D · Auth</span><span class="text-sm font-medium">Entra External ID</span></div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">E · Start</span><span class="text-sm font-medium">Phase 0 local scaffold</span></div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">F · Framework</span><span class="text-sm font-medium">Pydantic AI</span></div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">G · Provider</span><span class="text-sm font-medium">Abstract · Claude default · DeepSeek option</span></div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">H · Memory</span><span class="text-sm font-medium">Postgres + pgvector now</span></div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-0"><span class="text-xs text-base-content/50">I · Pipeline</span><span class="text-sm font-medium">dbt + dlt</span></div></div>
+    </div>
+  </section>
+
+  <!-- TL;DR STACK -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">01</span> · Recommended stack at a glance</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h3 class="card-title text-base">🖥️ Frontend</h3>
+          <p class="font-semibold text-primary">React + Vite (TypeScript)</p>
+          <p class="text-sm text-base-content/70">Chat-style SPA. MSAL for login. Served as a container or Static Web App.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h3 class="card-title text-base">⚙️ Backend API</h3>
+          <p class="font-semibold text-primary">FastAPI (Python, uv)</p>
+          <p class="text-sm text-base-content/70">Validates JWTs, enforces RLS context, orchestrates the agent. Matches your CLAUDE.md toolchain.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h3 class="card-title text-base">🤖 Data Agent</h3>
+          <p class="font-semibold text-primary">Pydantic AI · pluggable LLM</p>
+          <p class="text-sm text-base-content/70">Native tool-calling (ReAct-style) loop + per-user memory. Structured output, traced with Logfire. Model provider is swappable (Claude, DeepSeek, …).</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h3 class="card-title text-base">🗄️ Database</h3>
+          <p class="font-semibold text-primary">Azure PostgreSQL Flexible Server</p>
+          <p class="text-sm text-base-content/70">PG 16+. Row-Level Security enforces who sees which rows. The single source of truth.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h3 class="card-title text-base">🔐 Identity</h3>
+          <p class="font-semibold text-primary">Microsoft Entra External ID</p>
+          <p class="text-sm text-base-content/70">OIDC login, MFA, social/email sign-in. Issues JWTs the backend trusts.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h3 class="card-title text-base">☁️ Compute</h3>
+          <p class="font-semibold text-primary">Azure Container Apps</p>
+          <p class="text-sm text-base-content/70">Serverless containers, scale-to-zero, built-in ingress + revisions. No cluster to babysit.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h3 class="card-title text-base">🔀 Data pipeline</h3>
+          <p class="font-semibold text-primary">dbt + ingestion (CSV→Postgres)</p>
+          <p class="text-sm text-base-content/70">dbt models/tests/docs turn raw loads into clean tables; the agent reads dbt's schema to write SQL.</p>
+        </div>
+      </div>
+    </div>
+    <div role="alert" class="alert alert-soft alert-info">
+      <span>
+        <strong>Why this shape:</strong> Container Apps is the 2026 default for serverless microservices without running Kubernetes;
+        FastAPI + React + PostgreSQL 16 is the mainstream modern data-app stack; Pydantic AI + Logfire is already wired into your skills.
+        A bare-bones 3-service setup with Postgres + registry lands in the <strong>~$25–60/month dev-test range</strong> (scale-to-zero keeps idle cost low).
+      </span>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE DIAGRAM -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">02</span> · Azure topology</h2>
+    <p class="text-base-content/70 max-w-3xl">How the pieces sit together. Everything private-by-default behind one ingress; secrets and identity never live in code.</p>
+    <div class="mermaid">
+flowchart TB
+    User([👤 User browser])
+
+    subgraph Edge["Azure edge"]
+      FD["Front Door + WAF<br/>TLS · routing · rate limit"]
+    end
+
+    subgraph Identity["Microsoft Entra External ID"]
+      ENTRA["OIDC / OAuth2<br/>login · MFA · JWT issuer"]
+    end
+
+    subgraph ACA["Azure Container Apps Environment (private VNet)"]
+      FE["frontend<br/>React + Vite (nginx)"]
+      API["backend-api<br/>FastAPI"]
+      AGENT["data-agent<br/>Pydantic AI worker"]
+    end
+
+    subgraph Data["Data & secrets"]
+      PG[("Azure PostgreSQL Flexible Server<br/>one DB · schemas: app · raw · staging · marts<br/>RLS + pgvector")]
+      MEM[("agent_memory<br/>a pgvector table in the same DB<br/>per-user preferences")]
+      KV["Key Vault<br/>secrets"]
+      BLOB["Blob Storage<br/>datasets / uploads"]
+    end
+
+    subgraph Ops["Build & observe"]
+      ACR["Container Registry"]
+      LOG["Logfire / App Insights<br/>traces · metrics"]
+      GH["GitHub Actions<br/>CI/CD (Bicep)"]
+    end
+
+    LLM["LLM · pluggable provider<br/>Claude · DeepSeek · OpenAI-compatible"]
+
+    User --> FD --> FE
+    FE -. "redirect to login" .-> ENTRA
+    ENTRA -. "JWT" .-> FE
+    FE -- "API calls + Bearer JWT" --> API
+    API -- "validate JWT (JWKS)" --> ENTRA
+    API -- "SET app.current_user_id<br/>(RLS context)" --> PG
+    API -- "delegate question" --> AGENT
+    AGENT -- "reason / tool-calls" --> LLM
+    AGENT -- "recall / remember (RLS)" --> MEM
+    AGENT -- "governed read-only SQL" --> PG
+    AGENT --> BLOB
+    API -- "managed identity" --> KV
+    AGENT --> LOG
+    API --> LOG
+    GH --> ACR --> ACA
+    </div>
+    <p class="text-xs text-base-content/50">
+      Managed Identity (not passwords) authenticates services to Key Vault, Registry, and Postgres. The agent and API both connect to Postgres
+      <em>under the same RLS rules</em> — the agent can never see rows the user couldn't.
+    </p>
+  </section>
+
+  <!-- END TO END FLOW -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">03</span> · End-to-end request flow</h2>
+    <p class="text-base-content/70 max-w-3xl">One question, start to finish — this is the "modern web app flow" you asked to see, with the agent step in the middle.</p>
+    <div class="mermaid">
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant FE as Frontend (React)
+    participant EN as Entra External ID
+    participant API as backend-api (FastAPI)
+    participant AG as data-agent (Pydantic AI)
+    participant LLM as Claude
+    participant DB as PostgreSQL (RLS)
+
+    U->>FE: Open app
+    FE->>EN: Redirect to login (OIDC)
+    EN-->>FE: ID + access token (JWT)
+    U->>FE: "What were my top 5 customers last quarter?"
+    FE->>API: POST /ask  (Bearer JWT)
+    API->>EN: Verify token signature (JWKS)
+    API->>DB: BEGIN tx, then SET LOCAL app.current_user_id = user sub
+    Note over API,DB: RLS now scopes every query to this user
+    API->>AG: question + user context
+    AG->>LLM: schema + question → plan
+    LLM-->>AG: tool call: run_sql(SELECT ...)
+    AG->>DB: execute read-only SQL (still under RLS)
+    DB-->>AG: rows (only this user's data)
+    AG->>LLM: results → summarise insight
+    LLM-->>AG: natural-language answer + chart spec
+    AG-->>API: structured AnswerResult
+    API-->>FE: stream answer + chart
+    FE-->>U: Render insight in chat
+    </div>
+  </section>
+
+  <!-- COMPONENT TABLE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">04</span> · Services & responsibilities</h2>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra">
+        <thead>
+          <tr><th>Service</th><th>Tech</th><th>Azure resource</th><th>Owns</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>frontend</strong></td>
+            <td>React + Vite, TS, MSAL</td>
+            <td>Container App (or Static Web App)</td>
+            <td>Chat UI, auth redirect, token handling, charts</td>
+          </tr>
+          <tr>
+            <td><strong>backend-api</strong></td>
+            <td>FastAPI, SQLAlchemy, asyncpg</td>
+            <td>Container App (internal ingress)</td>
+            <td>JWT validation, RLS context, request orchestration, REST contract</td>
+          </tr>
+          <tr>
+            <td><strong>data-agent</strong></td>
+            <td>Pydantic AI, pluggable LLM, Logfire</td>
+            <td>Container App (no public ingress)</td>
+            <td>NL→SQL, analysis tools, memory, structured answers, guardrails</td>
+          </tr>
+          <tr>
+            <td><strong>data-pipeline</strong></td>
+            <td>dbt-core (Postgres adapter) + dlt / COPY loader</td>
+            <td>Container Apps Job (scheduled/triggered)</td>
+            <td>CSV→raw ingest, raw→marts transforms, tests, docs/manifest the agent reads</td>
+          </tr>
+          <tr>
+            <td><strong>database</strong></td>
+            <td>PostgreSQL 16 + RLS</td>
+            <td>PostgreSQL Flexible Server</td>
+            <td>Source of truth, tenant/user isolation policies</td>
+          </tr>
+          <tr>
+            <td><strong>identity</strong></td>
+            <td>OIDC / OAuth2</td>
+            <td>Entra External ID</td>
+            <td>Login, MFA, token issuance, user directory</td>
+          </tr>
+          <tr>
+            <td><strong>secrets</strong></td>
+            <td>Managed Identity</td>
+            <td>Key Vault</td>
+            <td>DB creds, Anthropic key — never in code or env files</td>
+          </tr>
+          <tr>
+            <td><strong>delivery</strong></td>
+            <td>Bicep + GitHub Actions</td>
+            <td>Container Registry</td>
+            <td>Build, push, deploy, infra-as-code</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- AUTH + RLS DEEP DIVE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">05</span> · Auth + row-level security — the heart of it</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Three layers stack so data isolation holds even if app code has a bug: <strong>authentication</strong> (who are you),
+      <strong>authorization</strong> (what role), and <strong>row-level security</strong> (which rows) enforced by the database itself.
+    </p>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <span class="badge badge-info">Layer 1 · AuthN</span>
+        <h3 class="font-semibold">Entra issues a JWT</h3>
+        <p class="text-sm text-base-content/70">User logs in via Entra External ID. Frontend gets a signed access token carrying <code>sub</code> (user id) and roles. Backend verifies it against Entra's public keys on every request.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <span class="badge badge-secondary">Layer 2 · AuthZ</span>
+        <h3 class="font-semibold">Role check in the API</h3>
+        <p class="text-sm text-base-content/70">FastAPI dependency reads roles/claims and gates endpoints (e.g. <code>analyst</code> vs <code>admin</code>). Coarse "can you call this at all" checks live here.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <span class="badge badge-primary">Layer 3 · RLS</span>
+        <h3 class="font-semibold">Postgres filters rows</h3>
+        <p class="text-sm text-base-content/70">Before any query, the API sets a session variable with the user id. Policies on each table compare it to the row's owner — the DB returns only permitted rows, automatically.</p>
+      </div></div>
+    </div>
+
+    <div class="mockup-code text-sm">
+<pre data-prefix="--"><code> Enable RLS and scope every read to the current session user</code></pre>
+<pre data-prefix="1"><code>ALTER TABLE insights ENABLE ROW LEVEL SECURITY;</code></pre>
+<pre data-prefix="2"><code></code></pre>
+<pre data-prefix="3"><code>CREATE POLICY tenant_isolation ON insights</code></pre>
+<pre data-prefix="4"><code>  USING (owner_id = current_setting('app.current_user_id')::uuid);</code></pre>
+<pre data-prefix="5"><code></code></pre>
+<pre data-prefix="--"><code> API sets the context per request (inside a transaction):</code></pre>
+<pre data-prefix="6"><code>SET LOCAL app.current_user_id = '8f3a...e21';</code></pre>
+</pre>
+    </div>
+    <div role="alert" class="alert alert-warning alert-soft">
+      <span>
+        <strong>One thing to confirm:</strong> your brief said "row level control so logged-in users can see other users' rows."
+        Standard RLS does the <em>opposite</em> — it isolates each user. I've assumed you meant <strong>isolation by default</strong>,
+        with roles (e.g. admin/analyst) that <em>can</em> see across users. Confirm direction in
+        <a class="link link-primary" href="#decisions">Decision A</a>.
+      </span>
+    </div>
+  </section>
+
+  <!-- THE AGENT -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">06</span> · The data agent — "automating data science"</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      This is the part that makes the demo worth building. A <strong>Pydantic AI</strong> agent receives the question + the DB schema,
+      plans an approach, calls tools to query and analyse, and returns a typed answer with an optional chart spec. Logfire traces every step so you can <em>see</em> it think.
+    </p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100"><div class="card-body">
+        <h3 class="card-title text-base">Agent tools (v1)</h3>
+        <ul class="space-y-2 text-sm text-base-content/80">
+          <li>🔎 <code>get_schema()</code> — curated tables/columns from <strong>dbt docs</strong> (manifest/catalog)</li>
+          <li>🧮 <code>run_sql(query)</code> — execute <strong>read-only</strong> SQL under RLS, row-capped</li>
+          <li>📊 <code>make_chart(spec)</code> — return a Vega-Lite/Recharts spec for the UI</li>
+          <li>📈 <code>profile_column(table, col)</code> — quick stats / distributions</li>
+          <li>🧠 <code>recall()</code> / <code>remember(fact)</code> — read &amp; write the user's long-term preferences</li>
+        </ul>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body">
+        <h3 class="card-title text-base">Guardrails (non-negotiable)</h3>
+        <ul class="space-y-2 text-sm text-base-content/80">
+          <li>🔒 Agent connects as a <strong>read-only DB role</strong> — no writes, ever</li>
+          <li>🧱 RLS still applies — agent can't escape the user's data scope</li>
+          <li>⛔ SQL allowlist: <code>SELECT</code> only, parsed + validated, statement timeout</li>
+          <li>💸 Token + row caps to bound cost and blast radius</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div role="alert" class="alert alert-soft alert-warning">
+      <span><strong>DB access tools:</strong> for v1 use <strong>in-process typed tools</strong> (asyncpg/SQLAlchemy) — cleanest control of the read-only role, per-request RLS session variable, SELECT allowlist, and timeouts. An <strong>MCP Postgres</strong> server is a good <em>later</em> option if you want to reuse the DB tool across agents/IDEs, but you'd still wrap it in the same guardrails. See the FAQ (§15).</span>
+    </div>
+
+    <div class="card card-border bg-base-100"><div class="card-body gap-3">
+      <h3 class="card-title text-base">Your questions on the agent — answered</h3>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="space-y-1">
+          <span class="badge badge-soft badge-primary">ReAct &amp; tools</span>
+          <p class="text-sm text-base-content/80"><strong>No need for LangChain to get ReAct.</strong> Pydantic AI runs a native <em>tool-calling loop</em> — the modern form of ReAct — with typed tools, structured output, dependency injection, and streaming. It's model-agnostic and already wired into your skills + Logfire.</p>
+        </div>
+        <div class="space-y-1">
+          <span class="badge badge-soft badge-info">Swap to DeepSeek</span>
+          <p class="text-sm text-base-content/80"><strong>A config change, not a re-architecture.</strong> The model lives behind the agent, so DeepSeek plugs in via its OpenAI-compatible endpoint. Keep the provider abstracted and A/B for SQL accuracy vs cost. <em>Note: confirm the exact model id — DeepSeek's documented ids are <code>deepseek-chat</code> / <code>deepseek-reasoner</code>; I couldn't verify <code>deepseek-v4-flash</code>.</em></p>
+        </div>
+        <div class="space-y-1">
+          <span class="badge badge-soft badge-secondary">Learns preferences</span>
+          <p class="text-sm text-base-content/80"><strong>Memory is a data concern, not a framework one.</strong> Add an <code>agent_memory</code> table in Postgres + <code>pgvector</code> (supported on Azure PG Flexible). The agent <code>recall()</code>s relevant prefs at the start and <code>remember()</code>s new ones at the end — all under RLS, so a user's memory is isolated like their data.</p>
+        </div>
+      </div>
+      <div role="alert" class="alert alert-soft alert-warning">
+        <span><strong>Recommendation:</strong> stay on <strong>Pydantic AI</strong>, keep the model provider pluggable, and add memory via <strong>Postgres + pgvector</strong> — you get ReAct tool-use, provider choice (Claude/DeepSeek), and a learning agent <em>without</em> taking on LangChain. Prefer <strong>LangGraph</strong> only if you specifically want its graph/checkpointer persistence model — see <a class="link link-primary" href="#decisions">Decisions F–I</a>.</span>
+      </div>
+    </div></div>
+
+    <div class="mermaid">
+flowchart LR
+    Q[Question + user scope] --> M0[recall memory<br/>load prefs]
+    M0 --> P{Agent plan}
+    P -->|need schema| S[get_schema]
+    S --> P
+    P -->|query| SQL[run_sql · read-only · RLS]
+    SQL --> A{Enough to answer?}
+    A -->|no| P
+    A -->|yes| R[Structured answer + chart spec]
+    R --> M1[remember<br/>new prefs]
+    M1 --> OUT[Stream to user]
+    M0 -.pgvector.-> MEM[(agent_memory)]
+    M1 -.pgvector.-> MEM
+    P -.trace.-> LF[(Logfire)]
+    SQL -.trace.-> LF
+    </div>
+  </section>
+
+  <!-- DATA PIPELINE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">07</span> · Data pipeline &amp; the Q&amp;A engine</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      A good answer starts with good data. CSVs land in Postgres, <strong>dbt</strong> turns them into clean, tested, documented tables,
+      and the agent reads dbt's own schema docs to write accurate SQL. That dbt-docs → agent link is the actual Q&amp;A engine.
+    </p>
+
+    <div role="alert" class="alert alert-soft alert-info">
+      <span>
+        <strong>dbt vs Pydantic — not rivals; they own different layers.</strong>
+        <strong>dbt</strong> owns the <em>data model</em> (raw → clean, tested, documented tables).
+        <strong>Pydantic AI</strong> owns the <em>agent</em> (reads dbt's docs, writes SQL, answers).
+        <strong>Pydantic</strong> the library owns <em>validation</em> of API/agent I/O.
+        The "single solution" for pipelines is dbt — it doesn't overlap the agent.
+      </span>
+    </div>
+
+    <div class="mermaid">
+flowchart LR
+    CSV[/CSV files<br/>Blob or upload/] --> ING["Ingestion<br/>dlt / COPY loader"]
+    ING --> RAW[(raw schema)]
+    RAW --> DBT["dbt run<br/>models · tests · docs"]
+    DBT --> MARTS[(staging + marts<br/>clean · documented)]
+    MARTS --> AGENT["data-agent<br/>queries under RLS"]
+    DBT -. "manifest + catalog<br/>schema knowledge" .-> AGENT
+    AGENT --> ANS["SQL → insight for user"]
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <span class="badge badge-soft badge-info">1 · Ingest (EL)</span>
+        <h3 class="font-semibold">CSV → raw tables</h3>
+        <p class="text-sm text-base-content/70">dbt doesn't load files — pair it with a small Python <strong>dlt</strong> pipeline (or a <code>COPY</code> loader) that lands each CSV into a <code>raw</code> schema. <code>dbt seed</code> is fine for tiny static reference files.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <span class="badge badge-soft badge-primary">2 · Transform (dbt)</span>
+        <h3 class="font-semibold">raw → staging → marts</h3>
+        <p class="text-sm text-base-content/70">dbt-core (Postgres adapter) models the data in SQL, adds <strong>tests</strong> (not-null, unique, relationships) and <strong>descriptions</strong>. You get lineage plus versioned, reviewable transforms.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <span class="badge badge-soft badge-secondary">3 · Serve to agent</span>
+        <h3 class="font-semibold">dbt docs → SQL</h3>
+        <p class="text-sm text-base-content/70">The agent's <code>get_schema()</code> reads dbt's <code>manifest.json</code>/<code>catalog.json</code> — table &amp; column descriptions become the model's context, so generated SQL is grounded. Queries still run under RLS.</p>
+      </div></div>
+    </div>
+
+    <p class="text-xs text-base-content/50">
+      Runs as a scheduled/triggered <strong>Container Apps Job</strong> (ingest → <code>dbt build</code>). For v1, trigger on new CSV or a cron; wire it into CI later.
+    </p>
+  </section>
+
+  <!-- DATA MODEL -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">08</span> · Postgres data model</h2>
+    <p class="text-base-content/70 max-w-3xl">Every capability you asked for maps to a table — identity, datasets, Q&amp;A history, agent memory, and product analytics — all in one Postgres, all under RLS.</p>
+    <div class="mermaid">
+erDiagram
+    users ||--o{ conversations : "has"
+    users ||--o{ user_memories : "remembers"
+    users ||--o{ events : "generates"
+    users ||--o{ dataset_access : "granted"
+    datasets ||--o{ dataset_access : "controls"
+    conversations ||--o{ messages : "contains"
+    messages ||--o{ query_runs : "runs"
+    datasets ||--o{ query_runs : "targets"
+    users {
+        uuid id PK
+        text entra_oid
+        text email
+        text role
+        timestamptz created_at
+    }
+    datasets {
+        uuid id PK
+        text slug
+        text name
+        text description
+        text status
+        int row_count
+    }
+    dataset_access {
+        uuid id PK
+        uuid dataset_id FK
+        uuid user_id FK
+        text access
+    }
+    conversations {
+        uuid id PK
+        uuid user_id FK
+        uuid dataset_id FK
+        text title
+        timestamptz created_at
+    }
+    messages {
+        uuid id PK
+        uuid conversation_id FK
+        text role
+        text content
+        text sql_generated
+        int tokens
+        int latency_ms
+    }
+    query_runs {
+        uuid id PK
+        uuid message_id FK
+        text sql_text
+        int row_count
+        int duration_ms
+        text status
+    }
+    user_memories {
+        uuid id PK
+        uuid user_id FK
+        text kind
+        text content
+        vector embedding
+    }
+    events {
+        uuid id PK
+        uuid user_id FK
+        text session_id
+        text event_type
+        jsonb payload
+        timestamptz created_at
+    }
+    </div>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm table-zebra">
+        <thead><tr><th>Table</th><th>Group</th><th>Purpose</th><th>RLS</th></tr></thead>
+        <tbody>
+          <tr><td><code>users</code></td><td>Identity</td><td>Local mirror of Entra users + role (admin/user)</td><td>self; admin sees all</td></tr>
+          <tr><td><code>datasets</code></td><td>Datasets</td><td>Registry of ingested datasets the agent can answer over</td><td>readable if access granted</td></tr>
+          <tr><td><code>dataset_access</code></td><td>Datasets</td><td>Which users/roles may query which dataset</td><td>self; admin manages</td></tr>
+          <tr><td><code>conversations</code></td><td>Q&amp;A</td><td>A user's chat sessions</td><td>owner; admin sees all</td></tr>
+          <tr><td><code>messages</code></td><td>Q&amp;A</td><td>Turns: question, answer, generated SQL, tokens, latency</td><td>via conversation owner</td></tr>
+          <tr><td><code>query_runs</code></td><td>Q&amp;A</td><td>Audit of every SQL the agent executed (guardrail trail)</td><td>via owner; admin audits</td></tr>
+          <tr><td><code>user_memories</code></td><td>Memory</td><td>Learned per-user preferences + pgvector embedding</td><td>owner only</td></tr>
+          <tr><td><code>events</code></td><td>Analytics</td><td>Frontend + backend event stream for the admin dashboard</td><td>insert own; admin reads all</td></tr>
+          <tr><td><code>marts.*</code> (e.g. <code>housing</code>)</td><td>Domain</td><td>dbt-built, documented tables the questions run against</td><td>via dataset_access</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- CONFIG & DATASETS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">09</span> · Datasets, config &amp; the CSV drop-folder</h2>
+    <p class="text-base-content/70 max-w-3xl">Drop a CSV in a folder, register it in one config file, run the pipeline — the agent picks it up. All driven by files you can edit.</p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <h3 class="font-semibold">📁 Repo layout</h3>
+        <pre class="bg-base-300 rounded-box p-4 overflow-x-auto text-xs"><code>data/
+  incoming/
+    housing.csv        # drop your CSVs here
+config/
+  datasets.yaml        # the registry (edit this)
+  users.seed.yaml      # dev seed users
+evals/
+  journeys.yaml        # user-journey tests</code></pre>
+      </div>
+      <div class="space-y-2">
+        <h3 class="font-semibold">🧾 config/datasets.yaml</h3>
+        <pre class="bg-base-300 rounded-box p-4 overflow-x-auto text-xs"><code>datasets:
+  - slug: housing
+    name: Housing sales
+    csv: data/incoming/housing.csv
+    description: >
+      Residential sales: price, beds,
+      baths, suburb, sale_date
+    access:
+      roles: [admin]
+      users: [user1]   # user2 excluded</code></pre>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <h3 class="font-semibold">👥 config/users.seed.yaml (3 users)</h3>
+        <pre class="bg-base-300 rounded-box p-4 overflow-x-auto text-xs"><code>users:
+  - email: admin@example.com
+    role: admin      # sees all rows
+  - email: user1@example.com
+    role: user       # housing access
+  - email: user2@example.com
+    role: user       # no housing access</code></pre>
+      </div>
+      <div class="space-y-2">
+        <h3 class="font-semibold">How it flows</h3>
+        <ul class="text-sm text-base-content/80 space-y-1 list-disc pl-5">
+          <li>Pipeline reads <code>datasets.yaml</code> → dlt ingests each <code>csv</code> → <code>raw</code>.</li>
+          <li>dbt models it into <code>marts</code>; a row is upserted into the <code>datasets</code> registry.</li>
+          <li><code>access</code> populates <code>dataset_access</code> → RLS enforces who can query it.</li>
+          <li>Agent lists <code>datasets</code> the user may see, then answers over them.</li>
+        </ul>
+      </div>
+    </div>
+    <div role="alert" class="alert alert-soft alert-info"><span>App config (DB URL, model keys, provider choice) via <strong>pydantic-settings</strong> — reads <code>.env</code> locally and Key Vault in Azure, as one typed <code>Settings</code> object.</span></div>
+
+    <div class="card card-border bg-base-100"><div class="card-body gap-2">
+      <h3 class="card-title text-base">🌱 Environments — <code>dev</code> now, <code>staging</code>/<code>prod</code> later</h3>
+      <p class="text-sm text-base-content/70">v1 runs entirely as <strong>dev</strong>. Everything is env-parameterized from day one, so adding staging/prod later is new config + IaC values, not a rewrite.</p>
+      <ul class="text-sm text-base-content/80 space-y-1 list-disc pl-5">
+        <li><code>APP_ENV</code> selects config via pydantic-settings — <code>.env</code> now; <code>.env.staging</code> / <code>.env.prod</code> later.</li>
+        <li>Azure resources carry an env suffix: <code>dataqa-dev-*</code> today → <code>dataqa-staging-*</code>, <code>dataqa-prod-*</code>. One IaC module, invoked per env.</li>
+        <li><strong>Databases are split by environment, never shared</strong> — one Postgres server for <code>dev</code> now; separate staging/prod servers later. Schemas stay identical within each.</li>
+        <li>CI deploys <code>dev</code> on merge now; promotion to staging/prod (branch/tag-gated) is added later.</li>
+      </ul>
+      <div role="alert" class="alert alert-soft alert-warning"><span><strong>Naming heads-up:</strong> the dbt <code>staging</code> <em>schema</em> (a data-modeling layer) is unrelated to a <code>staging</code> <em>deployment environment</em>. Same word, different thing.</span></div>
+    </div></div>
+
+    <div class="card card-border bg-base-100"><div class="card-body gap-2">
+      <h3 class="card-title text-base">💻 Yes — the whole app runs locally</h3>
+      <p class="text-sm text-base-content/70">One command boots everything on <code>localhost</code>; nothing in Azure is required to develop and demo.</p>
+      <pre class="bg-base-300 rounded-box p-4 overflow-x-auto text-xs"><code>docker compose up        # postgres+pgvector, backend-api, data-agent, frontend
+make seed                # 3 users + register datasets
+make pipeline            # dlt ingest data/incoming/*.csv, then dbt build
+# open http://localhost:5173</code></pre>
+      <ul class="text-sm text-base-content/80 space-y-1 list-disc pl-5">
+        <li><strong>Auth:</strong> Entra is cloud-only, so local uses a <strong>dev-auth stub</strong> that mints a signed dev JWT as <code>admin</code>/<code>user1</code>/<code>user2</code> (<code>AUTH_MODE=dev</code>). Flip config to use real Entra — no code change.</li>
+        <li><strong>Config/secrets:</strong> <code>.env</code> instead of Key Vault. <strong>Data, RLS, memory, dashboard, evals:</strong> all run locally.</li>
+        <li><strong>Only outbound call:</strong> the LLM API (needs an Anthropic/DeepSeek key). Want fully offline? Point the provider at a local model (e.g. Ollama) — a config swap, thanks to the abstraction.</li>
+      </ul>
+    </div></div>
+  </section>
+
+  <!-- ANALYTICS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">10</span> · Product analytics &amp; admin dashboard</h2>
+    <p class="text-base-content/70 max-w-3xl">The frontend fires an event at each step of the journey; the backend stores them in <code>events</code>; an admin-only dashboard shows them live next to the users and datasets tables.</p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+        <table class="table table-sm table-zebra">
+          <thead><tr><th>event_type</th><th>fired when</th></tr></thead>
+          <tbody>
+            <tr><td><code>login_screen_view</code></td><td>user lands on the login screen</td></tr>
+            <tr><td><code>login_success</code> / <code>login_failure</code></td><td>Entra auth returns</td></tr>
+            <tr><td><code>home_view</code></td><td>user lands on their home page</td></tr>
+            <tr><td><code>question_submitted</code></td><td>user asks a question</td></tr>
+            <tr><td><code>agent_started</code></td><td>agent begins working</td></tr>
+            <tr><td><code>agent_answered</code> / <code>agent_error</code></td><td>agent returns / fails</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="space-y-2">
+        <h3 class="font-semibold">🛠️ Admin dashboard (admin role only)</h3>
+        <ul class="text-sm text-base-content/80 space-y-1 list-disc pl-5">
+          <li><strong>Live events feed</strong> — every event firing, filterable by user/type.</li>
+          <li><strong>Users table</strong> — the 3 seeded users, roles, last activity.</li>
+          <li><strong>Datasets table</strong> — registered datasets, row counts, access.</li>
+          <li><strong>Q&amp;A + agent metrics</strong> — recent questions, SQL, latency, tokens/cost.</li>
+        </ul>
+        <p class="text-xs text-base-content/50">Frontend posts to <code>POST /events</code>; backend + agent also emit server-side events. The same stream feeds Logfire traces for deep debugging.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- EVALUATION -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">11</span> · Evaluation &amp; user-journey tests</h2>
+    <p class="text-base-content/70 max-w-3xl">A living suite of journeys — <em>login → ask → agent answers</em> — that you extend by adding YAML. Runs locally and in CI so the agent can't silently regress.</p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <h3 class="font-semibold">📋 evals/journeys.yaml (add freely)</h3>
+        <pre class="bg-base-300 rounded-box p-4 overflow-x-auto text-xs"><code>- name: user1 asks housing avg price
+  as_user: user1
+  question: Average sale price by suburb?
+  expect:
+    - agent_answers_successfully
+    - sql_is_select_only
+    - mentions: [suburb, price]
+
+- name: user2 is isolated from housing
+  as_user: user2
+  question: Show housing sales
+  expect:
+    - no_rows_or_access_denied   # RLS</code></pre>
+      </div>
+      <div class="space-y-2">
+        <h3 class="font-semibold">How it runs</h3>
+        <ul class="text-sm text-base-content/80 space-y-1 list-disc pl-5">
+          <li>A <strong>pytest</strong> harness loads each journey, authenticates as the named user, calls the real <code>/ask</code> flow, and checks the expectations.</li>
+          <li>Uses <strong>pydantic_evals</strong> to score answers (success, SQL-only, expected mentions) with structured evaluators.</li>
+          <li>Doubles as your <strong>RLS isolation test</strong> — user2 must never see user1's rows.</li>
+          <li>Runs in <strong>Phase 5 CI</strong>; failures block deploy. Add a case = add coverage.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- BUILD PLAN -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">12</span> · Build plan — iterative, learn as we go</h2>
+    <p class="text-base-content/70 max-w-3xl">Each phase ships something runnable. We pause, you learn it, we extend. Local-first so you're not paying Azure to learn fundamentals.</p>
+    <ul class="steps steps-vertical lg:steps-horizontal w-full">
+      <li class="step step-primary">Scaffold</li>
+      <li class="step step-primary">Auth</li>
+      <li class="step">Data + RLS</li>
+      <li class="step">Pipeline</li>
+      <li class="step">Agent</li>
+      <li class="step">Track</li>
+      <li class="step">Azure</li>
+      <li class="step">CI/CD</li>
+      <li class="step">Harden</li>
+    </ul>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 0 · Local scaffold</h3>
+        <p class="text-sm text-base-content/70">uv monorepo (api + agent), FastAPI hello, React Vite, Postgres via docker-compose. Everything runs on <code>localhost</code>.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 1 · Auth</h3>
+        <p class="text-sm text-base-content/70">Entra External ID tenant, MSAL login in React, JWT validation dependency in FastAPI, a protected <code>/me</code> route.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 2 · Data model + RLS</h3>
+        <p class="text-sm text-base-content/70">Schema + migrations (Alembic), seed multi-user data, RLS policies, per-request session-variable middleware. Prove isolation with tests.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 2b · Data pipeline (dbt)</h3>
+        <p class="text-sm text-base-content/70">CSV→raw ingestion (dlt/COPY), dbt models (raw→staging→marts) with tests + docs. The agent's <code>get_schema</code> reads the dbt manifest.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 3 · Data agent</h3>
+        <p class="text-sm text-base-content/70">Pydantic AI agent, read-only role, <code>run_sql</code> + <code>make_chart</code> tools, pgvector memory, Logfire tracing, streaming chat endpoint.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 3b · Tracking + admin dashboard</h3>
+        <p class="text-sm text-base-content/70">Event taxonomy + <code>POST /events</code>, the <code>events</code> table, and an admin-only dashboard (live feed, users, datasets, agent metrics).</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 4 · Azure infra</h3>
+        <p class="text-sm text-base-content/70">Bicep: Container Apps env, ACR, PostgreSQL Flexible, Key Vault, managed identity — <strong>env-parameterized, deploy <code>dev</code> only</strong> (staging/prod later). Services private.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 5 · CI/CD</h3>
+        <p class="text-sm text-base-content/70">GitHub Actions: build + push images, run lint + types + <strong>journey evals</strong> (Ruff, mypy, pytest, pydantic_evals), deploy revisions to <code>dev</code> on merge to main.</p>
+      </div></div>
+      <div class="card card-border bg-base-100 md:col-span-2"><div class="card-body gap-1">
+        <h3 class="card-title text-base">Phase 6 · Harden & observe</h3>
+        <p class="text-sm text-base-content/70">Front Door + WAF, rate limits, statement timeouts, cost guards on LLM tokens, dashboards. Now it's a system you can demo and keep evolving.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- DECISIONS -->
+  <section id="decisions" class="space-y-5 scroll-mt-6">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">13</span> · Decisions <span class="badge badge-success badge-sm align-middle">✓ locked</span></h2>
+    <p class="text-base-content/70 max-w-3xl">All nine are locked (summary at the top of the page) and now drive <code>AGENTS.md</code> + the build. Changed your mind? Re-pick any card and press <strong>Send to Agent</strong> — I'll update the design.</p>
+
+    <!-- Decision A -->
+    <form class="card card-border bg-base-100" data-lavish-question="rls"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('rls'); if(v) window.lavish.queuePrompt('Decision A (RLS direction): '+v, {tag:'decision', text:'A · RLS: '+v, element:event.currentTarget, data:{question:'rls',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">A · Row-level visibility model</h3>
+        <p class="text-sm text-base-content/60">Your brief was ambiguous here — this is the most important one to confirm.</p>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="rls" value="Isolation by default; admins/analysts can see across users" class="radio radio-primary mt-1"><span class="text-sm"><strong>Isolation + roles ⭐</strong> — each user sees only their rows; an admin/analyst role can see across users.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="rls" value="Strict per-user isolation only, no cross-user access" class="radio radio-primary mt-1"><span class="text-sm"><strong>Strict isolation</strong> — nobody sees anyone else's rows, full stop.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="rls" value="Shared/team workspace where members of a team see all team rows" class="radio radio-primary mt-1"><span class="text-sm"><strong>Team workspaces</strong> — rows shared within a team/tenant, isolated across teams.</span></label>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision B -->
+    <form class="card card-border bg-base-100" data-lavish-question="compute"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('compute'); if(v) window.lavish.queuePrompt('Decision B (compute target): '+v, {tag:'decision', text:'B · Compute: '+v, element:event.currentTarget, data:{question:'compute',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">B · Where containers run</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="compute" value="Azure Container Apps" class="radio radio-primary mt-0.5"><span><strong>Container Apps ⭐</strong><br><span class="text-base-content/60">Serverless, scale-to-zero, no cluster. Best fit for v1.</span></span></label>
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="compute" value="Azure App Service" class="radio radio-primary mt-0.5"><span><strong>App Service</strong><br><span class="text-base-content/60">Simplest PaaS, but weaker multi-service story.</span></span></label>
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="compute" value="Azure Kubernetes Service" class="radio radio-primary mt-0.5"><span><strong>AKS</strong><br><span class="text-base-content/60">Most control, most ops. Overkill for v1.</span></span></label>
+        </div>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision C -->
+    <form class="card card-border bg-base-100" data-lavish-question="granularity"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('granularity'); if(v) window.lavish.queuePrompt('Decision C (service granularity): '+v, {tag:'decision', text:'C · Granularity: '+v, element:event.currentTarget, data:{question:'granularity',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">C · How many services for v1</h3>
+        <p class="text-sm text-base-content/60">"Microservices" can mean a lot of moving parts. For learning, fewer is faster.</p>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="granularity" value="Three services: frontend, backend-api, data-agent" class="radio radio-primary mt-1"><span class="text-sm"><strong>3 services ⭐</strong> — frontend + backend-api + data-agent. True-to-brief, still manageable.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="granularity" value="Two services: frontend and a combined api+agent backend" class="radio radio-primary mt-1"><span class="text-sm"><strong>2 services</strong> — frontend + one backend (agent as a module). Fastest path; split later.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="granularity" value="Modular monolith first, split into services later" class="radio radio-primary mt-1"><span class="text-sm"><strong>Modular monolith</strong> — one deployable, clean module boundaries, microservices when needed.</span></label>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision D -->
+    <form class="card card-border bg-base-100" data-lavish-question="auth"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('auth'); if(v) window.lavish.queuePrompt('Decision D (auth provider): '+v, {tag:'decision', text:'D · Auth: '+v, element:event.currentTarget, data:{question:'auth',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">D · Identity provider</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="auth" value="Microsoft Entra External ID" class="radio radio-primary mt-0.5"><span><strong>Entra External ID ⭐</strong><br><span class="text-base-content/60">Native to Azure, free tier, learn the MS stack.</span></span></label>
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="auth" value="Auth0 or Clerk" class="radio radio-primary mt-0.5"><span><strong>Auth0 / Clerk</strong><br><span class="text-base-content/60">Fastest DX, great docs, less Azure-native.</span></span></label>
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="auth" value="Roll-your-own JWT auth" class="radio radio-primary mt-0.5"><span><strong>Roll-your-own</strong><br><span class="text-base-content/60">Most learning, most footguns. Not recommended.</span></span></label>
+        </div>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision E -->
+    <form class="card card-border bg-base-100" data-lavish-question="start"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('start'); if(v) window.lavish.queuePrompt('Decision E (where to start): '+v, {tag:'decision', text:'E · Start: '+v, element:event.currentTarget, data:{question:'start',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">E · Where do we start building?</h3>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="start" value="Phase 0 local scaffold first" class="radio radio-primary mt-1"><span class="text-sm"><strong>Phase 0 scaffold ⭐</strong> — stand up the monorepo + local Postgres + hello services so we have a running base.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="start" value="Spike the data-agent first against a sample DB" class="radio radio-primary mt-1"><span class="text-sm"><strong>Agent spike</strong> — prove the NL→SQL magic first, wrap infra around it after.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="start" value="Provision Azure infra (Bicep) first" class="radio radio-primary mt-1"><span class="text-sm"><strong>Infra first</strong> — get Bicep + Container Apps + Postgres live, then fill in code.</span></label>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision F -->
+    <form class="card card-border bg-base-100" data-lavish-question="framework"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('framework'); if(v) window.lavish.queuePrompt('Decision F (agent framework): '+v, {tag:'decision', text:'F · Framework: '+v, element:event.currentTarget, data:{question:'framework',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">F · Agent framework</h3>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="framework" value="Pydantic AI (native tool-calling loop)" class="radio radio-primary mt-1"><span class="text-sm"><strong>Pydantic AI ⭐</strong> — typed tools, ReAct-style loop, structured output, already in your skills + Logfire.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="framework" value="LangGraph (graph + built-in persistence/memory)" class="radio radio-primary mt-1"><span class="text-sm"><strong>LangGraph</strong> — heavier, but built-in stateful graphs + checkpointer persistence if you want that model.</span></label>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision G -->
+    <form class="card card-border bg-base-100" data-lavish-question="provider"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('provider'); if(v) window.lavish.queuePrompt('Decision G (model provider): '+v, {tag:'decision', text:'G · Provider: '+v, element:event.currentTarget, data:{question:'provider',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">G · Model provider (kept behind an abstraction either way)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="provider" value="Abstract provider, default Claude, DeepSeek as cost option" class="radio radio-primary mt-0.5"><span><strong>Abstracted + A/B ⭐</strong><br><span class="text-base-content/60">Default to a strong model, switch by config. Best for NL→SQL accuracy vs cost.</span></span></label>
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="provider" value="DeepSeek primary (OpenAI-compatible)" class="radio radio-primary mt-0.5"><span><strong>DeepSeek primary</strong><br><span class="text-base-content/60">Cheapest. Confirm exact model id vs deepseek-chat/reasoner.</span></span></label>
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="provider" value="Claude only" class="radio radio-primary mt-0.5"><span><strong>Claude only</strong><br><span class="text-base-content/60">Strongest tool-use + structured output; higher token cost.</span></span></label>
+        </div>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision H -->
+    <form class="card card-border bg-base-100" data-lavish-question="memory"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('memory'); if(v) window.lavish.queuePrompt('Decision H (agent memory): '+v, {tag:'decision', text:'H · Memory: '+v, element:event.currentTarget, data:{question:'memory',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">H · Per-user learning memory</h3>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="memory" value="Add memory now: Postgres + pgvector, isolated by RLS" class="radio radio-primary mt-1"><span class="text-sm"><strong>Add now (Postgres + pgvector) ⭐</strong> — agent recalls/remembers per-user prefs; isolated by RLS. Build it into Phase 3.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="memory" value="Defer memory to a later phase, design schema now" class="radio radio-primary mt-1"><span class="text-sm"><strong>Defer</strong> — ship stateless agent first, add the memory table + recall/remember tools later.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="memory" value="No long-term memory" class="radio radio-primary mt-1"><span class="text-sm"><strong>Skip</strong> — conversation-only context, no cross-session learning.</span></label>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision I -->
+    <form class="card card-border bg-base-100" data-lavish-question="pipeline"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('pipeline'); if(v) window.lavish.queuePrompt('Decision I (data pipeline): '+v, {tag:'decision', text:'I · Pipeline: '+v, element:event.currentTarget, data:{question:'pipeline',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">I · Data pipeline &amp; transformation</h3>
+        <p class="text-sm text-base-content/60">How CSVs become the clean, documented tables the agent answers over.</p>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="pipeline" value="dbt-core for transforms + dlt for CSV ingestion" class="radio radio-primary mt-1"><span class="text-sm"><strong>dbt + dlt ⭐</strong> — dlt lands CSV→raw, dbt models raw→marts with tests/docs the agent reads. Fully Python-native.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="pipeline" value="dbt-core for transforms + simple COPY/pandas loader" class="radio radio-primary mt-1"><span class="text-sm"><strong>dbt + simple loader</strong> — a small <code>COPY</code>/pandas script for ingest, dbt for everything downstream. Fewer deps.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="pipeline" value="No dbt; plain SQL views over raw loads" class="radio radio-primary mt-1"><span class="text-sm"><strong>No dbt</strong> — load CSVs and expose plain SQL views. Fastest start, no tests/lineage/docs for the agent.</span></label>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <div class="flex flex-wrap gap-3 items-center justify-end pt-2">
+      <span class="text-sm text-base-content/60">Queued your picks? Send them over and I'll start Phase work.</span>
+      <button type="button" class="btn btn-primary" data-lavish-action onclick="window.lavish && window.lavish.sendQueuedPrompts && window.lavish.sendQueuedPrompts()">Send to Agent →</button>
+    </div>
+  </section>
+
+  <!-- RISKS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">14</span> · Risks & open questions</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div role="alert" class="alert alert-error alert-soft"><span><strong>NL→SQL safety.</strong> The agent generates queries. Mitigated by a read-only role, RLS, SELECT-only allowlist, statement timeouts, and row caps — but worth a dedicated test pass.</span></div>
+      <div role="alert" class="alert alert-warning alert-soft"><span><strong>LLM cost drift.</strong> Each question is tokens. Need per-user/day caps and a cheap-model fallback (sonnet) for routine queries.</span></div>
+      <div role="alert" class="alert alert-info alert-soft"><span><strong>Entra External ID learning curve.</strong> Tenant setup is fiddly the first time. Budget an hour; I'll give exact click-paths.</span></div>
+      <div role="alert" class="alert alert-info alert-soft"><span><strong>RLS + connection pooling.</strong> Session variables must be set per-transaction (<code>SET LOCAL</code>) so pooled connections don't leak context. Designed in above.</span></div>
+    </div>
+    <div class="card card-border bg-base-100"><div class="card-body gap-2">
+      <h3 class="card-title text-base">Open questions for you (annotate inline anywhere, or answer here)</h3>
+      <ul class="list-disc pl-5 text-sm text-base-content/80 space-y-1">
+        <li>What data will the agent actually answer over in the demo — a sample dataset I generate, or something of yours?</li>
+        <li>Do you have an Azure subscription ready, and a preferred region?</li>
+        <li>Solo project, or will others log in? (affects how much we invest in Entra setup vs a seeded user table)</li>
+      </ul>
+    </div></div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">15</span> · Platform &amp; portability FAQ</h2>
+    <p class="text-base-content/70 max-w-3xl">Your questions about cloud lock-in, LLM services, containers, and the database — answered.</p>
+
+    <div class="space-y-2">
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-content/10 rounded-box">
+        <div class="collapse-title font-semibold">Can I easily swap Azure for AWS or Google?</div>
+        <div class="collapse-content text-sm text-base-content/80 space-y-2">
+          <p>Mostly yes — the <strong>app code is portable</strong> (containers, FastAPI, React, Postgres, dbt, Pydantic AI). Only the <em>managed services</em> change. Use <strong>Terraform instead of Bicep</strong> if portability matters, and keep 12-factor config so you swap infra, not code.</p>
+          <div class="overflow-x-auto"><table class="table table-xs">
+            <thead><tr><th>Layer</th><th>Azure</th><th>AWS</th><th>Google</th></tr></thead>
+            <tbody>
+              <tr><td>Containers</td><td>Container Apps</td><td>App Runner / ECS Fargate</td><td>Cloud Run</td></tr>
+              <tr><td>Postgres</td><td>Flexible Server</td><td>RDS / Aurora</td><td>Cloud SQL</td></tr>
+              <tr><td>Identity</td><td>Entra External ID</td><td>Cognito</td><td>Identity Platform</td></tr>
+              <tr><td>Secrets</td><td>Key Vault</td><td>Secrets Manager</td><td>Secret Manager</td></tr>
+            </tbody>
+          </table></div>
+          <p>Container Apps ↔ Cloud Run ↔ App Runner are close to 1:1 for containers, so that swap is small.</p>
+        </div>
+      </div>
+
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-content/10 rounded-box">
+        <div class="collapse-title font-semibold">Does Azure have an LLM service (AI Foundry)? Is it cross-cloud?</div>
+        <div class="collapse-content text-sm text-base-content/80 space-y-2">
+          <p>Yes — <strong>Azure AI Foundry</strong> (+ Azure OpenAI) is Azure's model service. But binding to it <em>couples you to Azure</em>. Cross-cloud portability comes from <strong>your model abstraction (Decision G)</strong>, not the cloud's service.</p>
+          <p>The same Claude model is reachable via the <strong>Anthropic API</strong> (cloud-neutral), <strong>AWS Bedrock</strong>, or <strong>Google Vertex</strong> — Pydantic AI just points at a different gateway. Recommendation: use the direct Anthropic API (or a neutral gateway) so the LLM isn't tied to where your compute runs.</p>
+        </div>
+      </div>
+
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-content/10 rounded-box">
+        <div class="collapse-title font-semibold">Is a compute container 1-for-1 with a Docker image?</div>
+        <div class="collapse-content text-sm text-base-content/80 space-y-2">
+          <p>Yes. <strong>One image per service.</strong> A Container App runs that one image across N replicas (scale-to-zero to many). v1 = <strong>3 service images</strong> (frontend, backend-api, data-agent) + <strong>1 job image</strong> (data-pipeline) = 4 images in the registry.</p>
+        </div>
+      </div>
+
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-content/10 rounded-box">
+        <div class="collapse-title font-semibold">Can there be just one Azure Postgres DB, or multiple?</div>
+        <div class="collapse-content text-sm text-base-content/80 space-y-2">
+          <p><strong>One</strong> Flexible Server, <strong>one database</strong>, multiple <strong>schemas</strong>: <code>raw</code> / <code>staging</code> / <code>marts</code> (dbt) plus <code>app</code> (users, datasets, conversations, events, …). <code>agent_memory</code> is a <strong>pgvector table in that same DB</strong> — not a separate server. Split into more instances later only if scaling demands it.</p>
+        </div>
+      </div>
+
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-content/10 rounded-box">
+        <div class="collapse-title font-semibold">Best way to implement DB-access tools — does MCP for Postgres make sense?</div>
+        <div class="collapse-content text-sm text-base-content/80 space-y-2">
+          <p>For v1, <strong>in-process typed tools</strong> (asyncpg/SQLAlchemy) are best — cleanest control over the read-only role, per-request RLS session variable, SELECT allowlist, and statement timeouts.</p>
+          <p><strong>MCP Postgres</strong> makes sense <em>later</em> if you want to reuse the same DB tool across multiple agents/IDEs or run it out-of-process — but you'd still enforce the same guardrails around it. Not needed for v1, and it adds a network hop.</p>
+        </div>
+      </div>
+
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-content/10 rounded-box">
+        <div class="collapse-title font-semibold">Later: can I add an Android app, or put the agent in a Slack channel?</div>
+        <div class="collapse-content text-sm text-base-content/80 space-y-2">
+          <p>Yes — and cheaply, because the <strong>backend-api + data-agent are headless</strong> (a clean <code>/ask</code> API behind a JWT). The web React app is just <em>one</em> client. New surfaces are new clients, not rewrites — they reuse the same agent, RLS, memory, datasets, and pipeline.</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li><strong>📱 Android app</strong> — native (Kotlin) or React Native/Flutter — calls the same <code>/ask</code> API and signs in with Entra's <strong>native OIDC + PKCE</strong> mobile flow.</li>
+            <li><strong>💬 Slack bot</strong> — a thin Slack app (Bolt / Events API) catches a slash-command or mention, calls the same <code>/ask</code>, and posts the answer back in-channel.</li>
+          </ul>
+          <p>The one design task per surface is <strong>identity mapping</strong> — link the surface's user (Slack user, mobile login) to a <code>users</code> row so RLS and per-user memory still apply. Everything else is shared.</p>
+          <div role="alert" class="alert alert-soft alert-info"><span>This is the payoff of Decision C (3 services): an <strong>API-first</strong> core means multi-surface is a v2 add-on, not a re-architecture.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center text-xs text-base-content/40 pt-6 border-t border-base-content/10 space-y-1">
+    <p>Design source: Lavish-recommended Tailwind v4 + DaisyUI v5 (luxury theme) — greenfield project, no existing design system to match.</p>
+    <p>Recommendations validated against Microsoft Learn (Container Apps, PostgreSQL multitenancy + RLS, Entra) — June 2026.</p>
+  </footer>
+
+</main>
+</body>
+</html>

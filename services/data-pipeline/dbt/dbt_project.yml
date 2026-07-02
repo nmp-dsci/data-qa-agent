@@ -1,0 +1,35 @@
+name: nsw_property
+version: "1.0.0"
+config-version: 2
+profile: nsw_property
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  nsw_property:
+    # Materialized as tables, not views: each layer is referenced multiple times
+    # downstream and the summary marts run percentile_cont over the raw ~3M-row
+    # staging tables. Views get inlined per reference, re-running that aggregation
+    # every time — materializing computes each layer once and reuses the result.
+    #
+    # No minimum-count var any more: the summary marts keep every bucket (no
+    # locality dropped for being small) and expose n_sold/n_rented so a query
+    # can pick its own reliability threshold. See mart_sales_summary.sql.
+    staging:
+      +schema: staging
+      +materialized: table
+      # Agent-queryable: get_schema() grounds the LLM in any model tagged this
+      # way, regardless of schema — not just schema == "marts". stg_sales and
+      # stg_rent get it here; int_postcode_geo (intermediate) sets the tag on
+      # itself, since it's now the suburb<->postcode resolver the agent needs.
+      +tags: ['agent_queryable']
+    intermediate:
+      +schema: staging
+      +materialized: table
+    marts:
+      +schema: marts
+      +materialized: table
+      +tags: ['agent_queryable']

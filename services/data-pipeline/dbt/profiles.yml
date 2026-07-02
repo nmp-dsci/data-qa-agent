@@ -1,0 +1,13 @@
+nsw_property:
+  target: prod
+  outputs:
+    prod:
+      type: postgres
+      host: "{{ env_var('DBT_HOST', 'db') }}"
+      port: "{{ env_var('DBT_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_USER', 'postgres') }}"
+      password: "{{ env_var('DBT_PASSWORD', 'postgres') }}"
+      dbname: "{{ env_var('DBT_DBNAME', 'dataqa') }}"
+      schema: marts
+      sslmode: "{{ env_var('PGSSLMODE', 'prefer') }}"
+      threads: 4

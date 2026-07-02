@@ -1,8 +1,3 @@
-# opensrc — ignore fetched source repos, keep the manifest + setup script
-opensrc/*/
-!opensrc/setup_opensrc.sh
-!opensrc/sources.json
-
 # Python
 __pycache__/
 *.py[cod]
@@ -13,19 +8,22 @@ venv/
 .pytest_cache/
 *.egg-info/
 
+data/*
+# …but keep the small committed samples used by CI + a fast `make up`.
+!data/samples/
+!data/samples/*.csv
+
+# Per-service uv locks (builds resolve from pyproject; only the root lock is tracked)
+services/*/uv.lock
+
 # Environment / secrets
 .env
 .env.*
 !.env.example
 
-# dbt
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-dbt/.user.yml
-
-# raw landing zone — append-only pulls; the committed seed lives in dbt/seeds/
-data/raw/
+# Node / frontend
+node_modules/
+frontend/dist/
 
 # OS / editor
 .DS_Store

@@ -1,0 +1,15 @@
+# Dev seed users (production uses Microsoft Entra External ID instead).
+# The local dev-auth stub lets you log in as any of these without a password.
+users:
+  - username: admin
+    email: admin@example.com
+    display_name: Admin User
+    role: admin        # sees all rows across all users
+  - username: user1
+    email: user1@example.com
+    display_name: User One
+    role: user         # granted nsw_sales + nsw_rent (can JOIN both marts)
+  - username: user2
+    email: user2@example.com
+    display_name: User Two
+    role: user         # NO dataset access — proves row-level isolation

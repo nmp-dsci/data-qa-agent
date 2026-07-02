@@ -1,24 +1,129 @@
-# Local Postgres 16 for the LOAD stage (§2.1).
-# DB/user/password match the DATABASE_URL default in src/data_qa_agent/config.py:
-#   postgresql://postgres:postgres@localhost:5432/data_qa
+# data-qa-agent :: local dev stack (Decision E: Phase 0, all in `dev`).
+# `docker compose up --build` boots the whole app on localhost.
+
 services:
-  postgres:
-    image: postgres:16
-    container_name: data_qa_postgres
+  db:
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: data_qa
+      POSTGRES_DB: dataqa
     ports:
-      - "5432:5432"
+      - "5434:5432"   # 5432/5433 are used by other local containers; internal net still uses db:5432
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - dbdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d data_qa"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dataqa"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # One-shot job: applies Alembic migrations (schema + RLS + seed). Runs the SAME
+  # migrations as the Azure db-migrate job. Dataset data is loaded by `pipeline`.
+  migrate:
+    build:
+      context: .
+      dockerfile: services/db-migrate/Dockerfile
+    environment:
+      ADMIN_DATABASE_URL: postgresql://postgres:postgres@db:5432/dataqa
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # One-shot job: dlt ingests the CSVs into `raw`, then dbt builds the marts.
+  # Defaults to the small committed sample; `make pipeline` loads the full CSVs.
+  pipeline:
+    build:
+      context: .
+      dockerfile: services/data-pipeline/Dockerfile
+    environment:
+      ADMIN_DATABASE_URL: postgresql://postgres:postgres@db:5432/dataqa
+      PIPELINE_SOURCE: ${PIPELINE_SOURCE:-sample}
+    volumes:
+      - ./data:/data:ro
+      - dbt_target:/app/dbt/target
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Ad hoc: serves the dbt docs UI (lineage graph, model/column descriptions,
+  # source freshness) for reviewing raw -> staging -> marts. Not part of `make
+  # up` (profile-gated) — run `make pipeline-docs` after `make pipeline`.
+  pipeline-docs:
+    profiles: ["docs"]
+    build:
+      context: .
+      dockerfile: services/data-pipeline/Dockerfile
+    command:
+      [
+        "dbt", "docs", "serve",
+        "--host", "0.0.0.0", "--port", "8080", "--no-browser",
+        "--project-dir", "dbt", "--profiles-dir", "dbt",
+      ]
+    # Not :ro — `dbt docs serve` writes its index.html into target/ before serving.
+    volumes:
+      - dbt_target:/app/dbt/target
+    ports:
+      - "8180:8080"
+
+  backend-api:
+    build: ./services/backend-api
+    environment:
+      APP_ENV: dev
+      # AUTH_MODE=dev uses the local dev-auth stub. Set AUTH_MODE=entra plus the
+      # ENTRA_* vars (in .env) to switch to real Microsoft Entra External ID.
+      AUTH_MODE: ${AUTH_MODE:-dev}
+      DATABASE_URL: postgresql+asyncpg://app_user:app_pw@db:5432/dataqa
+      AGENT_URL: http://data-agent:8100
+      JWT_SECRET: dev-secret-change-me
+      ENTRA_AUTHORITY: ${ENTRA_AUTHORITY:-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+      ENTRA_AUDIENCE: ${ENTRA_AUDIENCE:-}
+      ENTRA_ADMIN_ROLE: ${ENTRA_ADMIN_ROLE:-admin}
+    ports:
+      - "8000:8000"
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+
+  data-agent:
+    build: ./services/data-agent
+    environment:
+      APP_ENV: dev
+      AGENT_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa
+      # The dbt manifest lets get_schema() ground the LLM in the real marts.
+      DBT_MANIFEST: /dbt-target/manifest.json
+      # Provider is pluggable (Decision G): LLM_PROVIDER picks deepseek (default) or
+      # anthropic; empty key for the selected provider = offline stub.
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Optional — ships agent traces to Logfire Cloud; empty = local-only tracing.
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
+    volumes:
+      - dbt_target:/dbt-target:ro
+    ports:
+      - "8100:8100"
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+
+  frontend:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5230:5230"
+    depends_on:
+      - backend-api
 
 volumes:
-  pgdata:
+  dbdata:
+  dbt_target:   # dbt manifest/catalog shared from pipeline -> data-agent

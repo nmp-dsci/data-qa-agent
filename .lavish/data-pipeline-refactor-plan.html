@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>data-qa-agent — Data Pipeline Refactor: Query the Staging Grain, Not the Datamart</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  .mermaid { background: var(--color-base-100); border-radius: 1rem; padding: 1rem; overflow-x: auto; }
+  .section-num { font-variant-numeric: tabular-nums; }
+  code { font-size: 0.85em; }
+  .evidence-card code { word-break: break-all; }
+  #sql-example { border-radius: 0.75rem; overflow: hidden; }
+</style>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "strict",
+    themeVariables: { fontFamily: "ui-sans-serif, system-ui, sans-serif", primaryColor: "#1a1a17", lineColor: "#b48a3f", fontSize: "14px" }
+  });
+</script>
+</head>
+<body class="bg-base-200 text-base-content">
+
+<main class="mx-auto max-w-6xl p-5 lg:p-10 space-y-12">
+
+  <!-- HERO -->
+  <header class="space-y-5">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="badge badge-primary badge-lg">Pipeline Refactor Proposal</span>
+      <span class="badge badge-soft badge-info">dbt · staging vs marts</span>
+      <span class="badge badge-soft badge-success">Rev 4 — marts redefined</span>
+    </div>
+    <h1 class="text-4xl lg:text-5xl font-bold tracking-tight">Query the staging grain, not the datamart</h1>
+    <p class="text-xl text-base-content/80 max-w-3xl">
+      Today the agent can only see <code>marts.*</code> — three heavily pre-aggregated tables that collapse
+      every sale/bond into a single first-year-vs-last-year comparison per postcode. This is v4: your
+      clarification changes the target architecture, not just the column list. Staging stays record-grain and
+      as wide as relevant — a clean mirror of raw. Marts stop pre-calculating growth/yield entirely and become
+      clean summary building blocks (sum, count, median by postcode × property_type × month) — the agent
+      computes growth, rolling averages, and yield itself from those, at any window it needs.
+    </p>
+  </header>
+
+  <!-- DIRECT ANSWER -->
+  <section class="space-y-3">
+    <div class="alert shadow-lg bg-base-100 border border-primary/30">
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="badge badge-primary shrink-0">Direct answer</span>
+          <span class="font-semibold">Yes, raw is a latency (and correctness) problem — but this is no longer "staging vs. marts." It's staging for record-level lookups, and rebuilt marts as the agent's calculation building blocks.</span>
+        </div>
+        <p class="text-sm text-base-content/70 max-w-4xl">
+          <code>staging.*</code> stays record grain and gets widened to "as much as relevant" — it's the
+          clean, verified mirror of raw, used when a question is genuinely about individual records (e.g.
+          "top 10 addresses by sale price in a suburb"). <code>marts.*</code> gets rebuilt as small
+          (~120k row) summary tables — <code>n_sold</code>, <code>total_sale_value</code>,
+          <code>median_price</code> by postcode × property_type × month — and the agent writes the SQL for
+          growth, rolling averages, and yield on top of them. The expensive part (aggregating ~3M rows) still
+          only happens once, at build time; what the agent computes live is cheap arithmetic over an
+          already-small table.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 01 CURRENT STATE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">01</span> · Current state — what the agent can see today</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Three schemas, one boundary. <code>raw</code> and <code>staging</code> are pipeline-internal today — the
+      agent's DB role (<code>agent_ro</code>) has no <code>GRANT</code> on either schema, so it physically
+      cannot query them even if the LLM tried. Everything the agent knows comes from <code>get_schema()</code>
+      reading the dbt manifest filtered to <code>schema == "marts"</code>
+      (<code>services/data-agent/agent/schema.py:80</code>).
+    </p>
+    <div class="mermaid">
+flowchart TD
+  subgraph RAW["raw schema — dlt landing"]
+    RS["raw.sales<br/>3,089,682 rows · 28 columns · untyped text"]
+    RR["raw.rent<br/>3,305,670 rows · 5 columns · untyped text"]
+  end
+  subgraph STG["staging schema — pipeline-internal only, ZERO grants to agent_ro"]
+    SS["stg_sales<br/>record grain · only 6 of 28 raw columns kept<br/>cleaned + typed"]
+    SR["stg_rent<br/>record grain · all 5 raw columns kept<br/>cleaned + typed"]
+    IY["int_sales_yearly<br/>postcode x type x YEAR<br/>10k+ rows, first/last only downstream"]
+    IR["int_rent_yearly<br/>postcode x type x YEAR<br/>10k+ rows, first/last only downstream"]
+  end
+  subgraph MARTS["marts schema — the ONLY layer agent_ro can query today"]
+    MG["mart_sales_growth<br/>postcode x type ONLY<br/>PRECOMPUTED first-vs-last-year growth%"]
+    MR["mart_rent_growth<br/>postcode x type ONLY<br/>PRECOMPUTED first-vs-last-year growth%"]
+    MY["mart_property_yield<br/>postcode x type x year<br/>PRECOMPUTED gross_yield_pct"]
+  end
+  RS --> SS --> IY --> MG
+  RR --> SR --> IR --> MR
+  IY --> MY
+  IR --> MY
+  MG --> AGENT(["data-agent · agent_ro role"])
+  MR --> AGENT
+  MY --> AGENT
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="card card-border bg-base-100">
+        <div class="card-body py-4 gap-1">
+          <h3 class="card-title text-sm">What's already lost by the time marts land</h3>
+          <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+            <li>Every year except the first and last (no real trend line, no rolling average)</li>
+            <li>Month/day resolution — both source date fields already carry it, staging discards it to year</li>
+            <li>Individual sale records — address, exact price, exact date — nothing below postcode survives</li>
+            <li><code>area_sqm</code> and <code>zoning</code> — never selected from <code>raw.sales</code> into staging today, see §02</li>
+            <li>Bedroom count — carried in <code>stg_rent.bedrooms</code> but dropped before the marts</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body py-4 gap-1">
+          <h3 class="card-title text-sm">Questions the agent cannot answer today</h3>
+          <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+            <li>"10-year growth" or "12-month rolling average" — marts only ever store one fixed first-vs-last window</li>
+            <li>"Top 10 addresses by sale price in a suburb" — no record-level table</li>
+            <li>"2-bedroom vs 3-bedroom rent" — bedrooms already dropped</li>
+            <li>"Average price by lot size" — <code>area_sqm</code> never reaches staging</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body py-4 gap-1">
+          <h3 class="card-title text-sm">Why this happened</h3>
+          <p class="text-sm text-base-content/70">
+            Reasonable v1 default — the marts were designed around one query shape ("rank postcodes by
+            growth") and the dbt tests (<code>assert_*_has_coverage</code>) were written to verify exactly
+            that shape. Nobody over-engineered; the schema just hasn't grown past its first use case yet.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 COLUMN LANDSCAPE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">02</span> · What's in <code>raw</code> that's worth bringing into staging</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Went through the actual source columns — <code>head -1</code> on both full CSVs, not a guess.
+      <code>raw.sales</code> has <strong>28 columns</strong>; <code>stg_sales.sql</code> selects only 6. Your
+      guiding principle now: <strong>staging keeps as much as is relevant, since it's the clean verified
+      mirror of raw</strong> — only drop a column for a real specific reason (unverified semantics, or you're
+      handling it separately), not just to minimize column count. That reopened the address fields below.
+    </p>
+    <div class="overflow-x-auto rounded-box border border-base-content/10">
+      <table class="table table-sm">
+        <thead><tr><th>Column (<code>raw.sales</code>)</th><th>Decision</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>area_sqm</code>, <code>area_type</code></td>
+            <td><span class="badge badge-success badge-sm">Bring in, banded</span></td>
+            <td>Enables price-per-sqm and "average price by lot size" questions. Already flows into
+              <code>raw.sales</code> as typed text (<code>ingest.py</code> pins it via <code>SALES_TEXT</code>)
+              — just never selected into <code>stg_sales</code> today. Bring in as a standardized band
+              (<code>&lt;400</code> / <code>400–700</code> / <code>700–1000</code> / <code>1000+</code> sqm)
+              computed once in dbt, not left for the agent to invent inconsistent boundaries each time — keep
+              raw <code>area_sqm</code> alongside the band for anything finer.</td>
+          </tr>
+          <tr>
+            <td><code>zoning</code></td>
+            <td><span class="badge badge-success badge-sm">Bring in</span></td>
+            <td>Planning-zone code (sample values <code>R2</code>/<code>RU5</code>/<code>RU2</code>) — lets
+              the agent segment by land use, not just postcode.</td>
+          </tr>
+          <tr>
+            <td><code>house_no</code>, <code>street_name</code>, <code>unit_no</code>, <code>prop_name</code></td>
+            <td><span class="badge badge-success badge-sm">Bring in — reversed from Rev 3</span></td>
+            <td>You brought this back: "staging could be used in a query to get top 10 addresses by sale
+              price for a suburb." That's a genuine record-level question staging exists to answer, and
+              nothing below postcode survives into the marts (§05). This is public Valuer-General sale data,
+              not user-submitted PII, but worth a quick licensing/terms glance before an agent answer prints a
+              full street address — not a technical blocker, just due diligence (§08).</td>
+          </tr>
+          <tr>
+            <td><code>sale_interest</code>, <code>sale_counter</code></td>
+            <td><span class="badge badge-ghost badge-sm">Still dropped</span></td>
+            <td>Possible replacement for the existing price-floor heuristic, but the semantics are unverified
+              — not worth the data-dictionary investigation for uncertain payoff. Specific reason, independent
+              of the "keep as much as possible" principle above.</td>
+          </tr>
+          <tr>
+            <td><code>district_code</code></td>
+            <td><span class="badge badge-ghost badge-sm">Still dropped</span></td>
+            <td>You're bringing in your own postcode↔suburb/LGA mapping separately.</td>
+          </tr>
+          <tr>
+            <td><code>settle_dt</code></td>
+            <td><span class="badge badge-ghost badge-sm">Still dropped</span></td>
+            <td>Second date field (settlement vs. contract) — no question has asked for it yet.</td>
+          </tr>
+          <tr>
+            <td><code>prop_nature</code>, <code>component_cd</code>, <code>sale_cd</code>, <code>record_type</code></td>
+            <td><span class="badge badge-ghost badge-sm">Still dropped</span></td>
+            <td>Undocumented codes — semantics unverified, same reasoning as <code>sale_interest</code> above.</td>
+          </tr>
+          <tr>
+            <td><code>file</code>, <code>fn_src</code>, <code>ymd</code>, <code>index</code>, <code>create_dt</code>, <code>dealing_no</code></td>
+            <td><span class="badge badge-ghost badge-sm">Skip</span></td>
+            <td>Load/batch metadata from the source file drop, not a property attribute.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card card-border bg-base-100 border-primary/30">
+      <div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Standardized join keys: <code>sale_month</code>/<code>rent_month</code> and <code>property_type</code></h3>
+        <p class="text-sm text-base-content/70">
+          Per your note: these are the two columns staging must standardize identically across both datasets
+          so sales and rent can be joined — everything else (zoning, area band, address) is dataset-specific
+          and doesn't need a rent-side equivalent to be useful. <code>property_type</code> ('house'/'unit')
+          is already standardized this way today (§05 confirms this pattern already works — it's the model
+          for doing the same with month). <code>contract_dt</code> (sales, <code>YYYYMMDD.0</code>) and
+          <code>lodgement_dt</code> (rent, <code>YYYY-MM-DD</code>) both carry day-level precision already;
+          derive <code>sale_month</code>/<code>rent_month</code> as <code>date_trunc('month', ...)::date</code>
+          — defaults day/time to <code>01 00:00:00</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 EVIDENCE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">03</span> · The latency evidence — measured, not guessed</h2>
+    <p class="text-base-content/70 max-w-3xl">Numbers below are from this repo's actual full-size local CSVs and existing dbt comments, not estimates.</p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100 evidence-card">
+        <div class="card-body gap-2">
+          <div class="flex items-center gap-2"><span class="badge badge-error badge-sm">Expensive</span><h3 class="card-title text-base">Record grain: ~3.1–3.3M rows per dataset</h3></div>
+          <p class="text-sm text-base-content/70">
+            Measured directly: <code>wc -l data/nswgov_df.csv</code> → 3,089,683 lines;
+            <code>wc -l data/rentboard_df.csv</code> → 3,305,671 lines. This matches the pipeline's own
+            comment: <code>services/data-pipeline/dbt/profiles.yml:29</code> says staging is materialized as
+            <strong>tables, not views</strong>, specifically because "views get inlined per reference, which
+            re-runs the full <code>percentile_cont</code> aggregation over the raw ~2.7M rows every time." The
+            same reasoning is why the redesigned marts (§05) still precompute <code>sum</code>/<code>count</code>/
+            <code>median</code> once at build time — the agent's own SQL only ever runs against the small
+            result, never against 3M rows directly, for growth/yield/rolling-average questions.
+          </p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100 evidence-card">
+        <div class="card-body gap-2">
+          <div class="flex items-center gap-2"><span class="badge badge-success badge-sm">Cheap</span><h3 class="card-title text-base">Precomputed grain stays cheap even at monthly resolution</h3></div>
+          <p class="text-sm text-base-content/70">
+            <code>services/data-pipeline/dbt/tests/assert_yield_pct_in_sane_range.sql:4</code> — a real
+            dbt test comment — states the observed range was checked "across 10k+ postcode/type/<em>year</em>
+            rows." Re-cut to postcode × property_type × <strong>month</strong>, that's an estimated
+            <strong>~120k+ rows</strong> (10k+ annual buckets × 12) for each redesigned summary mart — still
+            two orders of magnitude smaller than record grain, and still fast.
+          </p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100 evidence-card">
+        <div class="card-body gap-2">
+          <div class="flex items-center gap-2"><span class="badge badge-warning badge-sm">Missing today</span><h3 class="card-title text-base">No <code>statement_timeout</code> is actually set</h3></div>
+          <p class="text-sm text-base-content/70">
+            <code>AGENTS.md</code>'s guardrail summary says "read-only DB role · RLS always applies ·
+            SELECT-only allowlist with parse validation and statement timeout · token + row caps." Reading
+            <code>services/data-agent/agent/db.py:34-41</code>: it sets the RLS session var
+            (<code>set_config('app.current_user_id', ...)</code>) but never sets
+            <code>statement_timeout</code>. §06's retry budget makes this more urgent, not less: a bad query
+            can now be attempted more than once.
+          </p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100 evidence-card">
+        <div class="card-body gap-2">
+          <div class="flex items-center gap-2"><span class="badge badge-error badge-sm">Correctness, not just speed</span><h3 class="card-title text-base"><code>raw.*</code> is unsafe to hand an LLM directly</h3></div>
+          <p class="text-sm text-base-content/70">
+            <code>stg_sales.sql</code>'s own comments document hard-won fixes: dates arrive as
+            <code>YYYYMMDD.0</code> strings, postcodes need <code>split_part(..., '.', 1)</code>, and a
+            <code>$10,000</code> price floor exists because non-arms-length family transfers otherwise
+            produced "17 same-year 'sales' from $200 to $140,000" that skewed a bucket's median. If the agent
+            queries <code>raw.sales</code> directly, the LLM has to silently re-derive all of that per
+            question — a missed filter doesn't error, it just produces a confidently wrong number.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 OPTIONS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">04</span> · Options considered</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+      <div class="card card-border bg-base-100 opacity-80">
+        <div class="card-body gap-2">
+          <span class="badge badge-ghost badge-sm w-fit">A · Status quo</span>
+          <h3 class="card-title text-base">Marts only, growth precomputed</h3>
+          <p class="text-sm text-base-content/70">What's built today.</p>
+          <div class="text-sm space-y-1 mt-2">
+            <p class="text-success">✓ Fastest possible queries — smallest tables</p>
+            <p class="text-success">✓ RLS + grants already correct</p>
+            <p class="text-error">✗ Fixed first-vs-last-year window only — can't do 10-year growth, rolling averages, or record-level questions</p>
+          </div>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100 border-error/40 opacity-90">
+        <div class="card-body gap-2">
+          <span class="badge badge-error badge-sm w-fit">B · Rejected</span>
+          <h3 class="card-title text-base">Expose <code>raw.*</code> directly</h3>
+          <p class="text-sm text-base-content/70">What the original ask literally described.</p>
+          <div class="text-sm space-y-1 mt-2">
+            <p class="text-success">✓ "Nothing pre-decided" — maximal flexibility in principle</p>
+            <p class="text-error">✗ LLM must re-derive date/price/type cleaning per query — wrong answers, not just slow ones</p>
+            <p class="text-error">✗ No RLS exists on <code>raw</code> today — new attack surface built on the ugliest layer</p>
+          </div>
+        </div>
+      </div>
+      <div class="card card-border-2 border-primary bg-base-100">
+        <div class="card-body gap-2">
+          <span class="badge badge-primary badge-sm w-fit">C · Recommended — confirmed</span>
+          <h3 class="card-title text-base">Staging = clean record mirror. Marts = summary building blocks.</h3>
+          <p class="text-sm text-base-content/70">Two tiers, not three. Staging for record-level lookups; marts hold sum/count/median for the agent to build growth/yield/rolling-average from.</p>
+          <div class="text-sm space-y-1 mt-2">
+            <p class="text-success">✓ Any growth window, any rolling average — not just first-vs-last-year</p>
+            <p class="text-success">✓ Record-level questions (top-10 addresses) now answerable</p>
+            <p class="text-error">✗ Breaking change: removes <code>sales_growth_pct</code>/<code>gross_yield_pct</code>, which the offline stub, 6 dbt tests, and the smoke test all hardcode today (§07, §08)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 TARGET -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">05</span> · Target — two tiers: record mirror, and calculation building blocks</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      This collapses what was a three-tier design (staging record grain → intermediate monthly → marts
+      growth) into two: <strong>staging</strong> (clean record-grain mirror of raw, as wide as relevant) and
+      <strong>marts</strong> (redefined — clean summary building blocks, not precomputed metrics).
+      <code>raw</code> stays exactly as locked-down as it is today.
+    </p>
+    <div class="mermaid">
+flowchart TD
+  subgraph RAW2["raw — unchanged, still zero grants"]
+    RSX["raw.sales / raw.rent"]
+  end
+  subgraph STGX["staging — clean record mirror of raw, as wide as relevant"]
+    SSX["stg_sales / stg_rent<br/>record grain, ~3M rows, NEW PK + indexes<br/>+area_sqm(band), zoning, address, sale_month/rent_month<br/>standardised join keys: month, property_type<br/>for record-level lookups only (e.g. top 10 addresses by price)"]
+  end
+  subgraph MARTSX["marts — REDESIGNED: summary building blocks, not precomputed growth/yield"]
+    MGX["mart_sales_summary / mart_rent_summary / mart_property_yield<br/>postcode x property_type x MONTH, ~120k+ rows<br/>n_sold, total_sale_value, median_price (+ rent equivalents)<br/>NO precomputed growth% or yield% column"]
+  end
+  RSX -.->|"pipeline build only — never agent"| SSX
+  SSX --> MGX
+  MGX --> AGENTX(["data-agent · agent_ro<br/>computes growth / rolling-average / yield<br/>from sum + count + median, any window<br/>validates + retries per §06"])
+  SSX -->|"record-level lookups only"| AGENTX
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">Default path: marts (most questions)</h3>
+        <p class="text-sm text-base-content/70">"Top growth suburbs," "10-year growth," "12-month rolling average," "current yield" — all computed by agent SQL over <code>mart_sales_summary</code>/<code>mart_rent_summary</code>. The expensive part (aggregating ~3M rows) already happened at build time; what the agent runs is cheap arithmetic over ~120k rows.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">Secondary path: staging (record-level questions)</h3>
+        <p class="text-sm text-base-content/70">"Top 10 addresses by sale price in a suburb," "list sales over $2M," "average price by lot size band" — genuinely needs individual rows, always filtered by postcode/date first (§08 guardrails still apply here).</p>
+      </div></div>
+    </div>
+    <div class="card card-border bg-base-100">
+      <div class="card-body py-4 gap-3">
+        <h3 class="card-title text-sm">Made concrete: what agent-computed SQL looks like against the redesigned marts</h3>
+        <p class="text-sm text-base-content/70">Illustrative only — the exact SQL the agent writes will vary — but this is the shape §07's "Agent prompt" work item needs to teach it.</p>
+        <div id="sql-example"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 AGENT VALIDATION & RETRY -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">06</span> · Teaching the agent to validate and retry</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      You flagged this directly: "we lean on agent's SQL but it needs to be able to validate it and have
+      multiple attempts to fix any syntax errors or re-get the data if it doesn't look as expected." This
+      matters more now that the agent is writing real calculation SQL (§05), not just picking a pre-shaped
+      query. Checked the actual code — today's behavior is close to the opposite of what you asked for.
+    </p>
+    <div class="card card-border bg-base-100 border-error/40">
+      <div class="card-body py-4 gap-2">
+        <h3 class="card-title text-sm">What actually happens today (<code>services/data-agent/agent/llm_agent.py:106-122</code>)</h3>
+        <p class="text-sm text-base-content/70">
+          The <code>run_sql</code> tool's attempt counter (<code>sql_calls</code>) only increments <em>on
+          success</em>. So a syntax error already gets unlimited silent retries (bounded only by
+          pydantic-ai's own step limit, not a deliberate design) — but the instant a query <em>succeeds</em>,
+          even with zero rows or an obviously wrong shape, the very next call is hard-blocked: <em>"STOP: do
+          not call run_sql again."</em> The system prompt reinforces this — it explicitly tells the model, on
+          zero rows, to just report "the data isn't available" rather than investigate.
+        </p>
+      </div>
+    </div>
+    <div class="mermaid">
+flowchart TD
+  A["Agent writes SQL"] --> B["run_sql executes it"]
+  B -->|"syntax / SQL error"| C{"Attempts remaining?"}
+  B -->|"success, but zero rows or looks wrong"| C
+  B -->|"success, looks right"| D(["Agent answers from this result"])
+  C -->|"yes"| A
+  C -->|"no — budget exhausted"| E(["Agent answers with a caveat, or says it couldn't get reliable data"])
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">Proposed: a bounded attempt budget, not a one-shot gate</h3>
+        <p class="text-sm text-base-content/70">Replace <code>sql_calls &gt;= 1</code> with a configurable
+          <code>max_sql_attempts</code> (e.g. 3), incremented on <em>every</em> call — failure or success —
+          not just success. Each tool response carries how many attempts remain. The system prompt's "give up
+          on zero rows" line gets rewritten to: check the filters/join keys and retry if attempts remain.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">This directly trades against the plan's original topic: latency</h3>
+        <p class="text-sm text-base-content/70">A 3-attempt budget means a single user question can now cost
+          up to 3 DB round trips and 3 LLM turns in the worst case, not 1. That's why the
+          <code>statement_timeout</code> fix (§03, §07) matters more with this change than without it.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 07 WORK ITEMS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">07</span> · Concrete work items</h2>
+    <div class="overflow-x-auto rounded-box border border-base-content/10">
+      <table class="table table-sm">
+        <thead>
+          <tr><th>Area</th><th>Change</th><th>Files</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-soft badge-primary">Widen staging</span></td>
+            <td>Select <code>area_sqm</code> (+ derived <code>area_band</code>), <code>zoning</code>,
+              <code>house_no</code>/<code>street_name</code>/<code>unit_no</code>/<code>prop_name</code> into
+              <code>stg_sales</code>. Derive <code>sale_month</code>/<code>rent_month</code> as
+              <code>date_trunc('month', ...)::date</code> in both <code>stg_sales</code> and
+              <code>stg_rent</code>, standardized identically across both (§02).</td>
+            <td class="text-xs"><code>dbt/models/staging/stg_sales.sql</code><br><code>dbt/models/staging/stg_rent.sql</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-primary">Primary keys</span></td>
+            <td>Add a surrogate key to <code>stg_sales</code>/<code>stg_rent</code> — <code>property_id</code>
+              isn't reliably unique per row (split/fractional-interest sales share it; <code>raw.rent</code>
+              has no id column at all). Hash or <code>row_number()</code>-based surrogate key, enforced by a
+              dbt <code>unique</code> + <code>not_null</code> test and a real Postgres constraint.</td>
+            <td class="text-xs"><code>dbt/models/staging/stg_sales.sql</code><br><code>dbt/models/staging/stg_rent.sql</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-error">Redesign marts</span></td>
+            <td>Replace <code>mart_sales_growth</code>/<code>mart_rent_growth</code>/<code>mart_property_yield</code>
+              with <code>mart_sales_summary</code>/<code>mart_rent_summary</code>/<code>mart_property_yield</code>
+              (redefined) — grouped by (postcode, property_type, month), holding
+              <code>n_sold</code>/<code>total_sale_value</code>/<code>median_price</code> (and the rent
+              equivalents), with the yield table pre-joining sales+rent building blocks. No precomputed
+              growth% or yield% column — those are agent-computed (§05).</td>
+            <td class="text-xs"><code>dbt/models/marts/mart_sales_growth.sql</code> → rewrite<br><code>dbt/models/marts/mart_rent_growth.sql</code> → rewrite<br><code>dbt/models/marts/mart_property_yield.sql</code> → rewrite<br><code>dbt/models/marts/_marts.yml</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-error">Migrate the offline stub + tests</span></td>
+            <td>The redesign is a real breaking change, not just an addition — grepped the repo and found
+              <code>nl2sql.py</code> (the deterministic no-API-key fallback, "the app always answers" per
+              AGENTS.md) hardcodes SQL against <code>sales_growth_pct</code>/<code>rent_growth_pct</code>/
+              <code>gross_yield_pct</code> directly. So do <code>tests/test_agent_sql.py</code>,
+              <code>scripts/smoke_test.py</code>, and 6 dbt tests
+              (<code>assert_*_growth*</code>, <code>assert_yield_*</code>). All need rewriting against the new
+              mart shape before this ships — this is the single biggest chunk of work in this plan.</td>
+            <td class="text-xs"><code>services/data-agent/agent/nl2sql.py</code><br><code>tests/test_agent_sql.py</code><br><code>scripts/smoke_test.py</code><br><code>dbt/tests/assert_*.sql</code> (6 files)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-primary">Grants + RLS</span></td>
+            <td>Add <code>post_hook: apply_dataset_rls(...)</code> to <code>stg_sales</code>/<code>stg_rent</code>.
+              One-time <code>GRANT USAGE ON SCHEMA staging TO agent_ro</code> (redesigned marts already inherit
+              RLS via the existing <code>apply_dataset_rls</code> macro — no new grant pattern needed there).</td>
+            <td class="text-xs"><code>dbt/models/staging/stg_sales.sql</code><br><code>dbt/models/staging/stg_rent.sql</code><br>new Alembic migration for the schema grant</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-primary">Indexes</span></td>
+            <td>Add dbt <code>indexes</code> config: <code>stg_sales(postcode, property_type, sale_month)</code>, <code>stg_rent(postcode, property_type, rent_month)</code>. Without this, a filtered agent query on ~3M rows is a sequential scan.</td>
+            <td class="text-xs"><code>dbt/dbt_project.yml</code> or per-model <code>config()</code> blocks</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-primary">Schema grounding</span></td>
+            <td>Write <code>_staging.yml</code> (same pattern as <code>_marts.yml</code>). Tag agent-queryable models; extend <code>get_schema()</code>'s manifest filter beyond <code>schema == "marts"</code> to include tagged staging models too.</td>
+            <td class="text-xs"><code>dbt/models/staging/_staging.yml</code> (new)<br><code>dbt/dbt_project.yml</code><br><code>services/data-agent/agent/schema.py</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-primary">Agent prompt</span></td>
+            <td>Remove the old join-hint text that names <code>sales_growth_pct</code>/<code>rent_growth_pct</code>
+              by column (those columns no longer exist). Add the two-tier grain guidance (§05) and the
+              calculation-pattern library — growth-over-any-window, rolling average via window functions,
+              yield from sum/count — shaped like §05's example SQL.</td>
+            <td class="text-xs"><code>services/data-agent/agent/llm_agent.py</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-error">Agent retry budget</span></td>
+            <td>Replace the <code>sql_calls &gt;= 1</code> hard stop with a configurable
+              <code>max_sql_attempts</code> counted on every call (§06). Rewrite the "give up on zero rows"
+              prompt line to allow a retry when attempts remain.</td>
+            <td class="text-xs"><code>services/data-agent/agent/llm_agent.py</code><br><code>services/data-agent/agent/config.py</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-error">Guardrail: fix the gap</span></td>
+            <td>Set <code>statement_timeout</code> in the same transaction as the RLS session var — missing today, and more important once retries can multiply query attempts (§06).</td>
+            <td class="text-xs"><code>services/data-agent/agent/db.py</code><br><code>services/data-agent/agent/config.py</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-secondary">Guardrail: phase 2</span></td>
+            <td>Optional: an <code>EXPLAIN</code> (no <code>ANALYZE</code>) preflight that rejects a generated query if the planner's estimated cost/row count is absurd, before it actually runs.</td>
+            <td class="text-xs"><code>services/data-agent/agent/sql_guardrails.py</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-primary">Evals</span></td>
+            <td>Add journeys requiring the new grain/columns (month-by-month trend, 10-year growth, rolling
+              average, price-per-sqm-band, top-10-address lookup) and one that deliberately triggers a bad
+              first query to prove the retry path recovers. Confirm user2's isolation still holds.</td>
+            <td class="text-xs"><code>evals/journeys.yaml</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-warning">Benchmark</span></td>
+            <td>Run representative questions against <code>make pipeline-full</code>, not the committed sample — measure worst-case latency with a full retry budget spent, not just the happy path.</td>
+            <td class="text-xs">no code change — a run + a written-down result</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 08 RISKS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">08</span> · Risks &amp; open questions</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">This is a real breaking change, not an addition</h3>
+        <p class="text-sm text-base-content/70">§07's "Migrate the offline stub + tests" item touches the no-API-key fallback path (<code>nl2sql.py</code>) that's documented as the app's "always answers" guarantee, plus 6 dbt tests and the smoke test. Underestimating this is the biggest execution risk in the whole plan — size it properly before committing to a timeline.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">Sum/count-based growth is less outlier-robust than the median it replaces</h3>
+        <p class="text-sm text-base-content/70">Today's <code>percentile_cont</code> median was a deliberate choice — robust to a handful of outlier sales. Growth/rolling-average computed from <code>total_sale_value / n_sold</code> is a mean, which one $8M sale in a thin postcode can swing noticeably. Median stays in the summary marts for "typical price" questions; only the composable metrics (growth, rolling average) use the mean — worth stating that distinction explicitly in the agent prompt so it doesn't blur the two.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">Retry budget adds worst-case latency and cost</h3>
+        <p class="text-sm text-base-content/70">§06's fix directly trades against this plan's original question. Up to <code>max_sql_attempts</code>× the DB round trips and LLM turns per question in the worst case. Needs a real number from §07's benchmark before picking the budget size (§09 Decision 3).</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">Monthly buckets will often be thin</h3>
+        <p class="text-sm text-base-content/70">A small postcode might see 0–2 sales in a given month. Mitigate by always surfacing <code>n_sold</code>/<code>n_rented</code> next to any monthly figure and teaching the agent to say "not enough data that month" rather than report a shaky number.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">Full street address exposure needs a licensing glance</h3>
+        <p class="text-sm text-base-content/70"><code>house_no</code>/<code>street_name</code>/<code>unit_no</code> (§02, reversed to "bring in") would let the agent print a full address. Public Valuer-General data, not PII, but worth a quick terms-of-use check before shipping.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-3 gap-1">
+        <h3 class="card-title text-sm">A richer schema doesn't guarantee better SQL</h3>
+        <p class="text-sm text-base-content/70">Teaching the agent calculation patterns (§05) and giving it retries (§06) raises the ceiling but not the floor — it can still write a wrong formula, just get more chances to. The eval journeys in §07 matter as much as the guardrails do.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- DECISIONS -->
+  <section id="decisions" class="space-y-5 scroll-mt-6">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">09</span> · Decisions to lock</h2>
+    <p class="text-base-content/70 max-w-3xl">Grain (monthly), the column list (§02), the two-tier architecture, and the marts redesign are already decided from your review. What's left:</p>
+
+    <!-- Decision 1 -->
+    <form class="card card-border bg-base-100" data-lavish-question="migration"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('migration'); if(v) window.lavish.queuePrompt('Decision 1 (marts migration path): '+v, {tag:'decision', text:'1 · Migration path: '+v, element:event.currentTarget, data:{question:'migration',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">1 · How to cut over from the old marts to the redesigned ones</h3>
+        <p class="text-sm text-base-content/60">§07/§08 flagged this as the biggest execution risk — worth deciding deliberately, not defaulting.</p>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="migration" value="Replace outright in one PR: rewrite the marts, nl2sql.py, all affected tests, and the smoke test together" class="radio radio-primary mt-1"><span class="text-sm"><strong>Replace outright ⭐</strong> — one coordinated change, no time spent supporting two mart shapes at once.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="migration" value="Add the new summary marts alongside the old growth/yield marts temporarily; cut nl2sql.py and tests over once the new marts pass evals, then remove the old ones" class="radio radio-primary mt-1"><span class="text-sm"><strong>Add alongside, cut over later</strong> — safer rollback path, but means running (and RLS-protecting) two mart generations for a while.</span></label>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision 2 -->
+    <form class="card card-border bg-base-100" data-lavish-question="guardrails"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('guardrails'); if(v) window.lavish.queuePrompt('Decision 2 (guardrail hardening scope): '+v, {tag:'decision', text:'2 · Guardrails: '+v, element:event.currentTarget, data:{question:'guardrails',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">2 · Guardrail hardening scope for this phase</h3>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="guardrails" value="Ship statement_timeout fix + indexes + primary keys now; defer the EXPLAIN-based cost preflight to a later phase" class="radio radio-primary mt-1"><span class="text-sm"><strong>Timeout + indexes + keys now ⭐</strong> — closes the concrete gap found in §03, proportionate to the risk of a v1 with a handful of seeded users.</span></label>
+        <label class="flex gap-3 items-start cursor-pointer"><input type="radio" name="guardrails" value="Also build the EXPLAIN-based cost preflight before enabling record-grain (stg_sales/stg_rent) access" class="radio radio-primary mt-1"><span class="text-sm"><strong>Build the preflight too</strong> — more upfront work, but a stronger belt-and-suspenders guard before opening up the ~3M-row tables to agent-computed ad hoc metrics.</span></label>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <!-- Decision 3 -->
+    <form class="card card-border bg-base-100" data-lavish-question="retry_budget"
+      onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('retry_budget'); if(v) window.lavish.queuePrompt('Decision 3 (agent retry budget size): '+v, {tag:'decision', text:'3 · Retry budget: '+v, element:event.currentTarget, data:{question:'retry_budget',answer:v}});">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">3 · How many <code>run_sql</code> attempts per question (§06)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="retry_budget" value="2 attempts total" class="radio radio-primary mt-0.5"><span><strong>2 attempts</strong><br><span class="text-base-content/60">One retry only. Lowest worst-case latency/cost.</span></span></label>
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="retry_budget" value="3 attempts total" class="radio radio-primary mt-0.5"><span><strong>3 attempts ⭐</strong><br><span class="text-base-content/60">Enough room to fix a syntax error and re-check a suspicious result separately.</span></span></label>
+          <label class="flex gap-2 items-start cursor-pointer rounded-lg p-2 hover:bg-base-200"><input type="radio" name="retry_budget" value="Start with 3, but make it a per-request config so we can tune it after the benchmark in section 07" class="radio radio-primary mt-0.5"><span><strong>Defer to benchmark</strong><br><span class="text-base-content/60">Ship it configurable, pick the number after seeing real latency numbers against the full dataset.</span></span></label>
+        </div>
+        <div class="card-actions justify-end"><button type="submit" class="btn btn-primary btn-sm">Queue answer</button></div>
+      </div>
+    </form>
+
+    <div class="flex flex-wrap gap-3 items-center justify-end pt-2">
+      <span class="text-sm text-base-content/60">Queued your picks? Send them over and I'll start on §07.</span>
+      <button type="button" class="btn btn-primary" data-lavish-action onclick="window.lavish && window.lavish.sendQueuedPrompts && window.lavish.sendQueuedPrompts()">Send to Agent →</button>
+    </div>
+  </section>
+
+</main>
+
+<script type="module">
+  import { File } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+
+  const theme = { light: "github-light", dark: "github-dark" };
+  const options = { theme, themeType: "dark", overflow: "wrap" };
+
+  const exampleFile = {
+    name: "agent-generated.sql",
+    contents:
+`-- "What's the 12-month rolling average sale price in postcode 2026, houses?"
+select
+  month,
+  sum(total_sale_value) over w / nullif(sum(n_sold) over w, 0) as rolling_12m_avg_price
+from marts.mart_sales_summary
+where postcode = '2026' and property_type = 'house'
+window w as (order by month rows between 11 preceding and current row)
+order by month;
+
+-- "What's the 10-year growth in median price for that same postcode/type?"
+select
+  (recent.median_price - past.median_price) / nullif(past.median_price, 0) * 100 as growth_pct
+from marts.mart_sales_summary recent
+join marts.mart_sales_summary past
+  on recent.postcode = past.postcode and recent.property_type = past.property_type
+where recent.postcode = '2026' and recent.property_type = 'house'
+  and recent.month = date_trunc('month', now())::date
+  and past.month = date_trunc('month', now())::date - interval '10 years';
+
+-- "Current gross yield for that postcode/type?"
+select
+  s.postcode, s.property_type,
+  round((r.total_weekly_rent / nullif(r.n_rented, 0)) * 52
+    / nullif(s.total_sale_value / nullif(s.n_sold, 0), 0) * 100, 2) as gross_yield_pct
+from marts.mart_sales_summary s
+join marts.mart_rent_summary r
+  on r.postcode = s.postcode and r.property_type = s.property_type and r.month = s.month
+where s.postcode = '2026' and s.property_type = 'house'
+order by s.month desc
+limit 1;
+`,
+  };
+
+  new File(options).render({
+    containerWrapper: document.querySelector("#sql-example"),
+    file: exampleFile,
+  });
+</script>
+</body>
+</html>

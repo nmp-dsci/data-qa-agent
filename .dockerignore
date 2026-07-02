@@ -1,0 +1,11 @@
+# Root build context (used by services/db-migrate/Dockerfile).
+.git
+.lavish
+ai_plans
+node_modules
+frontend/node_modules
+frontend/dist
+**/.venv
+**/__pycache__
+**/.mypy_cache
+**/.ruff_cache

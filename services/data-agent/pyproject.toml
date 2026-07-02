@@ -1,0 +1,36 @@
+[project]
+name = "data-agent"
+version = "0.1.0"
+description = "data-qa-agent data agent: NL to governed SQL over the datasets"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "pydantic-settings>=2.5",
+    "logfire[fastapi,httpx]>=4.37.0",
+]
+
+[project.optional-dependencies]
+# Pluggable LLM path (Decision G). Enable with: uv sync --extra llm + set
+# DEEPSEEK_API_KEY (default) or ANTHROPIC_API_KEY (LLM_PROVIDER=anthropic).
+# Falls back to the deterministic offline stub when no provider key is set.
+llm = [
+    "fastembed>=0.8.0",
+    "pydantic-ai-slim[anthropic,openai]>=2.3.0",
+]
+
+[dependency-groups]
+dev = ["mypy>=1.11", "pytest>=8.3.3", "ruff>=0.14.2"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]  # FastAPI dependency-injection uses Depends()/Header() in defaults

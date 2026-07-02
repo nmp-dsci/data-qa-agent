@@ -79,7 +79,7 @@ cleaned as (
       and sale_price ~ '^[0-9]+$'
       and sale_price::numeric between 10000 and 8000000  -- upper cap matches property_yield_20241003.py
       and contract_ymd ~ '^[0-9]{8}$'
-      and left(contract_ymd, 4)::int between 2010 and 2024
+      and left(contract_ymd, 4)::int between 2010 and extract(year from current_date)::int  -- upper bound tracks the latest data; current-year cap drops garbage far-future dates
 )
 select
     row_number() over (

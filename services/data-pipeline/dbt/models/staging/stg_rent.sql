@@ -48,7 +48,7 @@ cleaned as (
       and weekly_rent::numeric > 0
       and lodgement_dt ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
       and coalesce(postcode, '') <> ''
-      and left(lodgement_dt, 4)::int between 2010 and 2024
+      and left(lodgement_dt, 4)::int between 2010 and extract(year from current_date)::int  -- upper bound tracks the latest data; current-year cap drops garbage far-future dates
 )
 select
     row_number() over (

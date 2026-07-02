@@ -48,6 +48,26 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Ad hoc: serves the dbt docs UI (lineage graph, model/column descriptions,
+  # source freshness) for reviewing raw -> staging -> marts. Not part of `make
+  # up` (profile-gated) — run `make pipeline-docs` after `make pipeline`.
+  pipeline-docs:
+    profiles: ["docs"]
+    build:
+      context: .
+      dockerfile: services/data-pipeline/Dockerfile
+    command:
+      [
+        "dbt", "docs", "serve",
+        "--host", "0.0.0.0", "--port", "8080", "--no-browser",
+        "--project-dir", "dbt", "--profiles-dir", "dbt",
+      ]
+    # Not :ro — `dbt docs serve` writes its index.html into target/ before serving.
+    volumes:
+      - dbt_target:/app/dbt/target
+    ports:
+      - "8180:8080"
+
   backend-api:
     build: ./services/backend-api
     environment:

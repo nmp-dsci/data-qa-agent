@@ -1,4 +1,4 @@
-.PHONY: help up down reset logs ps samples migrate pipeline pipeline-full smoke
+.PHONY: help up down reset logs ps samples migrate pipeline pipeline-full pipeline-docs smoke
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
@@ -6,6 +6,7 @@ help:
 	@echo "make migrate       - run the Alembic migration job on its own (against a running db)"
 	@echo "make pipeline      - run the dlt + dbt pipeline on the SAMPLE data (against a running db)"
 	@echo "make pipeline-full - run the pipeline on the FULL data/ CSVs (516MB/63MB — slower)"
+	@echo "make pipeline-docs - serve the dbt docs UI (lineage, raw->staging->marts) at localhost:8180"
 	@echo "make down          - stop the stack"
 	@echo "make reset         - stop and wipe the database volume (re-runs migrations on next up)"
 	@echo "make logs          - tail logs"
@@ -24,6 +25,10 @@ pipeline:
 
 pipeline-full:
 	docker compose run --rm --build -e PIPELINE_SOURCE=full pipeline
+
+pipeline-docs:
+	@echo "dbt docs UI: http://localhost:8180 (Ctrl+C to stop). Run 'make pipeline' first so target/ is fresh."
+	docker compose --profile docs run --rm --build --service-ports pipeline-docs
 
 up:
 	docker compose up --build

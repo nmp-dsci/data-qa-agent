@@ -32,6 +32,8 @@ CURATED_SCHEMA_DOC = f"""\
 Three marts describe the NSW property market by postcode.
 
 Table {SALES_MART} — sale-price growth by postcode + property_type (dataset nsw_sales).
+Answers: which suburbs/postcodes had the fastest house price growth, how much
+did unit prices rise in a suburb, rank postcodes by sale price growth.
 Columns:
   postcode (text)             — JOIN key
   suburb (text)                — dominant suburb name for the postcode; a label, not a join key
@@ -42,6 +44,8 @@ Columns:
   n_sales (int)
 
 Table {RENT_MART} — weekly-rent growth by postcode + property_type (dataset nsw_rent).
+Answers: which suburbs/postcodes saw the biggest rent increases, how has
+weekly rent changed for units vs houses in a suburb.
 Columns:
   postcode (text)             — JOIN key
   suburb (text)
@@ -54,6 +58,8 @@ Columns:
 Table {YIELD_MART} — gross rental yield by postcode + property_type + year
 (spans both nsw_sales and nsw_rent). One row per year (a time series, not a
 first-vs-last window like the growth marts).
+Answers: which suburbs/postcodes have the best rental yield, what's the yield
+trend for a postcode over time, compare yield between houses and units.
 Columns:
   postcode (text)             — JOIN key
   suburb (text)

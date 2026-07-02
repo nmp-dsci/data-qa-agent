@@ -92,6 +92,13 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
   post-hook, so the agent JOINs them on `suburb` for the "top growth suburbs" view. Runs on the small committed
   sample by default (`data/samples/`); `make pipeline-full` loads the full CSVs (`data/*.csv`, gitignored).
   The agent reads the dbt manifest (`get_schema()`) to ground the LLM. Secrets come from `.env`, not Key Vault.
+  dbt tests run as part of `build`: structural tests (`not_null`, uniqueness) plus use-case sanity tests
+  (`dbt/tests/assert_*_has_coverage.sql`, `assert_growth_pct_*`, `assert_yield_pct_*`) that fail the pipeline if
+  a mart can't actually support the question type it exists for (too few postcodes, growth/yield out of a sane
+  range). Each mart's `_marts.yml` description states the question types it answers, verified by those tests —
+  the same text `get_schema()` grounds the agent in, so agent capability and tested capability can't drift
+  apart. Review raw → staging → marts with `make pipeline-docs` (dbt docs UI, lineage + column docs at
+  `:8180`) or by querying Postgres directly (`raw`/`staging`/`marts` schemas).
 - **Note:** the dev DB publishes host port **5434** (5432/5433 were taken by other local containers); internal
   networking still uses `db:5432`.
 

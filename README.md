@@ -121,7 +121,16 @@ docker-compose.yml      the local dev stack;  Makefile has the shortcuts
 - `dbt docs generate` writes the manifest the agent reads (`get_schema()`), grounding the LLM in the real marts.
 
 Run on the sample with `make pipeline`, on the full data with `make pipeline-full`. dbt tests run as part of
-`dbt build`.
+`dbt build` — structural (`not_null`, uniqueness in `dbt/tests/assert_*_unique_*.sql`) and use-case sanity
+checks (`dbt/tests/assert_*_has_coverage.sql`, `assert_growth_pct_*`, `assert_yield_pct_*`) that assert each
+mart actually has enough postcodes and sane values to answer the questions it's meant for — a build fails if a
+mart can't support its use case, not just if it's malformed.
+
+**Reviewing raw → staging → marts:** run `make pipeline` (or `-full`) then `make pipeline-docs` to serve the
+dbt docs UI at http://localhost:8180 — lineage graph, every model's SQL, and column descriptions (the same
+text `get_schema()` feeds the agent) for `raw` sources through `staging`/intermediate to `marts`. To inspect
+actual rows/counts at any layer, connect to Postgres directly (`localhost:5434`, schemas `raw`/`staging`/`marts`
+— see Ports below).
 
 ## Admin Dashboard
 

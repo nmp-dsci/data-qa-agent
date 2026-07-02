@@ -9,6 +9,11 @@ models:
       Join to mart_rent_growth or mart_property_yield on (postcode, property_type)
       to compare sales, rent, and yield together — suburb is a label, not the
       join key (postcode<->suburb is not 1:1 in this data).
+      Answers questions like: "which suburbs/postcodes had the fastest house
+      price growth", "how much did unit prices rise in <suburb>", "rank
+      postcodes by sale price growth". Verified by
+      assert_sales_growth_has_coverage (enough postcodes to rank) and
+      assert_growth_pct_not_below_negative_100 (growth figures are sane).
     columns:
       - name: postcode
         description: Postcode. Join key across the property marts.
@@ -38,6 +43,11 @@ models:
       property_type); property_type is 'house', 'unit', or 'ALL' (blended).
       Belongs to the `nsw_rent` dataset (RLS-scoped). Join to mart_sales_growth
       or mart_property_yield on (postcode, property_type).
+      Answers questions like: "which suburbs/postcodes saw the biggest rent
+      increases", "how has weekly rent changed for units vs houses in
+      <suburb>". Verified by assert_rent_growth_has_coverage (enough postcodes
+      to rank) and assert_growth_pct_not_below_negative_100 (growth figures
+      are sane).
     columns:
       - name: postcode
         description: Postcode. Join key across the property marts.
@@ -68,6 +78,11 @@ models:
       property_type, year); property_type is 'house', 'unit', or 'ALL' (blended).
       Spans both datasets — requires nsw_sales AND nsw_rent access (RLS). Filter
       to the latest year for "current" yield, or compare years for a trend.
+      Answers questions like: "which suburbs/postcodes have the best rental
+      yield", "what's the yield trend for <postcode> over time", "compare
+      yield between houses and units". Verified by assert_yield_has_coverage
+      (enough postcodes to rank) and assert_yield_pct_in_sane_range (yield
+      figures are sane).
     columns:
       - name: postcode
         description: Postcode. Join key across the property marts.

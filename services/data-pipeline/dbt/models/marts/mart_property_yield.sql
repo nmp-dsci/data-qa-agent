@@ -5,24 +5,32 @@
   )
 }}
 
--- Gross rental yield by postcode + property_type + year: (median weekly rent *
--- 52) / median sale price, as a percentage. Implements the ratio calculation in
--- docs/property_data/property_yield_20241003.py, joining sales and rent on
--- (postcode, property_type, year) — the correct grain per that script, since
--- rent has no suburb and postcode<->suburb is not 1:1 (see int_postcode_geo.sql).
--- One row per (postcode, property_type, year); property_type is 'house', 'unit',
--- or 'ALL' (blended). Spans both datasets, so RLS requires nsw_sales AND nsw_rent.
+-- Sales + rent summary building blocks pre-joined per postcode + SUBURB +
+-- property_type + month. Spans both datasets, so RLS requires nsw_sales AND
+-- nsw_rent. No precomputed gross_yield_pct — the agent computes yield (and any
+-- other ratio) as (median_rent * 52 / median_price) * 100, or the
+-- volume-weighted (total_weekly_rent/n_rented) / (total_sale_value/n_sold), at
+-- whatever window the question needs.
+--
+-- Grain is suburb-level because price is: suburb comes from the sales side
+-- (mart_sales_summary), which has a true per-suburb price. Rent has no suburb
+-- (see mart_rent_summary), so each suburb in a postcode is joined to that
+-- postcode's shared rent — i.e. the rent columns are a postcode-level figure
+-- repeated across the postcode's suburbs. That's correct for a yield RATIO
+-- (per-suburb price vs the postcode's rent), but it means the rent columns
+-- must NOT be summed across suburbs of a postcode (they'd multiply). Sum rent
+-- from mart_rent_summary instead when you need a rent total.
 select
-    g.suburb,
     s.postcode,
+    s.suburb,
     s.property_type,
-    s.year,
+    s.month,
+    s.total_sale_value,
+    s.n_sold,
     s.median_price,
-    r.median_rent,
-    round((r.median_rent * 52 / s.median_price * 100)::numeric, 2) as gross_yield_pct,
-    s.n as n_sales,
-    r.n as n_bonds
-from {{ ref('int_sales_yearly') }} s
-join {{ ref('int_rent_yearly') }} r
-    on r.postcode = s.postcode and r.property_type = s.property_type and r.year = s.year
-join {{ ref('int_postcode_geo') }} g on g.postcode = s.postcode
+    r.total_weekly_rent,
+    r.n_rented,
+    r.median_rent
+from {{ ref('mart_sales_summary') }} s
+join {{ ref('mart_rent_summary') }} r
+    on r.postcode = s.postcode and r.property_type = s.property_type and r.month = s.month

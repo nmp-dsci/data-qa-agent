@@ -101,10 +101,25 @@ def _check(exp: Any, *, token: str | None, login_status: int, ask_result: dict |
         elif exp == "sql_is_select_only":
             assert ask_result is not None
             sql = (ask_result.get("sql") or "").lower().lstrip()
-            assert sql.startswith("select"), f"expected a SELECT, got: {sql[:40]!r}"
+            # Growth/yield questions require a CTE now (no precomputed
+            # growth%/yield% column) — WITH is as guardrail-approved as SELECT.
+            assert sql.startswith("select") or sql.startswith("with"), (
+                f"expected a SELECT or CTE, got: {sql[:40]!r}"
+            )
         elif exp == "no_rows_or_access_denied":
             assert ask_result is not None
-            assert ask_result["row_count"] == 0, "expected zero rows (RLS isolation)"
+            # Zero rows is the common case, but a retry-driven follow-up query
+            # (e.g. checking min/max month after a zero-rows result) can return
+            # a row of NULLs without leaking any real data — isolation still
+            # held, just not as a literal zero row_count.
+            rows = ask_result.get("rows") or []
+            no_real_data = ask_result["row_count"] == 0 or all(
+                v is None for row in rows for v in row
+            )
+            assert no_real_data, f"expected no real data (RLS isolation), got rows: {rows}"
+        elif exp == "chart_present":
+            assert ask_result is not None
+            assert isinstance(ask_result.get("chart"), dict), "expected a chart in the response"
         else:
             raise AssertionError(f"unknown expectation: {exp!r}")
         return
@@ -120,5 +135,17 @@ def _check(exp: Any, *, token: str | None, login_status: int, ask_result: dict |
         haystack = (ask_result["answer"] + " " + " ".join(ask_result["columns"])).lower()
         for term in value:
             assert term.lower() in haystack, f"expected mention of {term!r}"
+    elif key == "chart_mark":
+        assert ask_result is not None
+        chart = ask_result.get("chart") or {}
+        mark = chart.get("mark")
+        mark_type = mark.get("type") if isinstance(mark, dict) else mark
+        assert mark_type == value, f"expected chart mark {value!r}, got {mark_type!r}"
+    elif key == "chart_encoding_channels":
+        assert ask_result is not None
+        chart = ask_result.get("chart") or {}
+        encoding = chart.get("encoding") or {}
+        missing = [c for c in value if c not in encoding]
+        assert not missing, f"chart encoding missing channels: {missing}"
     else:
         raise AssertionError(f"unknown expectation: {exp!r}")

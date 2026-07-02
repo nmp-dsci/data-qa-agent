@@ -8,32 +8,28 @@ macro-paths: ["macros"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
-vars:
-  # Minimum rows in a (postcode, property_type, year) bucket to trust that
-  # year's median. NSW sale records can include split/partial-interest line
-  # items (same property, same date, wildly different fractional prices) —
-  # a low threshold lets a single such artifact dominate a thin bucket's
-  # median (e.g. one postcode's 2010 bucket had 6 rows from ONE split
-  # settlement, pricing a house at $41k and producing a bogus +2628% "growth"
-  # figure). 15 suppresses that class of outlier while still keeping most
-  # postcode/year coverage.
-  min_sales_year: 15
-  min_rent_year: 15
-
 models:
   nsw_property:
-    # Materialized as tables, not views: each staging/intermediate model is
-    # referenced multiple times downstream (e.g. int_sales_yearly is self-joined
-    # for both first_year and last_year). Views get inlined per reference, which
-    # re-runs the full percentile_cont aggregation over the raw ~2.7M rows every
-    # time — materializing computes each layer once and reuses the (much
-    # smaller) result.
+    # Materialized as tables, not views: each layer is referenced multiple times
+    # downstream and the summary marts run percentile_cont over the raw ~3M-row
+    # staging tables. Views get inlined per reference, re-running that aggregation
+    # every time — materializing computes each layer once and reuses the result.
+    #
+    # No minimum-count var any more: the summary marts keep every bucket (no
+    # locality dropped for being small) and expose n_sold/n_rented so a query
+    # can pick its own reliability threshold. See mart_sales_summary.sql.
     staging:
       +schema: staging
       +materialized: table
+      # Agent-queryable: get_schema() grounds the LLM in any model tagged this
+      # way, regardless of schema — not just schema == "marts". stg_sales and
+      # stg_rent get it here; int_postcode_geo (intermediate) sets the tag on
+      # itself, since it's now the suburb<->postcode resolver the agent needs.
+      +tags: ['agent_queryable']
     intermediate:
       +schema: staging
       +materialized: table
     marts:
       +schema: marts
       +materialized: table
+      +tags: ['agent_queryable']

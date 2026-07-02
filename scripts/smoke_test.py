@@ -41,6 +41,25 @@ def ask(token: str, question: str) -> dict:
     return _post("/ask", {"question": question}, token=token)
 
 
+def _is_select_shaped(sql: str) -> bool:
+    """SELECT, or a CTE (WITH ...) — both are guardrail-approved read-only shapes.
+    Growth/yield questions now require a CTE (no precomputed growth%/yield%
+    column), so a plain SELECT is no longer the only valid shape."""
+    s = sql.lower().lstrip()
+    return s.startswith("select") or s.startswith("with")
+
+
+def _no_real_data(result: dict) -> bool:
+    """True if RLS isolation held: either zero rows, or every returned value is
+    NULL. The agent can retry a zero-rows result with a follow-up query (e.g.
+    checking min/max month) that itself returns a row of NULLs without leaking
+    any real sales/rent figures — that's still isolation holding, just not a
+    literal zero row_count."""
+    if result["row_count"] == 0:
+        return True
+    return all(v is None for row in result["rows"] for v in row)
+
+
 def main() -> int:
     failures = 0
 
@@ -59,7 +78,7 @@ def main() -> int:
     print(f"     answer: {r1['answer'][:90]}")
     check("user1 gets rows back", r1["row_count"] > 0, f"(row_count={r1['row_count']})")
     check("user1 answer is non-empty", bool(r1["answer"].strip()))
-    check("sql is a SELECT", (r1.get("sql") or "").lower().lstrip().startswith("select"))
+    check("sql is a SELECT or CTE", _is_select_shaped(r1.get("sql") or ""))
     check(
         "answer combines sales + rent growth",
         {"sales_growth_pct", "rent_growth_pct"} <= set(r1.get("columns", [])),
@@ -70,7 +89,9 @@ def main() -> int:
     r2 = ask(t2, growth_q)
     print(f"     answer: {r2['answer'][:90]}")
     check(
-        "user2 sees zero rows (isolation)", r2["row_count"] == 0, f"(row_count={r2['row_count']})"
+        "user2 sees zero rows or only NULLs (isolation)",
+        _no_real_data(r2),
+        f"(row_count={r2['row_count']})",
     )
 
     print("3. admin asks a count question -> sees data")
@@ -83,7 +104,7 @@ def main() -> int:
     ry = ask(t1, "What are the best suburbs for rental yield?")
     print(f"     answer: {ry['answer'][:90]}")
     check("user1 gets yield rows back", ry["row_count"] > 0, f"(row_count={ry['row_count']})")
-    check("yield sql is a SELECT", (ry.get("sql") or "").lower().lstrip().startswith("select"))
+    check("yield sql is a SELECT or CTE", _is_select_shaped(ry.get("sql") or ""))
     check("answer includes gross_yield_pct", "gross_yield_pct" in ry.get("columns", []))
 
     print("5. admin audit view includes query runs")

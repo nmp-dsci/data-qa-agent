@@ -13,6 +13,10 @@
 #   sql_is_select_only        the generated SQL is a single SELECT
 #   mentions: [a, b]          each term appears in the answer or a column name
 #   no_rows_or_access_denied  /ask returns zero rows (RLS isolation)
+#   chart_present              /ask returned a chart spec
+#   chart_mark: line           the chart's Vega-Lite mark is this type
+#   chart_encoding_channels: [x, y, color]   all listed encoding channels are present
+#                              (color present = multiple series, e.g. sale price + rent)
 
 journeys:
   - name: admin signs in and is recognised as admin
@@ -54,6 +58,24 @@ journeys:
     question: What are the best suburbs for rental yield?
     expect:
       - no_rows_or_access_denied
+
+  - name: user1 sees a time-series chart comparing sale price and rent trends
+    # Key acceptance test for the data pipeline refactor (marts redesigned as
+    # summary building blocks, no precomputed growth%): the agent must compute
+    # a month-by-month average itself (total_sale_value/n_sold,
+    # total_weekly_rent/n_rented) and combine both series into one chart —
+    # proving the richer, agent-computed grain actually reaches the UI, not
+    # just the SQL layer.
+    as_user: user1
+    question: >
+      Show me a chart of the average sale price and average rent over time,
+      month by month.
+    expect:
+      - agent_answers_successfully
+      - sql_is_select_only
+      - chart_present
+      - chart_mark: line
+      - chart_encoding_channels: [x, y, color]
 
   - name: unknown user cannot sign in
     as_user: nobody

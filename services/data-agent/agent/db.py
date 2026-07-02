@@ -36,6 +36,13 @@ async def run_select(sql: str, *, user_id: str) -> dict[str, Any]:
                 text("SELECT set_config('app.current_user_id', :uid, true)"),
                 {"uid": user_id or ""},
             )
+            # SET LOCAL (not a bind param — Postgres doesn't allow parameterizing
+            # this GUC) so a runaway or accidentally-unfiltered query against the
+            # ~3M-row staging tables can't hang the connection; scoped to this
+            # transaction only, same lifetime as the RLS session var above.
+            await conn.execute(
+                text(f"SET LOCAL statement_timeout = {settings.sql_statement_timeout_ms}")
+            )
             result = await conn.execute(text(safe))
             columns = list(result.keys())
             raw_rows = result.fetchmany(settings.max_rows)

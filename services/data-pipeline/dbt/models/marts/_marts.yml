@@ -1,108 +1,120 @@
 version: 2
 
 models:
-  - name: mart_sales_growth
+  - name: mart_sales_summary
     description: >
-      Residential sale-price growth by NSW postcode + property_type. One row per
-      (postcode, property_type); property_type is 'house', 'unit', or 'ALL'
-      (blended across both). Belongs to the `nsw_sales` dataset (RLS-scoped).
-      Join to mart_rent_growth or mart_property_yield on (postcode, property_type)
-      to compare sales, rent, and yield together — suburb is a label, not the
-      join key (postcode<->suburb is not 1:1 in this data).
-      Answers questions like: "which suburbs/postcodes had the fastest house
-      price growth", "how much did unit prices rise in <suburb>", "rank
-      postcodes by sale price growth". Verified by
-      assert_sales_growth_has_coverage (enough postcodes to rank) and
-      assert_growth_pct_not_below_negative_100 (growth figures are sane).
+      Sale summary building block for NSW: total sale value, count of sales,
+      and median price per (postcode, suburb, property_type, month).
+      property_type is 'house', 'unit', or 'ALL' (blended). Belongs to the
+      `nsw_sales` dataset (RLS-scoped). suburb is a real dimension taken from
+      the sale records — postcode <-> suburb is not 1:1 (postcode 2076 spans
+      Wahroonga, Normanhurst and North Wahroonga), so filter by suburb to get
+      one locality, or SUM total_sale_value / n_sold across a postcode's
+      suburbs to get the postcode total (both are additive). Holds no
+      precomputed growth% — total_sale_value / n_sold composes across any
+      re-aggregation window, so compute growth, rolling averages, or any
+      derived metric directly in your SQL. median_price is for "typical price"
+      questions and is more outlier-robust than the mean, but does NOT compose
+      across re-aggregation (time or suburb) — use total_sale_value/n_sold for
+      anything that rolls up. Every bucket with >=1 sale is kept (no locality
+      dropped for being small); filter WHERE n_sold >= N when a median needs to
+      be reliable. Answers: "10-year growth in <suburb>", "monthly price trend
+      for <suburb> by property type", "which suburbs had the fastest growth".
+      Verified by assert_sales_summary_has_coverage and
+      assert_sales_summary_unique_postcode_suburb_type_month.
     columns:
       - name: postcode
-        description: Postcode. Join key across the property marts.
+        description: Postcode. Join key to mart_rent_summary (with property_type, month).
         data_tests: [not_null]
       - name: suburb
-        description: Dominant suburb name for the postcode (most sales) — a label only.
+        description: Suburb/locality from the sale records — a real dimension, part of the grain.
+        data_tests: [not_null]
       - name: property_type
         description: "'house', 'unit', or 'ALL' (blended across both)."
         data_tests: [not_null]
-      - name: first_year
-        description: First year in the window with enough sales to measure.
-      - name: last_year
-        description: Last year in the window with enough sales to measure.
-      - name: first_median_price
-        description: Median sale price (AUD) in first_year.
-      - name: last_median_price
-        description: Median sale price (AUD) in last_year.
-      - name: sales_growth_pct
-        description: Percent change in median sale price from first_year to last_year.
+      - name: month
+        description: Calendar month (first-of-month date) the sales occurred in.
         data_tests: [not_null]
-      - name: n_sales
-        description: Number of sales contributing across the window.
+      - name: total_sale_value
+        description: Sum of sale_price (AUD) in this postcode/suburb/property_type/month.
+        data_tests: [not_null]
+      - name: n_sold
+        description: Number of sales in this bucket. Divide total_sale_value by this for the mean price; filter on it for reliability.
+        data_tests: [not_null]
+      - name: median_price
+        description: Median sale price (AUD) in this bucket. Outlier-robust, but doesn't compose across re-aggregation.
 
-  - name: mart_rent_growth
+  - name: mart_rent_summary
     description: >
-      Weekly-rent growth by NSW postcode + property_type. One row per (postcode,
-      property_type); property_type is 'house', 'unit', or 'ALL' (blended).
-      Belongs to the `nsw_rent` dataset (RLS-scoped). Join to mart_sales_growth
-      or mart_property_yield on (postcode, property_type).
-      Answers questions like: "which suburbs/postcodes saw the biggest rent
-      increases", "how has weekly rent changed for units vs houses in
-      <suburb>". Verified by assert_rent_growth_has_coverage (enough postcodes
-      to rank) and assert_growth_pct_not_below_negative_100 (growth figures
-      are sane).
+      Rent summary building block for NSW: total weekly rent, count of bonds,
+      and median rent per (postcode, property_type, month). property_type is
+      'house', 'unit', or 'ALL' (blended). Belongs to the `nsw_rent` dataset
+      (RLS-scoped). NO suburb column — raw.rent has no locality field, so rent
+      exists only at postcode level. To answer "rent in <suburb>", resolve the
+      suburb to its postcode(s) via int_postcode_geo (or mart_sales_summary),
+      then query rent by postcode. Same building-block design as
+      mart_sales_summary — sum/count, no precomputed growth%, every bucket
+      kept, filter on n_rented for reliability. Answers: "monthly rent trend
+      for postcode <x>", "biggest rent increases by postcode", "house vs unit
+      rent in a postcode". Verified by assert_rent_summary_has_coverage and
+      assert_rent_summary_unique_postcode_type_month.
     columns:
       - name: postcode
-        description: Postcode. Join key across the property marts.
+        description: Postcode. Join key to mart_sales_summary (with property_type, month).
         data_tests: [not_null]
-      - name: suburb
-        description: Dominant suburb name for the postcode (most sales) — a label only.
       - name: property_type
         description: "'house', 'unit', or 'ALL' (blended across both)."
         data_tests: [not_null]
-      - name: first_year
-        description: First year in the window with enough bonds to measure.
-      - name: last_year
-        description: Last year in the window with enough bonds to measure.
-      - name: first_median_rent
-        description: Median weekly rent (AUD) in first_year.
-      - name: last_median_rent
-        description: Median weekly rent (AUD) in last_year.
-      - name: rent_growth_pct
-        description: Percent change in median weekly rent from first_year to last_year.
+      - name: month
+        description: Calendar month (first-of-month date) the bonds were lodged in.
         data_tests: [not_null]
-      - name: n_bonds
-        description: Number of rental bonds contributing across the window.
+      - name: total_weekly_rent
+        description: Sum of weekly_rent (AUD) in this postcode/property_type/month.
+        data_tests: [not_null]
+      - name: n_rented
+        description: Number of bonds in this bucket. Divide total_weekly_rent by this for the mean rent; filter on it for reliability.
+        data_tests: [not_null]
+      - name: median_rent
+        description: Median weekly rent (AUD) in this bucket.
 
   - name: mart_property_yield
     description: >
-      Gross rental yield by NSW postcode + property_type + year: (median weekly
-      rent * 52) / median sale price, as a percentage. One row per (postcode,
-      property_type, year); property_type is 'house', 'unit', or 'ALL' (blended).
-      Spans both datasets — requires nsw_sales AND nsw_rent access (RLS). Filter
-      to the latest year for "current" yield, or compare years for a trend.
-      Answers questions like: "which suburbs/postcodes have the best rental
-      yield", "what's the yield trend for <postcode> over time", "compare
-      yield between houses and units". Verified by assert_yield_has_coverage
-      (enough postcodes to rank) and assert_yield_pct_in_sane_range (yield
-      figures are sane).
+      Sales + rent building blocks pre-joined per (postcode, suburb,
+      property_type, month) so a yield question doesn't need to join them
+      yourself. property_type is 'house', 'unit', or 'ALL'. Spans both datasets
+      — requires nsw_sales AND nsw_rent access (RLS). No precomputed
+      gross_yield_pct — compute it as (median_rent * 52 / median_price) * 100,
+      or volume-weighted from the totals/counts. suburb comes from the sales
+      side; rent has no suburb, so the rent columns are a POSTCODE-level figure
+      repeated across the postcode's suburbs — fine for a per-suburb yield
+      ratio, but do NOT sum the rent columns across suburbs (use
+      mart_rent_summary for rent totals). Answers: "best suburbs for rental
+      yield", "yield trend for <suburb> over time", "house vs unit yield".
+      Verified by assert_property_yield_has_coverage,
+      assert_property_yield_unique_postcode_suburb_type_month, and
+      assert_yield_pct_in_sane_range.
     columns:
       - name: postcode
-        description: Postcode. Join key across the property marts.
+        description: Postcode.
         data_tests: [not_null]
       - name: suburb
-        description: Dominant suburb name for the postcode (most sales) — a label only.
+        description: Suburb from the sales side — part of the grain.
+        data_tests: [not_null]
       - name: property_type
         description: "'house', 'unit', or 'ALL' (blended across both)."
         data_tests: [not_null]
-      - name: year
-        description: Calendar year the price/rent/yield were measured in.
+      - name: month
+        description: Calendar month (first-of-month date) the figures were measured in.
         data_tests: [not_null]
+      - name: total_sale_value
+        description: Sum of sale_price (AUD) that month for this suburb.
+      - name: n_sold
+        description: Number of sales contributing to total_sale_value that month.
       - name: median_price
-        description: Median sale price (AUD) that year.
+        description: Median sale price (AUD) that month for this suburb.
+      - name: total_weekly_rent
+        description: Sum of weekly_rent (AUD) that month — POSTCODE-level, repeated per suburb. Don't sum across suburbs.
+      - name: n_rented
+        description: Number of bonds that month — postcode-level, repeated per suburb.
       - name: median_rent
-        description: Median weekly rent (AUD) that year.
-      - name: gross_yield_pct
-        description: Gross rental yield percentage = (median_rent * 52 / median_price) * 100.
-        data_tests: [not_null]
-      - name: n_sales
-        description: Number of sales contributing to median_price that year.
-      - name: n_bonds
-        description: Number of rental bonds contributing to median_rent that year.
+        description: Median weekly rent (AUD) that month — postcode-level.

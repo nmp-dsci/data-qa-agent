@@ -41,6 +41,7 @@ export interface AdminUser {
   email: string;
   display_name: string;
   role: string;
+  last_active: string | null;
 }
 
 export interface AdminDataset {
@@ -49,6 +50,7 @@ export interface AdminDataset {
   name: string;
   status: string;
   row_count: number;
+  access_count: number;
 }
 
 export interface AdminQueryRun {
@@ -63,6 +65,8 @@ export interface AdminQueryRun {
   question: string;
   sql_text: string | null;
   error: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
 }
 
 let token: string | null = null;

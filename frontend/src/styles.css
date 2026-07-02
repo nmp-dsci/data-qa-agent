@@ -93,6 +93,9 @@ tbody tr:last-child td { border-bottom: none; }
 .metric span { display: block; color: var(--muted); font-size: 12px; }
 .metric strong { display: block; margin-top: 3px; font-size: 22px; }
 .wide-cell { min-width: 260px; white-space: normal; }
+.event-filters { display: flex; gap: 8px; margin-bottom: 8px; }
+.event-filters select { background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 8px; border-radius: 6px; font-size: 13px; }
 .event-list { display: grid; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .event-row { display: grid; grid-template-columns: 180px 1fr 120px; gap: 12px;
   padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }

@@ -67,7 +67,8 @@ live in code.
 
 ### Run fully locally
 
-**Built and working (Phase 0 slice + Phase 1 auth + Phase 2 migrations + Phase 2b pipeline + Phase 3 agent).**
+**Built and working (Phase 0 slice + Phase 1 auth + Phase 2 migrations + Phase 2b pipeline + Phase 3 agent +
+Phase 3b tracking/admin).**
 `make up` boots
 the whole app on `localhost` with no Azure: Postgres+pgvector, a one-shot **Alembic migration job**, the
 **dlt+dbt pipeline job**, backend-api, data-agent, and frontend (see README for details). `migrate` runs
@@ -231,9 +232,11 @@ demonstrates isolation).
 
 Frontend fires an event at each journey step → `POST /events` → `events` table. Event types:
 `login_screen_view`, `login_success`/`login_failure`, `home_view`, `question_submitted`, `agent_started`,
-`agent_answered`/`agent_error`. An **admin-only** dashboard (role-gated) shows a live events feed, the users
-table, the datasets table, and Q&A/agent metrics from `query_runs` (latency, row counts, generated SQL).
-Same stream feeds Logfire.
+`agent_answered`/`agent_error`. An **admin-only** dashboard (role-gated) shows a live events feed (filterable
+by event type and user), the users table (role, last active — derived from `MAX(events.created_at)`), the
+datasets table (row counts, access — count of `dataset_access` grants), and Q&A/agent metrics from
+`query_runs` (latency, row counts, generated SQL, input/output token counts from the LLM path's
+`run.usage()` — null for the offline stub). Same stream feeds Logfire.
 
 ## Evaluation & user-journey tests
 
@@ -280,7 +283,7 @@ see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failur
 | **2 · Data + RLS** | Schema + Alembic migrations (all tables above), RLS policies, session-variable middleware, isolation tests | ✅ done |
 | **2b · Pipeline** | dlt CSV→raw; dbt raw→staging→marts with tests/docs; suburb-keyed growth marts; `datasets`/`dataset_access` populated | ✅ done |
 | **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ✅ done (DeepSeek default, Claude via `LLM_PROVIDER=anthropic`, pgvector memory, Logfire; streaming `/ask` deferred — HTTP contract stays request/response, Logfire gives step tracing instead) |
-| **3b · Tracking + admin** | Event taxonomy + `POST /events`, `events` table, admin-only dashboard (feed, users, datasets, metrics) | ⏳ partial |
+| **3b · Tracking + admin** | Event taxonomy + `POST /events`, `events` table, admin-only dashboard (feed, users, datasets, metrics) | ✅ done |
 | **4 · Azure** | Bicep: Container Apps env + job, ACR, PostgreSQL Flexible (+pgvector), Key Vault, managed identity | ⬜ scaffolded |
 | **5 · CI/CD** | GitHub Actions: build/push, Ruff/mypy/pytest + **journey evals** (pydantic_evals), deploy on merge to `main` | ⏳ partial |
 | **6 · Harden** | Front Door + WAF, rate limits, statement timeouts, LLM cost guards, dashboards | ⬜ todo |

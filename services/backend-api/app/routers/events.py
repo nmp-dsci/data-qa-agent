@@ -70,8 +70,10 @@ async def list_users(admin: CurrentUser = Depends(require_admin)) -> list[dict[s
             (
                 await conn.execute(
                     text(
-                        "SELECT id, username, email, display_name, role "
-                        "FROM app.users ORDER BY username"
+                        "SELECT u.id, u.username, u.email, u.display_name, u.role, "
+                        "MAX(e.created_at) AS last_active "
+                        "FROM app.users u LEFT JOIN app.events e ON e.user_id = u.id "
+                        "GROUP BY u.id ORDER BY u.username"
                     )
                 )
             )
@@ -87,7 +89,12 @@ async def list_datasets(admin: CurrentUser = Depends(require_admin)) -> list[dic
         rows = (
             (
                 await conn.execute(
-                    text("SELECT id, slug, name, status, row_count FROM app.datasets ORDER BY slug")
+                    text(
+                        "SELECT d.id, d.slug, d.name, d.status, d.row_count, "
+                        "(SELECT count(*) FROM app.dataset_access da WHERE da.dataset_id = d.id) "
+                        "AS access_count "
+                        "FROM app.datasets d ORDER BY d.slug"
+                    )
                 )
             )
             .mappings()
@@ -107,7 +114,8 @@ async def list_query_runs(
                     text(
                         "SELECT qr.id, qr.created_at, u.username, d.slug AS dataset, "
                         "qr.engine, qr.row_count, qr.latency_ms, qr.status, "
-                        "qr.question, qr.sql_text, qr.error "
+                        "qr.question, qr.sql_text, qr.error, "
+                        "qr.input_tokens, qr.output_tokens "
                         "FROM app.query_runs qr "
                         "JOIN app.users u ON u.id = qr.user_id "
                         "LEFT JOIN app.datasets d ON d.id = qr.dataset_id "

@@ -48,6 +48,8 @@ class AgentAnswer(BaseModel):
     row_count: int = 0
     chart: dict[str, Any] | None = None
     engine: str = "stub"
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 @app.get("/health")

@@ -149,6 +149,7 @@ async def maybe_answer_with_llm(question: str, *, user_id: str) -> dict[str, Any
         deps = _Deps(user_id=user_id)
         run = await agent.run(question, deps=deps)
         captured = deps.captured
+        usage = run.usage
         return {
             "answer": run.output,
             "sql": captured.get("sql"),
@@ -157,6 +158,8 @@ async def maybe_answer_with_llm(question: str, *, user_id: str) -> dict[str, Any
             "row_count": captured.get("row_count", 0),
             "chart": deps.chart,
             "engine": provider,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
         }
     except Exception as exc:  # noqa: BLE001 — never let the LLM path break the app
         print(f"[data-agent] {provider} path unavailable, using stub: {exc}")

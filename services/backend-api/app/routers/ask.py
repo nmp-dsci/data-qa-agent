@@ -34,6 +34,8 @@ class AskResponse(BaseModel):
     row_count: int = 0
     chart: dict[str, Any] | None = None
     engine: str = "stub"
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 async def _log_event(conn: Any, user_id: str, event_type: str, payload: dict | None = None) -> None:
@@ -99,6 +101,8 @@ async def ask(body: AskRequest, user: CurrentUser = Depends(get_current_user)) -
     sql = result.get("sql")
     engine = result.get("engine", "stub")
     row_count = int(result.get("row_count", 0))
+    input_tokens = result.get("input_tokens")
+    output_tokens = result.get("output_tokens")
 
     # tx2: record the assistant's answer and mark agent as finished.
     async with rls_connection(user.id) as conn:
@@ -124,10 +128,10 @@ async def ask(body: AskRequest, user: CurrentUser = Depends(get_current_user)) -
             text(
                 "INSERT INTO app.query_runs "
                 "(conversation_id, message_id, user_id, dataset_id, question, sql_text, "
-                "engine, row_count, latency_ms, status) "
+                "engine, row_count, latency_ms, status, input_tokens, output_tokens) "
                 "VALUES (:cid, :mid, :uid, "
                 "(SELECT id FROM app.datasets WHERE slug = :slug), :question, :sql, "
-                ":engine, :row_count, :lat, 'success')"
+                ":engine, :row_count, :lat, 'success', :in_tok, :out_tok)"
             ),
             {
                 "cid": conversation_id,
@@ -139,6 +143,8 @@ async def ask(body: AskRequest, user: CurrentUser = Depends(get_current_user)) -
                 "engine": engine,
                 "row_count": row_count,
                 "lat": latency_ms,
+                "in_tok": input_tokens,
+                "out_tok": output_tokens,
             },
         )
         await _log_event(
@@ -155,4 +161,6 @@ async def ask(body: AskRequest, user: CurrentUser = Depends(get_current_user)) -
         row_count=row_count,
         chart=result.get("chart"),
         engine=engine,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )

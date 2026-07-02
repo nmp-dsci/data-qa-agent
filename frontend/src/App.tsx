@@ -70,8 +70,11 @@ export default function App() {
   async function handleDevLogin(username: string) {
     setError(null);
     try {
-      enterApp(await loginDev(username));
+      const u = await loginDev(username);
+      track("login_success", { username: u.username });
+      enterApp(u);
     } catch (e) {
+      track("login_failure", { username, reason: (e as Error).message });
       setError((e as Error).message);
     }
   }
@@ -79,8 +82,11 @@ export default function App() {
   async function handleEntraLogin() {
     setError(null);
     try {
-      enterApp(await loginEntra());
+      const u = await loginEntra();
+      track("login_success", { username: u.username });
+      enterApp(u);
     } catch (e) {
+      track("login_failure", { reason: (e as Error).message });
       setError((e as Error).message);
     }
   }
@@ -237,6 +243,8 @@ function AdminDashboard() {
   const [queryRuns, setQueryRuns] = useState<AdminQueryRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [eventTypeFilter, setEventTypeFilter] = useState("");
+  const [eventUserFilter, setEventUserFilter] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -286,6 +294,7 @@ function AdminDashboard() {
                     <th>Name</th>
                     <th>Status</th>
                     <th>Rows</th>
+                    <th>Access</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -295,6 +304,7 @@ function AdminDashboard() {
                       <td>{d.name}</td>
                       <td>{d.status}</td>
                       <td>{d.row_count}</td>
+                      <td>{d.access_count}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -310,6 +320,7 @@ function AdminDashboard() {
                     <th>User</th>
                     <th>Email</th>
                     <th>Role</th>
+                    <th>Last active</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -318,6 +329,7 @@ function AdminDashboard() {
                       <td>{u.display_name}</td>
                       <td>{u.email}</td>
                       <td>{u.role}</td>
+                      <td>{u.last_active ? formatTime(u.last_active) : "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -335,6 +347,7 @@ function AdminDashboard() {
                     <th>Dataset</th>
                     <th>Rows</th>
                     <th>Latency</th>
+                    <th>Tokens (in/out)</th>
                     <th>Question</th>
                   </tr>
                 </thead>
@@ -346,6 +359,11 @@ function AdminDashboard() {
                       <td>{q.dataset ?? "-"}</td>
                       <td>{q.row_count}</td>
                       <td>{q.latency_ms ?? "-"} ms</td>
+                      <td>
+                        {q.input_tokens != null && q.output_tokens != null
+                          ? `${q.input_tokens}/${q.output_tokens}`
+                          : "-"}
+                      </td>
                       <td className="wide-cell">{q.question}</td>
                     </tr>
                   ))}
@@ -355,14 +373,35 @@ function AdminDashboard() {
           </section>
           <section>
             <h3>Events</h3>
+            <div className="event-filters">
+              <select value={eventTypeFilter} onChange={(e) => setEventTypeFilter(e.target.value)}>
+                <option value="">All event types</option>
+                {[...new Set(events.map((e) => e.event_type))].sort().map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <select value={eventUserFilter} onChange={(e) => setEventUserFilter(e.target.value)}>
+                <option value="">All users</option>
+                {[...new Set(events.map((e) => e.username ?? "anonymous"))].sort().map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="event-list">
-              {events.map((e) => (
-                <div key={e.id} className="event-row">
-                  <span>{formatTime(e.created_at)}</span>
-                  <strong>{e.event_type}</strong>
-                  <span>{e.username ?? "anonymous"}</span>
-                </div>
-              ))}
+              {events
+                .filter((e) => !eventTypeFilter || e.event_type === eventTypeFilter)
+                .filter((e) => !eventUserFilter || (e.username ?? "anonymous") === eventUserFilter)
+                .map((e) => (
+                  <div key={e.id} className="event-row">
+                    <span>{formatTime(e.created_at)}</span>
+                    <strong>{e.event_type}</strong>
+                    <span>{e.username ?? "anonymous"}</span>
+                  </div>
+                ))}
             </div>
           </section>
         </>

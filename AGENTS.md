@@ -67,7 +67,8 @@ live in code.
 
 ### Run fully locally
 
-**Built and working (Phase 0 slice + Phase 1 auth + Phase 2 migrations + Phase 2b pipeline).** `make up` boots
+**Built and working (Phase 0 slice + Phase 1 auth + Phase 2 migrations + Phase 2b pipeline + Phase 3 agent).**
+`make up` boots
 the whole app on `localhost` with no Azure: Postgres+pgvector, a one-shot **Alembic migration job**, the
 **dlt+dbt pipeline job**, backend-api, data-agent, and frontend (see README for details). `migrate` runs
 `alembic upgrade head` (schema + RLS + seed) then `pipeline` builds the growth marts from the committed sample;
@@ -84,8 +85,12 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
   `GET /auth/config` and uses MSAL (`@azure/msal-browser`) in `entra` mode — flipping needs **no rebuild**, only
   `AUTH_MODE=entra` + `ENTRA_*` config. A live tenant + SPA/API app registrations are needed for real login.
   Protected `/me` returns the current user in both modes.
-- **Agent:** answers offline via a deterministic NL→SQL stub (`agent/nl2sql.py`); set `ANTHROPIC_API_KEY`
-  (+ `--extra llm`) to use Claude (`agent/claude_agent.py`) — provider is abstracted (Decision G).
+- **Agent (Phase 3):** answers offline via a deterministic NL→SQL stub (`agent/nl2sql.py`) when no provider
+  key is set; otherwise the real Pydantic AI agent (`agent/llm_agent.py`) runs — DeepSeek by default
+  (`DEEPSEEK_API_KEY`), or Claude via `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` — provider is abstracted
+  (Decision G, `agent/provider.py`). Tools: `run_sql`, `make_chart` (Vega-Lite), `remember`; recall is
+  programmatic (pgvector cosine search over `app.user_memories`, RLS-scoped) seeded into the system prompt
+  every turn. Traced with Logfire (`LOGFIRE_TOKEN` optional — local-only tracing without it).
 - **Pipeline (Phase 2b):** the `pipeline` job (`services/data-pipeline/`) runs **dlt** (CSVs → `raw`) then
   **dbt build** (`raw → staging → marts`, tests + docs). The two datasets `nsw_sales` / `nsw_rent` build
   `marts.mart_sales_growth` / `marts.mart_rent_growth`, each one row per `suburb` and RLS-scoped by a dbt
@@ -173,8 +178,13 @@ CREATE POLICY tenant_isolation ON insights
 
 Pydantic AI agent that receives the question + schema, plans, and calls tools.
 
-**Tools (v1):** `get_schema()`, `run_sql(query)` (read-only, row-capped), `make_chart(spec)`,
-`profile_column(table, col)`.
+**Tools (v1):** `get_schema()`, `run_sql(query)` (read-only, row-capped), `make_chart(spec)`
+(model supplies mark/encoding only; `data.values` is spliced in server-side from the `run_sql`
+result — the model can't fabricate chart numbers), `remember(fact)` (writes to `user_memories`).
+`recall` is programmatic rather than a tool — the agent's system prompt is seeded with the
+current user's relevant memories (pgvector cosine search, distance-thresholded) before every run,
+so personalization doesn't depend on the model remembering to call a tool. `profile_column(table,
+col)` is **deferred** — not yet implemented.
 
 **Guardrails (non-negotiable):** read-only DB role · RLS always applies · `SELECT`-only allowlist with parse
 validation and statement timeout · token + row caps to bound cost and blast radius.
@@ -269,7 +279,7 @@ see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failur
 | **1 · Auth** | Entra JWT validation + JIT provisioning, MSAL login (dev stub fallback), protected `/me`, `/auth/config`, journey evals; 3 seeded users | ✅ done (live tenant pending) |
 | **2 · Data + RLS** | Schema + Alembic migrations (all tables above), RLS policies, session-variable middleware, isolation tests | ✅ done |
 | **2b · Pipeline** | dlt CSV→raw; dbt raw→staging→marts with tests/docs; suburb-keyed growth marts; `datasets`/`dataset_access` populated | ✅ done |
-| **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ⏳ partial (SQL stub + guardrails; manifest-grounded Claude path) |
+| **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ✅ done (DeepSeek default, Claude via `LLM_PROVIDER=anthropic`, pgvector memory, Logfire; streaming `/ask` deferred — HTTP contract stays request/response, Logfire gives step tracing instead) |
 | **3b · Tracking + admin** | Event taxonomy + `POST /events`, `events` table, admin-only dashboard (feed, users, datasets, metrics) | ⏳ partial |
 | **4 · Azure** | Bicep: Container Apps env + job, ACR, PostgreSQL Flexible (+pgvector), Key Vault, managed identity | ⬜ scaffolded |
 | **5 · CI/CD** | GitHub Actions: build/push, Ruff/mypy/pytest + **journey evals** (pydantic_evals), deploy on merge to `main` | ⏳ partial |

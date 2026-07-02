@@ -58,7 +58,7 @@ Three services + one database, matching the locked design (see `AGENTS.md` for t
 ```
    data-pipeline (dlt + dbt)  ──build──►  marts.*
         (raw → staging → marts)               ▲
-frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / Claude)
+frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / DeepSeek)
       :5230                     :8000                     :8100
                                    │                         │
                                    └──────► Postgres + pgvector (RLS) ◄──────┘
@@ -71,8 +71,9 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / C
 - **data-pipeline** — dlt ingests the CSVs into `raw`; dbt transforms `raw → staging → marts` (tests + docs),
   building the two suburb-keyed growth marts with RLS applied by post-hooks.
 - **data-agent** — turns the question into a single read-only `SELECT` (JOINing the marts on `suburb` for the
-  combined view), runs it under RLS, phrases the answer. Offline stub by default; Claude when a key is set,
-  grounded in the dbt manifest (Decision G).
+  combined view), runs it under RLS, phrases the answer, optionally renders a chart. Offline stub by default;
+  DeepSeek (or Claude) when a key is set, grounded in the dbt manifest, personalized by pgvector memory, traced
+  with Logfire (Decision G).
 - **Postgres** — one DB, schemas `app` / `raw` / `staging` / `marts`; RLS enforces who sees which rows.
 
 ### How a question flows
@@ -97,7 +98,7 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / C
 
 ```
 services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin endpoints
-services/data-agent/    NL→SQL stub + Claude path; read-only SQL under RLS with guardrails
+services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
 frontend/               React + Vite: login (dev stub or MSAL) + chat + event tracking
@@ -157,11 +158,24 @@ until then, `dev` mode is the working local experience.
 
 The `/me` endpoint returns the current user's profile in both modes.
 
-## Using Claude instead of the offline agent
+## Using the real LLM agent instead of the offline stub
 
 The agent answers **offline by default** via a deterministic NL→SQL stub, so the demo runs with no API key.
-To use Claude, put an `ANTHROPIC_API_KEY` in `.env` (see `.env.example`) and install the data-agent's `llm`
-extra. The provider sits behind an abstraction, so this is a config change (Decision G).
+To use the real agent, put a provider key in `.env` (see `.env.example`) and rebuild data-agent — `make up`
+already installs the data-agent's `llm` extra. The provider sits behind an abstraction (Decision G), selected
+by `LLM_PROVIDER`:
+
+- **`deepseek` (default)** — set `DEEPSEEK_API_KEY`.
+- **`anthropic`** — set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`.
+
+With a real provider, the agent also gets a `make_chart` tool (renders a Vega-Lite chart in the chat UI when
+useful) and per-user memory: it recalls relevant past preferences (pgvector cosine search over
+`app.user_memories`, RLS-scoped — a user's memory is isolated like their data) at the start of every question,
+and calls `remember` when you state an explicit preference (e.g. "I only care about units, not houses").
+
+Every agent run is traced with **Logfire** — tool calls, model requests, and (with `capture_all=True`) the raw
+HTTP payloads sent to the provider. Set `LOGFIRE_TOKEN` in `.env` to ship traces to Logfire Cloud; leave it
+empty to trace locally with no extra configuration.
 
 ## Troubleshooting
 

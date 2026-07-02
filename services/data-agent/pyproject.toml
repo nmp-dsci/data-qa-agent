@@ -9,12 +9,17 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.30",
     "pydantic-settings>=2.5",
+    "logfire[fastapi,httpx]>=4.37.0",
 ]
 
 [project.optional-dependencies]
-# Real Claude path (Decision G). Enable with: uv sync --extra llm  + set ANTHROPIC_API_KEY.
-# Falls back to the deterministic offline stub when absent.
-llm = ["pydantic-ai-slim[anthropic]>=0.0.14"]
+# Pluggable LLM path (Decision G). Enable with: uv sync --extra llm + set
+# DEEPSEEK_API_KEY (default) or ANTHROPIC_API_KEY (LLM_PROVIDER=anthropic).
+# Falls back to the deterministic offline stub when no provider key is set.
+llm = [
+    "fastembed>=0.8.0",
+    "pydantic-ai-slim[anthropic,openai]>=2.3.0",
+]
 
 [dependency-groups]
 dev = ["mypy>=1.11", "pytest>=8.3.3", "ruff>=0.14.2"]

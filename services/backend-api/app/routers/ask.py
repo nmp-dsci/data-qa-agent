@@ -32,6 +32,7 @@ class AskResponse(BaseModel):
     columns: list[str] = []
     rows: list[list[Any]] = []
     row_count: int = 0
+    chart: dict[str, Any] | None = None
     engine: str = "stub"
 
 
@@ -152,5 +153,6 @@ async def ask(body: AskRequest, user: CurrentUser = Depends(get_current_user)) -
         columns=result.get("columns", []),
         rows=result.get("rows", []),
         row_count=row_count,
+        chart=result.get("chart"),
         engine=engine,
     )

@@ -3,8 +3,9 @@
 The Phase-0/2b stand-in for the LLM: it recognises the sales/rent/yield intents,
 detects a house-vs-unit filter, builds a governed SELECT (including the
 sales<->rent JOIN keyed on postcode + property_type), and phrases an answer.
-When ANTHROPIC_API_KEY is set the Claude agent is used instead, and it authors
-the same kind of JOIN from the dbt-manifest schema (see claude_agent.py).
+When a provider key is configured (LLM_PROVIDER — see provider.py) the real
+LLM agent is used instead, and it authors the same kind of JOIN from the
+dbt-manifest schema (see llm_agent.py).
 """
 
 from __future__ import annotations

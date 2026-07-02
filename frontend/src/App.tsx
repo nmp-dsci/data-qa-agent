@@ -14,6 +14,7 @@ import {
   User,
 } from "./api";
 import { bootstrap, loadAuthConfig, loginDev, loginEntra, logout as authLogout } from "./auth";
+import { VegaChart } from "./VegaChart";
 
 interface ChatMsg {
   role: "user" | "assistant";
@@ -398,6 +399,7 @@ function ResultView({ result }: { result: AskResult }) {
         )}
       </div>
       {showSql && result.sql && <pre className="sql">{result.sql}</pre>}
+      {result.chart && <VegaChart spec={result.chart} />}
       {result.rows.length > 0 && (
         <div className="table-wrap">
           <table>

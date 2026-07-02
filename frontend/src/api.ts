@@ -23,6 +23,7 @@ export interface AskResult {
   columns: string[];
   rows: unknown[][];
   row_count: number;
+  chart: Record<string, unknown> | null;
   engine: string;
 }
 

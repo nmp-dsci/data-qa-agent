@@ -10,6 +10,9 @@ dependencies = [
     "asyncpg>=0.30",
     "pydantic-settings>=2.5",
     "logfire[fastapi,httpx]>=4.37.0",
+    # AST-based SQL guardrail (defense-in-depth over the regex denylist); the SQL
+    # editor turns arbitrary user-typed SQL into a first-class input.
+    "sqlglot>=25.0",
 ]
 
 [project.optional-dependencies]

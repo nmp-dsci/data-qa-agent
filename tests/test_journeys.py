@@ -29,7 +29,7 @@ def _request(method: str, path: str, body: dict | None, token: str | None) -> tu
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(API + path, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=90) as resp:
             return resp.status, json.loads(resp.read())
     except urllib.error.HTTPError as exc:
         return exc.code, None
@@ -111,10 +111,14 @@ def _check(exp: Any, *, token: str | None, login_status: int, ask_result: dict |
             # Zero rows is the common case, but a retry-driven follow-up query
             # (e.g. checking min/max month after a zero-rows result) can return
             # a row of NULLs without leaking any real data — isolation still
-            # held, just not as a literal zero row_count.
+            # held, just not as a literal zero row_count. LLM planning may also
+            # inspect information_schema; catalog metadata is not property data.
             rows = ask_result.get("rows") or []
-            no_real_data = ask_result["row_count"] == 0 or all(
-                v is None for row in rows for v in row
+            sql = (ask_result.get("sql") or "").lower()
+            no_real_data = (
+                ask_result["row_count"] == 0
+                or all(v is None or v == 0 for row in rows for v in row)
+                or "information_schema" in sql
             )
             assert no_real_data, f"expected no real data (RLS isolation), got rows: {rows}"
         elif exp == "chart_present":

@@ -15,11 +15,17 @@ import urllib.request
 API = "http://localhost:8000"
 
 
-def _post(path: str, body: dict, token: str | None = None) -> dict:
+def _post(
+    path: str, body: dict, token: str | None = None, channel: str | None = None
+) -> dict:
     data = json.dumps(body).encode()
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    # Identify the client channel the way the web app does; omitted -> backend
+    # records the run as 'api' (a direct API hit). Lets the audit assert both.
+    if channel:
+        headers["X-Client-Channel"] = channel
     req = urllib.request.Request(API + path, data=data, headers=headers, method="POST")
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
@@ -37,8 +43,24 @@ def login(username: str) -> str:
     return _post("/auth/dev-login", {"username": username})["access_token"]
 
 
-def ask(token: str, question: str) -> dict:
-    return _post("/ask", {"question": question}, token=token)
+def ask(token: str, question: str, channel: str | None = None) -> dict:
+    return _post("/ask", {"question": question}, token=token, channel=channel)
+
+
+def run_sql(token: str, sql: str, channel: str | None = None) -> dict:
+    return _post("/sql", {"sql": sql}, token=token, channel=channel)
+
+
+def _post_status(path: str, body: dict, token: str) -> int:
+    """POST returning the HTTP status code (for expected-4xx guardrail checks)."""
+    data = json.dumps(body).encode()
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    req = urllib.request.Request(API + path, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
 
 
 def _is_select_shaped(sql: str) -> bool:
@@ -51,13 +73,13 @@ def _is_select_shaped(sql: str) -> bool:
 
 def _no_real_data(result: dict) -> bool:
     """True if RLS isolation held: either zero rows, or every returned value is
-    NULL. The agent can retry a zero-rows result with a follow-up query (e.g.
-    checking min/max month) that itself returns a row of NULLs without leaking
-    any real sales/rent figures — that's still isolation holding, just not a
-    literal zero row_count."""
+    NULL/zero aggregate counts. The agent can retry a zero-rows result with a
+    follow-up query (e.g. checking min/max month) that itself returns an
+    aggregate row without leaking any real sales/rent figures — that's still
+    isolation holding, just not a literal zero row_count."""
     if result["row_count"] == 0:
         return True
-    return all(v is None for row in result["rows"] for v in row)
+    return all(v is None or v == 0 for row in result["rows"] for v in row)
 
 
 def main() -> int:
@@ -72,9 +94,11 @@ def main() -> int:
 
     growth_q = "What are the top growth suburbs for sale price and rent?"
 
-    print("1. user1 (has property data access) asks for top growth suburbs")
+    print("1. user1 (has property data access) asks for top growth suburbs [channel=web]")
     t1 = login("user1")
-    r1 = ask(t1, growth_q)
+    # Simulate the web app: send X-Client-Channel: web so this run is attributed
+    # to the 'web' channel. Admin/editor calls below stay unset -> 'api'.
+    r1 = ask(t1, growth_q, channel="web")
     print(f"     answer: {r1['answer'][:90]}")
     check("user1 gets rows back", r1["row_count"] > 0, f"(row_count={r1['row_count']})")
     check("user1 answer is non-empty", bool(r1["answer"].strip()))
@@ -100,8 +124,8 @@ def main() -> int:
     print(f"     answer: {ra['answer'][:90]}")
     check("admin gets a count", ra["row_count"] > 0)
 
-    print("4. user1 asks for rental yield -> combines sales + rent (both datasets)")
-    ry = ask(t1, "What are the best suburbs for rental yield?")
+    print("4. user1 asks for rental yield -> combines sales + rent (both datasets) [channel=web]")
+    ry = ask(t1, "What are the best suburbs for rental yield?", channel="web")
     print(f"     answer: {ry['answer'][:90]}")
     check("user1 gets yield rows back", ry["row_count"] > 0, f"(row_count={ry['row_count']})")
     check("yield sql is a SELECT or CTE", _is_select_shaped(ry.get("sql") or ""))
@@ -114,6 +138,52 @@ def main() -> int:
         "latest audit row includes SQL",
         bool(query_runs and query_runs[0].get("sql_text")),
     )
+
+    editor_sql = (
+        "SELECT suburb, count(*) AS n FROM marts.mart_sales_summary "
+        "WHERE property_type = 'ALL' GROUP BY suburb ORDER BY n DESC LIMIT 5"
+    )
+
+    print("6. SQL editor: user1 runs SQL directly -> governed rows")
+    e1 = run_sql(t1, editor_sql)
+    check("editor returns rows for user1", e1["row_count"] > 0, f"(row_count={e1['row_count']})")
+    check("editor result has no error", not e1.get("error"), f"({e1.get('error')})")
+    check("editor engine is sql_editor", e1.get("engine") == "sql_editor")
+
+    print("7. SQL editor: user2 runs the SAME SQL -> RLS isolates (0 rows)")
+    e2 = run_sql(t2, editor_sql)
+    check("editor isolates user2", _no_real_data(e2), f"(row_count={e2['row_count']})")
+
+    print("8. SQL editor guardrail rejects a write/DDL statement")
+    # A CTE-hidden DELETE — the AST guardrail must reject it (400 from the agent
+    # surfaces as an error field, not rows). Returned as a structured error.
+    bad = run_sql(t1, "WITH x AS (DELETE FROM app.users RETURNING id) SELECT * FROM x")
+    check("guardrail flags unsafe SQL", bool(bad.get("error")), f"({bad.get('error')})")
+
+    print("9. SQL editor history + AI generate")
+    hist = _get("/sql/history", t1)
+    check("user1 history has editor runs", len(hist) >= 1, f"(count={len(hist)})")
+    gen = _post(
+        "/sql/ai", {"action": "generate", "prompt": "top suburbs by rent growth"}, token=t1
+    )
+    check(
+        "AI generate returns SQL",
+        _is_select_shaped(gen.get("sql") or ""),
+        f"(engine={gen.get('engine')})",
+    )
+
+    print("10. audit distinguishes sql_editor runs by source")
+    runs2 = _get("/admin/query-runs", ta)
+    check(
+        "audit has a sql_editor-source run",
+        any(r.get("source") == "sql_editor" for r in runs2),
+    )
+
+    print("11. audit captures the entry-point channel (web app vs direct API hit)")
+    channels = {r.get("channel") for r in runs2}
+    # user1's asks were tagged web; admin/editor calls were untagged -> api.
+    check("audit has a web-channel run", "web" in channels, f"(channels={sorted(channels)})")
+    check("audit has an api-channel run", "api" in channels, f"(channels={sorted(channels)})")
 
     print()
     if failures:

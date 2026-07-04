@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Any, cast
 
 import httpx
 import jwt
@@ -43,7 +44,7 @@ def create_access_token(*, user_id: str, username: str, email: str, role: str) -
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_alg)
 
 
-def _decode_dev(token: str) -> dict:
+def _decode_dev(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_alg])
     except jwt.PyJWTError as exc:  # noqa: BLE001
@@ -88,7 +89,7 @@ class EntraVerifier:
         self._issuer = meta["issuer"]
         self._jwks_client = PyJWKClient(meta["jwks_uri"])
 
-    def _verify_sync(self, token: str) -> dict:
+    def _verify_sync(self, token: str) -> dict[str, Any]:
         assert self._jwks_client is not None  # noqa: S101 - guarded by _ensure_loaded
         signing_key = self._jwks_client.get_signing_key_from_jwt(token)
         return jwt.decode(
@@ -100,11 +101,11 @@ class EntraVerifier:
             options={"require": ["exp", "iss", "aud"]},
         )
 
-    async def verify(self, token: str) -> dict:
+    async def verify(self, token: str) -> dict[str, Any]:
         await self._ensure_loaded()
         try:
             # PyJWKClient + jwt.decode do blocking work; keep the loop free.
-            return await run_in_threadpool(self._verify_sync, token)
+            return cast(dict[str, Any], await run_in_threadpool(self._verify_sync, token))
         except jwt.PyJWTError as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
@@ -114,7 +115,7 @@ class EntraVerifier:
 _entra_verifier = EntraVerifier()
 
 
-async def _provision_entra_user(claims: dict) -> CurrentUser:
+async def _provision_entra_user(claims: dict[str, Any]) -> CurrentUser:
     """Just-in-time upsert an Entra identity into app.users, keyed by oid.
 
     Returns the app-local row so RLS (which compares app.users.id) and the

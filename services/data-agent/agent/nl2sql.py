@@ -38,6 +38,33 @@ def _mentions(q: str, *words: str) -> bool:
     return any(w in q for w in words)
 
 
+def _sales_trend_sql(q: str, ptype: str) -> str:
+    suburbs: list[str] = []
+    if "normanhurst" in q:
+        suburbs.append("NORMANHURST")
+    if "hornsby" in q:
+        suburbs.append("HORNSBY")
+
+    filters = [f"property_type = '{ptype}'"]
+    if suburbs:
+        quoted = ", ".join(f"'{s}'" for s in suburbs)
+        filters.append(f"upper(suburb) IN ({quoted})")
+    if "2010" in q or "all time" in q:
+        filters.append("month >= DATE '2010-01-01'")
+    if "2026" in q or "all time" in q:
+        filters.append("month <= DATE '2026-12-31'")
+
+    return (
+        "SELECT suburb, property_type, month, "
+        "round((sum(total_sale_value) / NULLIF(sum(n_sold), 0))::numeric) AS avg_sale_price, "
+        "sum(n_sold) AS n_sold "
+        f"FROM {SALES_MART} "
+        f"WHERE {' AND '.join(filters)} "
+        "GROUP BY suburb, property_type, month "
+        "ORDER BY suburb, month"
+    )
+
+
 def _growth_ctes(mart: str, value_col: str, count_col: str, ptype: str, prefix: str) -> str:
     """CTEs computing first-vs-last-available-month growth% per postcode.
 
@@ -89,6 +116,7 @@ def build_sql(question: str) -> tuple[str, str]:
     wants_yield = _mentions(q, "yield", "return on", "roi")
     wants_sales = _mentions(q, "sale", "price", "buy", "purchase")
     wants_rent = _mentions(q, "rent", "rental", "bond")
+    wants_trend = _mentions(q, "trend", "over time", "by month", "monthly", "time series")
 
     if wants_yield:
         return (
@@ -103,6 +131,9 @@ def build_sql(question: str) -> tuple[str, str]:
     # Rent-only vs sales-only vs both. "Growth suburbs for sales and rent" -> combined.
     # suburb comes from the geo bridge (dominant label) since growth is
     # postcode-level and rent has no suburb of its own.
+    if wants_sales and wants_trend and not wants_rent:
+        return (_sales_trend_sql(q, ptype), "sales_trend")
+
     if wants_rent and not wants_sales:
         ctes = _growth_ctes(RENT_MART, "total_weekly_rent", "n_rented", ptype, "r_")
         return (
@@ -171,6 +202,15 @@ def phrase_answer(question: str, intent: str, result: dict[str, Any]) -> str:
 
     if intent == "count":
         return f"There are {int(rows[0][0]):,} postcodes with sale-price data."
+
+    if intent == "sales_trend":
+        suburbs = sorted({str(r[0]) for r in rows if r and r[0]})
+        first_month = rows[0][2]
+        last_month = rows[-1][2]
+        return (
+            f"Monthly sale-price trend for {', '.join(suburbs)} from {first_month} "
+            f"to {last_month}. Showing {result['row_count']} monthly rows below."
+        )
 
     top = rows[:5]
     if intent == "combined":

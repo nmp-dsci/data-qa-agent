@@ -48,7 +48,7 @@ cleaned as (
       and weekly_rent::numeric > 0
       and lodgement_dt ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
       and coalesce(postcode, '') <> ''
-      and left(lodgement_dt, 4)::int between 2010 and extract(year from current_date)::int  -- upper bound tracks the latest data; current-year cap drops garbage far-future dates
+      and left(lodgement_dt, 4)::int >= 2010  -- lower bound only, no upper cap: the latest data always flows through
 )
 select
     row_number() over (
@@ -61,5 +61,13 @@ select
     property_type_code,
     property_type,
     bedrooms,
+    -- Banded bedroom count for the rent marts: 0,1,2,3,4 kept discrete, 5+ rolled
+    -- (the long tail of large/data-entry values), NULL -> 'unknown'. A stable set
+    -- of band labels so bedroom breakdowns stay consistent across questions.
+    case
+        when bedrooms is null then 'unknown'
+        when bedrooms >= 5 then '5+'
+        else bedrooms::text
+    end as bedroom_band,
     weekly_rent
 from cleaned

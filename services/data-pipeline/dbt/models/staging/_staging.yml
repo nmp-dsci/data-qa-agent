@@ -40,11 +40,11 @@ models:
         description: Sale price (AUD). Filtered to $10,000-$8,000,000 to exclude non-market transfers (see model SQL comments).
         data_tests: [not_null]
       - name: area_sqm
-        description: Land/property area in square metres, where the source value was numeric. Null if missing or unparseable — check area_band for a coarser, always-comparable cut.
+        description: "Land/property area in square metres, STANDARDISED across units: source hectare values (area_type 'H') are converted to sqm (x10,000), metre values ('M') kept as-is. Null if missing, unparseable, or the unit is unknown — check area_band for a coarser, always-comparable cut."
       - name: area_band
-        description: "Standardised size band: '<400', '400-700', '700-1000', or '1000+' sqm. Use this instead of bucketing area_sqm yourself, so band boundaries stay consistent across questions."
+        description: "Standardised size band over area_sqm: '<400', '400-700', '700-1000', '1000-5000', or '5000+' sqm (5000+ is genuine large/rural land). Null when area_sqm is null. Use this instead of bucketing area_sqm yourself, so band boundaries stay consistent across questions."
       - name: area_type
-        description: Source qualifier for how area_sqm was measured.
+        description: "Source unit for the raw area: 'H' (hectares) or 'M' (square metres). area_sqm is already standardised to sqm using this."
       - name: zoning
         description: "NSW planning zone code (e.g. R2, RU5, RU2) — lets you segment by land use, not just postcode."
       - name: house_no
@@ -87,6 +87,8 @@ models:
         data_tests: [not_null]
       - name: bedrooms
         description: Bedroom count, where the source value was numeric.
+      - name: bedroom_band
+        description: "Bedroom band: '0','1','2','3','4','5+', or 'unknown' (null bedrooms). Use this for consistent bedroom breakdowns; mart_rent_by_bedroom is grouped on it."
       - name: weekly_rent
         description: Weekly rent (AUD). Filtered to positive values only.
         data_tests: [not_null]

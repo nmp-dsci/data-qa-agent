@@ -15,6 +15,11 @@ RUN /app/.venv/bin/python -c \
     || true
 
 COPY agent ./agent
+# The Insight Playbook the agent greps at runtime (search_knowledge/
+# read_knowledge). Without it, knowledge_version() is "none" and every
+# search returns "No knowledge pages are available" — the agent silently
+# loses all its domain/analysis/presentation guidance.
+COPY knowledge ./knowledge
 
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8100

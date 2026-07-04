@@ -1,0 +1,47 @@
+# Report-structure evals (K5) — formalizes the scratch questions from eval.md.
+#
+# Each case runs the real /ask flow (as `as_user`) and asserts the answer comes
+# back as a well-formed InsightReport. These are the deterministic structural +
+# grounding checks; the LLM-judge quality layer is deferred (§08 K5). Run via
+# tests/test_report_journeys.py against a live stack (`make up`); skipped when the
+# stack is unreachable, so `uv run pytest` stays green without Docker.
+#
+# Expectations:
+#   report_present        the response carries a structured report
+#   report_well_formed    report_structural_issues() finds nothing
+#   has_headline          at least one headline tile
+#   has_insight           at least one insight
+#   trend_chart           a main_chart is present (for trend questions)
+#   mentions: [a, b]      each term appears in the summary or a query column
+
+cases:
+  - name: hornsby sale price trend by property type
+    as_user: user1
+    question: give me trend of average sale price by month for hornsby by property type
+    expect:
+      - report_present
+      - report_well_formed
+      - has_headline
+      - trend_chart
+      - mentions: [hornsby]
+
+  - name: hornsby rent by month, property type and bedroom
+    as_user: user1
+    question: can you give hornsby rent by month for property type and bedroom as a line chart
+    expect:
+      - report_present
+      - report_well_formed
+      - trend_chart
+
+  - name: normanhurst vs hornsby house sale price all time
+    as_user: user1
+    question: >
+      show me trend of sale price for houses for Normanhurst vs Hornsby for all
+      time 2010 to 2026
+    expect:
+      - report_present
+      - report_well_formed
+      - has_headline
+      - has_insight
+      - trend_chart
+      - mentions: [normanhurst, hornsby]

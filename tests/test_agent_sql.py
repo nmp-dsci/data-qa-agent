@@ -9,7 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services" / "data-agent"))
 
 from agent.nl2sql import build_sql  # noqa: E402
-from agent.sql_guardrails import UnsafeSQLError, validate_select  # noqa: E402
+from agent.sql_guardrails import (  # noqa: E402
+    UnsafeSQLError,
+    _validate_ast,
+    validate_select,
+)
 
 
 def test_growth_suburbs_joins_both_marts_on_postcode() -> None:
@@ -32,6 +36,22 @@ def test_property_type_filter_detected() -> None:
 
     sql, _ = build_sql("Top growth suburbs for units")
     assert "property_type = 'unit'" in validate_select(sql).lower()
+
+
+def test_named_suburb_sale_price_trend_is_not_top_growth() -> None:
+    sql, intent = build_sql(
+        "show me trend of sale price for houses for Normanhurst vs Hornsby "
+        "for all time 2010 to 2026"
+    )
+    assert intent == "sales_trend"
+    lower = validate_select(sql).lower()
+    assert "marts.mart_sales_summary" in lower
+    assert "upper(suburb) in ('normanhurst', 'hornsby')" in lower
+    assert "property_type = 'house'" in lower
+    assert "month >= date '2010-01-01'" in lower
+    assert "month <= date '2026-12-31'" in lower
+    assert "order by suburb, month" in lower
+    assert "growth_pct" not in lower
 
 
 def test_yield_question_targets_yield_mart_and_computes_ratio() -> None:
@@ -79,3 +99,44 @@ def test_guardrail_allows_single_select_and_strips_trailing_semicolon() -> None:
     assert validate_select(" SELECT count(*) FROM marts.mart_sales_summary; ") == (
         "SELECT count(*) FROM marts.mart_sales_summary"
     )
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # CTE-hidden DML — leaves the root a SELECT, so only the AST walk catches it.
+        "WITH x AS (DELETE FROM app.users RETURNING id) SELECT * FROM x",
+        "WITH x AS (UPDATE app.users SET role = 'admin' RETURNING id) SELECT * FROM x",
+        "WITH x AS (INSERT INTO app.events DEFAULT VALUES RETURNING id) SELECT * FROM x",
+    ],
+)
+def test_ast_rejects_cte_hidden_dml(sql: str) -> None:
+    # The regex denylist also trips on these, but assert the AST layer rejects
+    # them in isolation — it's the real defense against DML the regex might miss.
+    with pytest.raises(UnsafeSQLError):
+        _validate_ast(sql)
+
+
+def test_ast_allows_plain_and_cte_selects() -> None:
+    # Valid read queries pass the AST check untouched.
+    _validate_ast("SELECT count(*) FROM marts.mart_sales_summary")
+    _validate_ast(
+        "WITH g AS (SELECT postcode, suburb FROM staging.int_postcode_geo) "
+        "SELECT * FROM g ORDER BY postcode LIMIT 10"
+    )
+    _validate_ast("SELECT 1 UNION SELECT 2")
+
+
+def test_ast_rejects_multi_statement() -> None:
+    with pytest.raises(UnsafeSQLError):
+        _validate_ast("SELECT 1; SELECT 2")
+
+
+def test_guardrail_ignores_line_and_block_comments() -> None:
+    sql = """
+    -- This comment mentions DROP TABLE and has a semicolon;
+    SELECT count(*) AS n
+    FROM marts.mart_sales_summary
+    /* INSERT, UPDATE and DELETE in comments are ignored too; */
+    """
+    assert validate_select(sql) == "SELECT count(*) AS n\n    FROM marts.mart_sales_summary"

@@ -77,6 +77,88 @@ models:
       - name: median_rent
         description: Median weekly rent (AUD) in this bucket.
 
+  - name: mart_rent_by_bedroom
+    description: >
+      Rent summary broken out by BEDROOM band — same building block as
+      mart_rent_summary (total_weekly_rent, n_rented, median_rent) but with
+      bedroom_band added to the grain, so "rent by bedroom" questions stay on a
+      small precomputed mart instead of the ~3M-row stg_rent. Grain is
+      (postcode, property_type, bedroom_band, month); property_type is 'house',
+      'unit', or 'ALL'. bedroom_band is always a specific band ('0'..'4','5+',
+      'unknown') — there is NO 'ALL' bedroom row, so do NOT sum across
+      bedroom_band (that double-counts); for an all-bedroom figure use
+      mart_rent_summary. No suburb (raw.rent has no locality — resolve a suburb
+      to its postcode via int_postcode_geo first). Belongs to `nsw_rent` (RLS).
+      Answers: "rent by bedroom over time in postcode X", "2- vs 3-bedroom rent".
+      Verified by assert_rent_by_bedroom_has_coverage and
+      assert_rent_by_bedroom_unique_postcode_type_bedroom_month.
+    columns:
+      - name: postcode
+        description: Postcode.
+        data_tests: [not_null]
+      - name: property_type
+        description: "'house', 'unit', or 'ALL' (blended across both)."
+        data_tests: [not_null]
+      - name: bedroom_band
+        description: "'0','1','2','3','4','5+', or 'unknown'. Part of the grain — never summed across."
+        data_tests: [not_null]
+      - name: month
+        description: Calendar month (first-of-month date) the bonds were lodged in.
+        data_tests: [not_null]
+      - name: total_weekly_rent
+        description: Sum of weekly_rent (AUD) in this postcode/property_type/bedroom_band/month.
+        data_tests: [not_null]
+      - name: n_rented
+        description: Number of bonds in this bucket. Divide total_weekly_rent by this for the mean; filter on it for reliability.
+        data_tests: [not_null]
+      - name: median_rent
+        description: Median weekly rent (AUD) in this bucket.
+
+  - name: mart_sales_by_segment
+    description: >
+      Sale summary broken out by land SEGMENT — same building block as
+      mart_sales_summary (total_sale_value, n_sold, median_price) but with
+      area_band and zoning added to the grain, so "price by lot size" / "price
+      by planning zone" questions stay on a small precomputed mart instead of
+      the ~3M-row stg_sales. Grain is (postcode, suburb, property_type,
+      area_band, zoning, month); property_type is 'house', 'unit', or 'ALL'.
+      area_band ('<400'..'5000+','unknown') and zoning (NSW zone code e.g. R2,
+      RU5, or 'unknown') are always specific — there is NO 'ALL' area_band/zoning
+      row, so do NOT sum across them (that double-counts); for an all-segment
+      figure use mart_sales_summary. Belongs to `nsw_sales` (RLS). A single
+      (suburb, area_band, zoning, month) cell is often one sale — filter WHERE
+      n_sold >= N when a median must be reliable. Answers: "median house price
+      by zone in <suburb>", "price by lot-size band". Verified by
+      assert_sales_by_segment_has_coverage and
+      assert_sales_by_segment_unique_postcode_suburb_type_band_zoning_month.
+    columns:
+      - name: postcode
+        description: Postcode.
+        data_tests: [not_null]
+      - name: suburb
+        description: Suburb/locality from the sale records — part of the grain.
+        data_tests: [not_null]
+      - name: property_type
+        description: "'house', 'unit', or 'ALL' (blended across both)."
+        data_tests: [not_null]
+      - name: area_band
+        description: "Standardised lot-size band: '<400','400-700','700-1000','1000-5000','5000+', or 'unknown'. Part of the grain — never summed across."
+        data_tests: [not_null]
+      - name: zoning
+        description: "NSW planning zone code (e.g. R2, RU5, RU2) or 'unknown'. Part of the grain — never summed across."
+        data_tests: [not_null]
+      - name: month
+        description: Calendar month (first-of-month date) the sales occurred in.
+        data_tests: [not_null]
+      - name: total_sale_value
+        description: Sum of sale_price (AUD) in this postcode/suburb/property_type/area_band/zoning/month.
+        data_tests: [not_null]
+      - name: n_sold
+        description: Number of sales in this bucket. Divide total_sale_value by this for the mean; filter on it for reliability.
+        data_tests: [not_null]
+      - name: median_price
+        description: Median sale price (AUD) in this bucket. Outlier-robust, but doesn't compose across re-aggregation.
+
   - name: mart_property_yield
     description: >
       Sales + rent building blocks pre-joined per (postcode, suburb,

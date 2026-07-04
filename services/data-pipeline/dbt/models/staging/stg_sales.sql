@@ -66,8 +66,17 @@ cleaned as (
         to_date(contract_ymd, 'YYYYMMDD') as sale_date,
         left(contract_ymd, 4)::int as sale_year,
         sale_price::numeric as sale_price,
-        case when area_sqm ~ '^[0-9]+(\.[0-9]+)?$' then area_sqm::numeric end as area_sqm,
-        nullif(area_type, '') as area_type,
+        -- area standardised to square metres: source area_type 'H' is hectares
+        -- (1 ha = 10,000 sqm), 'M' is already square metres. Any other/blank unit
+        -- is untrustworthy (blank-area_type rows carry a ~0 area anyway), so area
+        -- drops to NULL — otherwise a 10 ha rural parcel (area_sqm 10, type H)
+        -- would band as '<400'. area_band below buckets this standardised value.
+        case
+            when area_sqm !~ '^[0-9]+(\.[0-9]+)?$' then null
+            when upper(nullif(area_type, '')) = 'H' then round(area_sqm::numeric * 10000)
+            when upper(nullif(area_type, '')) = 'M' then round(area_sqm::numeric)
+        end as area_sqm,
+        upper(nullif(area_type, '')) as area_type,
         nullif(zoning, '') as zoning,
         nullif(house_no, '') as house_no,
         initcap(nullif(street_name, '')) as street_name,
@@ -79,7 +88,7 @@ cleaned as (
       and sale_price ~ '^[0-9]+$'
       and sale_price::numeric between 10000 and 8000000  -- upper cap matches property_yield_20241003.py
       and contract_ymd ~ '^[0-9]{8}$'
-      and left(contract_ymd, 4)::int between 2010 and extract(year from current_date)::int  -- upper bound tracks the latest data; current-year cap drops garbage far-future dates
+      and left(contract_ymd, 4)::int >= 2010  -- lower bound only, no upper cap: the latest data always flows through
 )
 select
     row_number() over (
@@ -94,12 +103,16 @@ select
     date_trunc('month', sale_date)::date as sale_month,
     sale_price,
     area_sqm,
+    -- Bands over the standardised (square-metre) area, so a hectare-typed rural
+    -- parcel sorts by its true size. 5000+ splits genuine large/rural land off
+    -- the old catch-all '1000+' now that hectare rows are converted, not raw.
     case
         when area_sqm is null then null
         when area_sqm < 400 then '<400'
         when area_sqm < 700 then '400-700'
         when area_sqm < 1000 then '700-1000'
-        else '1000+'
+        when area_sqm < 5000 then '1000-5000'
+        else '5000+'
     end as area_band,
     area_type,
     zoning,

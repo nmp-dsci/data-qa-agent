@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>data-qa-agent — Insight Playbook: a knowledge tree that teaches the agent to produce data-insight reports</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  .mermaid { background: var(--color-base-100); border-radius: 1rem; padding: 1rem; overflow-x: auto; }
+  .section-num { font-variant-numeric: tabular-nums; }
+  code { font-size: 0.85em; }
+  .filetree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.7;
+    white-space: pre; overflow-x: auto; }
+  .filetree .dir { color: #b48a3f; font-weight: 700; }
+  .filetree .note { color: #9aa3b2; font-style: italic; }
+  .filetree .new { color: #9ece6a; }
+
+  /* ── Faithful mock of the real frontend (frontend/src/styles.css tokens) ── */
+  .app-mock {
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1e222b; --border:#2a2f3a;
+    --text:#e7e9ee; --muted:#9aa3b2; --accent:#b48a3f; --accent-2:#6ea8fe; --user:#223047;
+    background:var(--bg); color:var(--text); border:1px solid var(--border);
+    border-radius:14px; overflow:hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .app-mock .mock-header { display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; border-bottom:1px solid var(--border); }
+  .app-mock .mock-pill { margin-left:8px; font-size:11px; padding:2px 8px; border-radius:999px;
+    background:var(--panel-2); border:1px solid var(--border); color:var(--muted); }
+  .app-mock .mock-tabs { display:flex; gap:4px; padding:8px 16px 0; border-bottom:1px solid var(--border); }
+  .app-mock .mock-tab { padding:8px 14px; font-size:13px; color:var(--muted);
+    border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; }
+  .app-mock .mock-tab.active { color:var(--text); background:var(--panel);
+    border-color:var(--border); position:relative; top:1px; }
+  .app-mock .mock-body { padding:16px; }
+  .app-mock .bubble { background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:14px 16px; }
+  .app-mock .who { font-size:11px; color:var(--muted); margin-bottom:8px; text-transform:uppercase;
+    letter-spacing:.04em; }
+  .app-mock .content { line-height:1.5; margin-bottom:12px; }
+
+  .mock-headline { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px; margin-bottom:8px; }
+  @media (max-width:720px){ .mock-headline { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .mock-tile { background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; position:relative; }
+  .mock-tile .t-label { font-size:11px; color:var(--muted); margin-bottom:4px; }
+  .mock-tile .t-value { font-size:19px; font-weight:700; }
+  .mock-tile .t-sub { font-size:11.5px; color:var(--muted); margin-top:3px; }
+  .mock-tile .t-sub.up { color:#9ece6a; }
+  .mock-tile.related { border-style:dashed; }
+  .mock-swatch { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; vertical-align:1px; }
+  .mock-related-hint { font-size:10.5px; color:var(--muted); font-style:italic; margin:0 0 12px; }
+
+  .mock-insights { display:grid; gap:8px; margin-bottom:12px; }
+  .mock-insight { background:var(--panel-2); border:1px solid var(--border); border-left:3px solid var(--accent);
+    border-radius:8px; padding:10px 14px; font-size:13.5px; line-height:1.55; position:relative; }
+  .mock-insight .i-head { font-weight:700; margin-bottom:2px; padding-right:64px; }
+  .mock-insight .i-body { color:var(--text); }
+  .mock-insight .i-ref { color:var(--accent-2); font-size:11.5px; cursor:pointer; }
+  .mock-selected { outline:2px solid var(--accent-2); outline-offset:2px; }
+  .mock-fbbox { margin-top:8px; background:var(--panel); border:1px solid var(--accent-2); border-radius:10px;
+    padding:10px 12px; font-size:12px; }
+  .mock-fbbox .fb-title { color:var(--muted); font-size:11px; margin-bottom:8px; }
+  .mock-fbbox .fb-title strong { color:var(--text); }
+  .mock-fbbox .fb-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .mock-fbbox .fb-sent { display:flex; gap:4px; }
+  .mock-fbbox .fb-sent button { font-size:12px; background:var(--panel-2); border:1px solid var(--border);
+    color:var(--muted); border-radius:6px; padding:3px 10px; cursor:pointer; }
+  .mock-fbbox .fb-sent button.sel { border-color:#9ece6a; color:#9ece6a; }
+  .mock-fbbox input { flex:1; min-width:160px; background:var(--panel-2); border:1px solid var(--border);
+    color:var(--text); border-radius:8px; padding:6px 10px; font-size:12px; }
+  .mock-fbbox .fb-submit { background:var(--accent); color:#1a1206; border:none; font-weight:600;
+    padding:6px 14px; border-radius:8px; font-size:12px; cursor:pointer; }
+  .mock-sec-title { font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent);
+    margin:0 0 6px; font-weight:700; }
+
+  .mock-chart { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; position:relative; }
+  .mock-chart-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px;}
+  .mock-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); }
+  .mock-legend .lk { display:flex; align-items:center; gap:5px; }
+  .mock-legend .line-sample { width:16px; height:0; border-top:2px solid; display:inline-block; }
+  .mock-legend .line-sample.faint { opacity:.4; border-top-width:1.5px; }
+  .mock-legend .sw { width:10px; height:10px; border-radius:2px; display:inline-block; }
+  .mock-hint { font-size:11px; color:var(--muted); }
+  .mock-tooltip { fill:#1e222b; stroke:#2a2f3a; }
+
+  .mock-qref { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:8px; }
+  .mock-qref-bar { display:flex; align-items:center; gap:10px; padding:7px 12px; font-size:12px; color:var(--muted);
+    background:var(--panel-2); flex-wrap:wrap; }
+  .mock-qref-bar .qtag { color:var(--accent); font-weight:700; font-size:11px; }
+  .mock-qref-bar .spacer { margin-left:auto; display:flex; gap:6px; }
+  .mock-btn { font-size:11px; color:var(--muted); border:1px solid var(--border); background:var(--panel);
+    border-radius:6px; padding:3px 9px; cursor:pointer; }
+  .mock-btn:hover { color:var(--accent-2); border-color:var(--accent-2); }
+  .mock-sql { background:#0b0d11; padding:10px 12px; overflow-x:auto; font-size:11.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--text); white-space:pre; margin:0; }
+  .badge-src { text-transform:uppercase; font-size:10px; letter-spacing:.05em; padding:2px 6px;
+    border-radius:6px; border:1px solid var(--border); }
+</style>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "strict",
+    themeVariables: { fontFamily: "ui-sans-serif, system-ui, sans-serif", primaryColor: "#1a1a17", lineColor: "#b48a3f", fontSize: "14px" }
+  });
+</script>
+</head>
+<body class="bg-base-200 text-base-content">
+
+<main class="mx-auto max-w-6xl p-5 lg:p-10 space-y-12">
+
+  <!-- HERO -->
+  <header class="space-y-5">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="badge badge-primary badge-lg">Feature Proposal</span>
+      <span class="badge badge-soft badge-info">data-agent · backend-api · frontend · evals</span>
+      <span class="badge badge-soft badge-success">Karpathy llm-wiki × Agent Skills pattern</span>
+      <span class="badge badge-soft">Rev 4 — scope locked: K1–K6</span>
+    </div>
+    <h1 class="text-4xl lg:text-5xl font-bold tracking-tight">Teach the agent to produce insight reports — and let user feedback become its curriculum</h1>
+    <p class="text-xl text-base-content/80 max-w-3xl">
+      Give the agent a <strong>versioned markdown knowledge tree</strong> it searches with tool calls — an
+      "Insight Playbook" holding its know-how: how to build trend charts, what each domain's data means, what
+      makes an insight useful. The agent <em>plans how to present</em> before it queries and returns a structured
+      <strong>insight report</strong>: headlines (including related metrics), insights with comparison charts, a
+      profile section, and numbered query references. The crux: <strong>users annotate feedback directly on
+      report elements</strong> — each capture carries what it pointed at, a snapshot of it, and the knowledge
+      version — so feedback scales into evaluations, evaluations drive knowledge-tree updates, and stale evals
+      are detected and retired as the system evolves.
+    </p>
+  </header>
+
+  <!-- DIRECT ANSWER -->
+  <section class="space-y-3">
+    <div class="alert shadow-lg bg-base-100 border border-primary/30">
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="badge badge-primary shrink-0">Direct answer</span>
+          <span class="font-semibold">The system has one flywheel: element-anchored user feedback → triaged into
+            evals (or user memory) → eval runs grade the agent → a curator turns failures into knowledge-tree PRs
+            → merged knowledge improves the next report.</span>
+        </div>
+        <p class="text-sm text-base-content/70 max-w-4xl">
+          Today the agent's know-how is one ~120-line f-string (<code>services/data-agent/agent/llm_agent.py:42-165</code>)
+          and there's no feedback capture at all. This plan replaces the prompt with an AI-authored
+          <code>knowledge/</code> tree the agent greps via tools (§02), a typed report contract rendered as a
+          data-insights page (§04–05), and — the centre of gravity — a feedback system where every thumbs-up/down
+          is a durable, versioned, reviewable evaluation input (§06–07). Knowledge is plain markdown in the repo,
+          so the runtime agent and your coding agent work from the same files.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 01 RESEARCH -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">01</span> · Research — how others teach agents to produce insights</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      What each pattern contributes, and precisely what this plan borrows from it.
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-base-content/10">
+      <table class="table table-sm">
+        <thead><tr><th>Pattern</th><th>Core idea</th><th>What we borrow</th><th>What we skip</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Karpathy's <a class="link" href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f">llm-wiki</a></td>
+            <td class="text-sm">The LLM maintains structured, interlinked markdown pages instead of re-deriving knowledge every query — knowledge <em>compounds</em>. Includes lint/health passes (broken links, contradictions, gaps).</td>
+            <td class="text-sm">Agent-maintained markdown pages; cross-links; a periodic lint pass (§07).</td>
+            <td class="text-sm">Fully autonomous writes — knowledge edits ship as human-reviewed PRs (they steer SQL generation).</td>
+          </tr>
+          <tr>
+            <td class="font-semibold"><a class="link" href="https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills">Agent Skills</a> / <a class="link" href="https://www.newsletter.swirlai.com/p/agent-skills-progressive-disclosure">progressive disclosure</a></td>
+            <td class="text-sm">Folder of <code>SKILL.md</code>-style pages: frontmatter always visible, full body loaded only when relevant. An <a class="link" href="https://agentskills.io">open standard</a>; scales to hundreds of docs with negligible overhead.</td>
+            <td class="text-sm">The file format and layered loading — plus the way coding agents actually retrieve: <strong>grep-style search as a tool call</strong> (§02).</td>
+            <td class="text-sm">Executable scripts per skill (our "scripts" are the agent's existing tools).</td>
+          </tr>
+          <tr>
+            <td class="font-semibold"><a class="link" href="https://arxiv.org/pdf/2305.16291">Voyager</a> skill library</td>
+            <td class="text-sm">An ever-growing library of <em>verified</em> capabilities, retrieved by similarity, grown via a closed loop of execution feedback → revision → verification.</td>
+            <td class="text-sm">"Verified before saved" — a learning enters the tree only via a merged PR backed by eval evidence; pgvector retrieval as a later upgrade.</td>
+            <td class="text-sm">Code-as-skill (our knowledge is guidance, not programs).</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Reflexion</td>
+            <td class="text-sm">After a failure, the agent writes a verbal self-reflection into persistent memory and consults it on the next attempt.</td>
+            <td class="text-sm">The curator step (§07): failed evals / negative feedback distilled into a written learning, filed into the right page.</td>
+            <td class="text-sm">Per-episode automatic memory writes (too noisy for a system that writes SQL).</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">LLM-as-judge rubric evals</td>
+            <td class="text-sm">Score open-ended outputs against an explicit rubric with a strong model, alongside deterministic checks.</td>
+            <td class="text-sm">§06: rubric scoring of insight quality — what string-matching (<code>mentions:</code> in today's <code>evals/journeys.yaml</code>) can't measure.</td>
+            <td class="text-sm">Judge-only scoring — grounding checks stay deterministic.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 02 KNOWLEDGE TREE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">02</span> · The Insight Playbook — a knowledge tree the agent greps</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      A new <code>services/data-agent/knowledge/</code> folder. <strong>The AI writes the seed</strong>: a coding-agent
+      session decomposes today's system prompt (<code>llm_agent.py:42-165</code>) and schema hints
+      (<code>schema.py</code>) into pages, and profiles the marts to draft the domain pages — then the learning
+      loop (§07) grows it. <code>presentation/</code> and <code>analysis/</code> are cross-domain;
+      <strong><code>domains/</code> holds one folder per dataset</strong>, so demographics, stock prices, or any
+      future dataset slots in as a new folder without touching the rest.
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100"><div class="card-body py-4">
+        <h3 class="card-title text-sm mb-2">Folder layout (seed, AI-authored)</h3>
+        <div class="filetree">services/data-agent/knowledge/
+├── <span class="dir">INDEX.md</span>              <span class="note">← auto-generated map: name + description</span>
+├── <span class="dir">presentation/</span>         <span class="note">← HOW to present (cross-domain)</span>
+│   ├── report-structure.md        <span class="note">sections, ordering, when to skip one</span>
+│   ├── what-makes-an-insight.md   <span class="note">comparison, change, surprise</span>
+│   ├── related-metrics.md         <span class="note">headline enrichment: price↔rent↔yield</span>
+│   ├── profile-sections.md        <span class="note">composition comparisons; segmenter per domain (sqm=houses, bedrooms=units)</span>
+│   ├── trend-charts.md            <span class="note">actual + rolling overlay convention</span>
+│   └── comparison-charts.md       <span class="note">bars-by-entity inside insight cards</span>
+├── <span class="dir">analysis/</span>             <span class="note">← HOW to compute (cross-domain)</span>
+│   ├── growth-rates.md            <span class="note">12-mo rolling base, 3/5/10-yr windows</span>
+│   ├── rolling-averages.md · latest-month.md · yield.md
+└── <span class="dir">domains/</span>              <span class="note">← WHAT each dataset means — one folder per dataset</span>
+    ├── <span class="dir">property-sales/</span>
+    │   ├── overview.md            <span class="note">marts, grain, coverage caveats</span>
+    │   ├── property-types.md      <span class="note">house vs unit vs 'ALL'</span>
+    │   ├── segments.md            <span class="note">sqm/area bands, zoning</span>
+    │   └── suburbs-and-postcodes.md
+    ├── <span class="dir">property-rent/</span>
+    │   ├── overview.md · bedrooms.md
+    └── <span class="dir">_template/</span>        <span class="new">← scaffold for future domains</span>
+        └── overview.md            <span class="note">(demographics, stock prices, …)</span></div>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-2">
+        <h3 class="card-title text-sm">Retrieval = tool calls, the way a coding agent greps a repo</h3>
+        <p class="text-sm text-base-content/70">Per your annotation — yes, grep. The agent gets two knowledge tools
+          and drives its own retrieval mid-run:</p>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+          <li><code>search_knowledge(query)</code> — ripgrep-style full-text search over <code>knowledge/</code>,
+            returning page names + matching snippets (with frontmatter <code>applies_to</code> terms boosting the
+            ranking). Exactly how Claude Code finds things in a codebase.</li>
+          <li><code>read_knowledge(name)</code> — load a full page into context.</li>
+        </ul>
+        <p class="text-sm text-base-content/70"><code>INDEX.md</code> stays pinned in the system prompt as the map
+          (~1 line per page), so the agent knows what exists without loading it; the planning step (§03) is
+          instructed to search before it plans. pgvector similarity (machinery already exists for
+          <code>user_memories</code>, <code>agent/memory.py</code>) is a drop-in ranking upgrade later if grep
+          recall proves too literal — same tool signature, so nothing else changes.</p>
+        <p class="text-sm text-base-content/70"><strong>One source of truth, two consumers:</strong> the runtime
+          agent greps these pages to answer; your coding agent edits the same files when you say "teach it X".</p>
+      </div></div>
+    </div>
+
+    <p class="text-base-content/70 max-w-3xl pt-2">What a page looks like — frontmatter for search/index, body for
+      the loaded guidance, cross-links like a wiki:</p>
+    <div id="knowledge-file" class="rounded-xl overflow-hidden border border-base-content/10"></div>
+  </section>
+
+  <!-- 03 PIPELINE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">03</span> · The agent thinks about presentation <em>before</em> it queries</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Today the loop is question → SQL → prose (<code>maybe_answer_with_llm()</code>,
+      <code>llm_agent.py:179</code>). The reworked loop adds an explicit <strong>report-planning step</strong>:
+      after searching the knowledge tree, the agent commits to a presentation plan — sections, charts, related
+      metrics worth showing alongside the asked one, queries — then executes it. The plan is logged in the trace,
+      so you can always see <em>why</em> it presented what it did.
+    </p>
+    <div class="mermaid">
+flowchart TD
+  Q["User question"] --> K["Search knowledge — search_knowledge() /<br/>read_knowledge() tool calls over the tree<br/>(+ per-user memories, as today)"]
+  K --> P["Plan the report (structured output):<br/>sections · charts · related metrics ·<br/>profile comparisons · queries needed"]
+  P --> E["Execute the plan:<br/>run_sql per planned query (guardrails unchanged) ·<br/>analytics tools for growth%/rolling avg ·<br/>make_chart per planned chart"]
+  E --> C["Compose InsightReport (typed, validated):<br/>summary · headlines · insights (+ inline charts) ·<br/>profile · query references · knowledge version"]
+  C --> UI["Frontend renders the report (§05) —<br/>every element is a feedback anchor (§06)"]
+  K -.->|"mid-run: hits a gap,<br/>searches again"| E
+  classDef know fill:#2a2417,stroke:#b48a3f,color:#e7e9ee;
+  class K know
+  classDef struct fill:#1e2a1e,stroke:#9ece6a,color:#e7e9ee;
+  class P,C struct
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Analytics as tools, not templates</h3>
+        <p class="text-sm text-base-content/70">A small <code>agent/analytics.py</code> toolbox
+          (<code>rolling_average</code>, <code>growth_rate</code>, <code>latest_reliable</code>) exposed as agent
+          tools. Knowledge pages instruct the agent to use them ("compute growth with the <code>growth_rate</code>
+          tool, never in your head") — headline math is code-computed, the agent stays free to decide <em>what</em>
+          to compute.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Typed output via Pydantic AI</h3>
+        <p class="text-sm text-base-content/70">The agent's <code>output_type</code> becomes an
+          <code>InsightReport</code> model (§04) — validated, retried on schema miss, so report structure is
+          guaranteed, not requested. Free prose remains the fallback for non-analytical questions.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Every query becomes a reference</h3>
+        <p class="text-sm text-base-content/70">All successful <code>run_sql</code> calls are kept and numbered
+          (Q1, Q2…) — replacing today's "only the last call survives" behavior
+          (<code>llm_agent.py:129-137</code>). Insights cite the query that backs them; users copy any into the
+          SQL editor.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 04 CONTRACT -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">04</span> · The InsightReport contract — every element is a feedback anchor</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      One typed shape flows agent → <code>backend-api</code> (<code>app/routers/ask.py</code>'s
+      <code>AskResponse</code> gains a <code>report</code> field) → frontend. Every headline, insight, profile,
+      chart and query carries a stable <code>element_id</code> — that's what feedback attaches to (§06). Charts
+      stay server-spliced Vega-Lite (the model never supplies data values; <code>chart.py</code> just learns
+      <code>layer</code> + restricted interactive <code>params</code>).
+    </p>
+    <div id="report-model" class="rounded-xl overflow-hidden border border-base-content/10"></div>
+  </section>
+
+  <!-- 05 THE MOCK -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">05</span> · What the user sees — a data-insights report in chat</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Mocked in the app's real dark theme for <em>"trend of sale price for houses, Normanhurst vs Hornsby,
+      2010–2026"</em>. Headlines include <strong>related metrics</strong> (rent, yield) beyond the asked one; the
+      first insight carries an <strong>inline comparison bar chart</strong>; a <strong>Profile section</strong>
+      compares lot-size composition between the suburbs. Feedback is <strong>click-to-annotate</strong>: no
+      buttons cluttering the report — the user clicks any element and one feedback box opens against it
+      (sentiment + comment + submit), shown below on the first insight. Query references keep Copy SQL /
+      Open in SQL editor (reusing the tab wiring at <code>frontend/src/App.tsx:202-210</code>).
+    </p>
+
+    <div class="app-mock">
+      <div class="mock-header">
+        <div class="flex items-center">
+          <strong style="font-size:14px">data-qa-agent</strong>
+          <span class="mock-pill">Ada Lovelace</span>
+          <span class="mock-pill">user</span>
+        </div>
+        <span class="mock-pill">Sign out</span>
+      </div>
+      <div class="mock-tabs">
+        <div class="mock-tab active">Chat</div>
+        <div class="mock-tab">SQL Editor</div>
+      </div>
+      <div class="mock-body">
+        <div class="bubble">
+          <div class="who">Data agent · insight report</div>
+          <div class="content">House prices in both suburbs have more than doubled since 2010, but Normanhurst
+            has pulled decisively ahead — and the gap is widening, not stabilising.</div>
+
+          <!-- Headlines -->
+          <p class="mock-sec-title">Headlines</p>
+          <div class="mock-headline">
+            <div class="mock-tile">
+              <div class="t-label"><span class="mock-swatch" style="background:#3987e5"></span>Normanhurst · latest avg</div>
+              <div class="t-value">$2.18M</div>
+              <div class="t-sub">12-mo rolling, Mar 2026</div>
+            </div>
+            <div class="mock-tile">
+              <div class="t-label"><span class="mock-swatch" style="background:#3987e5"></span>Normanhurst · 5yr / 10yr</div>
+              <div class="t-value">+19.2% <span style="font-size:13px;color:var(--muted)">/ +52.6%</span></div>
+              <div class="t-sub up">▲ growth_rate tool, 12-mo base</div>
+            </div>
+            <div class="mock-tile">
+              <div class="t-label"><span class="mock-swatch" style="background:#199e70"></span>Hornsby · latest avg</div>
+              <div class="t-value">$1.61M</div>
+              <div class="t-sub">12-mo rolling, Mar 2026</div>
+            </div>
+            <div class="mock-tile">
+              <div class="t-label"><span class="mock-swatch" style="background:#199e70"></span>Hornsby · 5yr / 10yr</div>
+              <div class="t-value">+14.8% <span style="font-size:13px;color:var(--muted)">/ +41.3%</span></div>
+              <div class="t-sub up">▲ growth_rate tool, 12-mo base</div>
+            </div>
+          </div>
+          <div class="mock-headline">
+            <div class="mock-tile related">
+              <div class="t-label"><span class="mock-swatch" style="background:#3987e5"></span>Normanhurst · median rent</div>
+              <div class="t-value">$780<span style="font-size:12px;color:var(--muted)">/wk</span></div>
+              <div class="t-sub">houses, Mar 2026</div>
+            </div>
+            <div class="mock-tile related">
+              <div class="t-label"><span class="mock-swatch" style="background:#3987e5"></span>Normanhurst · gross yield</div>
+              <div class="t-value">1.9%</div>
+              <div class="t-sub">rent×52 / median price</div>
+            </div>
+            <div class="mock-tile related">
+              <div class="t-label"><span class="mock-swatch" style="background:#199e70"></span>Hornsby · median rent</div>
+              <div class="t-value">$650<span style="font-size:12px;color:var(--muted)">/wk</span></div>
+              <div class="t-sub">houses, Mar 2026</div>
+            </div>
+            <div class="mock-tile related">
+              <div class="t-label"><span class="mock-swatch" style="background:#199e70"></span>Hornsby · gross yield</div>
+              <div class="t-value">2.1%</div>
+              <div class="t-sub">rent×52 / median price</div>
+            </div>
+          </div>
+          <p class="mock-related-hint">↑ related metrics the planner added (per related-metrics.md) — dashed = not directly asked, shown for context</p>
+
+          <!-- Insights -->
+          <p class="mock-sec-title">Insights</p>
+          <div class="mock-insights">
+            <div class="mock-insight mock-selected">
+              <div class="i-head">The premium gap is accelerating</div>
+              <div class="i-body">Normanhurst's lead has grown at every horizon — the 10-year growth gap (+11.3pp)
+                is wider than the 5-year gap (+4.4pp), so the divergence is a live trend, not history.
+                <span class="i-ref">[Q1]</span></div>
+              <div style="display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px 10px;align-items:center;margin-top:10px;">
+                <div style="font-size:10.5px;color:var(--muted);">5yr growth</div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <div style="display:flex;align-items:center;gap:7px;"><div style="width:30%;height:13px;border-radius:4px;background:#3987e5;"></div><span style="font-size:10.5px;color:#e7e9ee;">+19.2%</span></div>
+                  <div style="display:flex;align-items:center;gap:7px;"><div style="width:23%;height:13px;border-radius:4px;background:#199e70;"></div><span style="font-size:10.5px;color:var(--muted);">+14.8%</span></div>
+                </div>
+                <div style="font-size:10.5px;color:var(--muted);">10yr growth</div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <div style="display:flex;align-items:center;gap:7px;"><div style="width:78%;height:13px;border-radius:4px;background:#3987e5;"></div><span style="font-size:10.5px;color:#e7e9ee;">+52.6%</span></div>
+                  <div style="display:flex;align-items:center;gap:7px;"><div style="width:61%;height:13px;border-radius:4px;background:#199e70;"></div><span style="font-size:10.5px;color:var(--muted);">+41.3%</span></div>
+                </div>
+              </div>
+              <div class="mock-fbbox">
+                <div class="fb-title">Feedback on <strong>Insight · "The premium gap is accelerating"</strong> <span style="opacity:.7">(click any report element to annotate it)</span></div>
+                <div class="fb-row">
+                  <span class="fb-sent"><button class="sel">👍 Useful</button><button>👎 Off</button></span>
+                  <input value="love the pp-gap framing — do this comparison in every trend report" readonly />
+                  <button class="fb-submit">Submit</button>
+                </div>
+              </div>
+            </div>
+            <div class="mock-insight">
+              <div class="i-head">Both suburbs ride the same cycle</div>
+              <div class="i-body">The 2018–19 dip, the brief 2020 pause and the 2021 run-up appear in both series
+                at the same months — this is Sydney-market beta, not anything suburb-specific.
+                <span class="i-ref">[Q1]</span></div>
+            </div>
+            <div class="mock-insight">
+              <div class="i-head">Normanhurst held its 2021 gains; Hornsby gave some back</div>
+              <div class="i-body">Through the 2022–23 cooling, Normanhurst's rolling average never retraced below
+                its 2021 peak, while Hornsby's flattened for ~18 months. Volume tells the same story — Hornsby's
+                monthly sales fell 34% peak-to-trough vs Normanhurst's 21%. <span class="i-ref">[Q2]</span></div>
+            </div>
+          </div>
+
+          <!-- Profile -->
+          <p class="mock-sec-title">Profile · what's actually selling in each suburb (houses)</p>
+          <div class="mock-chart">
+            <div style="font-size:13px; margin-bottom:8px;">Hornsby's house sales skew to smaller lots — 22% under
+              400 m² vs Normanhurst's 8% — which explains part of the average-price gap. <span class="i-ref" style="font-size:11.5px;color:#6ea8fe;">[Q3]</span></div>
+            <div style="display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 10px;align-items:center;">
+              <div style="font-size:11px;color:var(--muted);">Normanhurst</div>
+              <div style="display:flex;gap:2px;height:18px;" role="img" aria-label="Normanhurst lot-size mix: under 400 8%, 400-700 45%, 700-1000 38%, 1000+ 9%">
+                <div style="flex:8 8 0;min-width:0;background:#8b99bd;border-radius:3px 0 0 3px;"></div>
+                <div style="flex:45 45 0;min-width:0;background:#677390;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#e7e9ee;">45%</div>
+                <div style="flex:38 38 0;min-width:0;background:#4d566b;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#e7e9ee;">38%</div>
+                <div style="flex:9 9 0;min-width:0;background:#3a4150;border-radius:0 3px 3px 0;"></div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);">Hornsby</div>
+              <div style="display:flex;gap:2px;height:18px;" role="img" aria-label="Hornsby lot-size mix: under 400 22%, 400-700 51%, 700-1000 20%, 1000+ 7%">
+                <div style="flex:22 22 0;min-width:0;background:#8b99bd;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#171a21;font-weight:600;border-radius:3px 0 0 3px;">22%</div>
+                <div style="flex:51 51 0;min-width:0;background:#677390;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#e7e9ee;">51%</div>
+                <div style="flex:20 20 0;min-width:0;background:#4d566b;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#e7e9ee;">20%</div>
+                <div style="flex:7 7 0;min-width:0;background:#3a4150;border-radius:0 3px 3px 0;"></div>
+              </div>
+            </div>
+            <div class="mock-legend" style="margin-top:10px;">
+              <span class="lk"><span class="sw" style="background:#8b99bd"></span>&lt;400 m²</span>
+              <span class="lk"><span class="sw" style="background:#677390"></span>400–700</span>
+              <span class="lk"><span class="sw" style="background:#4d566b"></span>700–1000</span>
+              <span class="lk"><span class="sw" style="background:#3a4150"></span>1000+</span>
+            </div>
+          </div>
+
+          <!-- Trend chart -->
+          <p class="mock-sec-title">Trend · actual vs 3-month rolling average</p>
+          <div class="mock-chart">
+            <div class="mock-chart-top">
+              <div class="mock-legend">
+                <span class="lk"><span class="line-sample" style="border-color:#3987e5"></span>Normanhurst · 3-mo avg</span>
+                <span class="lk"><span class="line-sample faint" style="border-color:#3987e5"></span>Normanhurst · actual</span>
+                <span class="lk"><span class="line-sample" style="border-color:#199e70"></span>Hornsby · 3-mo avg</span>
+                <span class="lk"><span class="line-sample faint" style="border-color:#199e70"></span>Hornsby · actual</span>
+              </div>
+              <span class="mock-hint">drag to zoom · click legend to isolate · hover for detail</span>
+            </div>
+            <svg viewBox="0 0 860 260" style="width:100%;height:auto;display:block;" role="img" aria-label="Mock trend chart: actual vs 3-month rolling average sale price, Normanhurst vs Hornsby, 2010 to 2026">
+              <g stroke="#2c2c2a" stroke-width="1">
+                <line x1="46" y1="30" x2="840" y2="30"/>
+                <line x1="46" y1="80" x2="840" y2="80"/>
+                <line x1="46" y1="130" x2="840" y2="130"/>
+                <line x1="46" y1="180" x2="840" y2="180"/>
+                <line x1="46" y1="222" x2="840" y2="222"/>
+              </g>
+              <g fill="#9aa3b2" font-size="10.5">
+                <text x="22" y="34">$2.5M</text>
+                <text x="22" y="84">$2.0M</text>
+                <text x="22" y="134">$1.5M</text>
+                <text x="22" y="184">$1.0M</text>
+                <text x="22" y="226">$0.5M</text>
+              </g>
+              <g stroke="#383835" stroke-width="1"><line x1="46" y1="222" x2="840" y2="222"/></g>
+              <g fill="#9aa3b2" font-size="10.5" text-anchor="middle">
+                <text x="60" y="245">2010</text>
+                <text x="255" y="245">2014</text>
+                <text x="455" y="245">2018</text>
+                <text x="655" y="245">2022</text>
+                <text x="830" y="245">2026</text>
+              </g>
+
+              <path d="M55,196 L95,192 L135,188 L160,198 L185,184 L210,190 L235,176 L260,182
+                       L285,168 L310,172 L335,158 L360,150 L385,162 L410,146 L435,150
+                       L460,140 L480,155 L500,148 L520,158 L540,145 L560,120 L580,108
+                       L600,98 L620,112 L640,120 L660,132 L680,118 L700,110 L720,98
+                       L740,90 L760,80 L780,70 L800,62 L820,52 L835,44"
+                    fill="none" stroke="#3987e5" stroke-width="1.5" opacity="0.4"/>
+              <path d="M55,194 C160,188 260,178 335,160 C400,150 430,150 460,144
+                       C500,150 530,150 560,124 C590,104 610,108 640,118
+                       C670,118 700,104 740,88 C780,72 810,56 835,46"
+                    fill="none" stroke="#3987e5" stroke-width="2.5"/>
+
+              <path d="M55,210 L95,206 L135,208 L160,214 L185,204 L210,208 L235,198 L260,204
+                       L285,194 L310,198 L335,188 L360,182 L385,192 L410,178 L435,182
+                       L460,174 L480,186 L500,180 L520,188 L540,178 L560,158 L580,148
+                       L600,140 L620,152 L640,158 L660,168 L680,156 L700,150 L720,140
+                       L740,134 L760,126 L780,118 L800,112 L820,104 L835,98"
+                    fill="none" stroke="#199e70" stroke-width="1.5" opacity="0.4"/>
+              <path d="M55,208 C160,204 260,196 335,190 C400,182 430,182 460,178
+                       C500,182 530,182 560,160 C590,146 610,148 640,158
+                       C670,158 700,146 740,132 C780,118 810,106 835,100"
+                    fill="none" stroke="#199e70" stroke-width="2.5"/>
+
+              <circle cx="835" cy="46" r="4.5" fill="#3987e5" stroke="#171a21" stroke-width="2"/>
+              <circle cx="835" cy="100" r="4.5" fill="#199e70" stroke="#171a21" stroke-width="2"/>
+
+              <line x1="600" y1="24" x2="600" y2="222" stroke="#b48a3f" stroke-width="1" stroke-dasharray="3,3"/>
+              <circle cx="600" cy="98" r="4" fill="#3987e5" stroke="#171a21" stroke-width="2"/>
+              <circle cx="600" cy="140" r="4" fill="#199e70" stroke="#171a21" stroke-width="2"/>
+              <g>
+                <rect x="612" y="70" width="150" height="58" rx="6" class="mock-tooltip" stroke-width="1"/>
+                <text x="622" y="86" fill="#e7e9ee" font-size="11" font-weight="600">Jul 2021</text>
+                <text x="622" y="102" fill="#e7e9ee" font-size="10.5">Normanhurst  $2.02M</text>
+                <text x="622" y="117" fill="#e7e9ee" font-size="10.5">Hornsby      $1.52M</text>
+              </g>
+            </svg>
+          </div>
+
+          <!-- Query references -->
+          <p class="mock-sec-title">Query references</p>
+          <div class="mock-qref">
+            <div class="mock-qref-bar">
+              <span class="qtag">Q1</span>
+              <span>Monthly avg sale price by suburb · 384 rows</span>
+              <span class="badge-src" style="color:#d0a2ff;border-color:#5a3a6b">claude</span>
+              <span class="spacer">
+                <button class="mock-btn">Copy SQL</button>
+                <button class="mock-btn">Open in SQL editor</button>
+              </span>
+            </div>
+            <pre class="mock-sql">select suburb, month, total_sale_value / nullif(n_sold, 0) as avg_price
+from marts.mart_sales_summary
+where property_type = 'house'
+  and suburb in ('NORMANHURST', 'HORNSBY')
+  and month between '2010-01-01' and '2026-03-01'
+order by suburb, month;</pre>
+          </div>
+          <div class="mock-qref">
+            <div class="mock-qref-bar">
+              <span class="qtag">Q2</span>
+              <span>Monthly sales volume by suburb · 384 rows</span>
+              <span class="spacer">
+                <button class="mock-btn">Copy SQL</button>
+                <button class="mock-btn">Open in SQL editor</button>
+              </span>
+            </div>
+          </div>
+          <div class="mock-qref">
+            <div class="mock-qref-bar">
+              <span class="qtag">Q3</span>
+              <span>Lot-size band composition of house sales by suburb · 8 rows</span>
+              <span class="spacer">
+                <button class="mock-btn">Copy SQL</button>
+                <button class="mock-btn">Open in SQL editor</button>
+              </span>
+            </div>
+          </div>
+          <div class="mock-hint" style="margin-top:8px">planned with: trend-charts.md · related-metrics.md · profile-sections.md · domains/property-sales/segments.md &nbsp;·&nbsp; knowledge @ <span style="font-family:ui-monospace,Menlo,monospace">a1b2c3f</span> &nbsp;·&nbsp; agent run (9 steps) · show plan</div>
+        </div>
+      </div>
+    </div>
+    <p class="text-xs text-base-content/50 max-w-3xl">The trend chart keeps the convention you liked — bold solid
+      3-month average over faint volatile actuals. The profile's lot-size segmenter is <strong>house-specific</strong>
+      per your note — <code>profile-sections.md</code> encodes segmenter-per-domain rules (sqm bands for houses;
+      bedroom bands for units, where lot size is meaningless). Feedback UX: any signed-in user can click an
+      element to pin feedback; after submit, a comment icon stays on that element, or a <strong>!</strong> marker
+      if the user flagged a questionable number. The box captures thumbs up/down, numeric accuracy true/false,
+      optional <strong>!</strong> flag, free-text feedback, submit/cancel. The footer exposes the knowledge pages
+      and version — the same values every feedback capture records (§06).</p>
+  </section>
+
+  <!-- 06 FEEDBACK AS EVALS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">06</span> · Feedback capture — the crux: annotations that scale into evaluations</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      The interaction is <strong>click-to-annotate</strong>: the report renders clean, the user clicks the element
+      they want to judge, it highlights, and one feedback box opens against it — sentiment (👍/👎), numeric
+      accuracy true/false, an optional <strong>!</strong> flag for questionable figures, free-text feedback, and
+      submit/cancel (§05 mock). After submit, the element shows a comment icon; questionable-number feedback shows
+      the <strong>!</strong> marker. A capture is only useful if, months later, you can still tell <em>what it
+      judged</em> — so every submission records the element it anchored to, a <strong>snapshot of that element's
+      content at the time</strong>, the rendered element HTML, a full report snapshot, client context, the
+      knowledge-tree version and pages that produced it, alongside the run's trace (already persisted in
+      <code>query_runs.trace</code>, migration <code>0007</code>). That makes feedback durable enough to become an
+      eval — and gives the curator/LLM the exact rendered context the user was responding to.
+    </p>
+    <div id="feedback-migration-file" class="rounded-xl overflow-hidden border border-base-content/10"></div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Triage: knowledge eval vs user memory</h3>
+        <p class="text-sm text-base-content/70">Per your direction, the default is <strong>everything is a
+          knowledge eval</strong> (improves the agent for everyone). The admin review (§07) can reclassify a
+          capture as <code>user_memory</code> when it's clearly a personal preference ("I only care about units")
+          — those flow into the existing pgvector <code>user_memories</code> instead, injected per-user into the
+          system prompt as today. The <code>scope</code> column exists from day one so triage can get smarter
+          later without a schema change.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Promotion: admin batch → DB-backed eval cases</h3>
+        <p class="text-sm text-base-content/70">Per your decision: the admin runs a <strong>batch promotion</strong>
+          from the review panel — select accumulated feedback, promote in one action. Promoted cases live in a new
+          <code>app.eval_cases</code> table (question, distilled expectation, referent snapshot, knowledge version,
+          status) — <strong>the database is the source of truth</strong>, so cases are toggleable in the admin UI;
+          the eval runner pulls <code>active</code> cases at run time (a YAML export exists only for CI artifacts).
+          Auto-actioning of evals is explicitly deferred — capture and promotion first.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Staleness: flagged, DB-toggleable, auto-archived</h3>
+        <p class="text-sm text-base-content/70">Per your decision: each eval run compares the current report's
+          corresponding element against the stored snapshot; materially changed → the case's
+          <code>status</code> flips to <code>stale</code> in <code>app.eval_cases</code> and it stops grading.
+          The admin panel can <strong>toggle stale ↔ active</strong> at any time (re-affirm a still-valid
+          expectation, or retire it); a case left stale for <strong>3 consecutive eval cycles</strong>
+          (<code>stale_cycles</code> counter) is auto-archived. Stale evals never silently fail the build.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 07 LEARNING LOOP -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">07</span> · The learning loop — evals update the knowledge base, with you in the loop</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      To confirm your question directly: <strong>yes — the output of an eval run is (draft) updates to the
+      knowledge base.</strong> Failures and low judge scores go to a curator session that diagnoses which
+      knowledge page (or gap) caused them and drafts the markdown edit; the edit ships as a PR, evals re-run
+      against it, you merge. Evals never rewrite knowledge silently — they <em>generate</em> the update, review
+      applies it. Knowledge is git-versioned markdown, so every learning is diffable, attributable, revertable.
+    </p>
+    <div class="mermaid">
+flowchart LR
+  subgraph SIG["Signals"]
+    FB["Element-anchored user feedback<br/>(app.answer_feedback — §06)"]
+    EV["Eval failures / low judge scores<br/>(hand-written + from_feedback cases)"]
+  end
+  FB --> TRI["Admin review & triage — batch mode:<br/>promote selected | user memory | dismiss"]
+  TRI -->|batch promote| EC["app.eval_cases (DB — source of truth)<br/>question + expectation + snapshot + version<br/>status toggleable: active | stale | archived"]
+  EC --> RUN["Eval run (CI or on demand) pulls active cases<br/>+ staleness pass (3 stale cycles → auto-archive)"]
+  EV --> CUR
+  RUN --> CUR["Curator session:<br/>diagnoses failing cases → drafts edits to<br/>knowledge/*.md (or new pages, or lint fixes)"]
+  TRI -->|user preference| UM["user_memories (pgvector)<br/>per-user prompt injection, as today"]
+  CUR --> PR["PR: markdown diff + the evidence"]
+  PR --> CI["Evals re-run against the edited tree"]
+  CI --> H["Human review & merge"]
+  H --> TREE["knowledge/ grows — next reports<br/>plan with the new pages"]
+  TREE -.-> FB
+  classDef human fill:#2a2417,stroke:#b48a3f,color:#e7e9ee;
+  class H,TRI human
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Admin review — feedback beside the rendered report</h3>
+        <p class="text-sm text-base-content/70">A new admin view (beside Datasets/Users/Query Runs in
+          <code>App.tsx</code>'s <code>AdminDashboard</code>, ~line 266): a feedback queue where each item
+          re-renders the original insight report with the feedback pinned to the element it anchored to — like
+          reviewing comments on a doc. The queue shows sentiment, accuracy/questionable-number flags, free-text
+          feedback, the stored rendered element HTML, the report snapshot, filters for status/rating, and the
+          user/question context. Triage runs in <strong>batch mode</strong>: select items, then
+          <strong>Promote selected to evals</strong> · <strong>Save as user memory</strong> ·
+          <strong>Dismiss</strong>; a second tab lists <code>app.eval_cases</code> with the
+          <strong>stale ↔ active toggle</strong>. Filters for status and rating. This is where you "see evals
+          feedback and the rendered insights back" — the operational heart of the loop.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Wiki hygiene — the Karpathy lint pass</h3>
+        <p class="text-sm text-base-content/70">A periodic curator variant lints the tree: broken cross-links,
+          contradicting pages, pages never loaded by any question in the last N runs (merge/retire candidates),
+          index descriptions drifted from their body. Keeps the playbook from decaying into a junk drawer as it
+          grows — and it's also what keeps the <code>domains/</code> folders honest as new datasets arrive.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 08 PHASES -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">08</span> · Phased rollout — small, pausable, ships every phase</h2>
+    <p class="text-base-content/70 max-w-3xl"><strong>Scope approved: all six phases.</strong> Mirrors the style
+      of <code>AGENTS.md</code>'s Build plan table; still built and paused phase by phase. Feedback capture lands
+      early (K3) because it's the crux — everything after it consumes the signal.</p>
+    <div class="overflow-x-auto rounded-xl border border-base-content/10">
+      <table class="table table-sm">
+        <thead><tr><th>Phase</th><th>Deliverable</th><th>Risk</th></tr></thead>
+        <tbody>
+          <tr><td class="font-mono text-xs">K1</td><td class="text-sm"><strong>AI-authored seed knowledge tree</strong> (decompose prompt + schema, profile the marts for domain pages, scalable <code>domains/</code> layout) + <code>search_knowledge</code>/<code>read_knowledge</code> tools; system prompt shrinks to role + index</td><td><span class="badge badge-success badge-sm">low</span></td></tr>
+          <tr><td class="font-mono text-xs">K2</td><td class="text-sm">Report-planning step + <code>InsightReport</code> typed output (element ids, knowledge version) + keep-all-queries + <code>analytics.py</code> tools</td><td><span class="badge badge-warning badge-sm">medium</span></td></tr>
+          <tr><td class="font-mono text-xs">K3</td><td class="text-sm">Report UI (§05): headlines + related metrics, insights with inline charts, profile section, query refs (Copy / Open in SQL editor), interactive charts (<code>chart.py</code> layer+params) — <strong>and element-anchored feedback capture</strong> (0008 migration + <code>POST /feedback</code>)</td><td><span class="badge badge-warning badge-sm">medium</span></td></tr>
+          <tr><td class="font-mono text-xs">K4</td><td class="text-sm">Pinned feedback v2 for all users (comment/! markers, sentiment, accuracy true/false, questionable-number flag, free text, submit/cancel) + richer DB context (<code>0009</code>: rendered HTML, report snapshot, client context) + admin review & triage panel (filters, re-rendered report + pinned feedback; promote/memory/dismiss)</td><td><span class="badge badge-success badge-sm">low</span></td></tr>
+          <tr><td class="font-mono text-xs">K5</td><td class="text-sm">Eval suite: structural + grounding checks (LLM-judge <strong>deferred</strong> per your decision); formalize <code>evals/eval.md</code>; <code>app.eval_cases</code> + admin batch promotion + staleness pass with the stale↔active toggle</td><td><span class="badge badge-warning badge-sm">medium</span></td></tr>
+          <tr><td class="font-mono text-xs">K6</td><td class="text-sm">Curator session (eval failures + triaged feedback → knowledge PRs) + lint pass; documented workflow</td><td><span class="badge badge-warning badge-sm">medium</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 09 OPEN DECISIONS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">09</span> · Decisions</h2>
+    <div class="overflow-x-auto rounded-xl border border-base-content/10">
+      <table class="table table-sm">
+        <thead><tr><th>Decision</th><th>Your call (baked into the plan)</th></tr></thead>
+        <tbody>
+          <tr><td class="text-sm">Knowledge retrieval</td><td class="text-sm">Grep-style agent tool calls (<code>search_knowledge</code> / <code>read_knowledge</code>) — §02</td></tr>
+          <tr><td class="text-sm">Who writes the knowledge tree</td><td class="text-sm">AI authors the seed; evals + curator improve it; human merges — §02, §07</td></tr>
+          <tr><td class="text-sm">Feedback UX</td><td class="text-sm">Click-to-annotate for all users: one box on the clicked element, comment icon after submit, <strong>!</strong> marker for questionable figures, sentiment + accuracy + free-text capture — §05, §06</td></tr>
+          <tr><td class="text-sm">Feedback → eval promotion</td><td class="text-sm">Admin <strong>batch mode</strong> from the review panel; auto-actioning deferred — §06</td></tr>
+          <tr><td class="text-sm">Eval-case storage & staleness</td><td class="text-sm"><code>app.eval_cases</code> in the DB, status toggleable stale↔active in the admin UI; auto-archive after 3 stale cycles — §06</td></tr>
+          <tr><td class="text-sm">Feedback triage default</td><td class="text-sm">Knowledge eval by default; user-memory reclassification available in triage — §06</td></tr>
+          <tr><td class="text-sm">LLM-judge quality layer</td><td class="text-sm"><strong>Skipped for now</strong> — structural + grounding checks only; judge can be added later without schema changes — §08 K5</td></tr>
+          <tr><td class="text-sm">Build scope</td><td class="text-sm"><strong>All six phases K1–K6</strong>, built and paused phase by phase — §08</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-base-content/70 max-w-3xl pt-2">One question still open:</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <form class="card card-border bg-base-100" data-lavish-question="report-when"
+        onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('report-when'); if(v) window.lavish.queuePrompt('Report rendering scope: '+v, {tag:'choice', text:'When to report: '+v, element:event.currentTarget, data:{question:'report-when', answer:v}});">
+        <div class="card-body gap-2">
+          <h3 class="card-title text-sm">When does the agent produce a full report?</h3>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="report-when" value="the planning step decides — full report for analytical questions, short answer for simple lookups" class="radio radio-xs radio-primary" checked> Planner decides per question <span class="badge badge-primary badge-xs">rec</span></label>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="report-when" value="always render the full report structure for every question" class="radio radio-xs"> Always the full report</label>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="report-when" value="user toggles a 'report mode' in the chat UI" class="radio radio-xs"> User toggles report mode</label>
+          <button type="submit" class="btn btn-xs btn-primary mt-1 w-fit">Queue answer</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <footer class="pt-6 border-t border-base-content/10 text-sm text-base-content/50">
+    Plan for review · guardrails (<code>run_select</code> / <code>agent_ro</code> / RLS / <code>query_runs</code>)
+    unchanged · research: <a class="link" href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f">Karpathy llm-wiki</a> ·
+    <a class="link" href="https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills">Anthropic Agent Skills</a> ·
+    <a class="link" href="https://agentskills.io">agentskills.io standard</a> ·
+    <a class="link" href="https://arxiv.org/pdf/2305.16291">Voyager</a>. Design source: this project's existing
+    <code>.lavish</code> plan system (DaisyUI <code>luxury</code>) + the app's real <code>styles.css</code> for the §05 mock.
+  </footer>
+</main>
+
+<!-- @pierre/diffs code renders -->
+<script type="module">
+  import { File } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const theme = { light: "github-light", dark: "github-dark" };
+  const options = { theme, themeType: "dark", overflow: "wrap" };
+
+  const knowledgeFile = {
+    name: "services/data-agent/knowledge/presentation/trend-charts.md  (new)",
+    contents:
+`---
+name: trend-charts
+description: How to build and present a time-series trend chart (single or
+  multi-entity), including the actual + rolling-average overlay convention.
+applies_to: [trend, "over time", "by month", compare, vs]
+---
+
+# Trend charts
+
+## Query shape
+- Grain: one row per (entity, month). Alias the value column clearly
+  (avg_price, median_rent). Pull the FULL requested window in one query.
+- Multi-entity comparison: one query with the entity as a column, never one
+  query per entity — the chart colors by that column.
+
+## Presentation
+- Always show TWO layers per entity: the actual monthly series (thin, 40%
+  opacity) and a 3-month rolling average (bold) — monthly buckets are noisy
+  and the smoothed line is what carries the trend. Compute the rolling
+  series with the rolling_average tool, window=3.
+- Color by entity (suburb), weight/opacity by layer (actual vs smoothed).
+- Enrich the headlines with related metrics when cheap to fetch — see
+  [[presentation/related-metrics]]. Consider a composition profile when
+  entities differ structurally — see [[presentation/profile-sections]].
+- Headline growth uses a 12-month rolling base: [[analysis/growth-rates]].
+
+## Learned pitfalls
+- (2026-07) Suburb values in marts are UPPERCASE ('HORNSBY'); match case or
+  use ILIKE — a mixed-case literal silently returns zero rows.
+- (2026-07) For houses vs units keep property_type explicit; 'ALL' blends
+  both — see [[domains/property-sales/property-types]].
+`,
+  };
+  new File(options).render({
+    containerWrapper: document.querySelector("#knowledge-file"),
+    file: knowledgeFile,
+  });
+
+  const reportModel = {
+    name: "services/data-agent/agent/report.py  (new — the agent's output_type)",
+    contents:
+`class QueryRef(BaseModel):
+    """One executed query, numbered for citation. Kept for EVERY successful
+    run_sql call — replaces the 'only the last call survives' behavior."""
+    element_id: str             # "query:Q1" — stable feedback anchor
+    ref: str                    # "Q1", "Q2", ...
+    purpose: str
+    sql: str                    # exactly what ran (post-guardrail)
+    columns: list[str]
+    rows: list[list[Any]]       # capped, as today
+    row_count: int
+
+
+class Headline(BaseModel):
+    element_id: str             # "headline:3"
+    label: str                  # "Normanhurst · gross yield"
+    value: str                  # formatted by an analytics tool
+    basis: str                  # "rent x 52 / median price, Mar 2026"
+    related: bool = False       # True = planner-added context metric,
+    query_ref: str              #   not directly asked (dashed tile in UI)
+
+
+class Insight(BaseModel):
+    element_id: str             # "insight:2"
+    heading: str                # the finding, stated as a claim
+    body: str                   # 1-3 sentences of WHY it matters
+    query_refs: list[str]
+    chart: dict | None = None   # optional inline comparison chart (e.g. the
+                                # grouped growth bars) — server-spliced VL
+
+
+class Profile(BaseModel):
+    """Composition comparison between entities (lot-size mix, type mix)."""
+    element_id: str             # "profile:1"
+    heading: str
+    body: str
+    chart: dict                 # stacked/grouped composition chart
+    query_refs: list[str]
+
+
+class InsightReport(BaseModel):
+    """Structured output for analytical questions (Pydantic AI output_type).
+    Every element carries an element_id — the feedback anchor (§06)."""
+    summary: str
+    headlines: list[Headline]
+    insights: list[Insight]
+    profiles: list[Profile]
+    queries: list[QueryRef]
+    knowledge_pages_used: list[str]   # provenance — shown in UI + trace
+    knowledge_version: str            # git SHA of knowledge/ at answer time
+`,
+  };
+  new File(options).render({
+    containerWrapper: document.querySelector("#report-model"),
+    file: reportModel,
+  });
+
+  const feedbackMigration = {
+    name: "services/db-migrate/migrations/versions/0008_answer_feedback.py  (new)",
+    contents:
+`"""answer feedback — element-anchored, versioned, triageable eval input
+
+Comprehensive by design: each capture records WHAT it judged (element ref +
+content snapshot), against WHICH agent (knowledge version + pages used), and
+HOW it should be used (scope: knowledge eval vs user memory; status lifecycle
+including staleness). This is what lets feedback scale into evaluations and
+lets stale evals be detected and retired (§06).
+
+Revision ID: 0008_answer_feedback
+Revises: 0007_query_run_trace
+"""
+
+from alembic import op
+
+revision = "0008_answer_feedback"
+down_revision = "0007_query_run_trace"
+
+
+def upgrade() -> None:
+    op.execute("""
+        CREATE TABLE app.answer_feedback (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            message_id uuid NOT NULL REFERENCES app.messages(id),
+            user_id uuid NOT NULL REFERENCES app.users(id),
+            rating smallint NOT NULL CHECK (rating IN (-1, 1)),  -- thumbs up/down
+            accurate boolean,              -- true/false on whether numbers look right
+            issue_flag boolean NOT NULL DEFAULT false,  -- user pressed the ! marker
+            comment text,
+
+            -- WHAT the feedback judged
+            target_kind text NOT NULL,      -- report|headline|insight|profile|chart|query
+            target_ref text NOT NULL,       -- element_id, e.g. 'insight:2'
+            target_snapshot jsonb NOT NULL, -- element content AT feedback time
+            target_render_html text,        -- rendered element HTML as user saw it
+            report_snapshot jsonb,          -- full report context for curator / LLM
+            client_context jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+            -- WHICH agent produced it (staleness + attribution)
+            knowledge_version text NOT NULL,   -- git SHA of knowledge/
+            knowledge_pages jsonb NOT NULL,    -- pages the plan loaded
+
+            -- HOW it is used (triage lifecycle)
+            scope text NOT NULL DEFAULT 'knowledge',
+                -- 'knowledge' (default: improves everyone) | 'user_memory'
+            status text NOT NULL DEFAULT 'new',
+                -- new -> promoted_to_eval | user_memory | dismissed
+                -- (admin batch-promotes from the review panel)
+
+            created_at timestamptz NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("""
+        -- Promoted eval cases: DB is the source of truth so status can be
+        -- toggled stale <-> active in the admin UI; the eval runner pulls
+        -- active cases at run time. Auto-archive after 3 stale cycles.
+        CREATE TABLE app.eval_cases (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            feedback_id uuid REFERENCES app.answer_feedback(id),
+            question text NOT NULL,          -- re-asked on every eval run
+            expectation text NOT NULL,       -- distilled from the comment
+            target_kind text NOT NULL,
+            target_snapshot jsonb NOT NULL,  -- what the feedback judged
+            knowledge_version text NOT NULL,
+            status text NOT NULL DEFAULT 'active',
+                -- active | stale | archived  (admin toggles stale <-> active)
+            stale_cycles int NOT NULL DEFAULT 0,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("ALTER TABLE app.answer_feedback ENABLE ROW LEVEL SECURITY")
+    op.execute("""
+        CREATE POLICY tenant_isolation ON app.answer_feedback
+          USING (user_id = current_setting('app.current_user_id')::uuid)
+    """)   -- admin reads all; eval_cases is admin/CI-only, like events
+`,
+  };
+  new File(options).render({
+    containerWrapper: document.querySelector("#feedback-migration-file"),
+    file: feedbackMigration,
+  });
+</script>
+
+</body>
+</html>

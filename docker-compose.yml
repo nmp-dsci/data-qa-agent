@@ -100,6 +100,9 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Agent architecture (restructure): "orchestrator" (default) or "sandbox"
+      # (extract -> run_analysis -> skills). Flip with AGENT_MODE=sandbox.
+      AGENT_MODE: ${AGENT_MODE:-orchestrator}
       # Optional — ships agent traces to Logfire Cloud; empty = local-only tracing.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
     volumes:

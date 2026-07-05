@@ -158,6 +158,13 @@ class _Deps:
 async def maybe_answer_with_llm(question: str, *, user_id: str) -> dict[str, Any] | None:
     if not _PYDANTIC_AI_AVAILABLE:
         return None
+    # Restructure: route to the sandbox path (extract → run_analysis → skills)
+    # when enabled. Imported lazily so the default orchestrator path never
+    # depends on the sandbox module loading. Both return the same answer dict.
+    if settings.agent_mode == "sandbox":
+        from .sandbox_agent import answer_with_sandbox
+
+        return await answer_with_sandbox(question, user_id=user_id)
     selected = choose_provider(
         settings.llm_provider, settings.deepseek_api_key, settings.anthropic_api_key
     )

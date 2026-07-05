@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     agent_database_url: str = "postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa"
     db_ssl: str = ""  # set to "require" in Azure (managed Postgres needs TLS)
 
+    # Agent architecture (restructure). "orchestrator" = the model drives
+    # fine-grained tools (run_sql/compute_trend/make_chart) turn-by-turn — the
+    # working default. "sandbox" = the model does a governed extract then hands
+    # analysis to skills running in a locked-down sandbox (Phase A prototype).
+    # Flip with AGENT_MODE=sandbox to measure the new path against a run.
+    agent_mode: str = "orchestrator"
+
     # Provider is abstracted (Decision G): pluggable LLM, stub when no key.
     # LLM_PROVIDER picks which key is used; no cross-provider fallback (see provider.py).
     llm_provider: str = "deepseek"
@@ -37,6 +44,11 @@ class Settings(BaseSettings):
     max_sql_attempts: int = 8
     sql_statement_timeout_ms: int = 6000
 
+    # Sandbox path (AGENT_MODE=sandbox): total run_analysis attempts per question.
+    # Confirmed retry budget is 2, i.e. 1 initial run + 2 self-corrections = 3.
+    # Skills do the risky maths (tested once), so a run rarely needs all three.
+    sandbox_run_attempts: int = 3
+
     # Hard backstops on a single agent run, independent of model behaviour. A
     # misbehaving model (e.g. DeepSeek ignoring a "stop" tool return and looping
     # run_sql) once burned 731k tokens over 50 requests answering one question;
@@ -44,8 +56,15 @@ class Settings(BaseSettings):
     # is the primary guard (a healthy run is ~10-15 requests); the token cap is a
     # belt-and-braces ceiling. Both surface as UsageLimitExceeded, which the LLM
     # path salvages into a partial report from whatever real SQL already ran.
+    #
+    # Phase 0 stopgap (data-agent restructure): raised 250k → 600k. The heavy
+    # two-dataset question legitimately tips ~252k nominal tokens and was falling
+    # to the stub, but nominal tokens are ~6x cache-inflated (billed_full ≈ 1/6th),
+    # so the real cost of the higher ceiling is small. request_limit stays the
+    # primary runaway guard; this just stops a genuine two-dataset report from
+    # being cut off. The sandbox+skills restructure makes the ceiling moot later.
     agent_request_limit: int = 22
-    agent_total_tokens_limit: int = 250_000
+    agent_total_tokens_limit: int = 600_000
 
     # Cap how many knowledge pages one run may load. The playbook says "2-4
     # pages"; a run that read 9 pinned ~8k tokens of markdown into every

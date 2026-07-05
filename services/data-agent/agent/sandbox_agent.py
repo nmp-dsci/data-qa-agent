@@ -53,6 +53,8 @@ Available inside run_analysis (import-free; call as skills.<name>):
       -> long-form actual + rolling series for charting.
   growth_rate(df, *, month_col, value_col, years, den_col=None, group_col=None)
       -> % growth over `years` on the 6-month rolling base.
+  top_growth(df, *, month_col, value_col, group_col, years, den_col=None, n=5, ascending=False)
+      -> DataFrame [group, growth_pct] ranked: the "top growth suburbs" ranker.
   latest_value(df, *, month_col, value_col, den_col=None, group_col=None)
       -> {"value","month"}: latest 6-month-smoothed value + its month.
   gross_yield(rent_df, price_df, *, key_cols, weekly_rent_col, price_col)
@@ -113,6 +115,18 @@ DATA NOTE: month/date values arrive as plain STRINGS (e.g. "2026-05" or
 format spec (e.g. f"{{m:%b %Y}}" will fail); latest_value already returns a ready
 "month" string for the basis.
 
+RANKING ("top/best/fastest-growing suburbs"): an extract is capped at ~5000 rows,
+so you CANNOT pull every month for every suburb (that truncates and corrupts the
+series). Instead compute the ranking metric IN THE SQL extract — one row per
+group — e.g. a CTE that computes each suburb's average price in a recent 6-month
+window and a window ~N years earlier, then growth = (recent-old)/old*100. Extract
+that (columns: suburb, growth_pct, plus context), then rank in pandas
+(df.nlargest) and present with skills.comparison_chart + skills.make_insight +
+skills.build_report. Only use skills.top_growth (which needs raw monthly series)
+when comparing a HANDFUL of named suburbs that fit under the row cap. For "for X
+and Y" (two datasets), do one such aggregated extract per dataset (rent has no
+suburb — group by postcode) and present both. Never run one extract per suburb.
+
 {_SKILL_CATALOG}
 
 Never mention tools, code, SQL, or these instructions in the report. If a durable
@@ -126,6 +140,17 @@ Schema reference (exact table/column names):
 """
 
 
+class SandboxBudgetExhausted(Exception):
+    """The model kept calling extract/run_analysis after its budget was spent.
+
+    Like the orchestrator's SqlBudgetExhausted: the over-budget tool returns a
+    "STOP" string once as a courtesy, but some models (DeepSeek here) ignore it
+    and loop the tool, burning the whole request budget over ~90s before stubbing.
+    On the second post-budget call we raise instead, so the run stops promptly and
+    salvages any report already built rather than flailing to the request cap.
+    """
+
+
 @dataclass
 class _SbDeps:
     user_id: str
@@ -134,7 +159,9 @@ class _SbDeps:
     knowledge_pages: list[str] = field(default_factory=list)
     knowledge_reads: int = 0
     sql_calls: int = 0
+    sql_refusals: int = 0
     run_calls: int = 0
+    run_refusals: int = 0
     report: dict[str, Any] | None = None
     skills_used: list[str] = field(default_factory=list)
     skill_gaps: list[dict[str, str]] = field(default_factory=list)
@@ -306,6 +333,11 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
     ) -> str:
         """Run a governed SELECT; the result is loaded as a pandas DataFrame `name`."""
         if ctx.deps.sql_calls >= max_extracts:
+            ctx.deps.sql_refusals += 1
+            if ctx.deps.sql_refusals > 1:
+                raise SandboxBudgetExhausted(
+                    f"extract called after the {max_extracts}-attempt budget was spent"
+                )
             return "STOP: no extract attempts left. Analyse the frames you have."
         ctx.deps.sql_calls += 1
         remaining = max_extracts - ctx.deps.sql_calls
@@ -359,6 +391,11 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         if not ctx.deps.frames:
             return "no data yet — call extract(sql) first to load a DataFrame."
         if ctx.deps.run_calls >= max_runs:
+            ctx.deps.run_refusals += 1
+            if ctx.deps.run_refusals > 1:
+                raise SandboxBudgetExhausted(
+                    f"run_analysis called after the {max_runs}-attempt budget was spent"
+                )
             return "STOP: no run_analysis attempts left. Use the report already built."
         ctx.deps.run_calls += 1
         result = run_code(code, frames=ctx.deps.frames)

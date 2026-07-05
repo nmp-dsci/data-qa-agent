@@ -126,6 +126,70 @@ def test_related_metrics_flags_related():
     assert tiles[0]["related"] is True
 
 
+def test_top_growth_ranks_groups_descending():
+    # Three suburbs with increasing slopes → B (steepest) should rank first.
+    frames = []
+    for name, step in [("A", 5.0), ("B", 30.0), ("C", 15.0)]:
+        frames.append(_linear_monthly(step=step).assign(suburb=name))
+    df = pd.concat(frames, ignore_index=True)
+    top = skills.top_growth(
+        df, month_col="month", value_col="avg_price", group_col="suburb", years=3, n=2
+    )
+    assert list(top.columns) == ["suburb", "growth_pct"]
+    assert len(top) == 2  # top n
+    assert top["suburb"].iloc[0] == "B"  # steepest growth first
+    assert top["growth_pct"].iloc[0] >= top["growth_pct"].iloc[1]
+
+
+def test_gross_yield_annualised_ratio():
+    # weekly rent 600 → 31,200/yr on a $2M price = 1.56%.
+    rent = pd.DataFrame({"postcode": ["2077"], "month": ["2026-05"], "weekly_rent": [600.0]})
+    price = pd.DataFrame({"postcode": ["2077"], "month": ["2026-05"], "price": [2_000_000.0]})
+    y = skills.gross_yield(
+        rent, price, key_cols=["postcode", "month"], weekly_rent_col="weekly_rent", price_col="price"
+    )
+    assert y == 1.56
+
+
+def test_gross_yield_none_without_overlap():
+    rent = pd.DataFrame({"postcode": ["2077"], "month": ["2026-05"], "weekly_rent": [600.0]})
+    price = pd.DataFrame({"postcode": ["2000"], "month": ["2026-05"], "price": [1_000_000.0]})
+    assert (
+        skills.gross_yield(
+            rent,
+            price,
+            key_cols=["postcode", "month"],
+            weekly_rent_col="weekly_rent",
+            price_col="price",
+        )
+        is None
+    )
+
+
+def test_comparison_chart_is_valid_bar_spec():
+    df = pd.DataFrame({"suburb": ["A", "B", "C"], "growth": [10.0, 25.0, 5.0]})
+    spec = skills.comparison_chart(df, category_col="suburb", value_col="growth", title="5yr growth")
+    assert spec["mark"] == "bar"
+    assert spec["title"] == "5yr growth"
+    assert spec["encoding"]["x"]["field"] == "suburb"
+    assert len(spec["data"]["values"]) == 3
+
+
+def test_comparison_chart_grouped_adds_series_dimension():
+    df = pd.DataFrame(
+        {
+            "suburb": ["A", "A", "B", "B"],
+            "metric": ["sales", "rent", "sales", "rent"],
+            "growth": [10.0, 8.0, 25.0, 12.0],
+        }
+    )
+    spec = skills.comparison_chart(
+        df, category_col="suburb", value_col="growth", series_col="metric"
+    )
+    assert "color" in spec["encoding"]
+    assert "xOffset" in spec["encoding"]
+
+
 def test_skill_calls_are_recorded():
     df = _linear_monthly()
     skills.growth_rate(df, month_col="month", value_col="avg_price", years=3)

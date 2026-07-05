@@ -74,7 +74,13 @@ def used_inline_math() -> bool:
 
 
 # Re-export the skill surface the sandbox exposes as `skills.*`.
-from .analysis import gross_yield, growth_rate, latest_value, trend_series  # noqa: E402
+from .analysis import (  # noqa: E402
+    gross_yield,
+    growth_rate,
+    latest_value,
+    top_growth,
+    trend_series,
+)
 from .charts import comparison_chart, trend_chart  # noqa: E402
 from .reporting import build_report, make_insight, related_metrics  # noqa: E402
 
@@ -83,6 +89,7 @@ __all__ = [
     "trend_series",
     "growth_rate",
     "latest_value",
+    "top_growth",
     "gross_yield",
     # charts
     "trend_chart",

@@ -131,6 +131,43 @@ def growth_rate(
 
 
 @skill
+def top_growth(
+    df: pd.DataFrame,
+    *,
+    month_col: str,
+    value_col: str,
+    group_col: str,
+    years: int,
+    den_col: str | None = None,
+    n: int = 5,
+    ascending: bool = False,
+) -> pd.DataFrame:
+    """Rank groups by % growth over ``years`` (6-month rolling base); top ``n``.
+
+    The multi-entity ranker behind "top growth suburbs" questions: computes each
+    group's growth the same way ``growth_rate`` does, drops groups without enough
+    history, and returns a DataFrame ``[<group_col>, growth_pct]`` sorted
+    descending (set ``ascending=True`` for the slowest movers). Feed the result
+    straight to ``comparison_chart``.
+    """
+    grouped = _grouped(
+        df,
+        month_col=month_col,
+        value_col=value_col,
+        den_col=den_col,
+        count_col=None,
+        group_col=group_col,
+    )
+    rows = [
+        {group_col: group, "growth_pct": analytics.growth_rate(series, years=years)}
+        for group, series in grouped.items()
+    ]
+    out = pd.DataFrame(rows, columns=[group_col, "growth_pct"]).dropna(subset=["growth_pct"])
+    out = out.sort_values("growth_pct", ascending=ascending).head(n)
+    return out.reset_index(drop=True)
+
+
+@skill
 def latest_value(
     df: pd.DataFrame,
     *,

@@ -15,6 +15,16 @@ applies_to: []
 - Table `marts.<table>` — one row per <grain>. Key columns:
   - `<col>` (<type>) — <meaning>
 
+## Semantic profile
+- Entity grain: `<entity columns>` (what one row describes).
+- Time grain: `<month/date column>` or "not time-series".
+- Measures:
+  - `<metric>` = `<additive numerator> / <additive denominator>` or `<raw column>`.
+- Join keys:
+  - `<schema.table>` joins `<schema.table>` on `<keys>`.
+- Default filters:
+  - `<safe default filters or none>`.
+
 ## The measure(s)
 - How to compute the headline metric from the raw columns (sum/count/median → rate).
 - Which analysis skills apply (`growth_rate`, `rolling_average`, `latest_value`).

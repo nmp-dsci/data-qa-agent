@@ -881,6 +881,7 @@ const STEP_LABELS: Record<string, string> = {
   memory: "Remembered preference",
   analytics: "Analytics",
   knowledge: "Knowledge",
+  decision_log: "Decision Log",
 };
 
 function stepLabel(s: AgentStep): string {
@@ -974,6 +975,21 @@ function AgentTrace({ steps, summary }: { steps: AgentStep[]; summary?: string }
                 <TracePayload text={t.args} />
               </div>
             ))}
+
+            {s.decisions && s.decisions.length > 0 && (
+              <ol className="decision-list">
+                {s.decisions.map((d, di) => (
+                  <li key={di} className={`decision-item decision-${d.type}`}>
+                    <span className="decision-type">{d.type}</span>
+                    {d.choice && <span className="decision-choice">{d.choice}</span>}
+                    {d.status && <span className={`trace-badge ${d.status}`}>{d.status}</span>}
+                    {d.row_count != null && <span className="trace-meta">{d.row_count} rows</span>}
+                    {d.why && <div className="decision-why">{d.why}</div>}
+                    {d.sql && <pre className="trace-sql">{d.sql}</pre>}
+                  </li>
+                ))}
+              </ol>
+            )}
 
             {/* Legacy hand-built steps */}
             {s.sql && <pre className="trace-sql">{s.sql}</pre>}

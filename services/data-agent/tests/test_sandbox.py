@@ -11,6 +11,7 @@ from __future__ import annotations
 import pandas as pd
 
 from agent.sandbox import run_code
+from agent.sandbox_agent import _decision_log
 
 _TREND_CODE = """
 series = skills.trend_series(df, month_col="month", value_col="avg_price")
@@ -76,3 +77,31 @@ def test_skill_gap_flows_back():
     res = run_code(code, _df())
     assert res.ok
     assert [g.need for g in res.skill_gaps] == ["seasonality_adjust"]
+
+
+def test_decision_log_expands_tool_steps_for_eval_assertions() -> None:
+    decisions = _decision_log(
+        [
+            {
+                "kind": "knowledge",
+                "name": "property-sales-overview",
+                "status": "read",
+                "why": "sales question",
+            },
+            {"kind": "schema", "table": "marts.property_sales", "why": "need columns"},
+            {
+                "kind": "analysis",
+                "status": "ok",
+                "skills_used": ["trend_series", "trend_chart"],
+                "why": "time series chart",
+            },
+        ]
+    )
+    assert {
+        "type": "table",
+        "choice": "marts.property_sales",
+        "why": "need columns",
+        "order": 2,
+    } in decisions
+    assert any(d["type"] == "skill" and d["choice"] == "trend_chart" for d in decisions)
+    assert any(d["type"] == "chart" and d["choice"] == "trend_chart" for d in decisions)

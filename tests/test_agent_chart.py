@@ -45,6 +45,20 @@ def test_transform_key_rejected() -> None:
         validate_chart_spec({"mark": "bar", "encoding": {}, "transform": [{"filter": "true"}]})
 
 
+def test_dual_axis_resolve_is_allowlisted_narrowly() -> None:
+    spec = {
+        "layer": [
+            {"mark": "bar", "encoding": {"x": {"field": "month"}, "y": {"field": "n"}}},
+            {"mark": "line", "encoding": {"x": {"field": "month"}, "y": {"field": "price"}}},
+        ],
+        "resolve": {"scale": {"y": "independent"}},
+    }
+    assert validate_chart_spec(spec) == spec
+
+    with pytest.raises(UnsafeChartSpecError):
+        validate_chart_spec({**spec, "resolve": {"scale": {"x": "independent"}}})
+
+
 def test_non_dict_spec_rejected() -> None:
     with pytest.raises(UnsafeChartSpecError):
         validate_chart_spec("not a dict")  # type: ignore[arg-type]

@@ -251,6 +251,38 @@ def test_comparison_chart_grouped_adds_series_dimension():
     assert "xOffset" in spec["encoding"]
 
 
+def test_dual_axis_chart_uses_independent_y_scales() -> None:
+    df = pd.DataFrame(
+        {
+            "month": ["2026-01", "2026-02"],
+            "volume": [10, 15],
+            "price": [1_000_000, 1_100_000],
+        }
+    )
+    spec = skills.dual_axis_chart(
+        df,
+        x_col="month",
+        left_value_col="volume",
+        right_value_col="price",
+        left_title="Sales",
+        right_title="Average price",
+    )
+    assert len(spec["layer"]) == 2
+    assert spec["layer"][0]["mark"] == "bar"
+    assert spec["layer"][1]["mark"]["type"] == "line"
+    assert spec["resolve"] == {"scale": {"y": "independent"}}
+    assert spec["data"]["values"][0]["price"] == 1_000_000
+
+
+def test_distribution_chart_is_histogram_spec() -> None:
+    df = pd.DataFrame({"price": [1.0, 2.0, 2.5], "type": ["house", "unit", "house"]})
+    spec = skills.distribution_chart(df, value_col="price", category_col="type")
+    assert spec["mark"] == "bar"
+    assert spec["encoding"]["x"]["bin"] is True
+    assert spec["encoding"]["y"]["aggregate"] == "count"
+    assert spec["encoding"]["color"]["field"] == "type"
+
+
 def test_skill_calls_are_recorded():
     df = _linear_monthly()
     skills.growth_rate(df, month_col="month", value_col="avg_price", years=3)

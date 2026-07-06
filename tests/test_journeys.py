@@ -57,6 +57,7 @@ def _ids(journeys: list[dict]) -> list[str]:
 
 
 _JOURNEYS = _load_journeys()
+_ADMIN_TOKEN: str | None = None
 
 
 @pytest.mark.parametrize("journey", _JOURNEYS, ids=_ids(_JOURNEYS))
@@ -124,6 +125,11 @@ def _check(exp: Any, *, token: str | None, login_status: int, ask_result: dict |
         elif exp == "chart_present":
             assert ask_result is not None
             assert isinstance(ask_result.get("chart"), dict), "expected a chart in the response"
+        elif exp == "decision_log_present":
+            trace = _trace_for(ask_result)
+            assert _decisions(trace), (
+                f"expected Decision Log in trace, got steps: {[s.get('kind') for s in trace]}"
+            )
         else:
             raise AssertionError(f"unknown expectation: {exp!r}")
         return
@@ -151,5 +157,52 @@ def _check(exp: Any, *, token: str | None, login_status: int, ask_result: dict |
         encoding = chart.get("encoding") or {}
         missing = [c for c in value if c not in encoding]
         assert not missing, f"chart encoding missing channels: {missing}"
+    elif key in {"mart_used", "skill_used", "chart_used"}:
+        expected_type = {"mart_used": "table", "skill_used": "skill", "chart_used": "chart"}[key]
+        _assert_decision(ask_result, expected_type, value)
+    elif key == "decision_used":
+        assert isinstance(value, dict), "decision_used expects {type, choice}"
+        _assert_decision(ask_result, value["type"], value["choice"])
     else:
         raise AssertionError(f"unknown expectation: {exp!r}")
+
+
+def _trace_for(ask_result: dict | None) -> list[dict]:
+    assert ask_result is not None
+    if ask_result.get("engine") == "stub":
+        pytest.skip("trajectory assertions require the LLM/sandbox path, not the offline stub")
+    if ask_result.get("steps"):
+        return ask_result["steps"]
+    run_id = ask_result.get("run_id")
+    assert run_id, "ask response did not include run_id"
+    global _ADMIN_TOKEN
+    if _ADMIN_TOKEN is None:
+        status, login = _request("POST", "/auth/dev-login", {"username": "admin"}, None)
+        assert status == 200, f"admin login failed ({status})"
+        _ADMIN_TOKEN = login["access_token"]
+    status, runs = _request("GET", "/admin/query-runs?limit=100", None, _ADMIN_TOKEN)
+    assert status == 200, f"admin query-runs failed ({status})"
+    for run in runs:
+        if run["id"] == run_id:
+            return run.get("trace") or []
+    raise AssertionError(f"run {run_id} not found in admin query-runs")
+
+
+def _decisions(trace: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for step in trace:
+        if step.get("kind") == "decision_log":
+            out.extend(step.get("decisions") or [])
+    return out
+
+
+def _assert_decision(ask_result: dict | None, expected_type: str, expected_choice: str) -> None:
+    trace = _trace_for(ask_result)
+    decisions = _decisions(trace)
+    assert decisions, f"expected Decision Log in trace, got steps: {[s.get('kind') for s in trace]}"
+    choices = [
+        d.get("choice")
+        for d in decisions
+        if d.get("type") == expected_type and d.get("choice") == expected_choice
+    ]
+    assert choices, f"expected decision {expected_type}={expected_choice!r}, got {decisions}"

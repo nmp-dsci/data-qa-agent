@@ -82,7 +82,13 @@ from .analysis import (  # noqa: E402
     top_growth,
     trend_series,
 )
-from .charts import comparison_chart, profile_chart, trend_chart  # noqa: E402
+from .charts import (  # noqa: E402
+    comparison_chart,
+    distribution_chart,
+    dual_axis_chart,
+    profile_chart,
+    trend_chart,
+)
 from .reporting import build_report, make_insight, related_metrics  # noqa: E402
 
 __all__ = [
@@ -96,6 +102,8 @@ __all__ = [
     # charts
     "trend_chart",
     "comparison_chart",
+    "dual_axis_chart",
+    "distribution_chart",
     "profile_chart",
     # reporting
     "build_report",

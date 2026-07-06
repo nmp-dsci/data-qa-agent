@@ -21,6 +21,16 @@ export interface AgentToolCall {
   tool_call_id?: string | null;
 }
 
+export interface AgentDecision {
+  order?: number;
+  type: string;
+  choice?: string | null;
+  why?: string | null;
+  status?: string | null;
+  row_count?: number | null;
+  sql?: string | null;
+}
+
 export interface AgentStep {
   // Message-history trace: system | user | model | tool_return | retry.
   // Legacy hand-built kinds (sql/chart/memory/analytics/knowledge) still render.
@@ -46,6 +56,7 @@ export interface AgentStep {
   title?: string | null;
   fact?: string;
   intent?: string;
+  decisions?: AgentDecision[];
 }
 
 export interface Headline {

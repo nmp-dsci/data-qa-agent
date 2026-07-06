@@ -75,6 +75,85 @@ def comparison_chart(
 
 
 @skill
+def dual_axis_chart(
+    df: pd.DataFrame,
+    *,
+    x_col: str,
+    left_value_col: str,
+    right_value_col: str,
+    title: str | None = None,
+    left_title: str | None = None,
+    right_title: str | None = None,
+    x_type: str = "temporal",
+) -> dict[str, Any]:
+    """Bars plus a secondary-axis line for two metrics with different scales.
+
+    Use when the question compares two measures on the same x-axis but one scale
+    would flatten the other, such as sales volume vs price or rent vs sale price.
+    The only allowed independent scale is y, enforced by ``validate_chart_spec``.
+    """
+    values = df.to_dict("records")
+    spec: dict[str, Any] = {
+        "layer": [
+            {
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": x_col, "type": x_type, "title": None},
+                    "y": {
+                        "field": left_value_col,
+                        "type": "quantitative",
+                        "title": left_title or left_value_col,
+                    },
+                },
+            },
+            {
+                "mark": {"type": "line", "point": True},
+                "encoding": {
+                    "x": {"field": x_col, "type": x_type, "title": None},
+                    "y": {
+                        "field": right_value_col,
+                        "type": "quantitative",
+                        "title": right_title or right_value_col,
+                    },
+                },
+            },
+        ],
+        "resolve": {"scale": {"y": "independent"}},
+    }
+    if title:
+        spec["title"] = title
+    validated = validate_chart_spec(spec)
+    return {**validated, "data": {"values": values[:_MAX_POINTS]}}
+
+
+@skill
+def distribution_chart(
+    df: pd.DataFrame,
+    *,
+    value_col: str,
+    title: str | None = None,
+    category_col: str | None = None,
+) -> dict[str, Any]:
+    """Histogram for spread, outliers, and distribution questions.
+
+    Use when the user asks about the spread of a numeric measure rather than a
+    trend or ranked comparison. ``category_col`` colours distributions by group.
+    """
+    values = df.to_dict("records")
+    encoding: dict[str, Any] = {
+        "x": {"field": value_col, "type": "quantitative", "bin": True},
+        "y": {"aggregate": "count", "type": "quantitative", "title": "Count"},
+    }
+    if category_col:
+        encoding["color"] = {"field": category_col, "type": "nominal", "title": None}
+    spec: dict[str, Any] = {"mark": "bar", "encoding": encoding}
+    if title:
+        spec["title"] = title
+    validated = validate_chart_spec(spec)
+    return {**validated, "data": {"values": values[:_MAX_POINTS]}}
+
+
+@skill
 def profile_chart(
     df: pd.DataFrame,
     *,

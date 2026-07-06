@@ -26,35 +26,22 @@ GEO_BRIDGE = "staging.int_postcode_geo"
 RAW_SALES = "raw.property_sales"
 RAW_RENT = "raw.property_rent"
 
-JOIN_HINT = (
-    "suburb values are stored Title Case (e.g. 'Hornsby', 'Normanhurst'), NOT "
-    "upper-case — never match them with `suburb IN ('HORNSBY', ...)` (returns "
-    "zero rows); use UPPER(suburb) IN ('HORNSBY', ...) or ILIKE, or resolve the "
-    f"exact spelling once via the lookup_values tool. "
-    "Sales tables carry a real suburb dimension (from the sale records) "
-    "— filter by suburb for one locality, but postcode<->suburb is not 1:1, so "
-    "to get a postcode total SUM total_sale_value/n_sold across that postcode's "
-    "suburbs (additive; bucket medians are not). RENT has NO suburb (raw.property_rent has "
-    "no locality): for a rent-by-suburb question, first resolve the suburb to "
-    f"its postcode(s) via {GEO_BRIDGE} (WHERE suburb ILIKE '%name%'), then "
-    "query rent by postcode. Join sales<->rent on (postcode, property_type, "
-    "month) — NOT suburb (rent has none). property_type is 'house' or 'unit'; "
-    "there are no synthetic 'ALL' rows, so re-aggregate across property_type "
-    "when a blended answer is needed. month is a first-of-month date. "
-    "bedroom_band / area_band / zoning are part of the mart grain, so for a "
-    "broader figure aggregate additive metrics with sum(total_sale_value), "
-    "sum(n_sold), sum(total_weekly_rent), and sum(n_rented). Default to the "
-    "marts (small, precomputed aggregates) — compute growth over any window, "
-    "rolling averages, and yield yourself from total_sale_value/n_sold and "
-    "total_weekly_rent/n_rented; none are pre-baked. Bucket medians are useful "
-    "inside one bucket but do not compose across re-aggregation. Buckets are "
-    "kept even when tiny, so filter WHERE n_sold "
-    f">= N (or n_rented) when a median must be reliable. Only drop to {STG_SALES}"
-    f"/{STG_RENT} (record grain, ~3M rows) for genuinely record-level questions "
-    "(individual sales/bonds, addresses, bedroom counts, lot-size bands) — "
-    "always filter by postcode and/or month first. SELECT only; Row-Level "
-    "Security limits rows to the datasets a user may access (nsw_sales / "
-    "nsw_rent)."
+# Dataset-neutral grounding: the generic half of the old property join hint.
+# Every dataset-specific quirk (suburb casing, "rent has no suburb", exact join
+# keys) now lives in the knowledge pages the agent searches — this block keeps
+# only the rules that hold for ANY mart, so prompts no longer hard-code a domain.
+GENERIC_GROUNDING = (
+    "Grounding (dataset-neutral): SELECT-only, and Row-Level Security limits rows "
+    "to the datasets you may access. The marts are pre-aggregated building blocks — "
+    "derive rates, growth, rolling averages and ratios yourself from the ADDITIVE "
+    "parts (sums and counts); never average an average or sum a median (bucket "
+    "medians don't compose across re-aggregation). Aggregate the additive sum/count "
+    "columns when you need a figure broader than the mart's grain. Prefer the marts; "
+    "drop to record-grain staging tables (large) only for genuinely record-level "
+    "questions, always filtered first. Text dimension values have exact casing — "
+    "resolve them with the lookup_values tool rather than guessing. Join keys, "
+    "non-additive traps and any dataset-specific quirks live in the knowledge pages: "
+    "call search_knowledge for them before writing SQL."
 )
 
 CURATED_SCHEMA_DOC = f"""\
@@ -106,7 +93,7 @@ Columns: rent_id, rent_date, rent_year, rent_month, postcode,
 property_type_code, property_type, bedrooms, bedroom_band ('0'..'5+'/'unknown'),
 weekly_rent.
 
-{JOIN_HINT}
+{GENERIC_GROUNDING}
 """
 
 
@@ -126,7 +113,7 @@ def _schema_from_manifest(path: Path) -> str:
     if not blocks:
         raise ValueError("no agent_queryable models in manifest")
     header = "NSW property-market data (from dbt docs):\n"
-    return header + "\n".join(blocks) + "\n" + JOIN_HINT
+    return header + "\n".join(blocks) + "\n" + GENERIC_GROUNDING
 
 
 def get_schema() -> str:
@@ -166,10 +153,9 @@ def get_schema_compact() -> str:
     """A compact table catalog for the agent's system prompt (tier 1).
 
     One line of orientation + the column names per queryable table, plus the
-    dense JOIN_HINT (the highest-value grounding — suburb casing, rent has no
-    suburb, don't SUM across a grain dimension, marts-vs-staging). Full per-column
-    descriptions live behind the describe_table tool (tier 2), so this stays a
-    few thousand chars instead of ~15k, cutting the per-turn base cost sharply.
+    dataset-neutral grounding (marts-vs-staging, additive/non-additive rules).
+    Full per-column descriptions live behind the describe_table tool (tier 2),
+    and dataset quirks live in the knowledge pages.
     """
     tables = get_catalog(role="user")
     lines = [
@@ -183,27 +169,7 @@ def get_schema_compact() -> str:
         cols = ", ".join(c["name"] for c in t.get("columns", []))
         lines.append(f"Table {rel} — {blurb}" if blurb else f"Table {rel}")
         lines.append(f"  cols: {cols}")
-    return "\n".join(lines) + "\n\n" + JOIN_HINT
-
-
-# Dataset-neutral grounding: the generic half of the old property JOIN_HINT.
-# Every dataset-specific quirk (suburb casing, "rent has no suburb", exact join
-# keys) now lives in the knowledge pages the agent searches — this block keeps
-# only the rules that hold for ANY mart, so the prompt no longer hard-codes a
-# domain. (Data-agent rework, Phase A.)
-GENERIC_GROUNDING = (
-    "Grounding (dataset-neutral): SELECT-only, and Row-Level Security limits rows "
-    "to the datasets you may access. The marts are pre-aggregated building blocks — "
-    "derive rates, growth, rolling averages and ratios yourself from the ADDITIVE "
-    "parts (sums and counts); never average an average or sum a median (bucket "
-    "medians don't compose across re-aggregation). Aggregate the additive sum/count "
-    "columns when you need a figure broader than the mart's grain. Prefer the marts; "
-    "drop to record-grain staging tables (large) only for genuinely record-level "
-    "questions, always filtered first. Text dimension values have exact casing — "
-    "resolve them with the lookup_values tool rather than guessing. Join keys, "
-    "non-additive traps and any dataset-specific quirks live in the knowledge pages: "
-    "call search_knowledge for them before writing SQL."
-)
+    return "\n".join(lines) + "\n\n" + GENERIC_GROUNDING
 
 
 def list_marts() -> str:
@@ -212,7 +178,7 @@ def list_marts() -> str:
     Names and a one-sentence blurb only — no columns, no per-dataset quirks. The
     agent pulls columns via describe_table and domain grounding via
     search_knowledge, so the prompt cost stays flat as datasets are added (it no
-    longer stacks every table's full schema + a domain-specific JOIN_HINT into
+    longer stacks every table's full schema + domain-specific grounding into
     every turn). Replaces get_schema_compact() in the system prompt.
     """
     tables = get_catalog(role="user")

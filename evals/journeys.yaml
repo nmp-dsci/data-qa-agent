@@ -17,6 +17,10 @@
 #   chart_mark: line           the chart's Vega-Lite mark is this type
 #   chart_encoding_channels: [x, y, color]   all listed encoding channels are present
 #                              (color present = multiple series, e.g. sale price + rent)
+#   decision_log_present       persisted trace includes an ordered Decision Log
+#   mart_used: marts.table     Decision Log includes a selected table/mart
+#   skill_used: trend_chart    Decision Log includes a selected analysis/chart skill
+#   chart_used: trend_chart    Decision Log includes a selected chart skill
 
 journeys:
   - name: admin signs in and is recognised as admin
@@ -76,6 +80,16 @@ journeys:
       - chart_present
       - chart_mark: line
       - chart_encoding_channels: [x, y, color]
+
+  - name: admin trajectory records mart skill and chart choices
+    as_user: admin
+    question: give me trend of average sale price by month for hornsby by property type
+    expect:
+      - agent_answers_successfully
+      - decision_log_present
+      - mart_used: marts.property_sales
+      - skill_used: trend_chart
+      - chart_used: trend_chart
 
   - name: unknown user cannot sign in
     as_user: nobody

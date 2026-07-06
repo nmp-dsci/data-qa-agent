@@ -24,6 +24,7 @@ _ALLOWED_TOP_LEVEL_KEYS = {
     "$schema",
     "layer",
     "params",
+    "resolve",
 }
 _ALLOWED_MARKS = {"bar", "line", "point", "arc", "area"}
 _ALLOWED_PARAM_SELECT_TYPES = {"interval", "point"}
@@ -60,6 +61,16 @@ def _validate_params(params: Any) -> None:
         bind = p.get("bind")
         if bind is not None and bind not in _ALLOWED_PARAM_BIND:
             raise UnsafeChartSpecError(f"unsupported param bind: {bind!r}")
+
+
+def _validate_resolve(resolve: Any) -> None:
+    if not isinstance(resolve, dict):
+        raise UnsafeChartSpecError("resolve must be an object")
+    if set(resolve) != {"scale"} or not isinstance(resolve.get("scale"), dict):
+        raise UnsafeChartSpecError("resolve may only configure scale")
+    scale = resolve["scale"]
+    if set(scale) != {"y"} or scale.get("y") != "independent":
+        raise UnsafeChartSpecError("resolve.scale may only set y='independent'")
 
 
 def trend_overlay_encoding(
@@ -126,5 +137,7 @@ def validate_chart_spec(spec: dict[str, Any]) -> dict[str, Any]:
 
     if "params" in spec:
         _validate_params(spec["params"])
+    if "resolve" in spec:
+        _validate_resolve(spec["resolve"])
 
     return spec

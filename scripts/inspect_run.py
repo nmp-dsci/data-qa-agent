@@ -134,6 +134,18 @@ def _print_human(run: dict[str, Any]) -> None:
         for call in s.get("tool_calls") or []:
             p(_indent(f"→ calls {call.get('name')}"))
             p(_indent(call.get("args", ""), level=2))
+        if s.get("kind") == "decision_log":
+            for d in s.get("decisions") or []:
+                line = f"{d.get('order', '')}. {d.get('type')}: {d.get('choice', '')}"
+                if d.get("status"):
+                    line += f" [{d['status']}]"
+                if d.get("row_count") is not None:
+                    line += f" · {d['row_count']} rows"
+                p(_indent(line))
+                if d.get("why"):
+                    p(_indent("why: " + str(d["why"]), level=2))
+                if d.get("sql"):
+                    p(_indent("sql: " + str(d["sql"]), level=2))
         # Legacy hand-built step fields.
         for key in ("sql", "error", "fact"):
             if s.get(key):

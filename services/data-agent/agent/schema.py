@@ -186,6 +186,53 @@ def get_schema_compact() -> str:
     return "\n".join(lines) + "\n\n" + JOIN_HINT
 
 
+# Dataset-neutral grounding: the generic half of the old property JOIN_HINT.
+# Every dataset-specific quirk (suburb casing, "rent has no suburb", exact join
+# keys) now lives in the knowledge pages the agent searches — this block keeps
+# only the rules that hold for ANY mart, so the prompt no longer hard-codes a
+# domain. (Data-agent rework, Phase A.)
+GENERIC_GROUNDING = (
+    "Grounding (dataset-neutral): SELECT-only, and Row-Level Security limits rows "
+    "to the datasets you may access. The marts are pre-aggregated building blocks — "
+    "derive rates, growth, rolling averages and ratios yourself from the ADDITIVE "
+    "parts (sums and counts); never average an average or sum a median (bucket "
+    "medians don't compose across re-aggregation). Aggregate the additive sum/count "
+    "columns when you need a figure broader than the mart's grain. Prefer the marts; "
+    "drop to record-grain staging tables (large) only for genuinely record-level "
+    "questions, always filtered first. Text dimension values have exact casing — "
+    "resolve them with the lookup_values tool rather than guessing. Join keys, "
+    "non-additive traps and any dataset-specific quirks live in the knowledge pages: "
+    "call search_knowledge for them before writing SQL."
+)
+
+
+def list_marts() -> str:
+    """Lean mart index for the agent prompt (tier 0): table + one-line purpose.
+
+    Names and a one-sentence blurb only — no columns, no per-dataset quirks. The
+    agent pulls columns via describe_table and domain grounding via
+    search_knowledge, so the prompt cost stays flat as datasets are added (it no
+    longer stacks every table's full schema + a domain-specific JOIN_HINT into
+    every turn). Replaces get_schema_compact() in the system prompt.
+    """
+    tables = get_catalog(role="user")
+    marts = [t for t in tables if t["schema"] == "marts"]
+    staging = [t for t in tables if t["schema"] == "staging"]
+    lines = [
+        "Tables you can query — call describe_table('<schema.table>') for a table's "
+        "columns before you use it. Prefer the marts (pre-aggregated building blocks):",
+    ]
+    for t in marts:
+        rel = f"{t['schema']}.{t['table']}"
+        blurb = _first_sentence(t.get("description") or "")
+        lines.append(f"  {rel} — {blurb}" if blurb else f"  {rel}")
+    for t in staging:
+        rel = f"{t['schema']}.{t['table']}"
+        blurb = _first_sentence(t.get("description") or "")
+        lines.append(f"  {rel} — {blurb}" if blurb else f"  {rel}")
+    return "\n".join(lines) + "\n\n" + GENERIC_GROUNDING
+
+
 def describe_table(name: str) -> str:
     """Full column-level docs for one table (tier 2, fetched on demand).
 

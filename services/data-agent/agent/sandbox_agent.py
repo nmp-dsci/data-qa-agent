@@ -34,7 +34,7 @@ from .provider import choose_provider
 from .report import select_primary_query
 from .sandbox import run_code
 from .sandbox.extract import extract as run_extract
-from .schema import describe_table, get_schema_compact
+from .schema import describe_table, list_marts
 
 if _PYDANTIC_AI_AVAILABLE:
     from pydantic_ai import Agent, RunContext, capture_run_messages
@@ -45,7 +45,8 @@ if _PYDANTIC_AI_AVAILABLE:
 # docs so the cheap model can pick the right skill without reading source.
 _SKILL_CATALOG = """\
 Available inside run_analysis (import-free; call as skills.<name>):
-  # data analysis (over the extracted DataFrame `df`; avg price = value_col/den_col)
+  # data analysis (over the extracted DataFrame `df`; a rate = value_col/den_col,
+  #   e.g. an additive total over its count)
   trend_series(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
       -> long-form actual + rolling series for charting.
   rolling_average(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
@@ -53,7 +54,7 @@ Available inside run_analysis (import-free; call as skills.<name>):
   growth_rate(df, *, month_col, value_col, years, den_col=None, group_col=None)
       -> % growth over `years` on the 6-month rolling base.
   top_growth(df, *, month_col, value_col, group_col, years, den_col=None, n=5, ascending=False)
-      -> DataFrame [group, growth_pct] ranked: the "top growth suburbs" ranker.
+      -> DataFrame [group, growth_pct] ranked: the "top-growth groups" ranker.
   latest_value(df, *, month_col, value_col, den_col=None, group_col=None)
       -> {"value","month"}: latest 6-month-smoothed value + its month.
   gross_yield(rent_df, price_df, *, key_cols, weekly_rent_col, price_col)
@@ -76,33 +77,39 @@ Available inside run_analysis (import-free; call as skills.<name>):
 def _sandbox_system_prompt(recalled: list[str], max_extracts: int, max_runs: int) -> str:
     memories_block = "\n".join(f"- {m}" for m in recalled) if recalled else "(none stored yet)"
     return f"""\
-You are a data analyst for a NSW property-market app. Produce a clear, insightful
+You are a data-insight agent. You answer questions over whatever datasets the
+marts schema exposes — do NOT assume a particular domain; discover what the data
+is from the mart index and the knowledge base. Produce a clear, insightful
 DATA-INSIGHT REPORT — not prose. You do the heavy lifting as CODE that calls
 tested skills, not by stitching tools together.
 
 Work in this order:
-1. search_knowledge(query) to find the 1-2 relevant DOMAIN pages: which table,
-   columns, and grain to extract for this entity/metric (e.g. sales have suburb,
-   rent only postcode). You do NOT need knowledge for how to compute growth/yield
-   or structure the report — that lives in the tested skills below; just call them.
-   The compact schema at the end lists every table and column.
-2. extract(sql, name, purpose): write ONE read-only SELECT that pulls the monthly
-   series you need — SELECT month + the metric columns (e.g. total_sale_value,
-   n_sold), filtered to the entity (suburb/postcode). KEEP EVERY MONTH (never add
-   a `WHERE n_sold >= N` filter). The result is loaded as a pandas DataFrame named
-   `name` (default `df`). You get up to {max_extracts} extracts — usually 1-2.
-   Use lookup_values first (FREE) to resolve a suburb's exact spelling/casing.
-3. run_analysis(code): write SHORT pandas that calls skills.* over `df` and assigns
-   the finished report to `result`, e.g.:
+1. search_knowledge(query): find the 1-2 relevant knowledge pages for this
+   dataset/metric — the grain to pull, which columns mean what, join keys, and any
+   gotchas. This is where dataset-specific rules live; always start here. You do
+   NOT need knowledge for how to compute growth/yield or structure the report —
+   that lives in the tested skills below; just call them.
+2. describe_table('<schema.table>'): the prompt lists only table names + a
+   one-line purpose, so read a table's exact columns here before you write SQL.
+   You may need MORE THAN ONE table (e.g. a ratio across two marts) — pull each.
+3. extract(sql, name, purpose): write a read-only SELECT that pulls the series you
+   need — SELECT month + the metric columns, filtered to the entity. KEEP EVERY
+   MONTH (never add a `WHERE <count> >= N` filter). The result is loaded as a
+   pandas DataFrame named `name` (default `df`); call extract again with a
+   different `name` for a second table, then join in SQL or in pandas. You get up
+   to {max_extracts} extracts. Use lookup_values first (FREE) to resolve a text
+   value's exact spelling/casing.
+4. run_analysis(code): write SHORT pandas that calls skills.* over the frame(s)
+   and assigns the finished report to `result`, e.g.:
        s = skills.trend_series(df, month_col="month",
-                               value_col="total_sale_value", den_col="n_sold")
-       g = skills.growth_rate(df, month_col="month", value_col="total_sale_value",
-                              den_col="n_sold", years=5)
+                               value_col="<total_col>", den_col="<count_col>")
+       g = skills.growth_rate(df, month_col="month", value_col="<total_col>",
+                              den_col="<count_col>", years=5)
        latest = skills.latest_value(df, month_col="month",
-                                    value_col="total_sale_value", den_col="n_sold")
+                                    value_col="<total_col>", den_col="<count_col>")
        result = skills.build_report(
            summary="...",
-           headlines=[{{"label": "...", "value": f"${{latest['value']}}",
+           headlines=[{{"label": "...", "value": f"{{latest['value']}}",
                         "basis": "6-mo rolling, " + latest['month']}}],
            insights=[skills.make_insight("...", f"Grew {{g}}% over 5y.")],
            main_chart=skills.trend_chart(s, title="..."),
@@ -111,24 +118,26 @@ Work in this order:
    you MAY use pandas but you MUST call skills.skill_gap(need, why) naming what a
    future skill should do. You get up to {max_runs} run_analysis attempts; if it
    returns an error, fix the code and retry.
-4. Return a one-line confirmation string (the user sees the report, not this text).
+5. If the available marts genuinely cannot answer the question, call
+   no_answer("<short reason>") instead of forcing a report — an honest "this data
+   doesn't cover that" beats a misleading answer.
+6. Return a one-line confirmation string (the user sees the report, not this text).
 
 DATA NOTE: month/date values arrive as plain STRINGS (e.g. "2026-05" or
 "2026-05-01"), not datetimes. Use them directly in text — never apply a date
 format spec (e.g. f"{{m:%b %Y}}" will fail); latest_value already returns a ready
 "month" string for the basis.
 
-RANKING ("top/best/fastest-growing suburbs"): an extract is capped at ~5000 rows,
-so you CANNOT pull every month for every suburb (that truncates and corrupts the
-series). Instead compute the ranking metric IN THE SQL extract — one row per
-group — e.g. a CTE that computes each suburb's average price in a recent 6-month
-window and a window ~N years earlier, then growth = (recent-old)/old*100. Extract
-that (columns: suburb, growth_pct, plus context), then rank in pandas
-(df.nlargest) and present with skills.comparison_chart + skills.make_insight +
+RANKING ("top/best/fastest X"): an extract is capped at ~{settings.max_rows} rows,
+so you usually CANNOT pull every month for every group (that truncates and
+corrupts the series). Instead compute the ranking metric IN THE SQL extract — one
+row per group — e.g. a CTE that computes each group's value in a recent window and
+a window ~N years earlier, then growth = (recent-old)/old*100. Extract that
+(columns: the group, growth_pct, plus context), then rank in pandas (df.nlargest)
+and present with skills.comparison_chart + skills.make_insight +
 skills.build_report. Only use skills.top_growth (which needs raw monthly series)
-when comparing a HANDFUL of named suburbs that fit under the row cap. For "for X
-and Y" (two datasets), do one such aggregated extract per dataset (rent has no
-suburb — group by postcode) and present both. Never run one extract per suburb.
+when comparing a HANDFUL of named groups that fit under the row cap. Never run one
+extract per group.
 
 {_SKILL_CATALOG}
 
@@ -138,8 +147,8 @@ user preference is stated, call remember.
 Known preferences for this user:
 {memories_block}
 
-Schema reference (exact table/column names):
-{get_schema_compact()}
+Available datasets (names + purpose only — describe_table for columns):
+{list_marts()}
 """
 
 
@@ -166,6 +175,7 @@ class _SbDeps:
     run_calls: int = 0
     run_refusals: int = 0
     report: dict[str, Any] | None = None
+    no_answer: str | None = None
     skills_used: list[str] = field(default_factory=list)
     skill_gaps: list[dict[str, str]] = field(default_factory=list)
     used_inline_math: bool = False
@@ -209,11 +219,15 @@ async def answer_with_sandbox(question: str, *, user_id: str) -> dict[str, Any] 
             try:
                 await agent.run(question, deps=deps, usage_limits=usage_limits)
             except Exception as exc:  # noqa: BLE001 — salvage any report already built
-                if deps.report is None:
+                if deps.report is None and deps.no_answer is None:
                     raise
-                print(f"[data-agent] sandbox run errored ({exc}); using report built so far")
+                print(f"[data-agent] sandbox run errored ({exc}); using result built so far")
 
         if deps.report is None:
+            if deps.no_answer:
+                # The agent judged the marts can't answer this — return an honest
+                # "no answer" report instead of falling through to a domain stub.
+                return _no_answer_result(deps, messages, provider)
             # Model never produced a report — let the caller fall back to the stub.
             return None
 
@@ -255,6 +269,41 @@ async def answer_with_sandbox(question: str, *, user_id: str) -> dict[str, Any] 
     except Exception as exc:  # noqa: BLE001 — never let this path break the app
         print(f"[data-agent] sandbox path unavailable, using stub: {exc}")
         return None
+
+
+def _no_answer_result(deps: _SbDeps, messages: list[Any], provider: str) -> dict[str, Any]:
+    """Shape an honest 'this data can't answer that' response (report-compatible).
+
+    Keeps the same envelope the frontend expects (a report with an empty body and
+    a ``no_answer`` flag), so the UI can render the reason instead of the app
+    silently falling back to a domain-specific stub.
+    """
+    trace = _build_trace(messages)
+    report = {
+        "element_id": "report",
+        "summary": deps.no_answer or "The available data can't answer that question.",
+        "headlines": [],
+        "insights": [],
+        "profiles": [],
+        "main_chart": None,
+        "queries": _query_list(deps.queries),
+        "knowledge_pages_used": deps.knowledge_pages,
+        "knowledge_version": knowledge_version(),
+        "no_answer": True,
+    }
+    return {
+        "answer": report["summary"],
+        "report": report,
+        "sql": None,
+        "columns": [],
+        "rows": [],
+        "row_count": 0,
+        "chart": None,
+        "engine": provider,
+        "input_tokens": None,
+        "output_tokens": None,
+        "steps": trace,
+    }
 
 
 def _query_list(queries: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -307,9 +356,13 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         ctx: RunContext[_SbDeps],
         column: str,
         pattern: str,
-        table: str = "marts.property_sales",
+        table: str,
     ) -> str:
-        """Resolve exact distinct values of a column (e.g. a suburb's casing). FREE."""
+        """Resolve exact distinct values of a text column (e.g. a name's casing). FREE.
+
+        Pass the schema-qualified table the column lives in (see the mart index /
+        describe_table). Dataset-agnostic — no default table.
+        """
         sql = _lookup_values_sql(table, column, pattern)
         if sql is None:
             return f"lookup_values: unknown table/column {table!r}.{column!r}."
@@ -435,6 +488,19 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
             f"report built. Skills used: {result.skills_used}.{gap_note} "
             "Now return a one-line confirmation."
         )
+
+    @agent.tool
+    async def no_answer(ctx: RunContext[_SbDeps], reason: str) -> str:
+        """Declare that the available marts can't answer this question.
+
+        Use when no dataset covers what's asked (wrong domain, missing metric or
+        dimension). Records an honest reason instead of forcing a misleading
+        report. Give a short, user-facing reason (what's missing / what the data
+        does cover). Then return a one-line confirmation.
+        """
+        ctx.deps.no_answer = reason
+        ctx.deps.steps.append({"kind": "no_answer", "reason": reason})
+        return "recorded no_answer; now return a one-line confirmation."
 
     @agent.tool
     async def remember(ctx: RunContext[_SbDeps], fact: str) -> str:

@@ -15,15 +15,16 @@ models:
     # staging tables. Views get inlined per reference, re-running that aggregation
     # every time — materializing computes each layer once and reuses the result.
     #
-    # No minimum-count var any more: the summary marts keep every bucket (no
+    # No minimum-count var any more: the aggregate marts keep every bucket (no
     # locality dropped for being small) and expose n_sold/n_rented so a query
-    # can pick its own reliability threshold. See mart_sales_summary.sql.
+    # can pick its own reliability threshold. See mart_property_sales.sql.
     staging:
       +schema: staging
       +materialized: table
       # Agent-queryable: get_schema() grounds the LLM in any model tagged this
       # way, regardless of schema — not just schema == "marts". stg_sales and
-      # stg_rent get it here; int_postcode_geo (intermediate) sets the tag on
+      # stg_rent are physically aliased to staging.property_sales/property_rent;
+      # int_postcode_geo (intermediate) sets the tag on
       # itself, since it's now the suburb<->postcode resolver the agent needs.
       +tags: ['agent_queryable']
     intermediate:

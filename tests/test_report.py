@@ -109,7 +109,7 @@ def test_primary_query_prefers_domain_data_over_catalog_probe() -> None:
                 "row_count": 7,
             },
             "Q2": {
-                "sql": "select * from marts.mart_sales_summary where false",
+                "sql": "select * from marts.property_sales where false",
                 "row_count": 0,
             },
         }

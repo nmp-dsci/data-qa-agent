@@ -136,7 +136,7 @@ def _build_trace(messages: list[Any]) -> list[dict[str, Any]]:
 
 @lru_cache(maxsize=1)
 def _catalog_columns() -> dict[str, set[str]]:
-    """{'marts.mart_sales_summary': {'suburb', ...}} for lookup_values validation."""
+    """{'marts.property_sales': {'suburb', ...}} for lookup_values validation."""
     from .schema import get_catalog
 
     out: dict[str, set[str]] = {}

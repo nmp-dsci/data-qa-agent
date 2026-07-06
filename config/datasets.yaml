@@ -1,6 +1,6 @@
 # Dataset registry — the pipeline ingests these and the agent answers over them.
-# The two NSW datasets are kept unique; the growth marts each belong to one, and
-# the agent JOINs them on `suburb` to compare sale-price and rent growth.
+# The two NSW datasets are kept unique. Raw, staging, and marts use matching
+# relation names (`property_sales`, `property_rent`) so lineage is visible.
 # The seed's source of truth is the Alembic migration (0002_property_market);
 # this file documents the intended registry + access.
 datasets:
@@ -8,8 +8,8 @@ datasets:
     name: NSW property sales
     source: data/nswgov_df.csv            # full data (local only); sample in data/samples/
     description: >
-      NSW Government residential sale prices. Powers marts.mart_sales_growth —
-      sale-price growth by suburb.
+      NSW Government residential sale prices. Powers raw.property_sales,
+      staging.property_sales, and marts.property_sales.
     access:
       roles: [admin]      # admins see every dataset
       users: [user1]      # user1 granted; user2 excluded (demonstrates RLS)
@@ -18,8 +18,8 @@ datasets:
     name: NSW rental bonds
     source: data/rentboard_df.csv
     description: >
-      NSW Rental Bond Board lodgements. Powers marts.mart_rent_growth —
-      weekly-rent growth by suburb (measured at postcode level).
+      NSW Rental Bond Board lodgements. Powers raw.property_rent,
+      staging.property_rent, and marts.property_rent.
     access:
       roles: [admin]
       users: [user1]      # user1 granted both datasets, so it can JOIN them

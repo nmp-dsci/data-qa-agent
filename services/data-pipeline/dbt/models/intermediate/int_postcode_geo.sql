@@ -17,7 +17,7 @@
 --
 -- The sales/rent marts no longer join this to borrow a single label — sales
 -- carries its true suburb from the record grain. This bridge stays as the
--- resolver for the one case that can't: rent. raw.rent has no locality column
+-- resolver for the one case that can't: rent. raw.property_rent has no locality column
 -- at all, so "rent in Normanhurst" is answered by resolving the suburb to its
 -- postcode(s) here, then querying rent by postcode. RLS-scoped to nsw_sales
 -- (it's derived from sales).

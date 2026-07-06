@@ -1,6 +1,7 @@
 {{
   config(
     materialized='table',
+    alias='property_rent',
     indexes=[
       {'columns': ['rent_id'], 'unique': True},
       {'columns': ['postcode', 'property_type', 'rent_month']},
@@ -11,15 +12,15 @@
 
 -- Clean rental bond lodgements: derive lodgement date (year + month), keep
 -- positive weekly rents, and derive house/unit so rent can be compared
--- like-for-like with sales. raw.rent only has 5 columns and all of them are
+-- like-for-like with sales. raw.property_rent only has 5 columns and all of them are
 -- already used here — nothing else to widen (see stg_sales.sql for the
--- record of what was and wasn't brought in from raw.sales).
+-- record of what was and wasn't brought in from raw.property_sales).
 --
 -- property_type: per docs/property_data/profile_rentboard.py, House + Townhouse
 -- bonds are grouped as 'house'; Flat/Unit/Other as 'unit' (mirrors stg_sales so
 -- the two datasets share a join key: property_type + month).
 --
--- rent_id: raw.rent carries no id-like column at all, and two genuinely
+-- rent_id: raw.property_rent carries no id-like column at all, and two genuinely
 -- distinct bonds can legitimately share every other column (same postcode,
 -- type, bedrooms, rent, lodgement date) — a hash of the natural columns could
 -- wrongly collapse two real rows into one, so row_number() over a fully
@@ -32,7 +33,7 @@ with src as (
         property_type,
         bedrooms,
         weekly_rent
-    from {{ source('raw', 'rent') }}
+    from {{ source('raw', 'property_rent') }}
 ),
 cleaned as (
     select

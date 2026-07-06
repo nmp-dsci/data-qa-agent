@@ -1,31 +1,32 @@
 ---
 name: property-sales-overview
-description: NSW property sales marts — tables, grain, and the key columns to query.
-applies_to: [sales, "sale price", house price, "sold", nsw_sales, mart_sales_summary, property price]
+description: NSW property sales mart — table grain and the key columns to query.
+applies_to: [sales, "sale price", house price, "sold", nsw_sales, property_sales, property price]
 ---
 
 # Property sales (dataset nsw_sales)
 
-## Primary building block: `marts.mart_sales_summary`
-One row per **postcode + suburb + property_type + month**. No precomputed growth.
+## Primary building block: `marts.property_sales`
+One row per **postcode + suburb + property_type + area_band + zoning + month**.
+No precomputed growth.
 - `postcode` (text) — join key to rent (with property_type, month)
 - `suburb` (text) — real dimension; filter for one locality (UPPERCASE values)
-- `property_type` (text) — 'house', 'unit', or 'ALL' (blended) —
+- `property_type` (text) — 'house' or 'unit'; no synthetic 'ALL' rows —
   [[domains/property-sales/property-types]]
+- `area_band` (text) — cleaned lot-size band; part of the grain
+- `zoning` (text) — planning zone or 'unknown'; part of the grain
 - `month` (date) — first-of-month
 - `total_sale_value` (numeric) — sum of sale_price that month
 - `n_sold` (int) — count of sales that month
-- `median_price` (numeric) — median sale price AUD that month
+- `avg_sale_price` (numeric) — bucket-level average sale price
+- `median_sale_price` (numeric) — bucket-level median sale price
 
 Average price = `total_sale_value / nullif(n_sold, 0)` (composes across any window).
-`total_sale_value` and `n_sold` are additive across a postcode's suburbs;
-`median_price` is NOT — do not sum medians.
+`total_sale_value` and `n_sold` are additive across postcode/suburb/property_type/
+area/zoning buckets; bucket medians are NOT — do not sum medians.
 
 ## Other tables
-- `marts.mart_sales_by_segment` — same, broken out by `area_band` + `zoning`
-  ([[domains/property-sales/segments]]). Those dims are part of the grain (no 'ALL'
-  row) — never SUM across them.
-- `staging.stg_sales` — record grain, ~3M rows. Only for record-level questions
+- `staging.property_sales` — record grain, ~3M rows. Only for record-level questions
   (individual sales, addresses); always filter by postcode/month first.
 
 ## Reliability

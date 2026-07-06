@@ -1,18 +1,19 @@
 ---
 name: property-rent-overview
-description: NSW rent marts — postcode-grained, no suburb; key columns.
-applies_to: [rent, "weekly rent", rental, bond, nsw_rent, mart_rent_summary]
+description: NSW rent mart — postcode-grained, no suburb; key columns.
+applies_to: [rent, "weekly rent", rental, bond, nsw_rent, property_rent]
 ---
 
 # Property rent (dataset nsw_rent)
 
-## Primary building block: `marts.mart_rent_summary`
-One row per **postcode + property_type + month** — there is **no suburb column**
-(the rental-bond source has no locality). No precomputed growth.
-- `postcode` (text), `property_type` (text: 'house'/'unit'/'ALL'), `month` (date)
+## Primary building block: `marts.property_rent`
+One row per **postcode + property_type + bedroom_band + month** — there is
+**no suburb column** (the rental-bond source has no locality). No precomputed growth.
+- `postcode` (text), `property_type` (text: 'house'/'unit'), `bedroom_band` (text), `month` (date)
 - `total_weekly_rent` (numeric) — sum of weekly_rent that month
 - `n_rented` (int) — count of bonds that month
-- `median_rent` (numeric) — median weekly rent AUD that month
+- `avg_weekly_rent` (numeric) — bucket-level average weekly rent
+- `median_weekly_rent` (numeric) — bucket-level median weekly rent
 
 Average rent = `total_weekly_rent / nullif(n_rented, 0)`.
 
@@ -22,11 +23,7 @@ its postcode(s) via `staging.int_postcode_geo`
 ([[domains/property-sales/suburbs-and-postcodes]]), then query rent by postcode.
 
 ## Other tables
-- `marts.mart_rent_by_bedroom` — rent broken out by bedroom band
-  ([[domains/property-rent/bedrooms]]).
-- `marts.mart_property_yield` — sales+rent pre-joined on (postcode, property_type,
-  month); compute yield from it (the `gross_yield` skill).
-- `staging.stg_rent` — record grain (~3M rows); only for record-level questions,
+- `staging.property_rent` — record grain (~3M rows); only for record-level questions,
   always filtered by postcode/month.
 
 ## Reliability

@@ -5,7 +5,7 @@ sources:
     description: Landing tables loaded by dlt from the NSW CSVs.
     schema: raw
     tables:
-      - name: sales
+      - name: property_sales
         description: NSW Government property sales (dealing-level), one row per sale.
         columns:
           - name: property_id
@@ -36,7 +36,7 @@ sources:
             data_type: text
           - name: prop_name
             data_type: text
-      - name: rent
+      - name: property_rent
         description: NSW Rental Bond Board lodgements, one row per bond.
         columns:
           - name: lodgement_dt

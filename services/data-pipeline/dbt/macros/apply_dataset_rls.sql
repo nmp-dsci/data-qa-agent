@@ -5,8 +5,7 @@
   The policy scopes rows to users granted ALL of the given dataset(s) (admins see
   all) — the same isolation model as the hand-written policies in the Alembic
   baseline. Accepts a single slug or a list; a mart derived from multiple
-  datasets (e.g. mart_property_yield, which needs both sales and rent) requires
-  the user to hold every listed grant.
+  datasets requires the user to hold every listed grant.
 -#}
 {% macro apply_dataset_rls(dataset_slugs) %}
 {% if dataset_slugs is string %}{% set dataset_slugs = [dataset_slugs] %}{% endif %}

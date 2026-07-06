@@ -18,97 +18,75 @@ from typing import Any
 USER_VISIBLE_SCHEMAS = {"marts", "staging"}
 ADMIN_SCHEMA_ORDER = {"app": 0, "marts": 1, "staging": 2, "raw": 3}
 
-SALES_MART = "marts.mart_sales_summary"
-RENT_MART = "marts.mart_rent_summary"
-RENT_BEDROOM_MART = "marts.mart_rent_by_bedroom"
-SALES_SEGMENT_MART = "marts.mart_sales_by_segment"
-YIELD_MART = "marts.mart_property_yield"
-STG_SALES = "staging.stg_sales"
-STG_RENT = "staging.stg_rent"
+SALES_MART = "marts.property_sales"
+RENT_MART = "marts.property_rent"
+STG_SALES = "staging.property_sales"
+STG_RENT = "staging.property_rent"
 GEO_BRIDGE = "staging.int_postcode_geo"
-RAW_SALES = "raw.sales"
-RAW_RENT = "raw.rent"
+RAW_SALES = "raw.property_sales"
+RAW_RENT = "raw.property_rent"
 
 JOIN_HINT = (
     "suburb values are stored Title Case (e.g. 'Hornsby', 'Normanhurst'), NOT "
     "upper-case — never match them with `suburb IN ('HORNSBY', ...)` (returns "
     "zero rows); use UPPER(suburb) IN ('HORNSBY', ...) or ILIKE, or resolve the "
     f"exact spelling once via the lookup_values tool. "
-    "Sales/yield tables carry a real suburb dimension (from the sale records) "
+    "Sales tables carry a real suburb dimension (from the sale records) "
     "— filter by suburb for one locality, but postcode<->suburb is not 1:1, so "
     "to get a postcode total SUM total_sale_value/n_sold across that postcode's "
-    "suburbs (additive; median_price is not). RENT has NO suburb (raw.rent has "
+    "suburbs (additive; bucket medians are not). RENT has NO suburb (raw.property_rent has "
     "no locality): for a rent-by-suburb question, first resolve the suburb to "
     f"its postcode(s) via {GEO_BRIDGE} (WHERE suburb ILIKE '%name%'), then "
     "query rent by postcode. Join sales<->rent on (postcode, property_type, "
-    "month) — NOT suburb (rent has none). property_type is 'house', 'unit', or "
-    "'ALL' (blended); match it on both sides unless the question is "
-    "type-specific. month is a first-of-month date. For a breakdown by bedroom "
-    f"count use {RENT_BEDROOM_MART}, and by lot-size band or planning zone use "
-    f"{SALES_SEGMENT_MART}; in those two, bedroom_band / area_band / zoning are "
-    "part of the grain (always a specific value, never 'ALL') so never SUM "
-    "across them — for an all-bedroom or all-segment figure use the plain "
-    f"{RENT_MART}/{SALES_MART} instead. Default to the marts "
-    "(small, precomputed sum/count/median) — compute growth over any window, "
-    "rolling averages, and yield yourself from total_sale_value/n_sold, "
-    "total_weekly_rent/n_rented, and median_price/median_rent; none are "
-    "pre-baked. Buckets are kept even when tiny, so filter WHERE n_sold "
+    "month) — NOT suburb (rent has none). property_type is 'house' or 'unit'; "
+    "there are no synthetic 'ALL' rows, so re-aggregate across property_type "
+    "when a blended answer is needed. month is a first-of-month date. "
+    "bedroom_band / area_band / zoning are part of the mart grain, so for a "
+    "broader figure aggregate additive metrics with sum(total_sale_value), "
+    "sum(n_sold), sum(total_weekly_rent), and sum(n_rented). Default to the "
+    "marts (small, precomputed aggregates) — compute growth over any window, "
+    "rolling averages, and yield yourself from total_sale_value/n_sold and "
+    "total_weekly_rent/n_rented; none are pre-baked. Bucket medians are useful "
+    "inside one bucket but do not compose across re-aggregation. Buckets are "
+    "kept even when tiny, so filter WHERE n_sold "
     f">= N (or n_rented) when a median must be reliable. Only drop to {STG_SALES}"
     f"/{STG_RENT} (record grain, ~3M rows) for genuinely record-level questions "
     "(individual sales/bonds, addresses, bedroom counts, lot-size bands) — "
     "always filter by postcode and/or month first. SELECT only; Row-Level "
     "Security limits rows to the datasets a user may access (nsw_sales / "
-    f"nsw_rent — {YIELD_MART} needs both)."
+    "nsw_rent)."
 )
 
 CURATED_SCHEMA_DOC = f"""\
-NSW property-market data, two tiers.
+NSW property-market data, three lineage-aligned tiers.
 
-Table {SALES_MART} — sale summary building block by postcode + suburb +
-property_type + month (dataset nsw_sales). No precomputed growth% —
-total_sale_value / n_sold composes across any window.
+Table {SALES_MART} — aggregate sales mart by postcode + suburb + property_type
++ area_band + zoning + month (dataset nsw_sales). No precomputed growth% or
+yield%; total_sale_value / n_sold composes across any re-aggregation window.
 Columns:
   postcode (text)              — join key to rent (with property_type, month)
-  suburb (text)                — real dimension; part of the grain (filter for one locality)
-  property_type (text)         — 'house', 'unit', or 'ALL' (blended)
+  suburb (text)                — real dimension from sales; part of the grain
+  property_type (text)         — 'house' or 'unit'; no synthetic 'ALL' rows
+  area_band (text)             — cleaned lot-size band; part of the grain
+  zoning (text)                — planning zone or 'unknown'; part of the grain
   month (date)                 — first-of-month
-  total_sale_value (numeric)   — sum of sale_price that month
-  n_sold (int)                 — count of sales that month
-  median_price (numeric)       — median sale price AUD that month
+  total_sale_value (numeric)   — additive sum of sale_price
+  n_sold (int)                 — additive count of sales
+  avg_sale_price (numeric)     — bucket-level average
+  median_sale_price (numeric)  — bucket-level median; not additive
+  min_sale_price (numeric), max_sale_price (numeric)
 
-Table {RENT_MART} — rent summary building block by postcode + property_type
-+ month (dataset nsw_rent). NO suburb column — rent has no locality in source;
-resolve a suburb to its postcode via {GEO_BRIDGE} first. No precomputed growth%.
+Table {RENT_MART} — aggregate rent mart by postcode + property_type +
+bedroom_band + month (dataset nsw_rent). NO suburb column — rent has no
+locality in source; resolve a suburb to its postcode via {GEO_BRIDGE} first. No
+precomputed growth%.
 Columns:
-  postcode (text), property_type (text), month (date)
-  total_weekly_rent (numeric)  — sum of weekly_rent that month
-  n_rented (int)                — count of bonds that month
-  median_rent (numeric)        — median weekly rent AUD that month
-
-Table {RENT_BEDROOM_MART} — {RENT_MART} broken out by BEDROOM band (dataset
-nsw_rent). Grain postcode + property_type + bedroom_band + month. bedroom_band is
-'0'..'4', '5+' or 'unknown' and is part of the grain (no 'ALL' bedroom row) —
-never SUM across it; use {RENT_MART} for all-bedroom figures. Use this for
-"rent by bedroom" questions.
-Columns: postcode, property_type, bedroom_band (text), month, total_weekly_rent,
-n_rented, median_rent.
-
-Table {SALES_SEGMENT_MART} — {SALES_MART} broken out by lot-size band and
-planning zone (dataset nsw_sales). Grain postcode + suburb + property_type +
-area_band + zoning + month. area_band ('<400'..'5000+','unknown') and zoning (NSW
-zone code e.g. R2, RU5, or 'unknown') are part of the grain (no 'ALL' row) —
-never SUM across them; use {SALES_MART} for all-segment figures. Use this for
-"price by lot size" / "price by zone" questions.
-Columns: postcode, suburb, property_type, area_band (text), zoning (text), month,
-total_sale_value, n_sold, median_price.
-
-Table {YIELD_MART} — {SALES_MART} and {RENT_MART} pre-joined on (postcode, property_type, month)
-(spans both nsw_sales and nsw_rent). Grain is postcode+suburb+property_type+month
-(suburb from the sales side). No precomputed gross_yield_pct — compute it as
-(median_rent * 52 / median_price) * 100. Rent columns are postcode-level
-repeated per suburb — don't sum them across suburbs.
-Columns: postcode, suburb, property_type, month, total_sale_value, n_sold,
-median_price, total_weekly_rent, n_rented, median_rent.
+  postcode (text), property_type (text), bedroom_band (text), month (date)
+  total_weekly_rent (numeric)  — additive sum of weekly_rent
+  n_rented (int)               — additive count of bonds
+  avg_weekly_rent (numeric)    — bucket-level average
+  median_weekly_rent (numeric) — bucket-level median; not additive
+  min_weekly_rent (numeric), max_weekly_rent (numeric)
 
 Table {GEO_BRIDGE} — postcode<->suburb bridge (dataset nsw_sales). Every
 (postcode, suburb) pair, with n_sales. Use it to resolve a suburb name to its
@@ -140,7 +118,7 @@ def _schema_from_manifest(path: Path) -> str:
             continue
         if "agent_queryable" not in (node.get("tags") or []):
             continue
-        relation = f"{node['schema']}.{node['name']}"
+        relation = f"{node['schema']}.{node.get('alias') or node['name']}"
         blocks.append(f"Table {relation} — {(node.get('description') or '').strip()}\nColumns:")
         for col, meta in node.get("columns", {}).items():
             blocks.append(f"  {col} — {(meta.get('description') or '').strip()}")
@@ -242,91 +220,45 @@ def describe_table(name: str) -> str:
 CURATED_CATALOG: list[dict[str, Any]] = [
     {
         "schema": "marts",
-        "table": "mart_sales_summary",
+        "table": "property_sales",
         "description": (
-            "Sale summary building block by postcode + suburb + property_type + month "
-            "(dataset nsw_sales). Compose growth over any window from total_sale_value / n_sold."
+            "Aggregate sales mart by postcode + suburb + property_type + area_band + zoning + "
+            "month (dataset nsw_sales). Re-aggregate additive total/count metrics to derive growth."
         ),
         "columns": [
             {"name": "postcode", "type": "text", "description": "join key to rent"},
             {"name": "suburb", "type": "text", "description": "real dimension; part of the grain"},
-            {"name": "property_type", "type": "text", "description": "'house', 'unit', or 'ALL'"},
+            {"name": "property_type", "type": "text", "description": "'house' or 'unit'"},
+            {"name": "area_band", "type": "text", "description": "cleaned lot-size band"},
+            {"name": "zoning", "type": "text", "description": "NSW planning zone or 'unknown'"},
             {"name": "month", "type": "date", "description": "first-of-month"},
             {"name": "total_sale_value", "type": "numeric", "description": "sum of sale_price"},
-            {"name": "n_sold", "type": "integer", "description": "count of sales that month"},
-            {"name": "median_price", "type": "numeric", "description": "median sale price AUD"},
+            {"name": "n_sold", "type": "integer", "description": "count of sales"},
+            {"name": "avg_sale_price", "type": "numeric", "description": "bucket-level average"},
+            {"name": "median_sale_price", "type": "numeric", "description": "bucket-level median"},
+            {"name": "min_sale_price", "type": "numeric", "description": "bucket-level minimum"},
+            {"name": "max_sale_price", "type": "numeric", "description": "bucket-level maximum"},
         ],
     },
     {
         "schema": "marts",
-        "table": "mart_rent_summary",
+        "table": "property_rent",
         "description": (
-            "Rent summary building block by postcode + property_type + month (dataset nsw_rent). "
+            "Aggregate rent mart by postcode + property_type + bedroom_band + month "
+            "(dataset nsw_rent). "
             "No suburb column — resolve a suburb to its postcode via int_postcode_geo first."
         ),
         "columns": [
             {"name": "postcode", "type": "text", "description": None},
-            {"name": "property_type", "type": "text", "description": "'house', 'unit', or 'ALL'"},
-            {"name": "month", "type": "date", "description": "first-of-month"},
-            {"name": "total_weekly_rent", "type": "numeric", "description": "sum of weekly_rent"},
-            {"name": "n_rented", "type": "integer", "description": "count of bonds that month"},
-            {"name": "median_rent", "type": "numeric", "description": "median weekly rent AUD"},
-        ],
-    },
-    {
-        "schema": "marts",
-        "table": "mart_rent_by_bedroom",
-        "description": (
-            "mart_rent_summary broken out by bedroom band (dataset nsw_rent). bedroom_band is part "
-            "of the grain (no 'ALL' row) — never SUM across it."
-        ),
-        "columns": [
-            {"name": "postcode", "type": "text", "description": None},
-            {"name": "property_type", "type": "text", "description": None},
+            {"name": "property_type", "type": "text", "description": "'house' or 'unit'"},
             {"name": "bedroom_band", "type": "text", "description": "'0'..'4', '5+' or 'unknown'"},
             {"name": "month", "type": "date", "description": "first-of-month"},
-            {"name": "total_weekly_rent", "type": "numeric", "description": None},
-            {"name": "n_rented", "type": "integer", "description": None},
-            {"name": "median_rent", "type": "numeric", "description": None},
-        ],
-    },
-    {
-        "schema": "marts",
-        "table": "mart_sales_by_segment",
-        "description": (
-            "mart_sales_summary broken out by lot-size band and planning zone (dataset nsw_sales). "
-            "area_band and zoning are part of the grain (no 'ALL' row) — never SUM across them."
-        ),
-        "columns": [
-            {"name": "postcode", "type": "text", "description": None},
-            {"name": "suburb", "type": "text", "description": None},
-            {"name": "property_type", "type": "text", "description": None},
-            {"name": "area_band", "type": "text", "description": "'<400'..'5000+', 'unknown'"},
-            {"name": "zoning", "type": "text", "description": "NSW zone code e.g. R2, RU5"},
-            {"name": "month", "type": "date", "description": "first-of-month"},
-            {"name": "total_sale_value", "type": "numeric", "description": None},
-            {"name": "n_sold", "type": "integer", "description": None},
-            {"name": "median_price", "type": "numeric", "description": None},
-        ],
-    },
-    {
-        "schema": "marts",
-        "table": "mart_property_yield",
-        "description": (
-            "mart_sales_summary and mart_rent_summary pre-joined on (postcode, property_type, "
-            "month). Compute gross_yield_pct = (median_rent * 52 / median_price) * 100."
-        ),
-        "columns": [
-            {"name": "postcode", "type": "text", "description": None},
-            {"name": "suburb", "type": "text", "description": "from the sales side"},
-            {"name": "property_type", "type": "text", "description": None},
-            {"name": "month", "type": "date", "description": "first-of-month"},
-            {"name": "total_sale_value", "type": "numeric", "description": None},
-            {"name": "n_sold", "type": "integer", "description": None},
-            {"name": "median_price", "type": "numeric", "description": None},
-            {"name": "total_weekly_rent", "type": "numeric", "description": "postcode-level"},
-            {"name": "n_rented", "type": "integer", "description": None},
-            {"name": "median_rent", "type": "numeric", "description": "postcode-level"},
+            {"name": "total_weekly_rent", "type": "numeric", "description": "sum of weekly_rent"},
+            {"name": "n_rented", "type": "integer", "description": "count of bonds"},
+            {"name": "avg_weekly_rent", "type": "numeric", "description": "bucket-level average"},
+            {"name": "median_weekly_rent", "type": "numeric", "description": "bucket-level median"},
+            {"name": "min_weekly_rent", "type": "numeric", "description": "bucket-level minimum"},
+            {"name": "max_weekly_rent", "type": "numeric", "description": "bucket-level maximum"},
         ],
     },
     {
@@ -344,7 +276,7 @@ CURATED_CATALOG: list[dict[str, Any]] = [
     },
     {
         "schema": "staging",
-        "table": "stg_sales",
+        "table": "property_sales",
         "description": (
             "Record-grain NSW sales, ~3M rows (dataset nsw_sales). One row per sale — use only for "
             "record-level questions, always filtered by postcode/month."
@@ -371,7 +303,7 @@ CURATED_CATALOG: list[dict[str, Any]] = [
     },
     {
         "schema": "staging",
-        "table": "stg_rent",
+        "table": "property_rent",
         "description": (
             "Record-grain NSW rental bonds, ~3M rows (dataset nsw_rent). One row per bond — use "
             "only for record-level questions, always filtered by postcode/month."
@@ -391,10 +323,10 @@ CURATED_CATALOG: list[dict[str, Any]] = [
     },
     {
         "schema": "raw",
-        "table": "sales",
+        "table": "property_sales",
         "description": (
             "Landing table loaded by dlt from the NSW Government property sales CSV. "
-            "Prefer staging.stg_sales for governed, typed analysis."
+            "Prefer staging.property_sales for governed, typed analysis."
         ),
         "columns": [
             {"name": "property_id", "type": "text", "description": None},
@@ -415,10 +347,10 @@ CURATED_CATALOG: list[dict[str, Any]] = [
     },
     {
         "schema": "raw",
-        "table": "rent",
+        "table": "property_rent",
         "description": (
             "Landing table loaded by dlt from the NSW Rental Bond Board CSV. "
-            "Prefer staging.stg_rent for governed, typed analysis."
+            "Prefer staging.property_rent for governed, typed analysis."
         ),
         "columns": [
             {"name": "lodgement_dt", "type": "text", "description": "raw lodgement date"},
@@ -609,7 +541,7 @@ def _catalog_from_manifest(path: Path) -> list[dict[str, Any]]:
         tables.append(
             {
                 "schema": node["schema"],
-                "table": node["name"],
+                "table": node.get("alias") or node["name"],
                 "description": (node.get("description") or "").strip() or None,
                 "columns": columns,
             }

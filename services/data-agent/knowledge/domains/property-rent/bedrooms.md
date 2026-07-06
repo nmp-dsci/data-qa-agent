@@ -6,12 +6,12 @@ applies_to: [bedroom, "bedroom band", "by bedroom", studio, "1 bedroom", units p
 
 # Rent by bedroom
 
-`marts.mart_rent_by_bedroom` breaks rent down by **`bedroom_band`** ('0'..'4', '5+',
+`marts.property_rent` breaks rent down by **`bedroom_band`** ('0'..'4', '5+',
 or 'unknown'). Grain: postcode + property_type + bedroom_band + month.
 
 ## Rules
-- `bedroom_band` is part of the grain — there is no 'ALL' bedroom row. Never SUM
-  across it; for an all-bedroom figure use `mart_rent_summary`.
+- `bedroom_band` is part of the grain — there is no 'ALL' bedroom row. For an
+  all-bedroom figure re-aggregate `total_weekly_rent` and `n_rented`.
 - Use this for "rent by bedroom" questions and as the composition segmenter for
   **units** (the `profile_chart` skill) — bedrooms, not lot size, is what
   differentiates apartments.

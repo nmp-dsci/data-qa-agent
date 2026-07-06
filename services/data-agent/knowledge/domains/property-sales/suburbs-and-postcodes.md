@@ -9,7 +9,7 @@ applies_to: [suburb, postcode, locality, "suburb name", geo, bridge]
 - **Sales** carry a real `suburb` dimension (from the sale record). Filter by suburb
   for one locality. But postcode<->suburb is **not 1:1** — to get a postcode total,
   SUM `total_sale_value` / `n_sold` across that postcode's suburbs (additive);
-  `median_price` is not additive.
+  bucket medians are not additive.
 - **Rent has NO suburb** (the source has no locality). For a rent-by-suburb
   question, resolve the suburb to its postcode(s) first via
   `staging.int_postcode_geo` (`WHERE suburb ILIKE '%name%'`), then query rent by

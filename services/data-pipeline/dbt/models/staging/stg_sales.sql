@@ -1,6 +1,7 @@
 {{
   config(
     materialized='table',
+    alias='property_sales',
     indexes=[
       {'columns': ['sale_id'], 'unique': True},
       {'columns': ['postcode', 'property_type', 'sale_month']},
@@ -12,7 +13,7 @@
 -- Clean residential sales: normalise suburb/postcode, derive the sale date
 -- (year + month) from the messy YYYYMMDD(.0) contract date, derive house/unit,
 -- and drop non-market prices (see the two notes below). Staging is deliberately
--- kept wide and record-grain — it's the clean, verified mirror of raw.sales,
+-- kept wide and record-grain — it's the clean, verified mirror of raw.property_sales,
 -- not a curated subset; only columns with unverified semantics (sale_interest,
 -- sale_counter, prop_nature, component_cd, sale_cd, record_type) or that
 -- duplicate something handled elsewhere (district_code) are left out.
@@ -55,7 +56,7 @@ with src as (
         street_name,
         unit_no,
         prop_name
-    from {{ source('raw', 'sales') }}
+    from {{ source('raw', 'property_sales') }}
 ),
 cleaned as (
     select

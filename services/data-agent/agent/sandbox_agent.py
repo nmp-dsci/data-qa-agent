@@ -307,7 +307,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         ctx: RunContext[_SbDeps],
         column: str,
         pattern: str,
-        table: str = "marts.mart_sales_summary",
+        table: str = "marts.property_sales",
     ) -> str:
         """Resolve exact distinct values of a column (e.g. a suburb's casing). FREE."""
         sql = _lookup_values_sql(table, column, pattern)

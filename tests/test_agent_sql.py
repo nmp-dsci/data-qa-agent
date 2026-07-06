@@ -21,12 +21,12 @@ def test_growth_suburbs_joins_both_marts_on_postcode() -> None:
     assert intent == "combined"
     lower = validate_select(sql).lower()
     assert lower.startswith("with")
-    assert "marts.mart_sales_summary" in lower
-    assert "marts.mart_rent_summary" in lower
+    assert "marts.property_sales" in lower
+    assert "marts.property_rent" in lower
     assert "join" in lower
     assert "r.postcode = s.postcode" in lower
-    # No type mentioned -> blended 'ALL' row, not a specific type.
-    assert "property_type = 'all'" in lower
+    # No type mentioned -> aggregate across the mart's native property types.
+    assert "property_type = 'all'" not in lower
 
 
 def test_property_type_filter_detected() -> None:
@@ -45,7 +45,7 @@ def test_named_suburb_sale_price_trend_is_not_top_growth() -> None:
     )
     assert intent == "sales_trend"
     lower = validate_select(sql).lower()
-    assert "marts.mart_sales_summary" in lower
+    assert "marts.property_sales" in lower
     assert "upper(suburb) in ('normanhurst', 'hornsby')" in lower
     assert "property_type = 'house'" in lower
     assert "month >= date '2010-01-01'" in lower
@@ -58,11 +58,13 @@ def test_yield_question_targets_yield_mart_and_computes_ratio() -> None:
     sql, intent = build_sql("What are the best suburbs for rental yield?")
     assert intent == "yield"
     lower = validate_select(sql).lower()
-    assert lower.startswith("select")
-    assert "marts.mart_property_yield" in lower
+    assert lower.startswith("with")
+    assert "marts.property_sales" in lower
+    assert "marts.property_rent" in lower
     # No precomputed gross_yield_pct column in the mart (redesign) — the
     # generated SQL must compute it itself, not just select a column.
-    assert "median_rent * 52 / median_price" in lower
+    assert "total_weekly_rent" in lower
+    assert "total_sale_value" in lower
     assert "gross_yield_pct" in lower
     assert "order by gross_yield_pct desc" in lower
 
@@ -70,9 +72,9 @@ def test_yield_question_targets_yield_mart_and_computes_ratio() -> None:
 @pytest.mark.parametrize(
     ("question", "expected_intent", "expected_table"),
     [
-        ("Which suburbs have the highest rent growth?", "rent", "marts.mart_rent_summary"),
-        ("Top suburbs by sale price growth", "sales", "marts.mart_sales_summary"),
-        ("How many suburbs do we have?", "count", "marts.mart_sales_summary"),
+        ("Which suburbs have the highest rent growth?", "rent", "marts.property_rent"),
+        ("Top suburbs by sale price growth", "sales", "marts.property_sales"),
+        ("How many suburbs do we have?", "count", "marts.property_sales"),
     ],
 )
 def test_single_intent_selects(question: str, expected_intent: str, expected_table: str) -> None:
@@ -85,8 +87,8 @@ def test_single_intent_selects(question: str, expected_intent: str, expected_tab
 @pytest.mark.parametrize(
     "sql",
     [
-        "DELETE FROM marts.mart_sales_summary",
-        "SELECT * FROM marts.mart_sales_summary; DROP TABLE app.users",
+        "DELETE FROM marts.property_sales",
+        "SELECT * FROM marts.property_sales; DROP TABLE app.users",
         "INSERT INTO app.events VALUES (default)",
     ],
 )
@@ -96,8 +98,8 @@ def test_guardrail_rejects_write_or_multi_statement_sql(sql: str) -> None:
 
 
 def test_guardrail_allows_single_select_and_strips_trailing_semicolon() -> None:
-    assert validate_select(" SELECT count(*) FROM marts.mart_sales_summary; ") == (
-        "SELECT count(*) FROM marts.mart_sales_summary"
+    assert validate_select(" SELECT count(*) FROM marts.property_sales; ") == (
+        "SELECT count(*) FROM marts.property_sales"
     )
 
 
@@ -119,7 +121,7 @@ def test_ast_rejects_cte_hidden_dml(sql: str) -> None:
 
 def test_ast_allows_plain_and_cte_selects() -> None:
     # Valid read queries pass the AST check untouched.
-    _validate_ast("SELECT count(*) FROM marts.mart_sales_summary")
+    _validate_ast("SELECT count(*) FROM marts.property_sales")
     _validate_ast(
         "WITH g AS (SELECT postcode, suburb FROM staging.int_postcode_geo) "
         "SELECT * FROM g ORDER BY postcode LIMIT 10"
@@ -136,7 +138,7 @@ def test_guardrail_ignores_line_and_block_comments() -> None:
     sql = """
     -- This comment mentions DROP TABLE and has a semicolon;
     SELECT count(*) AS n
-    FROM marts.mart_sales_summary
+    FROM marts.property_sales
     /* INSERT, UPDATE and DELETE in comments are ignored too; */
     """
-    assert validate_select(sql) == "SELECT count(*) AS n\n    FROM marts.mart_sales_summary"
+    assert validate_select(sql) == "SELECT count(*) AS n\n    FROM marts.property_sales"

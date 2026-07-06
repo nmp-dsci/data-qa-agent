@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>data-qa-agent — Governed SQL Editor Tab (Databricks-style)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  .mermaid { background: var(--color-base-100); border-radius: 1rem; padding: 1rem; overflow-x: auto; }
+  .section-num { font-variant-numeric: tabular-nums; }
+  code { font-size: 0.85em; }
+
+  /* ── Faithful mock of the real frontend (frontend/src/styles.css tokens) ── */
+  .app-mock {
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1e222b; --border:#2a2f3a;
+    --text:#e7e9ee; --muted:#9aa3b2; --accent:#b48a3f; --accent-2:#6ea8fe; --user:#223047;
+    background:var(--bg); color:var(--text); border:1px solid var(--border);
+    border-radius:14px; overflow:hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .app-mock .mock-header { display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; border-bottom:1px solid var(--border); }
+  .app-mock .mock-pill { margin-left:8px; font-size:11px; padding:2px 8px; border-radius:999px;
+    background:var(--panel-2); border:1px solid var(--border); color:var(--muted); }
+  .app-mock .mock-tabs { display:flex; gap:4px; padding:8px 16px 0; border-bottom:1px solid var(--border); }
+  .app-mock .mock-tab { padding:8px 14px; font-size:13px; color:var(--muted);
+    border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; }
+  .app-mock .mock-tab.active { color:var(--text); background:var(--panel);
+    border-color:var(--border); position:relative; top:1px; }
+  .app-mock .mock-tab .new { color:var(--accent); font-size:9px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.06em; margin-left:6px; }
+  .app-mock .editor-grid { display:grid; grid-template-columns: 210px minmax(0,1fr); gap:0; min-height:420px; }
+  @media (max-width:720px){ .app-mock .editor-grid { grid-template-columns:1fr; } }
+  .app-mock .schema-panel { border-right:1px solid var(--border); padding:12px; overflow-y:auto; }
+  .app-mock .schema-title { font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--muted); margin:0 0 8px; }
+  .app-mock .schema-search { width:100%; background:var(--panel); border:1px solid var(--border);
+    color:var(--text); border-radius:8px; padding:6px 9px; font-size:12px; margin-bottom:10px; }
+  .app-mock .tbl { font-size:12px; margin-bottom:2px; }
+  .app-mock .tbl > .tname { display:flex; gap:6px; align-items:center; padding:4px 6px; border-radius:6px; cursor:default; }
+  .app-mock .tbl > .tname:hover { background:var(--panel-2); }
+  .app-mock .tbl .tname .ico { color:var(--accent); font-size:11px; }
+  .app-mock .tbl .schema-tag { color:var(--muted); }
+  .app-mock .cols { list-style:none; margin:2px 0 6px; padding:0 0 0 20px; }
+  .app-mock .cols li { display:flex; justify-content:space-between; gap:8px; padding:2px 6px;
+    color:var(--text); border-radius:5px; }
+  .app-mock .cols li:hover { background:var(--panel-2); }
+  .app-mock .cols li .ctype { color:var(--muted); font-size:11px; }
+  .app-mock .work { display:flex; flex-direction:column; min-width:0; }
+  .app-mock .editor-bar { display:flex; align-items:center; justify-content:space-between;
+    padding:8px 12px; border-bottom:1px solid var(--border); gap:8px; flex-wrap:wrap; }
+  .app-mock .qtabs { display:flex; gap:4px; align-items:center; min-width:0; overflow:hidden; }
+  .app-mock .qtab { font-size:12px; padding:4px 10px; border-radius:6px 6px 0 0; color:var(--muted);
+    border:1px solid var(--border); background:var(--panel); white-space:nowrap; }
+  .app-mock .qtab.active { color:var(--text); border-bottom-color:transparent; }
+  .app-mock .qtab.add { border-style:dashed; }
+  .app-mock .run-actions { display:flex; gap:8px; align-items:center; }
+  .app-mock .btn-run { background:var(--accent); color:#1a1206; border:none; font-weight:600;
+    padding:6px 16px; border-radius:8px; font-size:13px; }
+  .app-mock .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--border);
+    padding:6px 12px; border-radius:8px; font-size:12px; }
+  .app-mock .kbd-hint { color:var(--muted); font-size:11px; }
+  .app-mock .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px;
+    line-height:1.65; padding:14px 16px; white-space:pre; overflow-x:auto; margin:0;
+    background:#0b0d11; border-bottom:1px solid var(--border); min-height:150px; }
+  .app-mock .code .kw { color:#c58fff; }
+  .app-mock .code .fn { color:#7fc8ff; }
+  .app-mock .code .st { color:#9ece6a; }
+  .app-mock .code .nu { color:#e0af68; }
+  .app-mock .code .cm { color:#5c6370; font-style:italic; }
+  .app-mock .code .tb { color:#e7e9ee; }
+  .app-mock .code .gutter { color:#3a3f4a; }
+  .app-mock .results { padding:10px 12px; }
+  .app-mock .results-meta { display:flex; align-items:center; gap:10px; font-size:12px;
+    color:var(--muted); margin-bottom:8px; flex-wrap:wrap; }
+  .app-mock .rbadge { text-transform:uppercase; font-size:9px; letter-spacing:.05em; padding:2px 6px;
+    border-radius:6px; border:1px solid var(--border); color:var(--accent); }
+  .app-mock .rbadge.ok { color:#9ece6a; border-color:#33502f; }
+  .app-mock .results-actions { margin-left:auto; display:flex; gap:6px; }
+  .app-mock .chip { font-size:11px; color:var(--muted); border:1px solid var(--border);
+    border-radius:6px; padding:3px 8px; }
+  .app-mock table.res { border-collapse:collapse; width:100%; font-size:12.5px; }
+  .app-mock table.res th, .app-mock table.res td { text-align:left; padding:6px 10px;
+    border-bottom:1px solid var(--border); white-space:nowrap; }
+  .app-mock table.res thead th { background:var(--panel-2); color:var(--muted); font-weight:600; }
+  .app-mock .res-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .app-mock .num { text-align:right; font-variant-numeric:tabular-nums; }
+
+  .legend-dot { display:inline-block; width:10px; height:10px; border-radius:2px; }
+</style>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "strict",
+    themeVariables: { fontFamily: "ui-sans-serif, system-ui, sans-serif", primaryColor: "#1a1a17", lineColor: "#b48a3f", fontSize: "14px" }
+  });
+</script>
+</head>
+<body class="bg-base-200 text-base-content">
+
+<main class="mx-auto max-w-6xl p-5 lg:p-10 space-y-12">
+
+  <!-- HERO -->
+  <header class="space-y-5">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="badge badge-primary badge-lg">Feature Proposal</span>
+      <span class="badge badge-soft badge-info">frontend · new "SQL Editor" tab</span>
+      <span class="badge badge-soft badge-success">Databricks-style, governed by our RLS</span>
+      <span class="badge badge-soft">Rev 1 — for review</span>
+    </div>
+    <h1 class="text-4xl lg:text-5xl font-bold tracking-tight">A governed SQL editor, right beside the chat</h1>
+    <p class="text-xl text-base-content/80 max-w-3xl">
+      Add a third tab to the app — a <strong>Databricks-style SQL editor</strong> where a user can write and run
+      SQL directly against the marts, browse the schema, see results as a grid or chart, and reuse the history.
+      The twist that makes it fit this product: <strong>it runs through the exact same read-only, RLS-scoped,
+      audited path the agent already uses</strong> — not a new door into the database. It's the agent's
+      guardrails with a keyboard.
+    </p>
+  </header>
+
+  <!-- DIRECT ANSWER -->
+  <section class="space-y-3">
+    <div class="alert shadow-lg bg-base-100 border border-primary/30">
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="badge badge-primary shrink-0">Direct answer</span>
+          <span class="font-semibold">Yes — and most of the hard parts already exist. We surface the agent's
+            governed SQL executor as a first-class editor UI, rather than building a new query engine.</span>
+        </div>
+        <p class="text-sm text-base-content/70 max-w-4xl">
+          The data-agent already exposes <code>run_select(sql, user_id)</code>
+          (<code>services/data-agent/agent/db.py:30</code>) that runs a query as the strictly read-only
+          <code>agent_ro</code> role, under Row-Level Security, with a <code>SELECT</code>-only allow-list,
+          a statement timeout, and a row cap. The chat UI, the results table, Vega-Lite charts, and the
+          <code>query_runs</code> audit trail all exist. This feature is mostly <em>wiring</em>: a new backend
+          endpoint that reuses that executor, a schema-catalog endpoint, and a new React editor tab. The net-new
+          risk surface is small and lands in one governed place.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 01 CURRENT STATE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">01</span> · What exists today</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      The frontend (<code>frontend/src/App.tsx</code>) has two views toggled by one button: <strong>Chat</strong>
+      and, for admins only, <strong>Admin</strong>. A question flows to <code>backend-api</code>
+      <code>POST /ask</code>, which sets the RLS context and proxies to <code>data-agent</code>
+      <code>POST /agent/ask</code>. The agent turns it into SQL and executes it via <code>run_select</code>. The
+      SQL editor slots into this exact spine — it just skips the natural-language step.
+    </p>
+    <div class="mermaid">
+flowchart LR
+  subgraph FE["frontend · React (App.tsx)"]
+    CHAT["Chat view"]
+    ADMIN["Admin view (admin only)"]
+  end
+  subgraph API["backend-api · FastAPI (role: app_user, read/write)"]
+    ASK["POST /ask<br/>sets RLS ctx · writes conversation/messages/query_runs"]
+  end
+  subgraph AG["data-agent · Pydantic AI (role: agent_ro, READ-ONLY)"]
+    AASK["POST /agent/ask"]
+    RS["run_select(sql, user_id)<br/>validate_select · SET LOCAL statement_timeout · row cap"]
+  end
+  DB[("Postgres 16<br/>RLS on every table<br/>marts · staging")]
+  CHAT --> ASK --> AASK --> RS --> DB
+  ADMIN --> API
+  classDef reuse fill:#2a2417,stroke:#b48a3f,color:#e7e9ee;
+  class RS,AASK reuse
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Already built — we reuse</h3>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+          <li><code>run_select()</code> — read-only, RLS, <code>SELECT</code>-only, timeout, row cap</li>
+          <li><code>validate_select()</code> guardrail (<code>sql_guardrails.py</code>)</li>
+          <li>Results table + <code>VegaChart</code> renderer</li>
+          <li><code>query_runs</code> audit table + admin dashboard</li>
+          <li><code>get_schema()</code> reads the dbt manifest (real table/column docs)</li>
+        </ul>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Net-new — we build</h3>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+          <li>A code editor component (syntax highlight, run shortcut)</li>
+          <li><code>POST /sql</code> (backend) → <code>POST /agent/sql</code> (agent)</li>
+          <li><code>GET /schema/catalog</code> — structured schema for the browser</li>
+          <li>New "SQL Editor" tab + a proper tab bar</li>
+          <li>CSV export, query history, (later) AI assist</li>
+        </ul>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">The governing rule</h3>
+        <p class="text-sm text-base-content/70">
+          The editor must execute through <code>agent_ro</code> (read-only), <strong>never</strong> through
+          <code>backend-api</code>'s <code>app_user</code> role, which can write. Same RLS, same guardrails as
+          the agent. So <code>user2</code> (no data grants) typing a valid query still gets <strong>zero
+          rows</strong> — the editor demonstrates isolation, it doesn't bypass it.
+        </p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 02 WHAT WE'RE BUILDING (UI MOCK) -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">02</span> · What the user sees</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      A three-pane editor rendered in the app's real dark theme (below is a faithful mock using the actual
+      <code>frontend/src/styles.css</code> tokens). Left: a searchable schema browser. Center: draft query
+      tabs, a Monaco/CodeMirror editor, and a results grid that flips to a chart. <kbd class="kbd kbd-sm">⌘</kbd>
+      <kbd class="kbd kbd-sm">⏎</kbd> runs the query.
+    </p>
+
+    <div class="app-mock">
+      <!-- app header -->
+      <div class="mock-header">
+        <div class="flex items-center">
+          <strong style="font-size:14px">data-qa-agent</strong>
+          <span class="mock-pill">Ada Lovelace</span>
+          <span class="mock-pill" style="color:#f0c674;border-color:#6b5a2a">admin</span>
+        </div>
+        <span class="mock-pill">Sign out</span>
+      </div>
+      <!-- top-level tabs -->
+      <div class="mock-tabs">
+        <div class="mock-tab">Chat</div>
+        <div class="mock-tab active">SQL Editor <span class="new">New</span></div>
+        <div class="mock-tab">Admin</div>
+      </div>
+      <!-- editor -->
+      <div class="editor-grid">
+        <!-- schema browser -->
+        <aside class="schema-panel">
+          <p class="schema-title">Schema</p>
+          <input class="schema-search" placeholder="Filter tables & columns…" />
+          <div class="tbl">
+            <div class="tname"><span class="ico">▾</span><span class="tb">mart_sales_summary</span></div>
+            <ul class="cols">
+              <li><span>postcode</span><span class="ctype">text</span></li>
+              <li><span>suburb</span><span class="ctype">text</span></li>
+              <li><span>property_type</span><span class="ctype">text</span></li>
+              <li><span>month</span><span class="ctype">date</span></li>
+              <li><span>total_sale_value</span><span class="ctype">numeric</span></li>
+              <li><span>n_sold</span><span class="ctype">int</span></li>
+              <li><span>median_price</span><span class="ctype">numeric</span></li>
+            </ul>
+          </div>
+          <div class="tbl"><div class="tname"><span class="ico">▸</span><span class="tb">mart_rent_summary</span></div></div>
+          <div class="tbl"><div class="tname"><span class="ico">▸</span><span class="tb">mart_rent_by_bedroom</span></div></div>
+          <div class="tbl"><div class="tname"><span class="ico">▸</span><span class="tb">mart_sales_by_segment</span></div></div>
+          <div class="tbl"><div class="tname"><span class="ico">▸</span><span class="tb">mart_property_yield</span></div></div>
+          <div class="tbl"><div class="tname"><span class="ico">▸</span><span class="schema-tag">staging.</span><span class="tb">stg_sales</span></div></div>
+          <div class="tbl"><div class="tname"><span class="ico">▸</span><span class="schema-tag">staging.</span><span class="tb">stg_rent</span></div></div>
+          <div class="tbl"><div class="tname"><span class="ico">▸</span><span class="schema-tag">staging.</span><span class="tb">int_postcode_geo</span></div></div>
+        </aside>
+        <!-- work area -->
+        <div class="work">
+          <div class="editor-bar">
+            <div class="qtabs">
+              <span class="qtab active">growth_by_suburb.sql</span>
+              <span class="qtab">scratch</span>
+              <span class="qtab add">+</span>
+            </div>
+            <div class="run-actions">
+              <span class="kbd-hint">⌘⏎ to run</span>
+              <button class="btn-ghost">✨ Ask AI</button>
+              <button class="btn-run">▶ Run</button>
+            </div>
+          </div>
+<pre class="code"><span class="gutter">1  </span><span class="cm">-- top suburbs by sale-price growth (agent_ro · RLS-scoped)</span>
+<span class="gutter">2  </span><span class="kw">SELECT</span> suburb,
+<span class="gutter">3  </span>       <span class="fn">round</span>(<span class="fn">max</span>(median_price) <span class="kw">FILTER</span> (<span class="kw">WHERE</span> month &gt;= <span class="st">'2024-01-01'</span>)
+<span class="gutter">4  </span>           / <span class="fn">nullif</span>(<span class="fn">min</span>(median_price), <span class="nu">0</span>) * <span class="nu">100</span> - <span class="nu">100</span>, <span class="nu">1</span>) <span class="kw">AS</span> growth_pct
+<span class="gutter">5  </span><span class="kw">FROM</span> <span class="tb">marts.mart_sales_summary</span>
+<span class="gutter">6  </span><span class="kw">WHERE</span> property_type = <span class="st">'house'</span>
+<span class="gutter">7  </span><span class="kw">GROUP BY</span> suburb
+<span class="gutter">8  </span><span class="kw">HAVING</span> <span class="fn">sum</span>(n_sold) &gt;= <span class="nu">50</span>
+<span class="gutter">9  </span><span class="kw">ORDER BY</span> growth_pct <span class="kw">DESC</span> <span class="kw">LIMIT</span> <span class="nu">10</span>;</pre>
+          <div class="results">
+            <div class="results-meta">
+              <span class="rbadge ok">success</span>
+              <span>10 rows · 42&nbsp;ms · agent_ro</span>
+              <div class="results-actions">
+                <span class="chip">Grid</span>
+                <span class="chip">Chart</span>
+                <span class="chip">⭳ CSV</span>
+                <span class="chip">History</span>
+              </div>
+            </div>
+            <div class="res-wrap">
+              <table class="res">
+                <thead><tr><th>suburb</th><th class="num">growth_pct</th></tr></thead>
+                <tbody>
+                  <tr><td>ZETLAND</td><td class="num">18.4</td></tr>
+                  <tr><td>MARRICKVILLE</td><td class="num">16.9</td></tr>
+                  <tr><td>REDFERN</td><td class="num">15.2</td></tr>
+                  <tr><td>NEWTOWN</td><td class="num">14.7</td></tr>
+                  <tr><td>ALEXANDRIA</td><td class="num">13.1</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="text-xs text-base-content/50">
+      Mock only — colours and layout come from the real <code>frontend/src/styles.css</code>. Syntax colours,
+      the schema tree, and the results are illustrative.
+    </p>
+  </section>
+
+  <!-- 03 DATABRICKS FEATURE MAP -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">03</span> · Databricks features → our scope</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      The Databricks SQL editor has a big surface. Rather than clone all of it, we take the features that earn
+      their keep in a single-DB, RLS-governed app and explicitly defer the collaboration/warehouse features that
+      assume a very different backend. Phases are detailed in §06.
+    </p>
+    <div class="overflow-x-auto rounded-box border border-base-content/10">
+      <table class="table table-sm">
+        <thead>
+          <tr class="bg-base-100">
+            <th>Databricks feature</th><th>Our take</th><th>Phase</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="font-medium">SQL editor w/ syntax highlight, folding, themes</td><td>✅ Adopt — CodeMirror 6, SQL mode, dark theme matching the app</td><td><span class="badge badge-primary badge-sm">A</span></td></tr>
+          <tr><td class="font-medium">Schema browser / catalog side panel</td><td>✅ Adopt — from the dbt manifest we already parse</td><td><span class="badge badge-primary badge-sm">A</span></td></tr>
+          <tr><td class="font-medium">Run + results grid, multiple statement results</td><td>◑ Adopt run + grid; <strong>single</strong> <code>SELECT</code> only (guardrail) — no multi-statement</td><td><span class="badge badge-primary badge-sm">A</span></td></tr>
+          <tr><td class="font-medium">Download / export results</td><td>✅ Adopt — client-side CSV from the returned rows</td><td><span class="badge badge-secondary badge-sm">B</span></td></tr>
+          <tr><td class="font-medium">Inline execution history</td><td>✅ Adopt — we already persist every run in <code>query_runs</code></td><td><span class="badge badge-secondary badge-sm">B</span></td></tr>
+          <tr><td class="font-medium">Schema-aware autocomplete</td><td>✅ Adopt — feed the catalog into CodeMirror completion</td><td><span class="badge badge-secondary badge-sm">B</span></td></tr>
+          <tr><td class="font-medium">Query tabs / drafts folder</td><td>◑ Adopt lightweight — draft tabs in <code>localStorage</code></td><td><span class="badge badge-secondary badge-sm">B</span></td></tr>
+          <tr><td class="font-medium">AI: generate SQL from natural language</td><td>✅ Adopt — <strong>reuse our agent</strong>; "Ask AI" drops SQL into the editor</td><td><span class="badge badge-accent badge-sm">C</span></td></tr>
+          <tr><td class="font-medium">AI Quick Fix / Explain / Optimize</td><td>✅ Adopt — agent explains/repairs the selected SQL</td><td><span class="badge badge-accent badge-sm">C</span></td></tr>
+          <tr><td class="font-medium">AI-generated result filters, chart from results</td><td>✅ Adopt chart (reuse Vega); NL result filter optional</td><td><span class="badge badge-accent badge-sm">C</span></td></tr>
+          <tr class="opacity-60"><td class="font-medium">Real-time collaboration / presence / comments</td><td>✋ Defer — needs websockets + CRDT; out of scope for v1</td><td><span class="badge badge-ghost badge-sm">—</span></td></tr>
+          <tr class="opacity-60"><td class="font-medium">Git-backed queries, CI/CD for SQL</td><td>✋ Defer — no query repo concept yet</td><td><span class="badge badge-ghost badge-sm">—</span></td></tr>
+          <tr class="opacity-60"><td class="font-medium">Split-screen editing, command palette</td><td>✋ Defer — polish, low value at this stage</td><td><span class="badge badge-ghost badge-sm">—</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 04 ARCHITECTURE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">04</span> · How it wires in</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      One new request path that mirrors <code>/ask</code> but skips NL→SQL. The user's raw SQL goes
+      frontend → <code>backend-api POST /sql</code> (JWT + RLS + audit) → <code>data-agent POST /agent/sql</code>
+      → <code>run_select</code> (read-only <code>agent_ro</code>, guardrails, RLS). Same executor, same blast
+      radius as the agent.
+    </p>
+    <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as User (SQL Editor tab)
+  participant API as backend-api /sql<br/>(app_user)
+  participant AG as data-agent /agent/sql<br/>(agent_ro)
+  participant DB as Postgres (RLS)
+  U->>API: POST /sql { sql }  + Bearer JWT
+  API->>API: get_current_user() · validate role
+  API->>AG: POST /agent/sql { sql, user:{id,role} }
+  AG->>AG: validate_select(sql)  (SELECT-only)
+  AG->>DB: SET LOCAL app.current_user_id · statement_timeout
+  DB-->>AG: rows (capped at max_rows) — RLS-filtered
+  AG-->>API: { columns, rows, row_count, truncated }
+  API->>DB: INSERT app.query_runs (engine='sql_editor', status, latency)
+  API-->>U: results  (or structured error)
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100"><div class="card-body gap-2">
+        <h3 class="card-title text-base">New / changed endpoints</h3>
+        <div class="overflow-x-auto">
+          <table class="table table-xs">
+            <thead><tr><th>Endpoint</th><th>Service</th><th>Auth</th><th>Does</th></tr></thead>
+            <tbody>
+              <tr><td><code>POST /sql</code></td><td>backend-api</td><td>any logged-in</td><td>RLS ctx, proxy, audit to <code>query_runs</code>, events</td></tr>
+              <tr><td><code>POST /agent/sql</code></td><td>data-agent</td><td>internal</td><td>calls <code>run_select</code> (read-only)</td></tr>
+              <tr><td><code>GET /schema/catalog</code></td><td>backend-api → agent</td><td>any logged-in</td><td>structured schema for the browser</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-2">
+        <h3 class="card-title text-base">Response shape (<code>/sql</code>)</h3>
+        <pre class="bg-base-300 rounded-lg p-3 text-xs overflow-x-auto"><code>{
+  "columns": ["suburb", "growth_pct"],
+  "rows": [["ZETLAND", 18.4], ...],
+  "row_count": 10,
+  "truncated": false,   // true if hit max_rows cap
+  "latency_ms": 42,
+  "engine": "sql_editor",
+  "error": null         // populated on UnsafeSQLError / SQL error
+}</code></pre>
+        <p class="text-xs text-base-content/60">Mirrors <code>AskResult</code> minus <code>answer</code>/<code>chart</code>,
+          so the existing results renderer is reusable with small tweaks.</p>
+      </div></div>
+    </div>
+
+    <h3 class="text-lg font-semibold pt-2">Proposed data-agent endpoint (the crux — reuses the executor)</h3>
+    <p class="text-sm text-base-content/60">New handler in <code>services/data-agent/agent/main.py</code>. Note it's ~15 lines because <code>run_select</code> already does the dangerous work.</p>
+    <div id="agent-sql-file"></div>
+
+    <h3 class="text-lg font-semibold pt-2">Frontend navigation: toggle button → real tab bar</h3>
+    <p class="text-sm text-base-content/60">Small change in <code>frontend/src/App.tsx</code> — the view union gains <code>"sql"</code> and the one-off toggle becomes a tab strip.</p>
+    <div id="app-nav-diff"></div>
+  </section>
+
+  <!-- 05 EDITOR LIBRARY DECISION -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">05</span> · Editor library — a real choice to make</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100 border-primary/40"><div class="card-body gap-2">
+        <div class="flex items-center gap-2"><h3 class="card-title text-base">CodeMirror 6</h3><span class="badge badge-primary badge-sm">Recommended</span></div>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+          <li>~<strong>200&nbsp;KB</strong> gzipped; tree-shakeable, Vite-native</li>
+          <li><code>@codemirror/lang-sql</code> gives SQL highlight + <strong>schema-aware completion</strong> out of the box</li>
+          <li>Easy to theme to the app's dark palette</li>
+          <li>Simple React integration (small wrapper, no iframe/worker plumbing)</li>
+        </ul>
+        <p class="text-xs text-base-content/50">Cost: fewer "IDE" bells (no built-in command palette).</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body gap-2">
+        <div class="flex items-center gap-2"><h3 class="card-title text-base">Monaco</h3><span class="badge badge-ghost badge-sm">Alternative</span></div>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+          <li>It <em>is</em> VS Code's editor — most "Databricks-identical" feel</li>
+          <li>Heavy: ~<strong>2&nbsp;MB+</strong>, web workers, more Vite config</li>
+          <li>Completion needs a custom provider wired to our catalog anyway</li>
+          <li>Overkill for a single-statement <code>SELECT</code> box</li>
+        </ul>
+        <p class="text-xs text-base-content/50">Pick this only if fidelity to Databricks' look is a hard requirement.</p>
+      </div></div>
+    </div>
+    <p class="text-sm text-base-content/70">Recommendation: <strong>CodeMirror 6</strong> — the bundle-size and
+      autocomplete story fit a lean app; you get 90% of the feel for 10% of the weight. Confirm in §11.</p>
+  </section>
+
+  <!-- 06 PHASED PLAN -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">06</span> · Phased build</h2>
+    <p class="text-base-content/70 max-w-3xl">Each phase ships something runnable, mirroring the repo's
+      pause-after-each-phase habit. Phase A is the whole MVP loop; B is productivity; C is the on-brand AI layer
+      that reuses the agent.</p>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="card card-border bg-base-100 border-primary/30"><div class="card-body gap-2">
+        <div class="flex items-center justify-between"><h3 class="card-title">Phase A</h3><span class="badge badge-primary">MVP loop</span></div>
+        <p class="text-sm text-base-content/70">Write SQL → run → see rows, governed & audited.</p>
+        <ul class="text-sm list-disc pl-4 space-y-1 text-base-content/80">
+          <li>3-tab nav (Chat · SQL Editor · Admin)</li>
+          <li>CodeMirror editor + Run (⌘⏎)</li>
+          <li><code>POST /sql</code> + <code>POST /agent/sql</code></li>
+          <li>Results grid, errors, truncation notice</li>
+          <li>Schema browser via <code>GET /schema/catalog</code></li>
+          <li>Audit to <code>query_runs</code> + events</li>
+          <li>pytest: guardrail reject, RLS isolation, row cap</li>
+        </ul>
+      </div></div>
+      <div class="card card-border bg-base-100 border-secondary/30"><div class="card-body gap-2">
+        <div class="flex items-center justify-between"><h3 class="card-title">Phase B</h3><span class="badge badge-secondary">Productivity</span></div>
+        <ul class="text-sm list-disc pl-4 space-y-1 text-base-content/80">
+          <li>Schema-aware autocomplete</li>
+          <li>Query history (from <code>query_runs</code>, click to reload)</li>
+          <li>CSV export</li>
+          <li>Client-side result sort / filter</li>
+          <li>Multiple draft query tabs (<code>localStorage</code>)</li>
+          <li>Grid ⇄ Chart toggle (reuse <code>VegaChart</code>)</li>
+        </ul>
+      </div></div>
+      <div class="card card-border bg-base-100 border-accent/30"><div class="card-body gap-2">
+        <div class="flex items-center justify-between"><h3 class="card-title">Phase C</h3><span class="badge badge-accent">AI (on-brand)</span></div>
+        <ul class="text-sm list-disc pl-4 space-y-1 text-base-content/80">
+          <li>"Ask AI" — NL → SQL <em>into the editor</em> (reuse agent, return SQL without auto-run)</li>
+          <li>Explain / Fix / Optimize the selected SQL</li>
+          <li>NL result filter (optional)</li>
+          <li>"Send to chat" hand-off between tabs</li>
+        </ul>
+        <p class="text-xs text-base-content/50">This is the differentiator vs. a generic SQL editor: the agent
+          is one click away, sharing the same schema grounding.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 07 FILES -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">07</span> · Files to touch (Phase A)</h2>
+    <div class="overflow-x-auto rounded-box border border-base-content/10">
+      <table class="table table-sm">
+        <thead><tr class="bg-base-100"><th>File</th><th>Change</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><code>services/data-agent/agent/main.py</code></td><td>New <code>POST /agent/sql</code> handler + <code>GET /agent/schema</code></td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+          <tr><td><code>services/data-agent/agent/schema.py</code></td><td>Add structured catalog fn (parse manifest → JSON) beside <code>get_schema()</code></td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+          <tr><td><code>services/backend-api/app/routers/sql.py</code></td><td><strong>New router</strong> — <code>POST /sql</code>, <code>GET /schema/catalog</code>, audit + events</td><td><span class="badge badge-info badge-xs">new</span></td></tr>
+          <tr><td><code>services/backend-api/app/agent_client.py</code></td><td>Add <code>run_sql_on_agent()</code> + <code>fetch_catalog()</code></td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+          <tr><td><code>services/backend-api/app/main.py</code></td><td>Register the new router</td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+          <tr><td><code>frontend/src/SqlEditor.tsx</code></td><td><strong>New</strong> — editor, schema browser, results</td><td><span class="badge badge-info badge-xs">new</span></td></tr>
+          <tr><td><code>frontend/src/App.tsx</code></td><td>Tab bar + <code>"sql"</code> view; mount <code>SqlEditor</code></td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+          <tr><td><code>frontend/src/api.ts</code></td><td><code>runSql()</code>, <code>getCatalog()</code> + types</td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+          <tr><td><code>frontend/src/styles.css</code></td><td>Editor/tab styles (reuse tokens)</td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+          <tr><td><code>frontend/package.json</code></td><td>Add <code>codemirror</code>, <code>@codemirror/lang-sql</code></td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+          <tr><td><code>services/db-migrate/…/0005_query_run_source.py</code></td><td><strong>New (optional)</strong> — see §09</td><td><span class="badge badge-warning badge-xs">migration</span></td></tr>
+          <tr><td><code>tests/ · evals/journeys.yaml</code></td><td>Guardrail + RLS-isolation tests for <code>/sql</code></td><td><span class="badge badge-success badge-xs">edit</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 08 SECURITY -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">08</span> · Security &amp; guardrails</h2>
+    <p class="text-base-content/70 max-w-3xl">This feature turns <em>arbitrary user-typed SQL</em> into a
+      first-class input — previously only the agent (or its stub) authored SQL. The existing defenses hold, but
+      one of them deserves hardening now that humans are at the keyboard.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="alert bg-base-100 border border-success/30"><div>
+        <span class="badge badge-success badge-sm">Holds as-is</span>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 mt-2 space-y-1">
+          <li><strong>Read-only role</strong> — runs as <code>agent_ro</code>; no INSERT/UPDATE/DDL privilege even if a query slips the regex</li>
+          <li><strong>RLS</strong> — <code>SET LOCAL app.current_user_id</code> scopes rows; <code>user2</code> gets 0 rows</li>
+          <li><strong>Statement timeout + row cap</strong> — <code>sql_statement_timeout_ms</code>, <code>max_rows</code> bound cost against the ~3M-row staging tables</li>
+          <li><strong>Single statement</strong> — <code>validate_select</code> rejects <code>;</code>-chained SQL</li>
+        </ul>
+      </div></div>
+      <div class="alert bg-base-100 border border-warning/30"><div>
+        <span class="badge badge-warning badge-sm">Harden now</span>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 mt-2 space-y-1">
+          <li><strong>Parser-based validation</strong> — <code>validate_select</code> is regex-based (keyword denylist). With direct user SQL, add an AST check (<code>sqlglot</code>/<code>pglast</code>): assert exactly one top-level <code>SELECT</code>, no CTE-hidden DML. Keeps the read-only role as the real backstop, regex/AST as defense-in-depth.</li>
+          <li><strong>Per-user rate / cost limit</strong> — cap runs per minute + daily row budget (a runaway loop of heavy queries is the new abuse vector). Aligns with the "LLM cost drift" risk already tracked.</li>
+          <li><strong>Access gating</strong> — decide who sees the tab (all users vs analysts+). See §11.</li>
+        </ul>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 09 DATA MODEL / MIGRATION -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">09</span> · Audit &amp; the one migration question</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      We want every editor run audited exactly like an agent run, so it shows up in the admin dashboard. It fits
+      <code>app.query_runs</code> cleanly — <code>conversation_id</code>, <code>message_id</code>, and
+      <code>dataset_id</code> are all nullable — with <strong>one snag</strong>:
+      <code>query_runs.question</code> is <code>NOT NULL</code> (<code>db/init/01_schema.sql:94</code>), and an
+      editor run has no natural-language question.
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Option A — tiny migration <span class="badge badge-primary badge-xs">recommended</span></h3>
+        <p class="text-sm text-base-content/70">Add <code>0005_query_run_source</code>: make <code>question</code>
+          nullable and add <code>source text NOT NULL DEFAULT 'agent'</code> (values <code>agent</code> /
+          <code>sql_editor</code>). Cleanest audit + lets the admin dashboard filter by origin.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Option B — no migration</h3>
+        <p class="text-sm text-base-content/70">Store <code>question = ''</code> (or the SQL's first line) and
+          set <code>engine = 'sql_editor'</code> to distinguish. Zero schema change; slightly hackier audit
+          semantics.</p>
+      </div></div>
+    </div>
+    <p class="text-sm text-base-content/60">No other schema changes. <code>events</code> takes new free-text
+      types (<code>sql_editor_view</code>, <code>sql_query_submitted</code>,
+      <code>sql_query_succeeded</code>/<code>_failed</code>) with no migration — <code>event_type</code> is text.</p>
+  </section>
+
+  <!-- 10 TESTING -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">10</span> · Testing</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">Unit / guardrail (pytest)</h3>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+          <li><code>/sql</code> rejects non-SELECT, multi-statement, denied keywords</li>
+          <li>Row cap → <code>truncated: true</code></li>
+          <li>Slow query trips the statement timeout cleanly</li>
+        </ul>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">RLS isolation (journey eval)</h3>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+          <li><code>user1</code> runs a mart query → rows</li>
+          <li><code>user2</code> runs the <em>same</em> SQL → <strong>0 rows</strong></li>
+          <li>Extends <code>evals/journeys.yaml</code></li>
+        </ul>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body py-4 gap-1">
+        <h3 class="card-title text-sm">E2E</h3>
+        <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+          <li>Extend <code>make smoke</code>: login → run SQL → rows + audit row present</li>
+          <li>Verify <code>query_runs</code> gets a <code>sql_editor</code> entry</li>
+        </ul>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 11 RISKS & DECISIONS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold"><span class="section-num text-primary">11</span> · Open decisions — your call</h2>
+    <p class="text-base-content/70 max-w-3xl">Four choices shape the build. Pick below and queue them back, or
+      annotate anything else. Defaults reflect my recommendation.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Q1 editor -->
+      <form class="card card-border bg-base-100" data-lavish-question="editor"
+        onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('editor'); if(v) window.lavish.queuePrompt('Use '+v+' as the SQL editor library', {tag:'choice', text:'Editor: '+v, element:event.currentTarget, data:{question:'editor', answer:v}});">
+        <div class="card-body gap-2">
+          <h3 class="card-title text-sm">1 · Editor library</h3>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="editor" value="CodeMirror 6" class="radio radio-xs radio-primary" checked> CodeMirror 6 <span class="badge badge-primary badge-xs">rec</span></label>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="editor" value="Monaco" class="radio radio-xs"> Monaco (heavier, VS Code feel)</label>
+          <button type="submit" class="btn btn-xs btn-primary mt-1 w-fit">Queue answer</button>
+        </div>
+      </form>
+
+      <!-- Q2 access -->
+      <form class="card card-border bg-base-100" data-lavish-question="access"
+        onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('access'); if(v) window.lavish.queuePrompt('Gate the SQL Editor tab to: '+v, {tag:'choice', text:'Access: '+v, element:event.currentTarget, data:{question:'access', answer:v}});">
+        <div class="card-body gap-2">
+          <h3 class="card-title text-sm">2 · Who gets the tab?</h3>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="access" value="all logged-in users" class="radio radio-xs radio-primary" checked> All users (RLS still scopes rows) <span class="badge badge-primary badge-xs">rec</span></label>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="access" value="analysts + admins only" class="radio radio-xs"> Analysts + admins only</label>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="access" value="admins only" class="radio radio-xs"> Admins only</label>
+          <button type="submit" class="btn btn-xs btn-primary mt-1 w-fit">Queue answer</button>
+        </div>
+      </form>
+
+      <!-- Q3 audit -->
+      <form class="card card-border bg-base-100" data-lavish-question="audit"
+        onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('audit'); if(v) window.lavish.queuePrompt('For editor-run audit, go with: '+v, {tag:'choice', text:'Audit: '+v, element:event.currentTarget, data:{question:'audit', answer:v}});">
+        <div class="card-body gap-2">
+          <h3 class="card-title text-sm">3 · Audit approach (§09)</h3>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="audit" value="Option A — 0005 migration (source column)" class="radio radio-xs radio-primary" checked> A · tiny migration <span class="badge badge-primary badge-xs">rec</span></label>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="audit" value="Option B — no migration" class="radio radio-xs"> B · no migration</label>
+          <button type="submit" class="btn btn-xs btn-primary mt-1 w-fit">Queue answer</button>
+        </div>
+      </form>
+
+      <!-- Q4 scope -->
+      <form class="card card-border bg-base-100" data-lavish-question="scope"
+        onsubmit="event.preventDefault(); const v=new FormData(event.currentTarget).get('scope'); if(v) window.lavish.queuePrompt('Build the SQL editor up to and including: '+v, {tag:'choice', text:'Scope: '+v, element:event.currentTarget, data:{question:'scope', answer:v}});">
+        <div class="card-body gap-2">
+          <h3 class="card-title text-sm">4 · How far to build now?</h3>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="scope" value="Phase A only" class="radio radio-xs radio-primary" checked> Phase A (MVP), then pause <span class="badge badge-primary badge-xs">rec</span></label>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="scope" value="Phases A + B" class="radio radio-xs"> A + B (productivity)</label>
+          <label class="flex gap-2 items-center text-sm"><input type="radio" name="scope" value="Phases A + B + C" class="radio radio-xs"> A + B + C (incl. AI assist)</label>
+          <button type="submit" class="btn btn-xs btn-primary mt-1 w-fit">Queue answer</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="alert bg-base-100 border border-base-content/10 mt-2">
+      <div class="text-sm text-base-content/70">
+        <strong>Also worth your read:</strong> the parser-hardening in §08 (do we do it in Phase A or defer?),
+        and whether "Ask AI" in Phase C should <em>only insert</em> SQL or also auto-run it. Annotate either and
+        I'll fold it in.
+      </div>
+    </div>
+  </section>
+
+  <footer class="pt-6 border-t border-base-content/10 text-sm text-base-content/50">
+    Plan for review · reuses <code>run_select</code> / <code>agent_ro</code> / RLS / <code>query_runs</code> ·
+    Databricks feature reference: <em>Introducing the new SQL editor</em>. Design source: this project's existing
+    <code>.lavish</code> plan system (DaisyUI <code>luxury</code>) + the app's real <code>styles.css</code> for the mock.
+  </footer>
+</main>
+
+<!-- @pierre/diffs code renders -->
+<script type="module">
+  import { File, FileDiff } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const theme = { light: "github-light", dark: "github-dark" };
+  const options = { theme, themeType: "dark", overflow: "wrap" };
+
+  const agentSql = {
+    name: "services/data-agent/agent/main.py  (new endpoint)",
+    contents:
+`class SqlRequest(BaseModel):
+    sql: str
+    user: UserCtx
+
+
+class SqlResult(BaseModel):
+    columns: list[str] = []
+    rows: list[list[Any]] = []
+    row_count: int = 0
+    truncated: bool = False
+    sql: str | None = None
+    error: str | None = None
+
+
+@app.post("/agent/sql", response_model=SqlResult)
+async def agent_sql(body: SqlRequest) -> SqlResult:
+    """Run raw user SQL through the SAME governed executor the agent uses."""
+    try:
+        # run_select already: validate_select -> agent_ro -> SET LOCAL RLS
+        # + statement_timeout -> row cap. No new DB path is introduced.
+        result = await run_select(body.sql, user_id=body.user.id)
+    except UnsafeSQLError as exc:
+        return SqlResult(sql=body.sql, error=str(exc))
+    return SqlResult(
+        columns=result["columns"],
+        rows=result["rows"],
+        row_count=result["row_count"],
+        truncated=result["row_count"] >= settings.max_rows,
+        sql=result["sql"],
+    )
+`,
+  };
+  new File(options).render({
+    containerWrapper: document.querySelector("#agent-sql-file"),
+    file: agentSql,
+  });
+
+  const navOld = {
+    name: "frontend/src/App.tsx",
+    contents:
+`const [view, setView] = useState<"chat" | "admin">("chat");
+
+// ...in the header:
+{user.role === "admin" && (
+  <button className="ghost"
+    onClick={() => setView(view === "chat" ? "admin" : "chat")}>
+    {view === "chat" ? "Admin" : "Chat"}
+  </button>
+)}
+`,
+  };
+  const navNew = {
+    name: "frontend/src/App.tsx",
+    contents:
+`const [view, setView] = useState<"chat" | "sql" | "admin">("chat");
+
+// ...a real tab strip (SQL Editor visible per the access decision in §11):
+<nav className="tabs">
+  <button className={view === "chat" ? "tab active" : "tab"}
+    onClick={() => setView("chat")}>Chat</button>
+  <button className={view === "sql" ? "tab active" : "tab"}
+    onClick={() => setView("sql")}>SQL Editor</button>
+  {user.role === "admin" && (
+    <button className={view === "admin" ? "tab active" : "tab"}
+      onClick={() => setView("admin")}>Admin</button>
+  )}
+</nav>
+
+// ...in the body:
+{view === "sql" && <SqlEditor user={user} />}
+`,
+  };
+  new FileDiff({ ...options, diffStyle: "unified" }).render({
+    containerWrapper: document.querySelector("#app-nav-diff"),
+    oldFile: navOld,
+    newFile: navNew,
+  });
+</script>
+
+</body>
+</html>

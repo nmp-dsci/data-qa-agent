@@ -2,19 +2,19 @@
 
 The Phase-0/2b stand-in for the LLM: it recognises the sales/rent/yield intents,
 detects a house-vs-unit filter, builds a governed SELECT, and phrases an answer.
-When a provider key is configured (LLM_PROVIDER — see provider.py) the real LLM
-agent is used instead, and it authors its own SQL from the dbt-manifest schema
-(see llm_agent.py) — including computing growth/yield itself, since the marts
-hold no precomputed growth%/yield% column (data pipeline refactor). This stub
-has to do the same computation explicitly, in SQL, since there's no model here
-to write it ad hoc.
+When a provider key is configured (LLM_PROVIDER — see provider.py) the sandbox
+agent is used instead, and it authors its own SQL extract from the dbt-manifest
+schema (see sandbox_agent.py) — leaving growth/yield to the tested skills, since
+the marts hold no precomputed growth%/yield% column (data pipeline refactor).
+This stub has to do the same computation explicitly, in SQL, since there's no
+model here to write it ad hoc.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from .schema import GEO_BRIDGE, RENT_MART, SALES_MART, YIELD_MART
+from .schema import GEO_BRIDGE, RENT_MART, SALES_MART
 
 # Dominant suburb per postcode, for a display label. postcode <-> suburb is not
 # 1:1, so growth is computed at postcode level (below) and this just picks the
@@ -31,40 +31,60 @@ def _property_type(q: str) -> str:
         return "unit"
     if "house" in q:
         return "house"
-    return "ALL"
+    return ""
 
 
 def _mentions(q: str, *words: str) -> bool:
     return any(w in q for w in words)
 
 
-def _growth_ctes(mart: str, value_col: str, count_col: str, ptype: str, prefix: str) -> str:
-    """CTEs computing first-vs-last-available-month growth% per postcode.
+def _sales_trend_sql(q: str, ptype: str) -> str:
+    suburbs: list[str] = []
+    if "normanhurst" in q:
+        suburbs.append("NORMANHURST")
+    if "hornsby" in q:
+        suburbs.append("HORNSBY")
 
-    Aggregates across suburbs (sum totals / sum counts) so the figure is
-    postcode-level even though mart_sales_summary is now suburb-grained; total/
-    count (not median) so the average composes across both the time window and
-    the suburbs — the reasoning documented in mart_sales_summary.sql for why
-    growth isn't a precomputed column. mart_rent_summary has no suburb, so the
-    same grouping is naturally postcode-level there.
-    """
+    filters: list[str] = []
+    if ptype:
+        filters.append(f"property_type = '{ptype}'")
+    if suburbs:
+        quoted = ", ".join(f"'{s}'" for s in suburbs)
+        filters.append(f"upper(suburb) IN ({quoted})")
+    if "2010" in q or "all time" in q:
+        filters.append("month >= DATE '2010-01-01'")
+    if "2026" in q or "all time" in q:
+        filters.append("month <= DATE '2026-12-31'")
+
+    return (
+        "SELECT suburb, property_type, month, "
+        "round((sum(total_sale_value) / NULLIF(sum(n_sold), 0))::numeric) AS avg_sale_price, "
+        "sum(n_sold) AS n_sold "
+        f"FROM {SALES_MART} "
+        f"WHERE {' AND '.join(filters) if filters else 'true'} "
+        "GROUP BY suburb, property_type, month "
+        "ORDER BY suburb, month"
+    )
+
+
+def _growth_ctes(mart: str, value_col: str, count_col: str, ptype: str, prefix: str) -> str:
+    """CTEs computing first-vs-last-available-month growth% per postcode."""
+    type_filter = f"WHERE property_type = '{ptype}'" if ptype else ""
     return f"""
 {prefix}bounds AS (
     SELECT postcode, min(month) AS first_month, max(month) AS last_month
-    FROM {mart} WHERE property_type = '{ptype}' GROUP BY postcode
+    FROM {mart} {type_filter} GROUP BY postcode
 ),
 {prefix}first AS (
     SELECT b.postcode, sum(m.{value_col}) / NULLIF(sum(m.{count_col}), 0) AS avg_value
-    FROM {prefix}bounds b
-    JOIN {mart} m ON m.postcode = b.postcode AND m.property_type = '{ptype}'
-        AND m.month = b.first_month
+    FROM {prefix}bounds b JOIN {mart} m ON m.postcode = b.postcode AND m.month = b.first_month
+        {"AND m.property_type = '" + ptype + "'" if ptype else ""}
     GROUP BY b.postcode
 ),
 {prefix}last AS (
     SELECT b.postcode, sum(m.{value_col}) / NULLIF(sum(m.{count_col}), 0) AS avg_value
-    FROM {prefix}bounds b
-    JOIN {mart} m ON m.postcode = b.postcode AND m.property_type = '{ptype}'
-        AND m.month = b.last_month
+    FROM {prefix}bounds b JOIN {mart} m ON m.postcode = b.postcode AND m.month = b.last_month
+        {"AND m.property_type = '" + ptype + "'" if ptype else ""}
     GROUP BY b.postcode
 ),
 {prefix}growth AS (
@@ -81,28 +101,48 @@ def build_sql(question: str) -> tuple[str, str]:
 
     if _mentions(q, "how many", "count", "number of"):
         return (
-            f"SELECT count(DISTINCT postcode) AS count FROM {SALES_MART} "
-            "WHERE property_type = 'ALL'",
+            f"SELECT count(DISTINCT postcode) AS count FROM {SALES_MART}",
             "count",
         )
 
     wants_yield = _mentions(q, "yield", "return on", "roi")
     wants_sales = _mentions(q, "sale", "price", "buy", "purchase")
     wants_rent = _mentions(q, "rent", "rental", "bond")
+    wants_trend = _mentions(q, "trend", "over time", "by month", "monthly", "time series")
 
     if wants_yield:
+        type_filter = f"WHERE property_type = '{ptype}'" if ptype else ""
         return (
-            f"SELECT suburb, postcode, property_type, month, median_price, median_rent, "
-            f"round((median_rent * 52 / median_price * 100)::numeric, 2) AS gross_yield_pct "
-            f"FROM {YIELD_MART} "
-            f"WHERE property_type = '{ptype}' AND month = (SELECT max(month) FROM {YIELD_MART}) "
-            f"ORDER BY gross_yield_pct DESC LIMIT 10",
+            "WITH sales AS ("
+            f"SELECT postcode, suburb, property_type, month, "
+            "sum(total_sale_value) AS total_sale_value, sum(n_sold) AS n_sold "
+            f"FROM {SALES_MART} {type_filter} "
+            "GROUP BY postcode, suburb, property_type, month"
+            "), rent AS ("
+            f"SELECT postcode, property_type, month, "
+            "sum(total_weekly_rent) AS total_weekly_rent, sum(n_rented) AS n_rented "
+            f"FROM {RENT_MART} {type_filter} "
+            "GROUP BY postcode, property_type, month"
+            ") "
+            "SELECT s.suburb, s.postcode, s.property_type, s.month, "
+            "round((s.total_sale_value / NULLIF(s.n_sold, 0))::numeric) AS avg_sale_price, "
+            "round((r.total_weekly_rent / NULLIF(r.n_rented, 0))::numeric) AS avg_weekly_rent, "
+            "round(((r.total_weekly_rent / NULLIF(r.n_rented, 0)) * 52 "
+            "/ NULLIF((s.total_sale_value / NULLIF(s.n_sold, 0)), 0) * 100)::numeric, 2) "
+            "AS gross_yield_pct "
+            "FROM sales s JOIN rent r ON r.postcode = s.postcode "
+            "AND r.property_type = s.property_type AND r.month = s.month "
+            f"WHERE s.month = (SELECT max(month) FROM {SALES_MART}) "
+            "ORDER BY gross_yield_pct DESC LIMIT 10",
             "yield",
         )
 
     # Rent-only vs sales-only vs both. "Growth suburbs for sales and rent" -> combined.
     # suburb comes from the geo bridge (dominant label) since growth is
     # postcode-level and rent has no suburb of its own.
+    if wants_sales and wants_trend and not wants_rent:
+        return (_sales_trend_sql(q, ptype), "sales_trend")
+
     if wants_rent and not wants_sales:
         ctes = _growth_ctes(RENT_MART, "total_weekly_rent", "n_rented", ptype, "r_")
         return (
@@ -172,6 +212,15 @@ def phrase_answer(question: str, intent: str, result: dict[str, Any]) -> str:
     if intent == "count":
         return f"There are {int(rows[0][0]):,} postcodes with sale-price data."
 
+    if intent == "sales_trend":
+        suburbs = sorted({str(r[0]) for r in rows if r and r[0]})
+        first_month = rows[0][2]
+        last_month = rows[-1][2]
+        return (
+            f"Monthly sale-price trend for {', '.join(suburbs)} from {first_month} "
+            f"to {last_month}. Showing {result['row_count']} monthly rows below."
+        )
+
     top = rows[:5]
     if intent == "combined":
         parts = [f"{r[0]} (sales {_pct(r[2])}, rent {_pct(r[3])})" for r in top]
@@ -185,6 +234,7 @@ def phrase_answer(question: str, intent: str, result: dict[str, Any]) -> str:
     if intent == "rent":
         parts = [f"{r[0]} ({_pct(r[2])}, now {_money(r[3])}/wk)" for r in top]
         return "Top areas by rent growth — " + "; ".join(parts) + "."
-    # yield: suburb, postcode, property_type, month, median_price, median_rent, gross_yield_pct
+    # yield: suburb, postcode, property_type, month, avg_sale_price,
+    # avg_weekly_rent, gross_yield_pct
     parts = [f"{r[0]} ({_pct_abs(r[6])} gross)" for r in top]
     return "Top areas by gross rental yield — " + "; ".join(parts) + "."

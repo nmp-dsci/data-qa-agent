@@ -10,6 +10,9 @@ dependencies = [
     "asyncpg>=0.30",
     "pydantic-settings>=2.5",
     "logfire[fastapi,httpx]>=4.37.0",
+    # AST-based SQL guardrail (defense-in-depth over the regex denylist); the SQL
+    # editor turns arbitrary user-typed SQL into a first-class input.
+    "sqlglot>=25.0",
 ]
 
 [project.optional-dependencies]
@@ -18,11 +21,17 @@ dependencies = [
 # Falls back to the deterministic offline stub when no provider key is set.
 llm = [
     "fastembed>=0.8.0",
+    "pandas>=2.2",
     "pydantic-ai-slim[anthropic,openai]>=2.3.0",
 ]
 
 [dependency-groups]
-dev = ["mypy>=1.11", "pytest>=8.3.3", "ruff>=0.14.2"]
+dev = [
+    "mypy>=1.11",
+    "pandas-stubs>=2.2",
+    "pytest>=8.3.3",
+    "ruff>=0.14.2",
+]
 
 [tool.uv]
 package = false

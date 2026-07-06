@@ -24,12 +24,12 @@ SOURCE = os.environ.get("PIPELINE_SOURCE", "sample")
 
 FILES: dict[str, dict[str, Path]] = {
     "sample": {
-        "sales": DATA_DIR / "samples" / "nsw_sales_sample.csv",
-        "rent": DATA_DIR / "samples" / "nsw_rent_sample.csv",
+        "property_sales": DATA_DIR / "samples" / "nsw_sales_sample.csv",
+        "property_rent": DATA_DIR / "samples" / "nsw_rent_sample.csv",
     },
     "full": {
-        "sales": DATA_DIR / "nswgov_df.csv",
-        "rent": DATA_DIR / "rentboard_df.csv",
+        "property_sales": DATA_DIR / "nswgov_df.csv",
+        "property_rent": DATA_DIR / "rentboard_df.csv",
     },
 }
 
@@ -64,19 +64,22 @@ def main() -> None:
     )
 
     sales = dlt.resource(
-        _rows(files["sales"]),
-        name="sales",
+        _rows(files["property_sales"]),
+        name="property_sales",
         write_disposition="replace",
         columns=_text_hints(SALES_TEXT),
     )
     rent = dlt.resource(
-        _rows(files["rent"]),
-        name="rent",
+        _rows(files["property_rent"]),
+        name="property_rent",
         write_disposition="replace",
         columns=_text_hints(RENT_TEXT),
     )
 
-    print(f"==> dlt ingest ({SOURCE}): {files['sales'].name}, {files['rent'].name}")
+    print(
+        f"==> dlt ingest ({SOURCE}): "
+        f"{files['property_sales'].name}, {files['property_rent'].name}"
+    )
     info = pipeline.run([sales, rent])
     print(info)
 

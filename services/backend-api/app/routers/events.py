@@ -113,9 +113,9 @@ async def list_query_runs(
                 await conn.execute(
                     text(
                         "SELECT qr.id, qr.created_at, u.username, d.slug AS dataset, "
-                        "qr.engine, qr.row_count, qr.latency_ms, qr.status, "
-                        "qr.question, qr.sql_text, qr.error, "
-                        "qr.input_tokens, qr.output_tokens "
+                        "qr.engine, qr.source, qr.channel, qr.row_count, qr.latency_ms, "
+                        "qr.status, qr.question, qr.sql_text, qr.error, "
+                        "qr.input_tokens, qr.output_tokens, qr.trace "
                         "FROM app.query_runs qr "
                         "JOIN app.users u ON u.id = qr.user_id "
                         "LEFT JOIN app.datasets d ON d.id = qr.dataset_id "

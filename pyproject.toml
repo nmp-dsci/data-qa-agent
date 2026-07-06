@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "App that serves data science insights through question and answer"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+# sqlglot: AST-based SQL guardrail (defense-in-depth over the regex denylist and
+# the read-only agent_ro role) — imported by services/data-agent's sql_guardrails
+# and exercised by tests/, so it lives at the repo root too.
+# pydantic: the InsightReport contract (services/data-agent's agent/report.py) is
+# exercised by tests/test_report.py, so it lives at the repo root too.
+dependencies = ["sqlglot>=25.0", "pydantic>=2.7"]
 
 [dependency-groups]
 dev = [

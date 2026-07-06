@@ -5,7 +5,47 @@ sources:
     description: Landing tables loaded by dlt from the NSW CSVs.
     schema: raw
     tables:
-      - name: sales
+      - name: property_sales
         description: NSW Government property sales (dealing-level), one row per sale.
-      - name: rent
+        columns:
+          - name: property_id
+            data_type: text
+          - name: locality
+            data_type: text
+          - name: postcode
+            data_type: text
+          - name: contract_dt
+            data_type: text
+          - name: sale_price
+            data_type: text
+          - name: prop_purpose
+            data_type: text
+          - name: strata_no
+            data_type: text
+          - name: area_sqm
+            data_type: text
+          - name: area_type
+            data_type: text
+          - name: zoning
+            data_type: text
+          - name: house_no
+            data_type: text
+          - name: street_name
+            data_type: text
+          - name: unit_no
+            data_type: text
+          - name: prop_name
+            data_type: text
+      - name: property_rent
         description: NSW Rental Bond Board lodgements, one row per bond.
+        columns:
+          - name: lodgement_dt
+            data_type: text
+          - name: postcode
+            data_type: text
+          - name: property_type
+            data_type: text
+          - name: bedrooms
+            data_type: text
+          - name: weekly_rent
+            data_type: text

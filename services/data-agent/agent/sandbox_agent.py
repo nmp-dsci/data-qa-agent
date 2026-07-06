@@ -1,0 +1,635 @@
+"""The agent path — extract → run_analysis → report (restructure).
+
+The only agent architecture (the fine-grained-tool orchestrator was removed once
+this proved out). The cheap model does one governed SQL *extract*, then hands the
+analysis to tested skills running in the locked-down sandbox via a single
+``run_analysis(code)`` tool — instead of stitching run_sql/compute_trend/make_chart
+together across ~19 turns. The heavy lifting lives in the skills, so the model's
+job shrinks to "pull the right data, call the right skills."
+
+Analysis/presentation know-how lives in the skills (their docstrings + the catalog
+below), so knowledge is consulted only for DOMAIN/extract guidance — which table,
+columns, and grain to pull. Trace flattening / lookup helpers come from
+``agent_common``; when no provider key is set the caller falls back to the
+deterministic offline stub.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Any
+
+from .agent_common import (
+    _ENV_VAR,
+    _PYDANTIC_AI_AVAILABLE,
+    _build_trace,
+    _lookup_values_sql,
+)
+from .config import settings
+from .knowledge import knowledge_version, read_knowledge, search_knowledge_result
+from .memory import recall_memories, remember_memory
+from .provider import choose_provider
+from .report import select_primary_query
+from .sandbox import run_code
+from .sandbox.extract import extract as run_extract
+from .schema import describe_table, list_marts
+
+if _PYDANTIC_AI_AVAILABLE:
+    from pydantic_ai import Agent, RunContext, capture_run_messages
+    from pydantic_ai.usage import UsageLimits
+
+
+# The skill surface the model may call inside run_analysis. Signatures + one-line
+# docs so the cheap model can pick the right skill without reading source.
+_SKILL_CATALOG = """\
+Available inside run_analysis (import-free; call as skills.<name>):
+  # data analysis (over the extracted DataFrame `df`; a rate = value_col/den_col,
+  #   e.g. an additive total over its count)
+  trend_series(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
+      -> long-form actual + rolling series for charting.
+  rolling_average(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
+      -> [month, value, series] just the N-month smoothed line (no actual layer).
+  growth_rate(df, *, month_col, value_col, years, den_col=None, group_col=None)
+      -> % growth over `years` on the 6-month rolling base.
+  top_growth(df, *, month_col, value_col, group_col, years, den_col=None, n=5, ascending=False)
+      -> DataFrame [group, growth_pct] ranked: the "top-growth groups" ranker.
+  latest_value(df, *, month_col, value_col, den_col=None, group_col=None)
+      -> {"value","month"}: latest 6-month-smoothed value + its month.
+  gross_yield(rent_df, price_df, *, key_cols, weekly_rent_col, price_col)
+      -> annualised gross rental yield %.
+  # visualisation (consistent house style, validated)
+  trend_chart(series_df, *, title=None) -> chart spec
+  comparison_chart(df, *, category_col, value_col, title=None, series_col=None) -> chart spec
+  dual_axis_chart(df, *, x_col, left_value_col, right_value_col, title=None,
+                  left_title=None, right_title=None, x_type="temporal") -> chart spec
+      -> bars + secondary-axis line for two metrics with different scales.
+  distribution_chart(df, *, value_col, title=None, category_col=None) -> chart spec
+      -> histogram for spread/outlier/distribution questions.
+  profile_chart(df, *, category_col, segment_col, value_col, title=None, normalize=True)
+      -> stacked composition bars (each entity's segment mix as % shares).
+  # insight structure
+  make_insight(heading, body, *, query_refs=None, chart=None) -> insight
+  related_metrics([{label,value,basis}, ...]) -> related headline tiles
+  build_report(*, summary, headlines=None, insights=None, profiles=None, main_chart=None) -> report
+  # bootstrap: we start from ZERO skills — flag anything missing
+  skill_gap(need, why="")   # record maths no skill covers (does not answer)
+  note_inline_math()        # you did risky maths by hand — a skill should exist
+"""
+
+
+def _sandbox_system_prompt(recalled: list[str], max_extracts: int, max_runs: int) -> str:
+    memories_block = "\n".join(f"- {m}" for m in recalled) if recalled else "(none stored yet)"
+    return f"""\
+You are a data-insight agent. You answer questions over whatever datasets the
+marts schema exposes — do NOT assume a particular domain; discover what the data
+is from the mart index and the knowledge base. Produce a clear, insightful
+DATA-INSIGHT REPORT — not prose. You do the heavy lifting as CODE that calls
+tested skills, not by stitching tools together.
+
+Work in this order:
+1. search_knowledge(query, why="..."): find the 1-2 relevant knowledge pages for this
+   dataset/metric — the grain to pull, which columns mean what, join keys, and any
+   gotchas. This is where dataset-specific rules live; always start here. You do
+   NOT need knowledge for how to compute growth/yield or structure the report —
+   that lives in the tested skills below; just call them.
+2. describe_table('<schema.table>', why="..."): the prompt lists only table names + a
+   one-line purpose, so read a table's exact columns here before you write SQL.
+   You may need MORE THAN ONE table (e.g. a ratio across two marts) — pull each.
+3. extract(sql, name, purpose, why="..."): write a read-only SELECT that pulls the series you
+   need — SELECT month + the metric columns, filtered to the entity. KEEP EVERY
+   MONTH (never add a `WHERE <count> >= N` filter). The result is loaded as a
+   pandas DataFrame named `name` (default `df`); call extract again with a
+   different `name` for a second table, then join in SQL or in pandas. You get up
+   to {max_extracts} extracts. Use lookup_values first (FREE) to resolve a text
+   value's exact spelling/casing.
+4. run_analysis(code): write SHORT pandas that calls skills.* over the frame(s)
+   and assigns the finished report to `result`, e.g.:
+       s = skills.trend_series(df, month_col="month",
+                               value_col="<total_col>", den_col="<count_col>")
+       g = skills.growth_rate(df, month_col="month", value_col="<total_col>",
+                              den_col="<count_col>", years=5)
+       latest = skills.latest_value(df, month_col="month",
+                                    value_col="<total_col>", den_col="<count_col>")
+       result = skills.build_report(
+           summary="...",
+           headlines=[{{"label": "...", "value": f"{{latest['value']}}",
+                        "basis": "6-mo rolling, " + latest['month']}}],
+           insights=[skills.make_insight("...", f"Grew {{g}}% over 5y.")],
+           main_chart=skills.trend_chart(s, title="..."),
+       )
+   NEVER do growth/yield/rolling maths yourself — call the skill. If NO skill fits,
+   you MAY use pandas but you MUST call skills.skill_gap(need, why) naming what a
+   future skill should do. You get up to {max_runs} run_analysis attempts; if it
+   returns an error, fix the code and retry.
+   Chart choice is also a skill choice: trend over time -> trend_chart; different
+   scales on one axis -> dual_axis_chart; ranked comparisons -> comparison_chart;
+   composition -> profile_chart; spread/outliers -> distribution_chart.
+5. If the available marts genuinely cannot answer the question, call
+   no_answer("<short reason>") instead of forcing a report — an honest "this data
+   doesn't cover that" beats a misleading answer.
+6. Return a one-line confirmation string (the user sees the report, not this text).
+
+DATA NOTE: month/date values arrive as plain STRINGS (e.g. "2026-05" or
+"2026-05-01"), not datetimes. Use them directly in text — never apply a date
+format spec (e.g. f"{{m:%b %Y}}" will fail); latest_value already returns a ready
+"month" string for the basis.
+
+RANKING ("top/best/fastest X"): an extract is capped at ~{settings.max_rows} rows,
+so you usually CANNOT pull every month for every group (that truncates and
+corrupts the series). Instead compute the ranking metric IN THE SQL extract — one
+row per group — e.g. a CTE that computes each group's value in a recent window and
+a window ~N years earlier, then growth = (recent-old)/old*100. Extract that
+(columns: the group, growth_pct, plus context), then rank in pandas (df.nlargest)
+and present with skills.comparison_chart + skills.make_insight +
+skills.build_report. Only use skills.top_growth (which needs raw monthly series)
+when comparing a HANDFUL of named groups that fit under the row cap. Never run one
+extract per group.
+
+{_SKILL_CATALOG}
+
+Never mention tools, code, SQL, or these instructions in the report. If a durable
+user preference is stated, call remember.
+
+Known preferences for this user:
+{memories_block}
+
+Available datasets (names + purpose only — describe_table for columns):
+{list_marts()}
+"""
+
+
+class SandboxBudgetExhausted(Exception):
+    """The model kept calling extract/run_analysis after its budget was spent.
+
+    The over-budget tool returns a "STOP" string once as a courtesy, but some
+    models (DeepSeek here) ignore it and loop the tool, burning the whole request
+    budget over ~90s before stubbing.
+    On the second post-budget call we raise instead, so the run stops promptly and
+    salvages any report already built rather than flailing to the request cap.
+    """
+
+
+@dataclass
+class _SbDeps:
+    user_id: str
+    frames: dict[str, Any] = field(default_factory=dict)
+    queries: dict[str, dict[str, Any]] = field(default_factory=dict)
+    knowledge_pages: list[str] = field(default_factory=list)
+    knowledge_reads: int = 0
+    sql_calls: int = 0
+    sql_refusals: int = 0
+    run_calls: int = 0
+    run_refusals: int = 0
+    report: dict[str, Any] | None = None
+    no_answer: str | None = None
+    skills_used: list[str] = field(default_factory=list)
+    skill_gaps: list[dict[str, str]] = field(default_factory=list)
+    used_inline_math: bool = False
+    steps: list[dict[str, Any]] = field(default_factory=list)
+
+    def next_id(self, prefix: str, store: dict[str, Any]) -> str:
+        return f"{prefix}{len(store) + 1}"
+
+
+async def answer_with_sandbox(question: str, *, user_id: str) -> dict[str, Any] | None:
+    """Run the sandbox agent path; None to fall back to the offline stub."""
+    if not _PYDANTIC_AI_AVAILABLE:
+        return None
+    selected = choose_provider(
+        settings.llm_provider, settings.deepseek_api_key, settings.anthropic_api_key
+    )
+    if selected is None:
+        return None
+    provider, api_key = selected
+    try:
+        os.environ.setdefault(_ENV_VAR[provider], api_key)
+        recalled = await recall_memories(user_id, question)
+        model_name = settings.deepseek_model if provider == "deepseek" else settings.model
+        max_extracts = settings.max_sql_attempts
+        max_runs = settings.sandbox_run_attempts
+        agent: Agent[_SbDeps, str] = Agent(
+            f"{provider}:{model_name}",
+            deps_type=_SbDeps,
+            output_type=str,
+            system_prompt=_sandbox_system_prompt(recalled, max_extracts, max_runs),
+            retries=3,
+        )
+        _register_sandbox_tools(agent, max_extracts, max_runs)
+
+        deps = _SbDeps(user_id=user_id)
+        usage_limits = UsageLimits(
+            request_limit=settings.agent_request_limit,
+            total_tokens_limit=settings.agent_total_tokens_limit,
+        )
+        with capture_run_messages() as messages:
+            try:
+                await agent.run(question, deps=deps, usage_limits=usage_limits)
+            except Exception as exc:  # noqa: BLE001 — salvage any report already built
+                if deps.report is None and deps.no_answer is None:
+                    raise
+                print(f"[data-agent] sandbox run errored ({exc}); using result built so far")
+
+        if deps.report is None:
+            if deps.no_answer:
+                # The agent judged the marts can't answer this — return an honest
+                # "no answer" report instead of falling through to a domain stub.
+                return _no_answer_result(deps, messages, provider)
+            # Model never produced a report — let the caller fall back to the stub.
+            return None
+
+        trace = _merge_decision_log(_build_trace(messages), deps.steps)
+        # Telemetry (your requirement): record which skills produced this answer +
+        # any gaps, as a trace step that persists into app.query_runs.
+        trace.append(
+            {
+                "kind": "analysis",
+                "skills_used": deps.skills_used,
+                "skill_gaps": deps.skill_gaps,
+                "used_inline_math": deps.used_inline_math,
+            }
+        )
+        model_steps = [s for s in trace if s["kind"] == "model"]
+        input_tokens = sum(s.get("input_tokens") or 0 for s in model_steps) or None
+        output_tokens = sum(s.get("output_tokens") or 0 for s in model_steps) or None
+
+        report = {
+            **deps.report,
+            "queries": _query_list(deps.queries),
+            "knowledge_pages_used": deps.knowledge_pages,
+            "knowledge_version": knowledge_version(),
+        }
+        primary = select_primary_query(deps.queries)
+        return {
+            "answer": report.get("summary", ""),
+            "report": report,
+            "sql": primary.get("sql") if primary else None,
+            "columns": primary.get("columns", []) if primary else [],
+            "rows": primary.get("rows", []) if primary else [],
+            "row_count": primary.get("row_count", 0) if primary else 0,
+            "chart": report.get("main_chart"),
+            "engine": provider,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "steps": trace,
+        }
+    except Exception as exc:  # noqa: BLE001 — never let this path break the app
+        print(f"[data-agent] sandbox path unavailable, using stub: {exc}")
+        return None
+
+
+def _no_answer_result(deps: _SbDeps, messages: list[Any], provider: str) -> dict[str, Any]:
+    """Shape an honest 'this data can't answer that' response (report-compatible).
+
+    Keeps the same envelope the frontend expects (a report with an empty body and
+    a ``no_answer`` flag), so the UI can render the reason instead of the app
+    silently falling back to a domain-specific stub.
+    """
+    trace = _merge_decision_log(_build_trace(messages), deps.steps)
+    report = {
+        "element_id": "report",
+        "summary": deps.no_answer or "The available data can't answer that question.",
+        "headlines": [],
+        "insights": [],
+        "profiles": [],
+        "main_chart": None,
+        "queries": _query_list(deps.queries),
+        "knowledge_pages_used": deps.knowledge_pages,
+        "knowledge_version": knowledge_version(),
+        "no_answer": True,
+    }
+    return {
+        "answer": report["summary"],
+        "report": report,
+        "sql": None,
+        "columns": [],
+        "rows": [],
+        "row_count": 0,
+        "chart": None,
+        "engine": provider,
+        "input_tokens": None,
+        "output_tokens": None,
+        "steps": trace,
+    }
+
+
+def _query_list(queries: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "element_id": f"query:{ref}",
+            "ref": ref,
+            "purpose": q.get("purpose", ""),
+            "sql": q.get("sql"),
+            "columns": q.get("columns", []),
+            "rows": q.get("rows", []),
+            "row_count": q.get("row_count", 0),
+        }
+        for ref, q in queries.items()
+    ]
+
+
+def _merge_decision_log(
+    trace: list[dict[str, Any]], steps: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    decisions = _decision_log(steps)
+    if decisions:
+        trace.append({"kind": "decision_log", "decisions": decisions})
+    return trace
+
+
+def _decision_log(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Condense tool-side telemetry into the evaluable decisions for this run."""
+    decisions: list[dict[str, Any]] = []
+    for step in steps:
+        kind = step.get("kind")
+        why = step.get("why") or step.get("purpose") or ""
+        status = step.get("status")
+        if kind == "knowledge":
+            decisions.append(
+                {
+                    "type": "knowledge",
+                    "choice": step.get("name"),
+                    "why": why,
+                    "status": status,
+                }
+            )
+        elif kind == "schema":
+            decisions.append(
+                {
+                    "type": "table",
+                    "choice": step.get("table"),
+                    "why": why,
+                    "status": status,
+                }
+            )
+        elif kind == "lookup":
+            decisions.append(
+                {
+                    "type": "lookup",
+                    "choice": f"{step.get('table')}.{step.get('column')}",
+                    "why": why,
+                    "status": status,
+                }
+            )
+        elif kind == "sql":
+            choice = step.get("ref") or "extract"
+            decisions.append(
+                {
+                    "type": "sql",
+                    "choice": choice,
+                    "why": why,
+                    "status": status,
+                    "row_count": step.get("row_count"),
+                    "sql": step.get("sql"),
+                }
+            )
+        elif kind == "analysis":
+            for skill_name in step.get("skills_used") or []:
+                decisions.append(
+                    {
+                        "type": "skill",
+                        "choice": skill_name,
+                        "why": why or "selected inside run_analysis",
+                        "status": status,
+                    }
+                )
+                if str(skill_name).endswith("_chart"):
+                    decisions.append(
+                        {
+                            "type": "chart",
+                            "choice": skill_name,
+                            "why": why or "chart skill used in report",
+                            "status": status,
+                        }
+                    )
+            for gap in step.get("skill_gaps") or []:
+                decisions.append(
+                    {
+                        "type": "skill_gap",
+                        "choice": gap.get("need"),
+                        "why": gap.get("why") or why,
+                        "status": status,
+                    }
+                )
+        elif kind == "no_answer":
+            decisions.append(
+                {
+                    "type": "no_answer",
+                    "choice": step.get("reason"),
+                    "why": why,
+                    "status": status,
+                }
+            )
+    return [
+        {k: v for k, v in {**d, "order": i + 1}.items() if v not in (None, "")}
+        for i, d in enumerate(decisions)
+    ]
+
+
+def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_runs: int) -> None:
+    @agent.tool(name="search_knowledge")
+    async def search_knowledge_tool(ctx: RunContext[_SbDeps], query: str, why: str = "") -> str:
+        """Search the Insight Playbook for pages relevant to the question."""
+        text, inlined = search_knowledge_result(query)
+        for name in inlined:
+            if name not in ctx.deps.knowledge_pages:
+                ctx.deps.knowledge_pages.append(name)
+                ctx.deps.knowledge_reads += 1
+                ctx.deps.steps.append(
+                    {"kind": "knowledge", "status": "inlined", "name": name, "why": why}
+                )
+        return text
+
+    @agent.tool(name="read_knowledge")
+    async def read_knowledge_tool(ctx: RunContext[_SbDeps], name: str, why: str = "") -> str:
+        """Load the full body of a knowledge page by name."""
+        if name in ctx.deps.knowledge_pages:
+            return f"(already loaded '{name}' earlier — see above.)"
+        if ctx.deps.knowledge_reads >= settings.max_knowledge_reads:
+            return "knowledge read limit reached; proceed with the pages you have."
+        ctx.deps.knowledge_pages.append(name)
+        ctx.deps.knowledge_reads += 1
+        ctx.deps.steps.append({"kind": "knowledge", "status": "read", "name": name, "why": why})
+        return read_knowledge(name)
+
+    @agent.tool(name="describe_table")
+    async def describe_table_tool(ctx: RunContext[_SbDeps], table: str, why: str = "") -> str:
+        """Full column-level docs for one table (schema.table)."""
+        ctx.deps.steps.append({"kind": "schema", "status": "described", "table": table, "why": why})
+        return describe_table(table)
+
+    @agent.tool
+    async def lookup_values(
+        ctx: RunContext[_SbDeps],
+        column: str,
+        pattern: str,
+        table: str,
+        why: str = "",
+    ) -> str:
+        """Resolve exact distinct values of a text column (e.g. a name's casing). FREE.
+
+        Pass the schema-qualified table the column lives in (see the mart index /
+        describe_table). Dataset-agnostic — no default table.
+        """
+        sql = _lookup_values_sql(table, column, pattern)
+        if sql is None:
+            return f"lookup_values: unknown table/column {table!r}.{column!r}."
+        from .db import run_select
+
+        try:
+            result = await run_select(sql, user_id=ctx.deps.user_id)
+        except Exception as exc:  # noqa: BLE001
+            return f"lookup_values failed: {exc}"
+        values = [row[0] for row in result["rows"]]
+        ctx.deps.steps.append(
+            {"kind": "lookup", "table": table, "column": column, "values": values, "why": why}
+        )
+        return json.dumps({"column": column, "matches": values})
+
+    @agent.tool
+    async def list_skills(ctx: RunContext[_SbDeps]) -> str:
+        """List the skills callable inside run_analysis (signatures + one-line docs)."""
+        return _SKILL_CATALOG
+
+    @agent.tool(sequential=True)
+    async def extract(
+        ctx: RunContext[_SbDeps],
+        sql: str,
+        name: str = "df",
+        purpose: str = "",
+        why: str = "",
+    ) -> str:
+        """Run a governed SELECT; the result is loaded as a pandas DataFrame `name`."""
+        if ctx.deps.sql_calls >= max_extracts:
+            ctx.deps.sql_refusals += 1
+            if ctx.deps.sql_refusals > 1:
+                raise SandboxBudgetExhausted(
+                    f"extract called after the {max_extracts}-attempt budget was spent"
+                )
+            return "STOP: no extract attempts left. Analyse the frames you have."
+        ctx.deps.sql_calls += 1
+        remaining = max_extracts - ctx.deps.sql_calls
+        try:
+            frame, result = await run_extract(sql, user_id=ctx.deps.user_id)
+        except Exception as exc:  # noqa: BLE001 — let the model self-correct
+            ctx.deps.steps.append(
+                {
+                    "kind": "sql",
+                    "sql": sql,
+                    "status": "error",
+                    "error": str(exc),
+                    "purpose": purpose,
+                    "why": why,
+                }
+            )
+            return (
+                f"extract failed: {exc}. Use schema-qualified names. {remaining} attempt(s) left."
+            )
+        ref = ctx.deps.next_id("Q", ctx.deps.queries)
+        ctx.deps.queries[ref] = {
+            "sql": result["sql"],
+            "columns": result["columns"],
+            "rows": result["rows"],
+            "row_count": result["row_count"],
+            "purpose": purpose,
+        }
+        ctx.deps.frames[name] = frame
+        ctx.deps.steps.append(
+            {
+                "kind": "sql",
+                "sql": result["sql"],
+                "status": "success",
+                "row_count": result["row_count"],
+                "ref": ref,
+                "frame": name,
+                "purpose": purpose,
+                "why": why,
+            }
+        )
+        head = [dict(zip(result["columns"], row, strict=True)) for row in result["rows"][:5]]
+        return json.dumps(
+            {
+                "frame": name,
+                "ref": ref,
+                "columns": result["columns"],
+                "row_count": result["row_count"],
+                "head": head,
+                "attempts_remaining": remaining,
+            },
+            default=str,
+        )
+
+    @agent.tool
+    async def run_analysis(ctx: RunContext[_SbDeps], code: str, why: str = "") -> str:
+        """Execute pandas over the extracted frame(s) in the sandbox; calls skills.*.
+
+        Assign the finished report to `result` (skills.build_report(...)). Returns
+        the skills used on success, or the error to fix. Prefer skills; if none
+        fits you MAY use pandas but MUST call skills.skill_gap(need, why).
+        """
+        if not ctx.deps.frames:
+            return "no data yet — call extract(sql) first to load a DataFrame."
+        if ctx.deps.run_calls >= max_runs:
+            ctx.deps.run_refusals += 1
+            if ctx.deps.report is None:
+                raise SandboxBudgetExhausted(
+                    "run_analysis budget was spent before a report was built. "
+                    "The analysis code must assign `result = skills.build_report(...)`."
+                )
+            if ctx.deps.run_refusals > 1:
+                raise SandboxBudgetExhausted(
+                    f"run_analysis called after the {max_runs}-attempt budget was spent"
+                )
+            return "STOP: no run_analysis attempts left. Use the report already built."
+        ctx.deps.run_calls += 1
+        result = run_code(code, frames=ctx.deps.frames)
+        ctx.deps.skills_used = result.skills_used
+        ctx.deps.skill_gaps = [g.model_dump() for g in result.skill_gaps]
+        ctx.deps.used_inline_math = result.used_inline_math
+        ctx.deps.steps.append(
+            {
+                "kind": "analysis",
+                "status": "error" if result.error else "ok",
+                "skills_used": result.skills_used,
+                "skill_gaps": ctx.deps.skill_gaps,
+                "error": result.error,
+                "why": why,
+            }
+        )
+        if result.error:
+            return f"run_analysis error (fix and retry): {result.error}"
+        if result.report is None:
+            missing_report = (
+                "sandbox code completed but did not assign a report dict to `result`. "
+                "Fix the code and end with `result = skills.build_report(...)`."
+            )
+            ctx.deps.steps[-1]["status"] = "error"
+            ctx.deps.steps[-1]["error"] = missing_report
+            return f"run_analysis error (fix and retry): {missing_report}"
+        ctx.deps.report = result.report
+        gap_note = f" Skill gaps recorded: {ctx.deps.skill_gaps}." if ctx.deps.skill_gaps else ""
+        return (
+            f"report built. Skills used: {result.skills_used}.{gap_note} "
+            "Now return a one-line confirmation."
+        )
+
+    @agent.tool
+    async def no_answer(ctx: RunContext[_SbDeps], reason: str, why: str = "") -> str:
+        """Declare that the available marts can't answer this question.
+
+        Use when no dataset covers what's asked (wrong domain, missing metric or
+        dimension). Records an honest reason instead of forcing a misleading
+        report. Give a short, user-facing reason (what's missing / what the data
+        does cover). Then return a one-line confirmation.
+        """
+        ctx.deps.no_answer = reason
+        ctx.deps.steps.append({"kind": "no_answer", "reason": reason, "why": why})
+        return "recorded no_answer; now return a one-line confirmation."
+
+    @agent.tool
+    async def remember(ctx: RunContext[_SbDeps], fact: str) -> str:
+        """Store a durable user preference about how they want answers."""
+        await remember_memory(ctx.deps.user_id, fact)
+        ctx.deps.steps.append({"kind": "memory", "status": "saved", "fact": fact})
+        return "remembered"

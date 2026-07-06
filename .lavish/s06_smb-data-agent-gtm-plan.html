@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SMB Data Agent GTM + Demo Data Plan</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel-2: #1e222b;
+      --border: #2a2f3a;
+      --text: #e7e9ee;
+      --muted: #9aa3b2;
+      --accent: #b48a3f;
+      --accent-2: #6ea8fe;
+      --good: #9ece6a;
+      --warn: #e0af68;
+      --bad: #f2777a;
+      --purple: #c58fff;
+      --ink: #0b0d11;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .shell { width: min(1320px, 100%); margin: 0 auto; padding: 22px; }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: start;
+      padding: 18px 0 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: clamp(28px, 3.8vw, 52px); line-height: 1.12; margin-bottom: 12px; letter-spacing: 0; }
+    h2 { font-size: 22px; margin-bottom: 12px; }
+    h3 { font-size: 15px; margin-bottom: 8px; }
+    .lede { color: var(--muted); max-width: 840px; font-size: 16px; }
+    .tagline { color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 12px; margin-bottom: 9px; }
+    .stamp {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 12px 14px;
+      min-width: 230px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .stamp strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 2px; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin: 18px 0 24px;
+    }
+    .metric {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px;
+      min-width: 0;
+    }
+    .metric span { display: block; color: var(--muted); font-size: 12px; }
+    .metric strong { display: block; margin-top: 5px; font-size: 24px; line-height: 1.15; }
+    section { margin: 28px 0; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .card {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 16px;
+      min-width: 0;
+    }
+    .card.alt { background: var(--panel-2); }
+    .card p:last-child { margin-bottom: 0; }
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+    .pillrow { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 12px;
+      max-width: 100%;
+    }
+    .pill.good { color: var(--good); border-color: #33502f; }
+    .pill.warn { color: var(--warn); border-color: #6b5a2a; }
+    .pill.blue { color: var(--accent-2); border-color: #2f5a7a; }
+    .pill.purple { color: var(--purple); border-color: #5a3a6b; }
+    .recommendation {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+    .callout {
+      border-left: 3px solid var(--accent);
+      background: var(--panel);
+      padding: 16px;
+      border-radius: 8px;
+    }
+    .callout strong { color: var(--accent); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      table-layout: fixed;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 11px;
+      border-bottom: 1px solid var(--border);
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    th {
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .rank { color: var(--accent); font-weight: 800; font-size: 16px; }
+    .score { font-variant-numeric: tabular-nums; color: var(--good); font-weight: 800; white-space: nowrap; }
+    .risk { color: var(--warn); }
+    .stage-list { display: grid; gap: 10px; }
+    .stage {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      gap: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .stage .num {
+      display: grid;
+      place-items: center;
+      background: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--accent);
+      font-weight: 800;
+      min-height: 56px;
+      text-align: center;
+    }
+    .queries { display: grid; gap: 8px; margin-top: 10px; }
+    .query {
+      background: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .mermaid-wrap {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px;
+      overflow-x: auto;
+    }
+    .mermaid { min-width: 680px; }
+    form.choice {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    fieldset { border: 0; margin: 0; padding: 0; }
+    legend { color: var(--text); font-weight: 700; margin-bottom: 8px; }
+    label.option {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+      padding: 8px 0;
+      color: var(--muted);
+    }
+    label.option strong { color: var(--text); }
+    input[type="radio"], input[type="checkbox"] { margin-top: 4px; accent-color: var(--accent); }
+    textarea {
+      width: 100%;
+      min-height: 88px;
+      resize: vertical;
+      background: var(--ink);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font: inherit;
+      margin-top: 10px;
+    }
+    button {
+      cursor: pointer;
+      font: inherit;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #1a1206;
+      font-weight: 800;
+      padding: 8px 12px;
+      margin-top: 10px;
+    }
+    button.secondary {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      font-weight: 600;
+    }
+    .source-list { display: grid; gap: 8px; padding-left: 18px; color: var(--muted); }
+    .source-list li { padding-left: 3px; }
+    .footnote {
+      border-top: 1px solid var(--border);
+      margin-top: 30px;
+      padding-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    @media (max-width: 960px) {
+      header, .recommendation, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .stamp { min-width: 0; }
+    }
+    @media (max-width: 640px) {
+      .shell { padding: 14px; }
+      .summary { grid-template-columns: 1fr; }
+      .stage { grid-template-columns: 1fr; }
+      th, td { padding: 9px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <div class="tagline">GTM wedge and demo-data roadmap</div>
+        <h1>Bring enterprise-grade insight workflows to SMB operators</h1>
+        <p class="lede">
+          The strongest positioning is not “chat with any database.” It is a governed insight workspace
+          that turns messy SMB data into answers, charts, repeatable reports, and client-ready narratives.
+          The demo strategy should prove a painful business outcome before asking for private data.
+        </p>
+      </div>
+      <aside class="stamp">
+        <strong>Recommended first wedge</strong>
+        Property intelligence now, then finance and commerce data packs.
+        <div class="pillrow">
+          <span class="pill good">current data fit</span>
+          <span class="pill blue">personal demo friendly</span>
+        </div>
+      </aside>
+    </header>
+
+    <div class="summary">
+      <div class="metric"><span>Best initial ICP</span><strong>Property operators</strong></div>
+      <div class="metric"><span>Best scale channel</span><strong>Bookkeepers / accountants</strong></div>
+      <div class="metric"><span>Best SaaS-style demo</span><strong>Shopify / ecommerce</strong></div>
+      <div class="metric"><span>Best offer</span><strong>AI report room</strong></div>
+    </div>
+
+    <section class="recommendation">
+      <div class="callout">
+        <h2>Recommendation</h2>
+        <p>
+          Start with a <strong>property intelligence wedge</strong> because your current rent and sale data
+          already supports credible demos, location-specific outreach, and report outputs that agents,
+          buyer's agents, property managers, and small developers understand immediately.
+        </p>
+        <p>
+          Build the product so the demo story generalizes: “connect your finance, sales, marketing, and ops data;
+          ask questions; generate reports; keep access governed.” Then add finance and ecommerce demo packs to
+          prove the platform is not locked to property.
+        </p>
+      </div>
+      <div class="card alt">
+        <h2>Positioning to test</h2>
+        <p>
+          <strong>Your SMB data analyst, report builder, and governed SQL layer in one place.</strong>
+        </p>
+        <p class="muted">
+          The buyer does not want a database chatbot. They want “tell me what changed, why it matters,
+          and send me a polished report I can act on or forward.”
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Why the timing is reasonable</h2>
+      <div class="grid-3">
+        <div class="card">
+          <h3>SMBs are already AI-curious</h3>
+          <p class="muted">Multiple 2025 SMB surveys show high AI adoption intent, but practical implementation remains uneven.</p>
+          <div class="pillrow"><span class="pill good">education burden falling</span></div>
+        </div>
+        <div class="card">
+          <h3>Data still lives in silos</h3>
+          <p class="muted">SMBs often have Xero/QuickBooks, Shopify, POS, ad platforms, spreadsheets, and CRM exports without a unified analysis layer.</p>
+          <div class="pillrow"><span class="pill warn">integration pain is the wedge</span></div>
+        </div>
+        <div class="card">
+          <h3>Trust is the differentiator</h3>
+          <p class="muted">RLS, audit trails, read-only SQL, and report traceability are more defensible than a generic “AI dashboard” promise.</p>
+          <div class="pillrow"><span class="pill blue">matches current architecture</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Target business ranking</h2>
+      <p class="muted">
+        Scored for demoability, data availability, painful recurring decisions, ability to reach buyers, and compliance friction.
+        Higher score means a better near-term wedge, not necessarily the largest long-term market.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:54px;">Rank</th>
+              <th style="width:178px;">Target</th>
+              <th>Why they care</th>
+              <th>Best demo data</th>
+              <th>Demo questions</th>
+              <th style="width:86px;">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><strong>Property agencies, buyer's agents, property managers, small developers</strong></td>
+              <td>They sell market insight, need client-ready reports, and can understand suburb-level rent/sale trends without deep analytics training.</td>
+              <td>Sale/rent history, listing snapshots, rental roll, leads, appraisal pipeline, suburb demographics.</td>
+              <td>Where are yields rising? Which owners need rent reviews? Which suburbs fit this investor brief?</td>
+              <td class="score">22/25</td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><strong>Multi-location retail, hospitality, and franchises</strong></td>
+              <td>Margin, labour, inventory, reviews, and local demand shift weekly. Owners need operational answers, not dashboards they must interpret.</td>
+              <td>POS tickets, SKUs/menu, COGS, rosters, footfall, reviews, weather/events.</td>
+              <td>Which stores lost margin? What products should we promote? Did roster costs outrun demand?</td>
+              <td class="score">21/25</td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><strong>Ecommerce and DTC brands</strong></td>
+              <td>Shopify, ads, inventory, returns, and customer cohorts are data-rich and API-accessible. ROI is easy to explain.</td>
+              <td>Orders, customers, products, campaigns, ad spend, inventory, refunds, support tags.</td>
+              <td>What is profitable after ad spend? Which cohorts churn? What stock will run out before the next campaign?</td>
+              <td class="score">21/25</td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><strong>Bookkeepers, accountants, fractional CFOs</strong></td>
+              <td>They can be both users and distribution partners. One trusted advisor can introduce the tool to many SMB clients.</td>
+              <td>Xero-style P&amp;L, invoices, bank transactions, payroll, AR/AP, budget vs actuals.</td>
+              <td>What changed in gross margin? Which clients have cash risk? Build a monthly management report.</td>
+              <td class="score">20/25</td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td><strong>Trades and field services</strong></td>
+              <td>Quotes, jobs, technicians, travel, callbacks, and invoices expose clear profit leaks.</td>
+              <td>Job management exports, quotes, invoices, ad leads, calendars, technician time.</td>
+              <td>Which job types lose money? Which lead sources close? Where are repeat visits hurting margin?</td>
+              <td class="score">18/25</td>
+            </tr>
+            <tr>
+              <td class="rank">6</td>
+              <td><strong>Professional services and agencies</strong></td>
+              <td>Utilization, scope creep, retainers, pipeline, and client profitability are recurring leadership questions.</td>
+              <td>Timesheets, invoices, projects, CRM deals, expenses, client NPS.</td>
+              <td>Which clients are underpriced? What work is over scope? Forecast cash and capacity.</td>
+              <td class="score">18/25</td>
+            </tr>
+            <tr>
+              <td class="rank">7</td>
+              <td><strong>Allied health, dental, clinics</strong></td>
+              <td>High-value operational analytics around appointments, no-shows, referrals, and capacity, but privacy and compliance slow sales.</td>
+              <td>Appointments, treatments, practitioner schedules, claims, referrals, no-shows.</td>
+              <td>Which appointment types drive revenue? Where are no-shows concentrated? What capacity is unused?</td>
+              <td class="score">16/25</td>
+            </tr>
+            <tr>
+              <td class="rank">8</td>
+              <td><strong>Construction and project builders</strong></td>
+              <td>Expensive decisions and poor data discipline. Valuable, but sales cycles and data cleanup are heavier.</td>
+              <td>Quotes, project budgets, invoices, change orders, purchase orders, labour, schedules.</td>
+              <td>Which jobs overrun? Which suppliers drive delays? What is the margin at completion?</td>
+              <td class="score">15/25</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Demo data packs to build</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Pack A: Property intelligence</h3>
+          <p class="muted">Extend current rent/sale data into an agency-grade demo.</p>
+          <div class="pillrow"><span class="pill good">build first</span><span class="pill blue">uses current data</span></div>
+          <div class="queries">
+            <div class="query">Find suburbs with rent growth above sale growth and yield above 4%.</div>
+            <div class="query">Build a client report for investors comparing Hornsby, Normanhurst, and Epping.</div>
+            <div class="query">Which properties in the rental roll are under market rent?</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Pack B: SMB finance / AI CFO</h3>
+          <p class="muted">Synthetic Xero/QuickBooks-style data makes the platform feel universal.</p>
+          <div class="pillrow"><span class="pill good">second</span><span class="pill warn">high buyer pain</span></div>
+          <div class="queries">
+            <div class="query">Explain why gross margin fell this month and create a management report.</div>
+            <div class="query">Which expense categories are growing faster than revenue?</div>
+            <div class="query">Forecast cash runway based on invoices, payroll, and current pipeline.</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Pack C: Ecommerce growth</h3>
+          <p class="muted">Use Shopify-style orders plus ad spend and inventory to prove revenue attribution.</p>
+          <div class="pillrow"><span class="pill blue">API-friendly</span><span class="pill good">clear ROI</span></div>
+          <div class="queries">
+            <div class="query">Which products are profitable after Meta and Google ad spend?</div>
+            <div class="query">Which customer cohorts reorder within 60 days?</div>
+            <div class="query">Create a weekly founder report with revenue, margin, CAC, and stock risks.</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Pack D: Local operations</h3>
+          <p class="muted">Retail, hospitality, and field-service demos prove day-to-day operating leverage.</p>
+          <div class="pillrow"><span class="pill purple">third/fourth</span><span class="pill warn">more schemas</span></div>
+          <div class="queries">
+            <div class="query">Which location had the biggest margin leak after labour and COGS?</div>
+            <div class="query">Which job types have the highest callback rate?</div>
+            <div class="query">What should I change next week in staffing, pricing, or promotion?</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Personalized-demo funnel</h2>
+      <p class="muted">
+        Your idea is viable if the demo is honest: use public, synthetic, or manually supplied data first;
+        never imply you have analyzed private company data without consent.
+      </p>
+      <div class="mermaid-wrap">
+        <pre class="mermaid">
+flowchart LR
+  A["Pick one niche<br/>and one painful report"] --> B["Create demo tenant<br/>with public + synthetic data"]
+  B --> C["Record 90-second<br/>personalized walkthrough"]
+  C --> D["Send targeted email<br/>with live demo link"]
+  D --> E["Offer free<br/>sample insight report"]
+  E --> F["Pilot with their exports<br/>read-only + governed"]
+  F --> G["Paid monthly<br/>insight workspace"]
+        </pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>90-day build and GTM plan</h2>
+      <div class="stage-list">
+        <div class="stage">
+          <div class="num">0-2<br/>weeks</div>
+          <div>
+            <h3>Package the property wedge</h3>
+            <p class="muted">Add rental roll, listings, leads, and report templates around the existing rent/sale marts. Build 5 flagship questions and one polished investor report output.</p>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="num">2-4<br/>weeks</div>
+          <div>
+            <h3>Run 30 personalized property demos</h3>
+            <p class="muted">Target agencies, buyer's agents, and property managers in a few suburbs. Send a live demo using their local area, not their private CRM data.</p>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="num">4-6<br/>weeks</div>
+          <div>
+            <h3>Add the finance data pack</h3>
+            <p class="muted">Create a synthetic SMB ledger, invoices, expenses, payroll, and board-report flow. This proves the platform can move beyond property.</p>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="num">6-10<br/>weeks</div>
+          <div>
+            <h3>Recruit 3 design partners</h3>
+            <p class="muted">Offer a low-friction pilot: read-only CSV/Xero/Shopify exports, 2-3 live workflows, weekly insight report, clear success metric, and audit trail.</p>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="num">10-12<br/>weeks</div>
+          <div>
+            <h3>Choose the repeatable lane</h3>
+            <p class="muted">Double down on the vertical where buyers respond, data is easiest to ingest, and the generated report creates a recurring habit.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Offer ladder</h2>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Lead magnet</h3>
+          <p class="muted">Free personalized insight report using public/synthetic data or a small CSV export.</p>
+          <div class="pillrow"><span class="pill blue">$0</span><span class="pill">1 report</span></div>
+        </div>
+        <div class="card">
+          <h3>Design partner</h3>
+          <p class="muted">Monthly pilot with their own data, governed access, 3-5 workflows, and weekly reporting.</p>
+          <div class="pillrow"><span class="pill good">$500-$2k/mo</span><span class="pill">hands-on</span></div>
+        </div>
+        <div class="card">
+          <h3>Productized workspace</h3>
+          <p class="muted">Self-serve connectors, chat, report builder, admin/audit, usage limits, and vertical templates.</p>
+          <div class="pillrow"><span class="pill warn">$299-$999+/mo</span><span class="pill">repeatable</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Risks and guardrails</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Risk</th>
+              <th>Why it matters</th>
+              <th>Mitigation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="risk"><strong>“Any data” positioning is too broad</strong></td>
+              <td>SMB buyers buy a business outcome, not a general analytics platform.</td>
+              <td>Sell one vertical workflow first; keep the architecture generic under the surface.</td>
+            </tr>
+            <tr>
+              <td class="risk"><strong>Personalized demos can feel invasive</strong></td>
+              <td>Prospects may object if the demo appears to use private data without permission.</td>
+              <td>Label data source clearly: public market data, synthetic data, or prospect-supplied export.</td>
+            </tr>
+            <tr>
+              <td class="risk"><strong>Data cleanup kills pilots</strong></td>
+              <td>Messy CSVs and inconsistent accounting categories can consume all delivery time.</td>
+              <td>Create strict import templates, sample schemas, profiling checks, and a “first 3 questions” onboarding path.</td>
+            </tr>
+            <tr>
+              <td class="risk"><strong>AI trust gap</strong></td>
+              <td>SMBs may like the demo but hesitate to trust generated answers.</td>
+              <td>Expose SQL, audit trail, source tables, chart data, and report citations. Keep actions human-approved.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Review choices</h2>
+      <div class="grid-2">
+        <form class="choice" data-lavish-question="wedge" onsubmit="event.preventDefault(); const choice = new FormData(event.currentTarget).get('wedge'); if (choice) window.lavish?.queuePrompt('Use this GTM wedge for the next implementation plan: ' + choice, { tag: 'choice', text: 'GTM wedge: ' + choice, element: event.currentTarget, data: { question: 'wedge', answer: choice }, queueKey: 'gtm-wedge' });">
+          <fieldset>
+            <legend>Pick the wedge to build around first</legend>
+            <label class="option"><input type="radio" name="wedge" value="Property intelligence" checked><span><strong>Property intelligence</strong><br>Best fit with current data and easiest personalized demos.</span></label>
+            <label class="option"><input type="radio" name="wedge" value="SMB finance / AI CFO"><span><strong>SMB finance / AI CFO</strong><br>More universal pain, stronger accounting-channel path.</span></label>
+            <label class="option"><input type="radio" name="wedge" value="Ecommerce growth"><span><strong>Ecommerce growth</strong><br>Clean API data and clear CAC/margin ROI.</span></label>
+          </fieldset>
+          <button type="submit">Queue wedge choice</button>
+        </form>
+
+        <form class="choice" data-lavish-question="demo_packs" onsubmit="event.preventDefault(); const fd = new FormData(event.currentTarget); const packs = fd.getAll('pack'); const note = fd.get('note'); window.lavish?.queuePrompt('Prioritize these demo data packs next: ' + packs.join(', ') + (note ? '. Note: ' + note : ''), { tag: 'choice', text: 'Demo packs: ' + packs.join(', '), element: event.currentTarget, data: { question: 'demo_packs', packs, note }, queueKey: 'demo-packs' });">
+          <fieldset>
+            <legend>Choose demo packs to prioritize</legend>
+            <label class="option"><input type="checkbox" name="pack" value="Property rental roll + listings" checked><span><strong>Property rental roll + listings</strong><br>Add operational property data around sale/rent marts.</span></label>
+            <label class="option"><input type="checkbox" name="pack" value="SMB finance ledger" checked><span><strong>SMB finance ledger</strong><br>Revenue, expenses, invoices, payroll, AR/AP.</span></label>
+            <label class="option"><input type="checkbox" name="pack" value="Shopify ecommerce"><span><strong>Shopify ecommerce</strong><br>Orders, customers, ads, returns, inventory.</span></label>
+            <label class="option"><input type="checkbox" name="pack" value="POS and rosters"><span><strong>POS and rosters</strong><br>Retail/hospitality operations and margin leakage.</span></label>
+          </fieldset>
+          <textarea name="note" placeholder="Optional: add a target niche, business name, or use case you want the next plan to focus on."></textarea>
+          <button type="submit">Queue demo-data priorities</button>
+        </form>
+      </div>
+    </section>
+
+    <section>
+      <h2>Sources used</h2>
+      <ul class="source-list">
+        <li><a href="https://www.uschamber.com/technology/empowering-small-business-the-impact-of-technology-on-u-s-small-business">U.S. Chamber: Empowering Small Business report</a> for SMB AI and emerging technology adoption signals.</li>
+        <li><a href="https://www.bizcover.com.au/blog/ai-transforming-australian-small-business-sector/">BizCover Australian Small Business AI Report 2025</a> for Australian SMB AI adoption intent.</li>
+        <li><a href="https://www.salesforce.com/news/stories/smbs-ai-trends-2025/">Salesforce SMB AI Trends</a> for reported revenue impact among AI-using SMBs.</li>
+        <li><a href="https://cosboa.org.au/wp-content/uploads/2025/10/State-of-Small-Business-Report-August-2025.pdf">COSBOA State of Small Business Report 2025</a> for digital-tool adoption and SMB operating context.</li>
+        <li><a href="https://www.cyber.gov.au/business-government/secure-design/artificial-intelligence/artificial-intelligence-for-small-business">Australian Cyber Security Centre AI guidance for small business</a> for trust, security, and privacy risk framing.</li>
+      </ul>
+    </section>
+
+    <div class="footnote">
+      Design source: matched the app's existing dark UI tokens from <code>frontend/src/styles.css</code>, because this plan is about the current data-qa-agent product and should feel native to the repo.
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      themeVariables: {
+        background: "#171a21",
+        primaryColor: "#1e222b",
+        primaryTextColor: "#e7e9ee",
+        primaryBorderColor: "#2a2f3a",
+        lineColor: "#6ea8fe",
+        secondaryColor: "#0b0d11",
+        tertiaryColor: "#171a21",
+        fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
+      }
+    });
+  </script>
+</body>
+</html>

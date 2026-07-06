@@ -31,7 +31,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE app.query_runs DROP COLUMN input_tokens, DROP COLUMN output_tokens"
-    )
+    op.execute("ALTER TABLE app.query_runs DROP COLUMN input_tokens, DROP COLUMN output_tokens")
     op.execute("DELETE FROM app.schema_migrations WHERE version = '0004_query_run_tokens'")

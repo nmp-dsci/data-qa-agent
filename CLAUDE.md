@@ -17,4 +17,4 @@ Phase 0 local slice is built (3 services + Postgres) — `make up`, then open ht
 - **Type checking:** `uv run mypy` (strict)
 - **Tests:** `uv run pytest -q`
 - **Secrets:** store in `.env`, never commit (see `.env.example`)
-- **Architecture:** `AGENTS.md` + `.lavish/data-qa-agent-architecture.html`
+- **Architecture:** `AGENTS.md` + `.lavish/s00_data-qa-agent-architecture.html`

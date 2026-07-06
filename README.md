@@ -5,7 +5,7 @@ natural language, and an AI agent turns them into governed SQL over data they're
 answers with the result.
 
 - 📐 **Design & architecture:** [`AGENTS.md`](./AGENTS.md) (source of truth) and the visual review at
-  `.lavish/data-qa-agent-architecture.html`.
+  `.lavish/s00_data-qa-agent-architecture.html`.
 - 🤖 **For AI assistants:** [`CLAUDE.md`](./CLAUDE.md) → points here and to `AGENTS.md`.
 
 ## Quick start (fully local, no cloud)
@@ -29,16 +29,16 @@ Then open **http://localhost:5230** and sign in as a test user:
 | user1  | user  | the `nsw_sales` + `nsw_rent` datasets |
 | user2  | user  | **nothing** — demonstrates row-level isolation |
 
-Ask e.g. *"What are the top growth suburbs for sale price and rent?"* — the agent JOINs the sales and rent
-growth marts on `suburb`. Sign in as `user2` and ask the same thing: you'll get zero rows, because Row-Level
+Ask e.g. *"What are the top growth suburbs for sale price and rent?"* — the agent derives growth from the
+sales and rent aggregate marts. Sign in as `user2` and ask the same thing: you'll get zero rows, because Row-Level
 Security isolates them.
 
 ### The data
 
 Two real NSW datasets (place the CSVs in `data/`, they are gitignored — too big to commit):
 
-- `data/nswgov_df.csv` — NSW Government property **sales** (~516 MB) → `marts.mart_sales_growth`
-- `data/rentboard_df.csv` — NSW Rental Bond Board **rent** (~63 MB) → `marts.mart_rent_growth`
+- `data/nswgov_df.csv` — NSW Government property **sales** (~516 MB) → `marts.property_sales`
+- `data/rentboard_df.csv` — NSW Rental Bond Board **rent** (~63 MB) → `marts.property_rent`
 
 Small committed **samples** live in `data/samples/` (regenerate from the full files with `make samples`); they
 keep `make up` and CI fast while preserving suburbs present in both datasets across the growth window.
@@ -112,13 +112,13 @@ docker-compose.yml      the local dev stack;  Makefile has the shortcuts
 
 ## Data pipeline (dlt + dbt)
 
-`services/data-pipeline/` is the `pipeline` job. `run.py` runs **dlt** (CSV → `raw.sales` / `raw.rent`) then
+`services/data-pipeline/` is the `pipeline` job. `run.py` runs **dlt** (CSV → `raw.property_sales` / `raw.property_rent`) then
 `dbt build` over `services/data-pipeline/dbt/`:
 
-- `stg_sales` / `stg_rent` clean the raw rows; `int_*` models compute per-year medians and a
-  suburb→dominant-postcode map.
-- `mart_sales_growth` and `mart_rent_growth` are **one row per `suburb`** so the agent can JOIN them; each is
-  scoped to its dataset (`nsw_sales` / `nsw_rent`) by an RLS **post-hook**.
+- `staging.property_sales` / `staging.property_rent` clean the raw rows; `int_postcode_geo` keeps the
+  suburb↔postcode bridge for rent lookups.
+- `marts.property_sales` and `marts.property_rent` are the two aggregate marts, one per staging table. They
+  keep cleaned attributes plus additive metrics so the agent can re-aggregate and derive growth/yield later.
 - `dbt docs generate` writes the manifest the agent reads (`get_schema()`), grounding the LLM in the real marts.
 
 Run on the sample with `make pipeline`, on the full data with `make pipeline-full`. dbt tests run as part of

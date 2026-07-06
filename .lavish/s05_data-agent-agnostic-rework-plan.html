@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Agent Rework — Dataset-Agnostic, Knowledge-Grounded, Diagnosable</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1e222b; --border:#2a2f3a;
+    --text:#e7e9ee; --muted:#9aa3b2; --accent:#b48a3f; --accent-2:#6ea8fe;
+    --user:#223047; --danger:#f2777a; --success:#9ece6a; --warn:#e0af68;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{width:min(1120px,100%); margin:0 auto; padding:32px 20px 96px;}
+  code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  code{background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:1px 5px; font-size:.88em;}
+
+  .hero{border:1px solid var(--border); background:linear-gradient(160deg,var(--panel) 0%, #12151c 100%);
+    border-radius:20px; padding:28px 28px 24px; margin-bottom:22px;}
+  .kicker{text-transform:uppercase; letter-spacing:.14em; font-size:11px; color:var(--accent);
+    font-weight:600; margin:0 0 10px;}
+  h1{margin:0 0 10px; font-size:29px; line-height:1.15; letter-spacing:-.01em;}
+  .lede{margin:0; color:var(--muted); font-size:16px; max-width:82ch;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:18px;}
+  .chip{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--text);
+    background:var(--panel-2); border:1px solid var(--border); border-radius:999px; padding:5px 12px;}
+  .chip b{color:var(--accent-2); font-variant-numeric:tabular-nums;}
+  .chip.warn b{color:var(--warn);} .chip.bad b{color:var(--danger);} .chip.good b{color:var(--success);}
+
+  section{margin:34px 0;}
+  .sec-head{display:flex; align-items:baseline; gap:12px; margin:0 0 16px;}
+  .sec-num{font-size:12px; font-weight:700; color:var(--accent); border:1px solid var(--border);
+    background:var(--panel-2); border-radius:8px; padding:3px 8px; white-space:nowrap;}
+  h2{margin:0; font-size:21px; letter-spacing:-.01em;}
+  .sec-sub{color:var(--muted); margin:2px 0 0; font-size:14px;}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px; min-width:0;}
+  .grid{display:grid; gap:16px;}
+  @media(min-width:760px){ .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr));} }
+  .min0{min-width:0;}
+
+  p{margin:0 0 12px;} p:last-child{margin-bottom:0;}
+  .muted{color:var(--muted);}
+  strong{color:#fff;}
+  ul.clean{margin:8px 0 0; padding:0; list-style:none;}
+  ul.clean li{position:relative; padding:6px 0 6px 22px; color:var(--muted); font-size:14px;}
+  ul.clean li::before{content:""; position:absolute; left:4px; top:13px; width:6px; height:6px;
+    border-radius:50%; background:var(--accent);}
+  ul.clean li b{color:var(--text); font-weight:600;}
+
+  .callout{border:1px solid var(--border); border-left:3px solid var(--accent); background:var(--panel-2);
+    border-radius:10px; padding:14px 16px; font-size:14px;}
+  .callout.good{border-left-color:var(--success);}
+  .callout.you{border-left-color:var(--accent-2);}
+  .callout .lbl{text-transform:uppercase; letter-spacing:.08em; font-size:10.5px; font-weight:700;
+    color:var(--muted); display:block; margin-bottom:5px;}
+
+  .diagram-wrap{overflow-x:auto; background:var(--panel-2); border:1px solid var(--border);
+    border-radius:12px; padding:16px;}
+  .diagram-wrap .mermaid{min-width:600px;}
+  .cap{font-size:12.5px; color:var(--muted); margin:10px 2px 0;}
+
+  /* Before / after */
+  .ba{display:grid; gap:0; border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+  @media(min-width:820px){ .ba{grid-template-columns:1fr 1fr;} }
+  .ba .col{padding:18px 20px; min-width:0;}
+  .ba .col.today{background:var(--panel);}
+  .ba .col.target{background:linear-gradient(180deg,rgba(110,168,254,.06),transparent); border-left:1px solid var(--border);}
+  @media(max-width:819px){ .ba .col.target{border-left:none; border-top:1px solid var(--border);} }
+  .ba h3{margin:0 0 4px; font-size:12px; letter-spacing:.08em; text-transform:uppercase;}
+  .ba .today h3{color:var(--danger);} .ba .target h3{color:var(--success);}
+  .ba .col > .sub{color:var(--muted); font-size:13px; margin:0 0 14px;}
+
+  /* Workstream cards */
+  .ws{border:1px solid var(--border); border-radius:12px; background:var(--panel); padding:18px; min-width:0; height:100%;}
+  .ws .wh{display:flex; align-items:flex-start; gap:10px; margin-bottom:9px;}
+  .ws .wtag{font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--accent);
+    border:1px solid var(--border); background:var(--panel-2); border-radius:6px; padding:3px 8px; white-space:nowrap; margin-top:2px;}
+  .ws h3{margin:0; font-size:15.5px;}
+  .ws .ask{font-size:12px; color:var(--accent-2); margin:2px 0 0;}
+  .ws p{font-size:13.5px; color:var(--muted);}
+
+  pre.code{overflow-x:auto; background:#0b0d12; border:1px solid var(--border); border-radius:12px;
+    padding:15px; font-size:12.4px; line-height:1.6; margin:12px 0 0;}
+  pre.code .c{color:var(--muted);} pre.code .k{color:#c586c0;} pre.code .s{color:var(--success);}
+  pre.code .f{color:var(--accent-2);} pre.code .n{color:var(--warn);} pre.code .d{color:#dcdcaa;}
+  .del{color:var(--danger);} .add{color:var(--success);}
+
+  table.grid-t{width:100%; border-collapse:collapse; font-size:13.5px;}
+  table.grid-t th,table.grid-t td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:top;}
+  table.grid-t th{color:var(--muted); font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em;}
+  table.grid-t td b{color:var(--text);}
+  .tw{overflow-x:auto;}
+
+  /* Phases */
+  .phases{display:grid; gap:14px;}
+  .phase{display:grid; grid-template-columns:auto minmax(0,1fr); gap:16px; align-items:start;}
+  .phase .dot{width:34px; height:34px; border-radius:10px; background:var(--panel-2); border:1px solid var(--border);
+    display:grid; place-items:center; font-weight:700; color:var(--accent); font-size:14px;}
+  .phase .body{min-width:0;}
+  .phase h3{margin:2px 0 5px; font-size:16px;}
+  .phase .goal{font-size:13.5px; color:var(--muted); margin:0 0 8px;}
+  .phase .files{display:flex; flex-wrap:wrap; gap:6px;}
+  .tagf{font-size:11.5px; color:var(--accent-2); background:var(--panel-2); border:1px solid var(--border);
+    border-radius:6px; padding:2px 7px;}
+
+  /* Risks */
+  .risk{display:grid; grid-template-columns:auto minmax(0,1fr); gap:14px; padding:14px 0; border-top:1px solid var(--border);}
+  .risk:first-child{border-top:none;}
+  .sev{font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:3px 8px;
+    border-radius:6px; height:fit-content; white-space:nowrap;}
+  .sev.hi{color:var(--danger); border:1px solid #6b2a2a; background:rgba(242,119,122,.08);}
+  .sev.md{color:var(--warn); border:1px solid #6b5a2a; background:rgba(224,175,104,.08);}
+  .sev.lo{color:var(--muted); border:1px solid var(--border);}
+  .risk .body{min-width:0;} .risk h4{margin:0 0 3px; font-size:14.5px;}
+  .risk p{font-size:13.5px; color:var(--muted);}
+  .q{color:var(--accent-2); font-weight:600;}
+
+  /* Input */
+  form.decide{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:22px;}
+  form.decide fieldset{border:none; margin:0 0 20px; padding:0;}
+  form.decide legend{font-size:12.5px; color:var(--text); padding:0; margin:0 0 4px; font-weight:700;}
+  form.decide .qsub{font-size:12.5px; color:var(--muted); margin:0 0 10px;}
+  .choice{display:block; border:1px solid var(--border); background:var(--panel-2); border-radius:10px;
+    padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:border-color .12s;}
+  .choice:hover{border-color:var(--accent-2);}
+  .choice input{margin-right:9px; accent-color:var(--accent);}
+  .choice .ct{font-weight:600; font-size:14px;}
+  .choice .cd{color:var(--muted); font-size:12.5px; margin-top:3px; margin-left:23px;}
+  .choice:has(input:checked){border-color:var(--accent); background:rgba(180,138,63,.08);}
+  textarea{width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
+    color:var(--text); padding:11px 13px; font:inherit; font-size:14px; resize:vertical; min-height:64px;}
+  .submit{margin-top:6px; background:var(--accent); color:#1a1206; border:none; border-radius:10px;
+    padding:11px 20px; font-weight:700; font-size:14px; cursor:pointer;}
+  .submit:hover{filter:brightness(1.07);}
+  .hint{font-size:12px; color:var(--muted); margin-top:10px;}
+  a{color:var(--accent-2);}
+  .foot{margin-top:40px; padding-top:18px; border-top:1px solid var(--border); color:var(--muted); font-size:12.5px;}
+  .src{font-size:12.5px; color:var(--muted); margin:4px 0 0;}
+  .src a{word-break:break-word;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="kicker">data-qa-agent · s05 · agent rework</p>
+    <h1>From “NSW property analyst” to a dataset-agnostic insight agent</h1>
+    <p class="lede">
+      The sandbox+skills restructure (s04) already gave the agent a clean shape: one governed SQL
+      <em>extract</em>, then analysis as code that calls tested skills. This plan removes the last
+      thing hard-wired to one dataset — the <strong>property-specific system prompt and schema</strong> —
+      and turns domain knowledge, decision tracing, and visualisation into first-class, evaluable
+      surfaces. The compute model doesn’t change; what the agent <em>knows</em> and what it <em>exposes</em> does.
+    </p>
+    <div class="chips">
+      <span class="chip">5 workstreams</span>
+      <span class="chip good">Keeps <b>sandbox + skills</b></span>
+      <span class="chip warn">System prompt <b>~9k chars → ~1.5k</b></span>
+      <span class="chip">Grounds in <b>marts + knowledge base</b></span>
+      <span class="chip bad">Decision trace <b>captured then dropped</b> today</span>
+    </div>
+  </header>
+
+  <!-- ============================ 1. TODAY ============================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span>
+      <div><h2>Where the agent stands today</h2>
+        <p class="sec-sub">Verified against <code>services/data-agent/agent/*</code>. Two columns: what’s already right, and what’s coupled to property.</p></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <span class="callout good" style="display:block;margin-bottom:12px"><span class="lbl">Already solid — don’t touch</span>
+          The bones are dataset-neutral.</span>
+        <ul class="clean">
+          <li><b>Sandbox + skills compute</b> — <code>extract(sql)</code> → <code>run_analysis(code)</code> calling <code>skills.*</code> in a locked runtime. Right shape.</li>
+          <li><b>Knowledge tree is partitioned by domain</b> — <code>knowledge/domains/&lt;slug&gt;/</code> with a <code>_template/</code> to add datasets. Three-tier disclosure (index → search → read).</li>
+          <li><b>Progressive schema exists</b> — <code>describe_table()</code> is already a tier-2 on-demand tool.</li>
+          <li><b>Rich trace is collected</b> — <code>deps.steps</code> records knowledge / schema / lookup / sql / analysis / skill picks per run.</li>
+          <li><b>Skill-gap loop</b> — the agent flags maths no skill covers (<code>skill_gap</code>, <code>note_inline_math</code>).</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="callout" style="display:block;margin-bottom:12px;border-left-color:var(--danger)"><span class="lbl">Coupled to NSW property</span>
+          Five concrete anchors to cut.</span>
+        <ul class="clean">
+          <li><b>System prompt opens “You are a data analyst for a NSW property-market app.”</b> — <code>sandbox_agent.py:79</code>.</li>
+          <li><b>The whole compact schema is pinned every turn</b> — <code>get_schema_compact()</code> stacks every mart + staging table, all columns, and a ~1.2k-char property <code>JOIN_HINT</code> into the prompt (<code>schema.py:29–58</code>).</li>
+          <li><b>Skill catalog speaks property</b> — “top growth <em>suburbs</em>”, <code>gross_yield</code>, “sales have suburb, rent only postcode”.</li>
+          <li><b>The richest decision signal is dropped</b> — the returned trace is rebuilt from model messages; <code>deps.steps</code> (the tagged picks) never makes it into <code>query_runs.trace</code>.</li>
+          <li><b>No “this data can’t answer that” path</b> — a miss falls to the property-specific stub, not an honest no-answer.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 2. THE REWORK ============================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span>
+      <div><h2>The rework, mapped to what you asked</h2>
+        <p class="sec-sub">Your five asks collapse into five workstreams. Each is scoped so it ships independently.</p></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="ws">
+        <div class="wh"><span class="wtag">W1</span><div><h3>Dataset-agnostic agent</h3>
+          <p class="ask">“make it agnostic to dataset … not just a data-analyst for NSW property”</p></div></div>
+        <p>Rewrite the system prompt to a neutral <em>insight-agent</em> role. Replace the pinned full schema with a lean <strong>mart index</strong> (table name + one-line purpose). Add an explicit <strong>“no answer”</strong> outcome so the agent can say a dataset doesn’t cover the question instead of forcing a report.</p>
+      </div>
+      <div class="ws">
+        <div class="wh"><span class="wtag">W2</span><div><h3>Marts + knowledge, not a wall of prompt</h3>
+          <p class="ask">“tell it to use tables in marts schema … bring context in with search instead of a massive system prompt”</p></div></div>
+        <p>The agent discovers marts at runtime and pulls <strong>domain grounding from the knowledge base</strong> (the property <code>JOIN_HINT</code> moves out of code and into per-dataset pages). Knowledge becomes the lightweight <strong>semantic contract</strong> — the industry’s highest-leverage accuracy move.</p>
+      </div>
+      <div class="ws">
+        <div class="wh"><span class="wtag">W3</span><div><h3>Every decision, per run_id</h3>
+          <p class="ask">“show for each run_id all the decisions the LLM made … including skills, for diagnostics/evaluation”</p></div></div>
+        <p>Promote the dropped <code>deps.steps</code> into the persisted trace, add a one-line <strong>rationale</strong> to each pick (table, knowledge page, skill, chart), and render an ordered <strong>Decision Log</strong> in the admin run view. The same log powers <strong>trajectory evals</strong>.</p>
+      </div>
+      <div class="ws">
+        <div class="wh"><span class="wtag">W4</span><div><h3>Python / codegen skills</h3>
+          <p class="ask">“have skills for python, code gen for sandbox”</p></div></div>
+        <p>Largely <strong>already built</strong> (s04). This workstream is a de-couple pass: rename property-specific skills/args to generic ones (<code>group_col</code>, not “suburb”), and split the catalog into <strong>generic analysis</strong> vs <strong>domain skills</strong> so a new dataset reuses the core.</p>
+      </div>
+      <div class="ws" style="grid-column:1/-1">
+        <div class="wh"><span class="wtag">W5</span><div><h3>Visualisation skill library + “when to use what”</h3>
+          <p class="ask">“improve visualisation … skills for time-series / bar with secondary y-axis as line … guide the LLM when to use”</p></div></div>
+        <p>Add the charts you named — most importantly a <strong>dual-axis combo</strong> (bars + a secondary-axis line, e.g. volume vs price) — plus distribution and part-to-whole. Then add a <strong>chart-selection guide</strong> (a knowledge page + sharpened skill docstrings) that maps <em>question shape → chart</em>, so the model stops defaulting to a line chart. Charts stay server-validated Vega-Lite; the frontend renderer already handles any spec.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 3. TARGET FLOW ============================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span>
+      <div><h2>Target request flow</h2>
+        <p class="sec-sub">Same governed pipeline; the domain knowledge and the decision log are the two new/relocated pieces (highlighted).</p></div>
+    </div>
+    <div class="diagram-wrap">
+      <div class="mermaid">
+flowchart TD
+    Q["User question<br/>(no assumed domain)"] --> SP["Neutral system prompt<br/>+ lean MART INDEX only"]
+    SP --> K{"search_knowledge<br/>domain grounding"}
+    K -->|"semantic page:<br/>grain · measures · join keys · gotchas"| DESC["describe_table<br/>columns on demand"]
+    DESC --> EX["extract(sql) ×1..N<br/>governed SELECT / JOIN · RLS<br/>named frames: sales, rent, …"]
+    EX -->|"join in SQL,<br/>or in pandas over frames"| RA["run_analysis(code)<br/>skills.* over the frame(s)"]
+    RA --> CH["viz skill picks chart<br/>by question shape"]
+    CH --> REP["build_report / no_answer"]
+    REP --> OUT["Typed answer + chart"]
+
+    SP -. logs .-> DL
+    K -. logs .-> DL
+    DESC -. logs .-> DL
+    EX -. logs .-> DL
+    RA -. logs .-> DL
+    CH -. logs .-> DL
+    DL["🔎 Decision Log<br/>ordered picks + rationale<br/>→ query_runs.trace"] --> EVAL["Admin view + trajectory evals"]
+
+    classDef new fill:#1c2a1c,stroke:#9ece6a,color:#e7e9ee;
+    classDef know fill:#1a2233,stroke:#6ea8fe,color:#e7e9ee;
+    class DL,EVAL new;
+    class K,DESC,REP know;
+      </div>
+    </div>
+    <p class="cap">Blue = knowledge-grounded steps (domain context pulled in, not pinned). Green = the new diagnostics surface. Everything between <code>extract</code> and <code>build_report</code> is unchanged from s04.</p>
+
+    <div class="callout you" style="margin-top:14px"><span class="lbl">Your annotation — does this handle joining multiple tables?</span>
+      <p style="margin:0 0 8px"><strong>Yes — two ways, both already built in the s04 sandbox path.</strong> The single linear box in the earlier diagram hid it; <code>extract</code> is callable up to <code>max_sql_attempts</code> (8) times and each result is a <em>named</em> DataFrame handed to the sandbox.</p>
+      <ul class="clean" style="margin-top:0">
+        <li><b>Join in SQL</b> — one <code>extract</code> whose SELECT <code>JOIN</code>s marts (e.g. sales ⋈ rent on postcode·property_type·month). RLS is enforced per-table, so the join stays governed. Best when the join is simple and you want the DB to do it.</li>
+        <li><b>Join in pandas</b> — <code>extract(sql, name="sales")</code> then <code>extract(sql, name="rent")</code>; both frames land in the sandbox and a skill merges them. <code>gross_yield(rent_df, price_df, key_cols=…)</code> is <em>literally the two-frame case</em> — it exists today. Best when each side needs its own smoothing/aggregation first (the yield case).</li>
+      </ul>
+      <p class="muted" style="margin:8px 0 0">Which strategy the agent picked — and the tables/keys — is captured in the Decision Log (W3), so a wrong join is visible in diagnostics and assertable in evals.</p>
+    </div>
+  </section>
+
+  <!-- ============================ 4. DEEP DIVES ============================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span>
+      <div><h2>Workstream deep-dives</h2>
+        <p class="sec-sub">Concrete before/after and the shape of each change. Enough for another dev to implement.</p></div>
+    </div>
+
+    <!-- W1 -->
+    <h3 style="font-size:16px;margin:8px 0 10px;color:var(--accent-2)">W1 · Dataset-agnostic prompt &amp; runtime mart discovery</h3>
+    <div class="ba">
+      <div class="col today">
+        <h3>Today</h3><p class="sub">Prompt asserts the domain and carries the entire schema.</p>
+        <pre class="code"><span class="s">"""You are a data analyst for a NSW</span>
+<span class="s">property-market app...."""</span>
+<span class="c"># …then, pinned every turn:</span>
+<span class="f">get_schema_compact()</span>  <span class="c"># all marts + staging</span>
+                     <span class="c"># + all columns</span>
+                     <span class="c"># + ~1.2k char property</span>
+                     <span class="c">#   JOIN_HINT</span></pre>
+      </div>
+      <div class="col target">
+        <h3>Target</h3><p class="sub">Neutral role + a table <em>index</em>; details pulled on demand.</p>
+        <pre class="code"><span class="s">"""You are a data-insight agent. You</span>
+<span class="s">answer over whatever datasets the</span>
+<span class="s">marts schema exposes — assume no</span>
+<span class="s">domain. If the marts can't answer,</span>
+<span class="s">say so via no_answer(reason)."""</span>
+<span class="f">list_marts()</span>  <span class="c"># name + 1-line purpose only</span>
+             <span class="c"># columns → describe_table</span>
+             <span class="c"># domain quirks → search_knowledge</span></pre>
+      </div>
+    </div>
+    <ul class="clean" style="margin-top:14px">
+      <li><b>New <code>list_marts()</code> / lean index</b> — reuse <code>get_catalog(role="user")</code> filtered to <code>marts</code>, emit only <code>schema.table — first_sentence(description)</code>. Drops the per-turn base cost sharply (the s04 note already flagged the pinned schema as the cost driver).</li>
+      <li><b>Move <code>JOIN_HINT</code> out of <code>schema.py</code></b> — the generic half (SELECT-only, RLS, additive-vs-median, marts-vs-staging) stays as a short neutral rule; the property half (suburb casing, “rent has no suburb”) becomes knowledge-base content (W2).</li>
+      <li><b>Add a <code>no_answer(reason)</code> tool + report type</b> — replaces the silent fall-through to the property stub with an honest, rendered “this dataset doesn’t cover that.”</li>
+      <li><b>Default table args become explicit</b> — <code>lookup_values(table=…)</code> loses its <code>"marts.property_sales"</code> default.</li>
+    </ul>
+
+    <!-- W2 -->
+    <h3 style="font-size:16px;margin:26px 0 10px;color:var(--accent-2)">W2 · Knowledge base as the semantic contract</h3>
+    <div class="card">
+      <p>The knowledge tree already has the right shape. The change is to make it the <strong>single home for domain grounding</strong> and to add one <strong>semantic-profile page per dataset</strong> — the thing a semantic layer gives you: grain, measures (how to compute the metric from raw columns), dimensions, join keys, and gotchas. This is the highest-leverage accuracy move in the plan (see §06).</p>
+      <div class="tw">
+      <table class="grid-t">
+        <thead><tr><th>Semantic-profile field</th><th>Example (property_rent)</th><th>Why the agent needs it</th></tr></thead>
+        <tbody>
+          <tr><td><b>grain</b></td><td>postcode · property_type · bedroom_band · month</td><td>Stops SUM-across-grain errors</td></tr>
+          <tr><td><b>measures</b></td><td>avg rent = <code>total_weekly_rent / n_rented</code> (additive parts)</td><td>Never sum a median; compose rates correctly</td></tr>
+          <tr><td><b>join keys</b></td><td>rent ⋈ sales on (postcode, property_type, month) — <em>not</em> suburb</td><td>Rent has no suburb dimension</td></tr>
+          <tr><td><b>gotchas</b></td><td>keep thin months; resolve suburb→postcode via bridge first</td><td>The property-specific traps, out of code</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="muted" style="margin-top:12px">Adding a dataset becomes: drop CSV → dbt mart → copy <code>_template/</code> → fill one semantic page. No agent code changes. The <code>applies_to</code> frontmatter already auto-registers it for retrieval.</p>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:14px">
+      <div class="card min0">
+        <span class="callout you" style="display:block;margin-bottom:12px"><span class="lbl">Your annotation — is there data-agnostic knowledge?</span>
+          Yes — and the tree should make it a first-class axis.</span>
+        <p>Knowledge should split on <strong>two axes</strong>, not one:</p>
+        <ul class="clean">
+          <li><b><code>domains/&lt;slug&gt;/</code> — data-specific</b>. Grain, measures, join keys, gotchas for one dataset. (Exists today.)</li>
+          <li><b><code>analysis/</code> — data-agnostic <span class="q">(new)</span></b>. How-tos that hold for <em>any</em> dataset: smoothing volatile series, choosing a growth window, when a median beats a mean, the chart-selection guide (W5), safe-SQL idioms.</li>
+        </ul>
+        <p class="muted">Same three-tier retrieval; agnostic pages stay eligible regardless of domain, so analytical know-how is written <em>once</em> and reused across every dataset — and a new dataset inherits it for free.</p>
+      </div>
+      <div class="card min0">
+        <span class="callout you" style="display:block;margin-bottom:12px"><span class="lbl">Your annotation — the agent must pick (and join) tables</span>
+          Yield is the perfect example.</span>
+        <p><b>Property yield = annual rent ÷ sale price</b>, on a 6–12&nbsp;month moving average to kill volatility. That spans <em>two marts</em>:</p>
+        <pre class="code"><span class="c"># one logged decision, captured in full:</span>
+tables : <span class="f">marts.property_sales</span> + <span class="f">marts.property_rent</span>
+join   : (postcode, property_type, month)
+measure: <span class="f">gross_yield</span>, 12-mo smoothed</pre>
+        <p class="muted" style="margin-top:10px"><b>Table selection is itself a logged decision</b> (W3) — the agent may pick 1..N marts. The <em>measure recipe</em> (“yield = rent/price, smooth 12m”) lives as an agnostic <code>analysis/</code> page + a tested skill (<code>gross_yield</code> exists — add the smoothing window). The model composes the recipe; it never invents the formula.</p>
+      </div>
+    </div>
+
+    <div class="callout you" style="margin-top:14px"><span class="lbl">Decided — v1 uses keyword search</span>
+      You chose <strong>markdown semantic pages with keyword search</strong> for v1. The pgvector-embedding upgrade (reuse the memory stack so “what drives rents up” matches by meaning, not literal words) stays an easy, isolated follow-up — no interface change — if retrieval ever proves too literal.</div>
+
+    <!-- W3 -->
+    <h3 style="font-size:16px;margin:26px 0 10px;color:var(--accent-2)">W3 · The Decision Log — per run_id, for diagnostics &amp; eval</h3>
+    <div class="card">
+      <p>This is the fix for “I can’t see what the agent picked.” The signal already exists — it’s just discarded. In <code>answer_with_sandbox()</code> the returned <code>trace</code> is rebuilt from model messages and <strong><code>deps.steps</code> is never merged in</strong>, so the tagged picks (which knowledge page, which table, which skill) don’t reach <code>query_runs.trace</code>.</p>
+      <pre class="code"><span class="c"># sandbox_agent.py — answer_with_sandbox(), today</span>
+trace = <span class="f">_build_trace</span>(messages)          <span class="c"># model turns + tool calls only</span>
+trace.<span class="f">append</span>({<span class="s">"kind"</span>: <span class="s">"analysis"</span>, ...})  <span class="c"># one summary line</span>
+<span class="del"># deps.steps  ← the tagged decisions are dropped here</span>
+
+<span class="c"># target: fold the tagged picks in, each with a one-line 'why'</span>
+<span class="add">decisions = _decision_log(deps.steps)   # ordered: knowledge / table / sql / skill / chart</span>
+<span class="add">trace = _merge(_build_trace(messages), decisions)</span></pre>
+      <p style="margin-top:14px">Then two additions turn a step list into an evaluable trajectory:</p>
+      <ul class="clean">
+        <li><b>Rationale on each pick <span class="q">(decided: <code>why=</code> param)</span></b> — you chose to have the discovery tools take a short <code>why=</code> so the model <em>states</em> intent per pick (which table, page, skill, chart) rather than us inferring it. Best diagnostics; costs a few tokens/turn, bounded by the existing caps.</li>
+        <li><b>An ordered Decision Log in the admin run view</b> — “①&nbsp;knowledge: property-rent-overview · ②&nbsp;table: marts.property_rent · ③&nbsp;skill: trend_series · ④&nbsp;chart: dual_axis”, each with its one-line <code>why</code>. Extends the existing <code>AgentTrace</code> component.</li>
+        <li><b>Trajectory evals</b> — <code>evals/journeys.yaml</code> can now assert on the path, not just the answer: <em>expect</em> mart&nbsp;=&nbsp;property_rent, skill&nbsp;used&nbsp;=&nbsp;trend_series, chart&nbsp;=&nbsp;dual_axis. Exactly the “efficiency / hallucination / adaptivity” trajectory framing the field has moved to (§06).</li>
+      </ul>
+      <div class="callout" style="margin-top:14px"><span class="lbl">Your question — new table, or extend query_runs?</span>
+        <strong>Extend <code>query_runs.trace</code> (jsonb) — don’t add a table yet.</strong> The trace already lives there, one row per run, RLS-scoped; the Decision Log is just a better-structured slice of it. A separate normalised <code>decisions</code> table only earns its keep once you want cross-run analytics at scale (“how often did it pick the wrong mart?”) — at which point a materialised view over the jsonb, or an ETL into an eval table, is the right move. Start in jsonb; promote later if eval dashboards demand it.</div>
+    </div>
+
+    <!-- W5 (W4 folded into cards above) -->
+    <h3 style="font-size:16px;margin:26px 0 10px;color:var(--accent-2)">W5 · Visualisation skills + a chart-selection guide</h3>
+    <div class="grid cols-2">
+      <div class="card min0">
+        <p style="margin-bottom:8px"><b>New chart skills</b> (Vega-Lite, server-validated like the rest):</p>
+        <div class="tw">
+        <table class="grid-t">
+          <thead><tr><th>Skill</th><th>Shape</th></tr></thead>
+          <tbody>
+            <tr><td><b>dual_axis_chart</b> <span class="q">← your ask</span></td><td>Bars + secondary-axis line (volume vs price). Vega layer w/ <code>resolve:{scale:{y:"independent"}}</code></td></tr>
+            <tr><td><b>trend_chart</b></td><td>✅ exists — actual + rolling overlay</td></tr>
+            <tr><td><b>comparison_chart</b></td><td>✅ exists — grouped bars</td></tr>
+            <tr><td><b>profile_chart</b></td><td>✅ exists — stacked composition</td></tr>
+            <tr><td><b>distribution_chart</b></td><td>Histogram / box — “spread of prices”</td></tr>
+            <tr><td><b>annotated overlay</b></td><td>Reference line / highlighted period on any trend — “analytical overlay”</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+      <div class="card min0">
+        <p style="margin-bottom:8px"><b>The selection guide</b> — a knowledge page + sharpened docstrings so the model maps question → chart instead of always drawing a line:</p>
+        <pre class="code"><span class="c"># when-to-visualise.md (excerpt)</span>
+one metric over time      <span class="f">→ trend_chart</span>
+two metrics, diff scales  <span class="f">→ dual_axis_chart</span>
+compare entities          <span class="f">→ comparison_chart</span>
+part-to-whole / mix       <span class="f">→ profile_chart</span>
+spread / outliers         <span class="f">→ distribution_chart</span>
+single value / KPI        <span class="f">→ headline tile, no chart</span></pre>
+        <p class="muted" style="margin-top:10px">Mirrors how the field is packaging viz as an agent <em>skill</em> that turns “data into a visual language” (AntV chart-visualization-skills) rather than leaving chart choice to the model’s guess.</p>
+      </div>
+    </div>
+    <div class="callout you" style="margin-top:14px"><span class="lbl">Your question — is Vega-Lite the right library, or move to something richer?</span>
+      <p style="margin:0 0 8px"><strong>Keep Vega-Lite as the governed default; add a second renderer only for what it genuinely can’t do.</strong> The reason it fits here is the <em>governance model</em>, not habit: the model emits a spec, the server validates it against an allowlist and splices in real governed rows, so <em>the model can’t fabricate chart numbers</em>. An imperative library (D3) or a free-form codegen chart would throw that away.</p>
+      <ul class="clean" style="margin-top:0">
+        <li><b>Richer within Vega-Lite</b> — it already does layering, dual-axis, faceting, interaction; drop to full <b>Vega</b> for the rare advanced spec. Covers ~90% of “rich”.</li>
+        <li><b>Add ECharts as a 2nd skill backend</b> only for the types Vega-Lite does poorly — <b>geospatial maps, sankey/network, gauges</b>. Same <code>skills.*</code> interface, same server-splice-the-data contract, so the library stays swappable and the governance holds.</li>
+        <li><b>Avoid</b> a model-writes-arbitrary-JS renderer — it breaks the “can’t fabricate numbers” guarantee that makes this agent trustworthy.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================ 5. LIFECYCLE ============================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span>
+      <div><h2>Keeping knowledge &amp; skills alive — the improvement loop</h2>
+        <p class="sec-sub">Your question: the agent flags gaps — but what actually closes them? Two triggers feed one review queue. Nothing auto-merges into what the agent trusts.</p></div>
+    </div>
+
+    <div class="diagram-wrap">
+      <div class="mermaid">
+flowchart LR
+    subgraph RUNTIME["Runtime signal (already emitted)"]
+      QR["query_runs<br/>skill_gap · used_inline_math<br/>no_answer · retries · 👎 feedback"]
+    end
+    subgraph BUILD["Build-time signal"]
+      DBT["dbt / pipeline run<br/>new or changed mart"]
+    end
+    QR --> SWEEP["🧹 Sweep job (scheduled)<br/>cluster gaps &amp; misses"]
+    DBT --> STALE["Staleness check<br/>schema ⟷ semantic page diff<br/>via knowledge_version hash"]
+    SWEEP --> DRAFT["Opus drafts candidates<br/>new skill / knowledge page"]
+    STALE --> DRAFT
+    DRAFT --> REVIEW{"Human review<br/>+ skill tests + evals"}
+    REVIEW -->|merge| KB["Knowledge base / skills<br/>knowledge_version bumps"]
+    KB -.->|next run grounded better| QR
+
+    classDef sig fill:#1a2233,stroke:#6ea8fe,color:#e7e9ee;
+    classDef act fill:#1c2a1c,stroke:#9ece6a,color:#e7e9ee;
+    class QR,DBT,STALE sig;
+    class SWEEP,DRAFT,KB act;
+      </div>
+    </div>
+    <p class="cap">The agent emits the signal today; this closes the loop. The gate is deliberate — candidates are reviewed and tested before they change what the agent relies on.</p>
+
+    <div class="grid cols-3" style="margin-top:16px">
+      <div class="card min0">
+        <h3 style="margin:0 0 6px;font-size:15px">① Runtime sweep <span class="q">(your idea — yes)</span></h3>
+        <p class="muted" style="font-size:13px">A scheduled backend job reads the signals the agent <em>already</em> writes to <code>query_runs</code>: <code>skill_gap</code>, <code>used_inline_math</code>, <code>no_answer</code>, repeated retries, thumbs-down. It clusters them (“12 questions wanted a yield the agent hand-rolled”) and drafts a candidate skill or page. Output is a <strong>review queue</strong>, never an auto-merge.</p>
+      </div>
+      <div class="card min0">
+        <h3 style="margin:0 0 6px;font-size:15px">② Build-time hook <span class="q">(your idea — yes)</span></h3>
+        <p class="muted" style="font-size:13px">Exactly the DB/pipeline hook you suggested: a dbt post-hook (or migration step) fires when a mart’s shape changes, diffs the live schema against each semantic page, and flags drift. <code>knowledge_version()</code> — a content hash already recorded on every report — is the primitive; the hook just turns “this report used stale knowledge” into a task.</p>
+      </div>
+      <div class="card min0">
+        <h3 style="margin:0 0 6px;font-size:15px">③ Human/agent-in-the-loop</h3>
+        <p class="muted" style="font-size:13px">Candidates are reviewed (Opus-authored per the s04 restructure decision), skills carry tests, and the trajectory evals (W3) catch regressions before merge. Merging bumps <code>knowledge_version</code>, so you can always tell which knowledge produced which past answer.</p>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:14px"><span class="lbl">Why not just auto-write skills?</span>
+      Skills do the <em>risky maths</em> and are trusted precisely because they’re tested once and reused. An auto-merged skill would erode that guarantee. The sweep’s job is to <strong>surface and draft</strong> — turning scattered gap flags into a prioritised, reviewable backlog — not to silently expand what the agent relies on.</div>
+  </section>
+
+  <!-- ============================ 6. INDUSTRY ============================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span>
+      <div><h2>How the field builds insight agents (and where this lands you)</h2>
+        <p class="sec-sub">Three patterns from 2025–26 practice; each maps to a workstream above.</p></div>
+    </div>
+    <div class="grid cols-3">
+      <div class="card min0">
+        <h3 style="margin:0 0 6px;font-size:15px">Semantic layer &gt; raw text-to-SQL</h3>
+        <p class="muted" style="font-size:13px">The consensus reliability move: define grain, measures, joins and policies once and let the agent reason over <em>that</em>, not raw tables. Paired benchmarks show large jumps — e.g. one frontier model going from 90% → 98% accuracy with a modeled semantic layer vs raw text-to-SQL.</p>
+        <p style="font-size:12.5px;margin-top:8px"><b class="q">→ W2</b> Your dbt marts + per-dataset semantic pages <em>are</em> a lightweight semantic layer.</p>
+      </div>
+      <div class="card min0">
+        <h3 style="margin:0 0 6px;font-size:15px">Evaluate the trajectory, not just the answer</h3>
+        <p class="muted" style="font-size:13px">Final-answer accuracy hides how the agent got there. The field now scores the reasoning <em>trace</em> — tool choice, efficiency, hallucination, loop detection — walking from output back to the exact span that broke.</p>
+        <p style="font-size:12.5px;margin-top:8px"><b class="q">→ W3</b> The Decision Log makes each run a scoreable trajectory; you already have the loop-guard and token caps that trace framing recommends.</p>
+      </div>
+      <div class="card min0">
+        <h3 style="margin:0 0 6px;font-size:15px">Visualisation as a guided skill</h3>
+        <p class="muted" style="font-size:13px">Mature tools don’t just plot — they pick the statistically sound chart for the data’s shape and add analytical overlays that highlight the key period. Chart choice is packaged as a reusable agent skill, not left to the LLM.</p>
+        <p style="font-size:12.5px;margin-top:8px"><b class="q">→ W5</b> The selection guide + dual-axis/overlay skills close this gap.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <p class="src"><b>Sources</b> —
+        <a href="https://arxiv.org/pdf/2604.25149">Semantic Layers for Reliable LLM Analytics: a paired accuracy/hallucination benchmark (arXiv)</a> ·
+        <a href="https://chartgen.ai/resources/blog/the-rise-of-agentic-data-analytics">The Rise of Agentic Data Analytics — why the semantic layer is key (ChartGen)</a> ·
+        <a href="https://arxiv.org/html/2605.21027v1">Beyond Text-to-SQL: an agentic system for governed enterprise analytics (arXiv)</a> ·
+        <a href="https://arxiv.org/pdf/2510.02837">Beyond the Final Answer: evaluating reasoning trajectories of tool-augmented agents (arXiv)</a> ·
+        <a href="https://www.confident-ai.com/blog/llm-agent-evaluation-complete-guide">LLM Agent Evaluation: tool-calling, trajectory &amp; trace-based evals (Confident AI)</a> ·
+        <a href="https://github.com/antvis/chart-visualization-skills">AntV chart-visualization-skills — viz packaged as an agent skill (GitHub)</a> ·
+        <a href="https://arxiv.org/pdf/2602.18731">A Multimodal Agent Framework for Insightful Chart Summarization (arXiv)</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ 7. PHASES ============================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">07</span>
+      <div><h2>Phased rollout</h2>
+        <p class="sec-sub">Ordered so each phase ships something runnable and is independently reversible. Suggested sequence — tune in §07.</p></div>
+    </div>
+    <div class="phases">
+      <div class="phase"><div class="dot">A</div><div class="body">
+        <h3>Decouple the prompt &amp; schema (W1)</h3>
+        <p class="goal">Neutral role, <code>list_marts()</code> index, <code>no_answer</code> path, generic skill/arg names. Smallest change, biggest “agnostic” payoff — and it’s reversible per-line.</p>
+        <div class="files"><span class="tagf">sandbox_agent.py</span><span class="tagf">schema.py</span><span class="tagf">skills/*.py</span></div>
+      </div></div>
+      <div class="phase"><div class="dot">B</div><div class="body">
+        <h3>Move domain grounding into the knowledge base (W2)</h3>
+        <p class="goal">Relocate <code>JOIN_HINT</code> to per-dataset pages; add the semantic-profile page format; verify a non-property dataset works end-to-end with zero agent code changes.</p>
+        <div class="files"><span class="tagf">knowledge/domains/*</span><span class="tagf">_template</span><span class="tagf">schema.py</span></div>
+      </div></div>
+      <div class="phase"><div class="dot">C</div><div class="body">
+        <h3>Decision Log + admin surface (W3)</h3>
+        <p class="goal">Merge <code>deps.steps</code> into the persisted trace with rationale; render the ordered Decision Log in the run view. Ship the diagnostics you asked for.</p>
+        <div class="files"><span class="tagf">sandbox_agent.py</span><span class="tagf">App.tsx</span><span class="tagf">api.ts</span></div>
+      </div></div>
+      <div class="phase"><div class="dot">D</div><div class="body">
+        <h3>Visualisation skills + selection guide (W5)</h3>
+        <p class="goal"><code>dual_axis_chart</code> first (your explicit ask), then distribution/overlay; add <code>when-to-visualise.md</code> and sharpen docstrings.</p>
+        <div class="files"><span class="tagf">skills/charts.py</span><span class="tagf">chart.py</span><span class="tagf">knowledge</span></div>
+      </div></div>
+      <div class="phase"><div class="dot">E</div><div class="body">
+        <h3>Trajectory evals (W3 payoff)</h3>
+        <p class="goal">Extend <code>journeys.yaml</code> to assert on the Decision Log (mart / skill / chart chosen), so “agnostic” and “right choices” are guarded by CI.</p>
+        <div class="files"><span class="tagf">evals/journeys.yaml</span><span class="tagf">pydantic_evals</span></div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ============================ 8. RISKS + DECISIONS ============================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">08</span>
+      <div><h2>Risks &amp; the decisions you locked</h2>
+        <p class="sec-sub">What could bite, and the choices this review settled.</p></div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <div class="risk"><span class="sev md">MED</span><div class="body">
+        <h4>Pull-on-demand doesn’t shrink a single run’s context — it caps how context <em>scales</em></h4>
+        <p>Fair catch from your review: once the agent searches and loads the property-sales page, that schema <em>does</em> sit in every later turn of that run — so one question isn’t necessarily cheaper. The win is different. Today’s pinned block carries <em>every</em> dataset <em>every</em> turn, so prompt cost grows O(datasets). Pull-on-demand makes a run carry only the 1–2 datasets it actually touches: a rent question never pays for sales schema, and adding dataset&nbsp;#10 doesn’t inflate the other nine. The lean mart index (names only) stays always-on so discovery still works; mandatory <code>search_knowledge</code> keeps grounding reliable; trajectory evals guard against a retrieval miss.</p>
+      </div></div>
+      <div class="risk"><span class="sev lo">LOW</span><div class="body">
+        <h4>Cheaper model (DeepSeek) may under-use optional tools</h4>
+        <p>A weaker model given more discovery tools can loop or skip <code>search_knowledge</code>. The existing request/token caps and loop-guard bound the blast radius; the Decision Log will make any regression visible immediately.</p>
+      </div></div>
+      <div class="risk"><span class="sev lo">LOW</span><div class="body">
+        <h4>Dual-axis charts can mislead</h4>
+        <p>Two independent y-scales invite spurious “correlation.” Encode it as a deliberate skill (fixed styling, explicit axis titles) and note in the selection guide <em>when not</em> to use it — same house-style discipline as the other chart skills.</p>
+      </div></div>
+    </div>
+
+    <div class="grid cols-3" style="margin-bottom:18px">
+      <div class="card min0" style="border-color:var(--accent)">
+        <span class="wtag" style="color:var(--accent)">Locked · 1</span>
+        <h3 style="margin:8px 0 4px;font-size:15px">Grounding = markdown + keyword search</h3>
+        <p class="muted" style="font-size:13px">Semantic pages in the knowledge tree, token-overlap retrieval. pgvector stays a drop-in upgrade if it proves too literal (W2).</p>
+      </div>
+      <div class="card min0" style="border-color:var(--accent)">
+        <span class="wtag" style="color:var(--accent)">Locked · 2</span>
+        <h3 style="margin:8px 0 4px;font-size:15px">Rationale via a <code>why=</code> param</h3>
+        <p class="muted" style="font-size:13px">Discovery tools take a short <code>why=</code> so the model states intent per pick. Richest Decision Log; cost bounded by the caps (W3).</p>
+      </div>
+      <div class="card min0" style="border-color:var(--accent)">
+        <span class="wtag" style="color:var(--accent)">Locked · 3</span>
+        <h3 style="margin:8px 0 4px;font-size:15px">Sequence A → B → C → D → E</h3>
+        <p class="muted" style="font-size:13px">Agnostic prompt first, then knowledge, Decision Log, visualisation, eval guards. Each phase ships runnable (§07).</p>
+      </div>
+    </div>
+
+    <form class="decide"
+      data-lavish-question="s05-next"
+      onsubmit="event.preventDefault();
+        const note=(new FormData(event.currentTarget).get('note')||'').trim();
+        if(!note){window.lavish.queuePrompt('Plan s05 looks good — start Phase A (decouple prompt & schema).',{tag:'go',text:'Start Phase A',element:event.currentTarget});return;}
+        window.lavish.queuePrompt('On the s05 plan: '+note,{tag:'feedback',text:note,element:event.currentTarget});
+      ">
+      <fieldset style="margin-bottom:12px">
+        <legend>Decisions are captured above — anything else before I start Phase A?</legend>
+        <p class="qsub">Leave blank and submit to greenlight Phase A, or add a change / new ask.</p>
+        <textarea name="note" placeholder="e.g. 'add a geospatial/map skill in W5', 'prove agnosticism against a non-property dataset X', 'sketch the sweep job schema'…"></textarea>
+      </fieldset>
+      <button class="submit" type="submit">Queue &amp; send</button>
+      <p class="hint">Blank = “start Phase A”. Otherwise queues your note. Nothing sends until you press Send to Agent — you can still annotate any element above.</p>
+    </form>
+  </section>
+
+  <div class="foot">
+    data-qa-agent · s05 · plan artifact — verified against <code>services/data-agent/agent/{sandbox_agent,schema,knowledge,config}.py</code>, <code>skills/charts.py</code>, and <code>frontend/src/App.tsx</code>. Compute model unchanged from s04; this reworks what the agent knows and exposes.
+  </div>
+
+</div>
+<script>
+  mermaid.initialize({startOnLoad:true, theme:"dark",
+    themeVariables:{fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:"14px",
+      primaryColor:"#1e222b", primaryBorderColor:"#2a2f3a", primaryTextColor:"#e7e9ee",
+      lineColor:"#6b7280", secondaryColor:"#171a21", tertiaryColor:"#12151c"}});
+</script>
+</body>
+</html>

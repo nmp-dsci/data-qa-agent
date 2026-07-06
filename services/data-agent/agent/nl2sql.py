@@ -2,12 +2,12 @@
 
 The Phase-0/2b stand-in for the LLM: it recognises the sales/rent/yield intents,
 detects a house-vs-unit filter, builds a governed SELECT, and phrases an answer.
-When a provider key is configured (LLM_PROVIDER — see provider.py) the real LLM
-agent is used instead, and it authors its own SQL from the dbt-manifest schema
-(see llm_agent.py) — including computing growth/yield itself, since the marts
-hold no precomputed growth%/yield% column (data pipeline refactor). This stub
-has to do the same computation explicitly, in SQL, since there's no model here
-to write it ad hoc.
+When a provider key is configured (LLM_PROVIDER — see provider.py) the sandbox
+agent is used instead, and it authors its own SQL extract from the dbt-manifest
+schema (see sandbox_agent.py) — leaving growth/yield to the tested skills, since
+the marts hold no precomputed growth%/yield% column (data pipeline refactor).
+This stub has to do the same computation explicitly, in SQL, since there's no
+model here to write it ad hoc.
 """
 
 from __future__ import annotations

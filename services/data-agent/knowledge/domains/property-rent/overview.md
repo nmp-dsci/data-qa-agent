@@ -25,12 +25,12 @@ its postcode(s) via `staging.int_postcode_geo`
 - `marts.mart_rent_by_bedroom` — rent broken out by bedroom band
   ([[domains/property-rent/bedrooms]]).
 - `marts.mart_property_yield` — sales+rent pre-joined on (postcode, property_type,
-  month); compute yield from it ([[analysis/yield]]).
+  month); compute yield from it (the `gross_yield` skill).
 - `staging.stg_rent` — record grain (~3M rows); only for record-level questions,
   always filtered by postcode/month.
 
 ## Reliability
 Bond counts per postcode/month can be thin. **Do not filter thin months out** of a
 trend with a `WHERE n_rented >= N` clause — keep every month and let the 6-month
-rolling average absorb the noise ([[analysis/rolling-averages]],
-[[analysis/latest-month]]).
+rolling average absorb the noise (the `rolling_average` / `latest_value` skills
+apply the 6-month window).

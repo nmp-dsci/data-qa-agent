@@ -5,7 +5,7 @@ natural language, and an AI agent turns them into governed SQL over data they're
 answers with the result.
 
 - 📐 **Design & architecture:** [`AGENTS.md`](./AGENTS.md) (source of truth) and the visual review at
-  `.lavish/data-qa-agent-architecture.html`.
+  `.lavish/s00_data-qa-agent-architecture.html`.
 - 🤖 **For AI assistants:** [`CLAUDE.md`](./CLAUDE.md) → points here and to `AGENTS.md`.
 
 ## Quick start (fully local, no cloud)

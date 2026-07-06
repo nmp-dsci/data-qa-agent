@@ -79,6 +79,61 @@ def test_trend_chart_is_valid_spec_with_inline_data():
     assert "encoding" in spec
 
 
+def test_rolling_average_is_smoothed_line_only():
+    df = _linear_monthly()
+    roll = skills.rolling_average(df, month_col="month", value_col="avg_price")
+    # Just the smoothed line: [month, value, series], one row per kept month, no
+    # "actual"/"layer" split like trend_series has.
+    assert list(roll.columns) == ["month", "value", "series"]
+    assert "layer" not in roll.columns
+    # 6-mo trailing mean of the last six values (640..690) = 665, at the last month.
+    assert roll["value"].iloc[-1] == 665.0
+    assert roll["month"].iloc[0].endswith("-01")
+
+
+def test_rolling_average_grouped_labels_each_series():
+    df = _linear_monthly()
+    both = pd.concat(
+        [df.assign(suburb="A"), df.assign(suburb="B", avg_price=df["avg_price"] * 2)],
+        ignore_index=True,
+    )
+    roll = skills.rolling_average(
+        both, month_col="month", value_col="avg_price", group_col="suburb"
+    )
+    assert set(roll["series"]) == {"A", "B"}
+
+
+def test_profile_chart_normalizes_shares_to_100():
+    # Two suburbs, two segments each: shares should sum to 100 per suburb.
+    df = pd.DataFrame(
+        {
+            "suburb": ["Hornsby", "Hornsby", "Epping", "Epping"],
+            "band": ["small", "large", "small", "large"],
+            "n": [30.0, 10.0, 10.0, 10.0],
+        }
+    )
+    spec = skills.profile_chart(
+        df, category_col="suburb", segment_col="band", value_col="n", title="Lot mix"
+    )
+    assert spec["mark"] == "bar"
+    assert spec["title"] == "Lot mix"
+    assert spec["encoding"]["color"]["field"] == "band"
+    assert spec["encoding"]["y"]["stack"] == "zero"
+    vals = {(r["suburb"], r["band"]): r["n"] for r in spec["data"]["values"]}
+    assert vals[("Hornsby", "small")] == 75.0  # 30 / (30+10)
+    assert vals[("Epping", "small")] == 50.0  # 10 / (10+10)
+
+
+def test_profile_chart_raw_counts_when_not_normalized():
+    df = pd.DataFrame({"suburb": ["A", "A"], "band": ["x", "y"], "n": [3.0, 1.0]})
+    spec = skills.profile_chart(
+        df, category_col="suburb", segment_col="band", value_col="n", normalize=False
+    )
+    vals = {r["band"]: r["n"] for r in spec["data"]["values"]}
+    assert vals == {"x": 3.0, "y": 1.0}  # unchanged raw counts
+    assert spec["encoding"]["y"]["title"] == "n"
+
+
 def test_average_price_via_den_col():
     # value = total_sale_value / n_sold
     df = pd.DataFrame(
@@ -146,7 +201,11 @@ def test_gross_yield_annualised_ratio():
     rent = pd.DataFrame({"postcode": ["2077"], "month": ["2026-05"], "weekly_rent": [600.0]})
     price = pd.DataFrame({"postcode": ["2077"], "month": ["2026-05"], "price": [2_000_000.0]})
     y = skills.gross_yield(
-        rent, price, key_cols=["postcode", "month"], weekly_rent_col="weekly_rent", price_col="price"
+        rent,
+        price,
+        key_cols=["postcode", "month"],
+        weekly_rent_col="weekly_rent",
+        price_col="price",
     )
     assert y == 1.56
 
@@ -168,7 +227,9 @@ def test_gross_yield_none_without_overlap():
 
 def test_comparison_chart_is_valid_bar_spec():
     df = pd.DataFrame({"suburb": ["A", "B", "C"], "growth": [10.0, 25.0, 5.0]})
-    spec = skills.comparison_chart(df, category_col="suburb", value_col="growth", title="5yr growth")
+    spec = skills.comparison_chart(
+        df, category_col="suburb", value_col="growth", title="5yr growth"
+    )
     assert spec["mark"] == "bar"
     assert spec["title"] == "5yr growth"
     assert spec["encoding"]["x"]["field"] == "suburb"

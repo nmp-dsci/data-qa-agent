@@ -125,29 +125,146 @@ function download(filename: string, content: string, type = "text/csv") {
   URL.revokeObjectURL(url);
 }
 
-/** A minimal Vega-Lite bar spec: first non-numeric column as x, first numeric as y. */
-function buildChartSpec(result: SqlRunResult): Record<string, unknown> | null {
+const CHART_MARKS = ["line", "bar", "point", "area"] as const;
+
+type ChartMark = (typeof CHART_MARKS)[number];
+
+interface ChartConfig {
+  mark: ChartMark;
+  x: string;
+  y: string;
+  series: string | null;
+}
+
+function isDateLike(v: unknown): boolean {
+  if (v instanceof Date) return true;
+  if (typeof v !== "string") return false;
+  if (!/^\d{4}-\d{2}-\d{2}/.test(v)) return false;
+  return !Number.isNaN(Date.parse(v));
+}
+
+function dateColumns(rows: unknown[][], colCount: number): boolean[] {
+  const flags = new Array(colCount).fill(true);
+  const sample = rows.slice(0, 50);
+  for (let c = 0; c < colCount; c++) {
+    let seen = false;
+    for (const row of sample) {
+      const cell = row[c];
+      if (cell === null || cell === undefined || cell === "") continue;
+      seen = true;
+      if (!isDateLike(cell)) {
+        flags[c] = false;
+        break;
+      }
+    }
+    if (!seen) flags[c] = false;
+  }
+  return flags;
+}
+
+function columnType(
+  idx: number,
+  numeric: boolean[],
+  dates: boolean[],
+): "quantitative" | "temporal" | "nominal" {
+  if (dates[idx]) return "temporal";
+  if (numeric[idx]) return "quantitative";
+  return "nominal";
+}
+
+function metricScore(name: string): number {
+  const n = name.toLowerCase();
+  if (n === "median_price" || n === "sale_price") return 100;
+  if (n.includes("median") && (n.includes("price") || n.includes("rent"))) return 95;
+  if (n.includes("avg") && (n.includes("price") || n.includes("rent"))) return 90;
+  if (n.includes("price") || n.includes("rent")) return 85;
+  if (n.includes("growth") || n.includes("yield")) return 80;
+  if (n.includes("total_sale_value")) return 75;
+  if (n.includes("value")) return 70;
+  return 10;
+}
+
+function isCurrencyField(name: string): boolean {
+  const n = name.toLowerCase();
+  return n.includes("price") || n.includes("rent") || n.includes("value");
+}
+
+function defaultChartConfig(result: SqlRunResult): ChartConfig | null {
   const { columns, rows } = result;
   if (columns.length < 2 || rows.length === 0) return null;
   const numeric = numericColumns(rows, columns.length);
-  const yIdx = numeric.findIndex((n) => n);
-  if (yIdx === -1) return null;
-  let xIdx = numeric.findIndex((n) => !n);
-  if (xIdx === -1) xIdx = yIdx === 0 ? 1 : 0;
-  const values = rows.slice(0, 50).map((row) => ({
-    [columns[xIdx]]: row[xIdx] as string | number,
-    [columns[yIdx]]: isNumeric(row[yIdx]) ? Number(row[yIdx]) : row[yIdx],
-  }));
+  const dates = dateColumns(rows, columns.length);
+  const numericIndexes = columns.map((_, idx) => idx).filter((idx) => numeric[idx]);
+  if (numericIndexes.length === 0) return null;
+
+  const yIdx = numericIndexes.reduce((best, idx) =>
+    metricScore(columns[idx]) > metricScore(columns[best]) ? idx : best,
+  );
+  let xIdx = dates.findIndex((isDate, idx) => isDate && idx !== yIdx);
+  if (xIdx === -1) xIdx = columns.findIndex((_, idx) => idx !== yIdx && !numeric[idx]);
+  const resolvedXIdx = xIdx >= 0 ? xIdx : columns.findIndex((_, idx) => idx !== yIdx);
+  if (resolvedXIdx === -1) return null;
+
+  const seriesIdx = columns.findIndex((_, idx) => idx !== resolvedXIdx && idx !== yIdx && !numeric[idx]);
+  return {
+    mark: dates[resolvedXIdx] ? "line" : "bar",
+    x: columns[resolvedXIdx],
+    y: columns[yIdx],
+    series: seriesIdx >= 0 ? columns[seriesIdx] : null,
+  };
+}
+
+function chartValues(result: SqlRunResult): Record<string, unknown>[] {
+  return result.rows.slice(0, 2000).map((row) => {
+    const out: Record<string, unknown> = {};
+    result.columns.forEach((col, idx) => {
+      out[col] = isNumeric(row[idx]) ? Number(row[idx]) : row[idx];
+    });
+    return out;
+  });
+}
+
+function buildChartSpec(result: SqlRunResult, config: ChartConfig): Record<string, unknown> | null {
+  const { columns, rows } = result;
+  if (columns.length < 2 || rows.length === 0) return null;
+  const numeric = numericColumns(rows, columns.length);
+  const dates = dateColumns(rows, columns.length);
+  const xIdx = columns.indexOf(config.x);
+  const yIdx = columns.indexOf(config.y);
+  if (xIdx === -1 || yIdx === -1 || !numeric[yIdx]) return null;
+  const xType = columnType(xIdx, numeric, dates);
+  const hasSeries = !!config.series && columns.includes(config.series);
+  const yAxis = isCurrencyField(config.y) ? { title: config.y, format: "$,.0f" } : { title: config.y };
+  const mark: Record<string, unknown> = { type: config.mark };
+  if (config.mark === "line") mark.point = { filled: true, size: 28 };
+  if (!hasSeries) mark.color = "#b48a3f";
+  const encoding: Record<string, unknown> = {
+    x: {
+      field: config.x,
+      type: xType,
+      axis: { title: config.x, labelAngle: xType === "nominal" ? -35 : 0 },
+      ...(config.mark === "bar" && xType === "nominal" ? { sort: "-y" } : {}),
+    },
+    y: { field: config.y, type: "quantitative", axis: yAxis },
+    tooltip: columns.map((field) => ({
+      field,
+      type: columnType(columns.indexOf(field), numeric, dates),
+      ...(isCurrencyField(field) ? { format: "$,.0f" } : {}),
+    })),
+  };
+  if (hasSeries) {
+    encoding.color = { field: config.series, type: "nominal", title: config.series };
+  }
+  if (config.mark === "line" || config.mark === "area") {
+    encoding.order = { field: config.x, type: xType };
+  }
   return {
     $schema: "https://vega.github.io/schema/vega-lite/v5.json",
     width: "container",
-    height: 260,
-    mark: { type: "bar", color: "#b48a3f" },
-    encoding: {
-      x: { field: columns[xIdx], type: "nominal", sort: "-y", axis: { labelAngle: -40 } },
-      y: { field: columns[yIdx], type: "quantitative" },
-    },
-    data: { values },
+    height: 320,
+    mark,
+    encoding,
+    data: { values: chartValues(result) },
     background: "transparent",
   };
 }
@@ -572,9 +689,15 @@ export function SqlEditor({
 function insertAtCursor(view: EditorView | null, text: string) {
   if (!view) return;
   const { from, to } = view.state.selection.main;
+  // Prepend a space when the cursor abuts a preceding token, so inserting a
+  // table/column name can't glue onto it (e.g. "...eval_cases" + "marts.x" →
+  // "...eval_casesmarts.x", which then fails to parse). A separator (whitespace,
+  // '.', or '(') before the cursor means no extra space is needed.
+  const before = from > 0 ? view.state.doc.sliceString(from - 1, from) : "";
+  const insert = before && !/[\s.(]/.test(before) ? ` ${text}` : text;
   view.dispatch({
-    changes: { from, to, insert: text },
-    selection: { anchor: from + text.length },
+    changes: { from, to, insert },
+    selection: { anchor: from + insert.length },
   });
   view.focus();
 }
@@ -590,7 +713,21 @@ interface ResultsProps {
 }
 
 function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setFilter }: ResultsProps) {
-  const chartSpec = useMemo(() => buildChartSpec(result), [result]);
+  const defaultConfig = useMemo(() => defaultChartConfig(result), [result]);
+  const [chartConfig, setChartConfig] = useState<ChartConfig | null>(defaultConfig);
+
+  useEffect(() => {
+    setChartConfig(defaultConfig);
+  }, [defaultConfig]);
+
+  const numeric = useMemo(
+    () => numericColumns(result.rows, result.columns.length),
+    [result.columns.length, result.rows],
+  );
+  const chartSpec = useMemo(
+    () => (chartConfig ? buildChartSpec(result, chartConfig) : null),
+    [chartConfig, result],
+  );
 
   const rows = useMemo(() => {
     let out = result.rows;
@@ -621,6 +758,10 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
     else setSort(null);
   }
 
+  function updateChartConfig(patch: Partial<ChartConfig>) {
+    setChartConfig((cfg) => (cfg ? { ...cfg, ...patch } : cfg));
+  }
+
   return (
     <div className="result sqled-result">
       <div className="meta">
@@ -640,8 +781,8 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
           <button
             className={viewMode === "chart" ? "chip active" : "chip"}
             onClick={() => setViewMode("chart")}
-            disabled={!chartSpec}
-            title={chartSpec ? "" : "Need a text + numeric column to chart"}
+            disabled={!defaultConfig}
+            title={defaultConfig ? "" : "Need at least one numeric column to chart"}
           >
             Chart
           </button>
@@ -690,7 +831,66 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
         </>
       )}
 
-      {viewMode === "chart" && chartSpec && <VegaChart spec={chartSpec} />}
+      {viewMode === "chart" && chartConfig && (
+        <div className="chart-builder">
+          <div className="chart-controls">
+            <label>
+              <span>Mark</span>
+              <select
+                value={chartConfig.mark}
+                onChange={(e) => updateChartConfig({ mark: e.target.value as ChartMark })}
+              >
+                {CHART_MARKS.map((mark) => (
+                  <option key={mark} value={mark}>
+                    {mark}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>X</span>
+              <select value={chartConfig.x} onChange={(e) => updateChartConfig({ x: e.target.value })}>
+                {result.columns.map((col) => (
+                  <option key={col} value={col}>
+                    {col}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Y</span>
+              <select value={chartConfig.y} onChange={(e) => updateChartConfig({ y: e.target.value })}>
+                {result.columns.map((col, idx) => (
+                  <option key={col} value={col} disabled={!numeric[idx]}>
+                    {col}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Series</span>
+              <select
+                value={chartConfig.series ?? ""}
+                onChange={(e) => updateChartConfig({ series: e.target.value || null })}
+              >
+                <option value="">None</option>
+                {result.columns
+                  .filter((col) => col !== chartConfig.x && col !== chartConfig.y)
+                  .map((col) => (
+                    <option key={col} value={col}>
+                      {col}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+          {chartSpec ? (
+            <VegaChart spec={chartSpec} />
+          ) : (
+            <p className="muted sqled-hint">Select a numeric Y column to chart.</p>
+          )}
+        </div>
+      )}
 
       {result.columns.length === 0 && (
         <p className="muted sqled-hint">Query ran successfully — no rows returned.</p>

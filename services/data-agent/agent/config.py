@@ -7,16 +7,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_env: str = "dev"
-    # Agent connects as a strictly read-only role; RLS still applies.
+    # Agent + regular SQL-editor users connect as a strictly read-only role; RLS
+    # still applies (rows scoped to the user's datasets / own operational rows).
     agent_database_url: str = "postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa"
+    # Elevated read-only role for the admin SQL editor: BYPASSRLS + SELECT on every
+    # schema, so an admin can query any table (incl. internal app.* tables) and see
+    # all rows. Only role == "admin" requests route here; still SELECT-only. Created
+    # by migration 0012_admin_ro_role.
+    admin_ro_database_url: str = "postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa"
     db_ssl: str = ""  # set to "require" in Azure (managed Postgres needs TLS)
-
-    # Agent architecture (restructure). "orchestrator" = the model drives
-    # fine-grained tools (run_sql/compute_trend/make_chart) turn-by-turn — the
-    # working default. "sandbox" = the model does a governed extract then hands
-    # analysis to skills running in a locked-down sandbox (Phase A prototype).
-    # Flip with AGENT_MODE=sandbox to measure the new path against a run.
-    agent_mode: str = "orchestrator"
 
     # Provider is abstracted (Decision G): pluggable LLM, stub when no key.
     # LLM_PROVIDER picks which key is used; no cross-provider fallback (see provider.py).
@@ -35,7 +34,7 @@ class Settings(BaseSettings):
 
     # Bounded run_sql attempt budget (counts both failures and successes the
     # agent chooses to retry) and a hard statement timeout — the two guardrails
-    # that make retries safe instead of just more expensive. See db.py/llm_agent.py.
+    # that make retries safe instead of just more expensive. See db.py.
     # 8, not 4: a real question spends 2-4 attempts just on discovery (does the
     # suburb exist / what's its casing / what date range) before the answer query
     # even runs. 4 let a single trend question exhaust the budget on probes and
@@ -44,10 +43,21 @@ class Settings(BaseSettings):
     max_sql_attempts: int = 8
     sql_statement_timeout_ms: int = 6000
 
-    # Sandbox path (AGENT_MODE=sandbox): total run_analysis attempts per question.
-    # Confirmed retry budget is 2, i.e. 1 initial run + 2 self-corrections = 3.
-    # Skills do the risky maths (tested once), so a run rarely needs all three.
+    # Total run_analysis attempts per question. Confirmed retry budget is 2, i.e.
+    # 1 initial run + 2 self-corrections = 3. Skills do the risky maths (tested
+    # once), so a run rarely needs all three.
     sandbox_run_attempts: int = 3
+
+    # Which executor runs run_analysis code (restructure Phase A vs B):
+    #   "subprocess" — the quick restricted-builtins spawned process (Phase A).
+    #     Zero extra deps; NOT a hard isolation boundary against a determined
+    #     escape. The default so host unit tests run without Node.
+    #   "pyodide"    — the hardened Pyodide/WASM runtime (Phase B): model code runs
+    #     in WebAssembly with no syscalls, no host filesystem, no network. Needs
+    #     Node + the bundled pyodide in the image; docker-compose sets it on.
+    # Both share the same run_code() signature, skills, and AnalysisResult, so the
+    # agent surface is identical — this only swaps the isolation boundary.
+    sandbox_runtime: str = "subprocess"
 
     # Hard backstops on a single agent run, independent of model behaviour. A
     # misbehaving model (e.g. DeepSeek ignoring a "stop" tool return and looping

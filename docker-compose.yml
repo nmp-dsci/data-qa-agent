@@ -93,6 +93,9 @@ services:
     environment:
       APP_ENV: dev
       AGENT_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa
+      # Elevated read-only role for the admin SQL editor (BYPASSRLS, all schemas);
+      # created by migration 0012. Only role==admin editor queries use it.
+      ADMIN_RO_DATABASE_URL: postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa
       # The dbt manifest lets get_schema() ground the LLM in the real marts.
       DBT_MANIFEST: /dbt-target/manifest.json
       # Provider is pluggable (Decision G): LLM_PROVIDER picks deepseek (default) or
@@ -100,9 +103,10 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      # Agent architecture (restructure): "orchestrator" (default) or "sandbox"
-      # (extract -> run_analysis -> skills). Flip with AGENT_MODE=sandbox.
-      AGENT_MODE: ${AGENT_MODE:-orchestrator}
+      # run_analysis executor (restructure Phase B): "pyodide" = hardened WASM
+      # runtime (no syscalls; the image ships Node + pyodide), "subprocess" = the
+      # Phase A restricted-builtins process. The image has Node, so default it on.
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-pyodide}
       # Optional — ships agent traces to Logfire Cloud; empty = local-only tracing.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
     volumes:

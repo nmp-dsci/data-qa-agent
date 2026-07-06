@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Agent Restructure — Plan</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1e222b; --border:#2a2f3a;
+    --text:#e7e9ee; --muted:#9aa3b2; --accent:#b48a3f; --accent-2:#6ea8fe;
+    --user:#223047; --danger:#f2777a; --success:#9ece6a; --warn:#e0af68;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{width:min(1120px,100%); margin:0 auto; padding:32px 20px 96px;}
+  code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+
+  /* Header */
+  .hero{border:1px solid var(--border); background:linear-gradient(160deg,var(--panel) 0%, #12151c 100%);
+    border-radius:20px; padding:28px 28px 24px; margin-bottom:22px;}
+  .kicker{text-transform:uppercase; letter-spacing:.14em; font-size:11px; color:var(--accent);
+    font-weight:600; margin:0 0 10px;}
+  h1{margin:0 0 10px; font-size:29px; line-height:1.15; letter-spacing:-.01em;}
+  .lede{margin:0; color:var(--muted); font-size:16px; max-width:80ch;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:18px;}
+  .chip{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--text);
+    background:var(--panel-2); border:1px solid var(--border); border-radius:999px; padding:5px 12px;}
+  .chip b{color:var(--accent-2); font-variant-numeric:tabular-nums;}
+  .chip.warn b{color:var(--warn);} .chip.bad b{color:var(--danger);} .chip.good b{color:var(--success);}
+  .chip.decided{border-color:var(--accent); background:rgba(180,138,63,.1);}
+  .chip.decided b{color:var(--accent);}
+
+  /* Sections */
+  section{margin:34px 0;}
+  .sec-head{display:flex; align-items:baseline; gap:12px; margin:0 0 16px;}
+  .sec-num{font-size:12px; font-weight:700; color:var(--accent); border:1px solid var(--border);
+    background:var(--panel-2); border-radius:8px; padding:3px 8px; white-space:nowrap;}
+  h2{margin:0; font-size:21px; letter-spacing:-.01em;}
+  .sec-sub{color:var(--muted); margin:2px 0 0; font-size:14px;}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px;}
+  .grid{display:grid; gap:16px;}
+  @media(min-width:760px){ .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr));} }
+  .min0{min-width:0;}
+
+  p{margin:0 0 12px;} p:last-child{margin-bottom:0;}
+  .muted{color:var(--muted);}
+  strong{color:#fff;}
+  ul.clean{margin:8px 0 0; padding:0; list-style:none;}
+  ul.clean li{position:relative; padding:6px 0 6px 22px; color:var(--muted); font-size:14px;}
+  ul.clean li::before{content:""; position:absolute; left:4px; top:13px; width:6px; height:6px;
+    border-radius:50%; background:var(--accent);}
+  ul.clean li b{color:var(--text); font-weight:600;}
+
+  .callout{border:1px solid var(--border); border-left:3px solid var(--accent); background:var(--panel-2);
+    border-radius:10px; padding:14px 16px; font-size:14px;}
+  .callout.good{border-left-color:var(--success);}
+  .callout.you{border-left-color:var(--accent-2);}
+  .callout .lbl{text-transform:uppercase; letter-spacing:.08em; font-size:10.5px; font-weight:700;
+    color:var(--muted); display:block; margin-bottom:5px;}
+
+  /* Diagram */
+  .diagram-wrap{overflow-x:auto; background:var(--panel-2); border:1px solid var(--border);
+    border-radius:12px; padding:16px;}
+  .diagram-wrap .mermaid{min-width:520px;}
+  .cap{font-size:12.5px; color:var(--muted); margin:10px 2px 0;}
+  .dlabel{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent);
+    font-weight:600; margin:0 2px 8px;}
+
+  /* Before / after */
+  .ba{display:grid; gap:0; border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+  @media(min-width:820px){ .ba{grid-template-columns:1fr 1fr;} }
+  .ba .col{padding:18px 20px; min-width:0;}
+  .ba .col.today{background:var(--panel);}
+  .ba .col.target{background:linear-gradient(180deg,rgba(110,168,254,.06),transparent); border-left:1px solid var(--border);}
+  @media(max-width:819px){ .ba .col.target{border-left:none; border-top:1px solid var(--border);} }
+  .ba h3{margin:0 0 4px; font-size:12px; letter-spacing:.08em; text-transform:uppercase;}
+  .ba .today h3{color:var(--danger);} .ba .target h3{color:var(--success);}
+  .ba .col > .sub{color:var(--muted); font-size:13px; margin:0 0 14px;}
+  .ba dl{margin:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px 12px; align-items:baseline;}
+  .ba dt{color:var(--muted); font-size:13.5px; min-width:0;}
+  .ba dd{margin:0; text-align:right; font-weight:600; font-size:14px; font-variant-numeric:tabular-nums;}
+  .ba dd.n-bad{color:var(--danger);} .ba dd.n-good{color:var(--success);} .ba dd.n-mut{color:var(--muted);}
+
+  /* Answer cards */
+  .qa{border:1px solid var(--border); border-radius:12px; background:var(--panel); padding:20px; height:100%;}
+  .qa .qh{display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;}
+  .qa .qbadge{font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--accent-2);
+    border:1px solid #2f4a6b; background:rgba(110,168,254,.08); border-radius:6px; padding:3px 8px; white-space:nowrap; margin-top:2px;}
+  .qa h3{margin:0; font-size:16px;}
+  .qa p{font-size:13.7px; color:var(--muted);}
+  .verdict{margin-top:12px; border-top:1px solid var(--border); padding-top:12px; font-size:13.7px;}
+  .verdict b{color:var(--success);}
+
+  /* Code */
+  pre.code{overflow-x:auto; background:#0b0d12; border:1px solid var(--border); border-radius:12px;
+    padding:16px; font-size:12.5px; line-height:1.6; margin:0;}
+  pre.code .c{color:var(--muted);} pre.code .k{color:#c586c0;} pre.code .s{color:var(--success);}
+  pre.code .f{color:var(--accent-2);} pre.code .n{color:var(--warn);} pre.code .d{color:#dcdcaa;}
+
+  /* Decision recap */
+  .recap{display:grid; gap:12px;}
+  @media(min-width:760px){ .recap{grid-template-columns:1.3fr 1fr 1fr;} }
+  .recap .box{border:1px solid var(--border); border-radius:12px; padding:16px; min-width:0;}
+  .recap .box.chosen{border-color:var(--accent); background:rgba(180,138,63,.07);}
+  .recap .box h3{margin:0 0 6px; font-size:15px;}
+  .recap .box.chosen h3{color:var(--accent);}
+  .recap .box .why{font-size:13px; color:var(--muted);}
+  .recap .box.dim{opacity:.62;}
+  .xmark{color:var(--danger); font-weight:700;} .chk{color:var(--success); font-weight:700;}
+
+  /* Phases */
+  .phases{display:grid; gap:14px;}
+  .phase{display:grid; grid-template-columns:auto minmax(0,1fr); gap:16px; align-items:start;}
+  .phase .dot{width:34px; height:34px; border-radius:10px; background:var(--panel-2); border:1px solid var(--border);
+    display:grid; place-items:center; font-weight:700; color:var(--accent); font-size:14px;}
+  .phase .body{min-width:0;}
+  .phase h3{margin:2px 0 5px; font-size:16px;}
+  .phase .goal{font-size:13.5px; color:var(--muted); margin:0 0 8px;}
+  .phase .files{display:flex; flex-wrap:wrap; gap:6px;}
+  .tagf{font-size:11.5px; color:var(--accent-2); background:var(--panel-2); border:1px solid var(--border);
+    border-radius:6px; padding:2px 7px;}
+  .phase.optional{opacity:.72;}
+
+  /* Risks */
+  .risk{display:grid; grid-template-columns:auto minmax(0,1fr); gap:14px; padding:14px 0; border-top:1px solid var(--border);}
+  .risk:first-child{border-top:none;}
+  .sev{font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:3px 8px;
+    border-radius:6px; height:fit-content; white-space:nowrap;}
+  .sev.hi{color:var(--danger); border:1px solid #6b2a2a; background:rgba(242,119,122,.08);}
+  .sev.md{color:var(--warn); border:1px solid #6b5a2a; background:rgba(224,175,104,.08);}
+  .sev.lo{color:var(--muted); border:1px solid var(--border);}
+  .risk .body{min-width:0;} .risk h4{margin:0 0 3px; font-size:14.5px;}
+  .risk p{font-size:13.5px; color:var(--muted);}
+  .q{color:var(--accent-2); font-weight:600;}
+
+  /* sandbox bar */
+  .bar{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;}
+  .bar .b{font-size:12px; color:var(--text); background:#12151c; border:1px solid var(--border);
+    border-radius:8px; padding:6px 10px;}
+  .bar .b b{color:var(--danger);}
+
+  /* Input */
+  form.decide{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:22px;}
+  form.decide fieldset{border:none; margin:0 0 20px; padding:0;}
+  form.decide legend{font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
+    padding:0; margin:0 0 10px; font-weight:600;}
+  .choice{display:block; border:1px solid var(--border); background:var(--panel-2); border-radius:10px;
+    padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:border-color .12s;}
+  .choice:hover{border-color:var(--accent-2);}
+  .choice input{margin-right:9px; accent-color:var(--accent);}
+  .choice .ct{font-weight:600; font-size:14px;}
+  .choice .cd{color:var(--muted); font-size:12.5px; margin-top:3px; margin-left:23px;}
+  .choice:has(input:checked){border-color:var(--accent); background:rgba(180,138,63,.08);}
+  textarea{width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
+    color:var(--text); padding:11px 13px; font:inherit; font-size:14px; resize:vertical; min-height:64px;}
+  .submit{margin-top:6px; background:var(--accent); color:#1a1206; border:none; border-radius:10px;
+    padding:11px 20px; font-weight:700; font-size:14px;}
+  .submit:hover{filter:brightness(1.07);}
+  .hint{font-size:12px; color:var(--muted); margin-top:10px;}
+  a{color:var(--accent-2);}
+  .foot{margin-top:40px; padding-top:18px; border-top:1px solid var(--border); color:var(--muted); font-size:12.5px;}
+
+  /* Skills catalog */
+  .grp{border:1px solid var(--border); border-radius:12px; background:var(--panel); padding:18px; min-width:0;}
+  .grp .gh{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:2px;}
+  .grp h3{margin:0; font-size:15px;}
+  .grp .gnum{font-size:11px; color:var(--accent); font-weight:700;}
+  .grp .gsub{color:var(--muted); font-size:12.5px; margin:2px 0 12px;}
+  .skill{padding:9px 0; border-top:1px solid var(--border);}
+  .skill:first-of-type{border-top:none;}
+  .skill code{color:var(--accent-2); font-size:13px; word-break:break-word;}
+  .skill .rep{display:block; color:var(--muted); font-size:12px; margin-top:3px;}
+  .pill{display:inline-block; font-size:9.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    padding:2px 7px; border-radius:999px; border:1px solid #6b2a2a; color:var(--danger);
+    background:rgba(242,119,122,.08); vertical-align:middle; white-space:nowrap;}
+  .pill.have{border-color:#33502f; color:var(--success); background:rgba(158,206,106,.08);}
+
+  /* Isolation table */
+  .tblwrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px;}
+  table.tbl{border-collapse:collapse; width:100%; min-width:680px; font-size:13px;}
+  table.tbl th,table.tbl td{text-align:left; padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:top; min-width:0;}
+  table.tbl th{color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em; background:var(--panel-2);}
+  table.tbl tr:last-child td{border-bottom:none;}
+  table.tbl tr.pick td{background:rgba(180,138,63,.08);}
+  table.tbl tr.pick td:first-child{border-left:3px solid var(--accent); font-weight:600;}
+  table.tbl .yes{color:var(--success);} table.tbl .no{color:var(--danger);} table.tbl .mid{color:var(--warn);}
+  .src{font-size:12px; color:var(--muted); margin-top:14px;}
+  .src a{color:var(--accent-2);} .src b{color:var(--text);}
+  .steps{display:grid; gap:10px; margin-top:6px;}
+  .step{display:grid; grid-template-columns:auto minmax(0,1fr); gap:12px; align-items:baseline;}
+  .step .sn{font-size:11px; font-weight:700; color:var(--accent-2); border:1px solid var(--border);
+    background:var(--panel-2); border-radius:6px; padding:2px 7px; white-space:nowrap;}
+  .step .st{font-size:13.5px; color:var(--muted);} .step .st b{color:var(--text);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <p class="kicker">Technical Plan · data-qa-agent · rev 3 (scope confirmed)</p>
+    <h1>Sandbox-centric data agent: cheap model runs smart-model-authored skills</h1>
+    <p class="lede">The runtime LLM pulls a <strong>bounded, pre-aggregated extract</strong> from the marts, then does
+      the heavy lifting — growth, trends, insights, charts — as <strong>code in a locked-down sandbox</strong>, leaning
+      on a library of <strong>skills authored offline by a smart model (Opus / Fable)</strong>. A cheap runtime model
+      stays cheap, but produces smart-model-quality analysis because the expertise is baked into the skills it calls.</p>
+    <div class="chips">
+      <span class="chip decided">Direction <b>B + skills</b></span>
+      <span class="chip decided">start <b>Phase A · prototype</b></span>
+      <span class="chip decided">sandbox <b>Pyodide / WASM</b></span>
+      <span class="chip decided">stopgap <b>token cap ↑ now</b></span>
+      <span class="chip">authoring <b>Opus / Fable</b></span>
+      <span class="chip good">heavy lifting <b>in sandbox</b></span>
+    </div>
+  </div>
+
+  <!-- 1. GOAL -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><div><h2>Goal</h2>
+      <p class="sec-sub">What we are changing, and why.</p></div></div>
+    <div class="card">
+      <p>Get <strong>smart-model-quality reports out of a cheap, few-turn runtime loop</strong>. Instead of the model
+        orchestrating many fine-grained tools across ~19 turns (interpreting prose knowledge as it goes), it does one
+        governed data extract and hands the analysis to <strong>code running in a sandbox</strong> — code it writes with
+        the help of <strong>skills</strong> a smarter model wrote and tested ahead of time.</p>
+      <div class="callout you" style="margin-top:14px">
+        <span class="lbl">Your framing, captured</span>
+        “From the marts schema the LLM extracts tables with filters to limit rows or pre-aggregates the data, then uses
+        that data in a sandbox to generate growth rates / trends / insights. A lot of the heavy lifting is in the
+        sandbox. Skills — written by a smart model for the small model to pick up — teach it how.”
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. CURRENT STATE -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><div><h2>Current state — the model is the orchestrator</h2>
+      <p class="sec-sub">Verified against the data-agent code and a real run trace.</p></div></div>
+    <div class="grid cols-2">
+      <div class="card min0">
+        <p><strong>How a report is built today.</strong> The LLM drives every hop: browse the knowledge tree, write a
+          query, get it back, call <code>compute_trend</code>, call <code>make_chart</code>, maybe query again — each a
+          separate turn that re-sends a growing context. Governed by hard caps in <code>config.py</code>.</p>
+        <ul class="clean">
+          <li><b>8 fine-grained tools</b> the model stitches together turn-by-turn</li>
+          <li><b>19 markdown knowledge pages</b> of prose the model reads &amp; re-enacts each run</li>
+          <li><b>Caps:</b> <code>agent_request_limit=22</code>, <code>agent_total_tokens_limit=250k</code>, <code>max_knowledge_reads=6</code></li>
+          <li><b>Output:</b> a typed <code>ReportDraft</code> the server assembles</li>
+        </ul>
+      </div>
+      <div class="card min0">
+        <p class="muted" style="margin-bottom:12px"><strong style="color:#fff">Evidence — run <code>ffcb65bf</code></strong>
+          (“top growth suburbs for sale price and rent”)</p>
+        <dl style="margin:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px 12px; align-items:baseline; font-size:14px">
+          <dt class="muted">Trace length</dt><dd style="margin:0;text-align:right;font-weight:600;color:var(--danger)">50 steps</dd>
+          <dt class="muted">Model turns</dt><dd style="margin:0;text-align:right;font-weight:600;color:var(--danger)">~19 / 22 cap</dd>
+          <dt class="muted">Latency</dt><dd style="margin:0;text-align:right;font-weight:600;color:var(--danger)">62.8 s</dd>
+          <dt class="muted">Nominal tokens</dt><dd style="margin:0;text-align:right;font-weight:600;color:var(--muted)">243k</dd>
+          <dt class="muted">Re-run heavy Q</dt><dd style="margin:0;text-align:right;font-weight:600;color:var(--danger)">252k → stub</dd>
+        </dl>
+        <p class="cap">The heavy two-dataset question tips past the 250k cap and falls back to the stub — the user gets
+          a canned answer, not a report. Cost scales with <em>turns</em>, not question size.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. WHY IT STRAINS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><div><h2>Why it strains</h2>
+      <p class="sec-sub">Two design choices that fight the model's tendencies.</p></div></div>
+    <div class="grid cols-2">
+      <div class="card min0">
+        <h3 style="margin:0 0 6px; font-size:15px; color:var(--warn)">Procedure encoded as prose</h3>
+        <p class="muted" style="font-size:14px">Pages like <code>growth-rates.md</code> describe <em>how</em> to compute
+          in English. The model must find, read, interpret, and hand-carry each step through tools — the least reliable
+          way to make an LLM follow a procedure, and the direct cause of the over-exploration in the trace.</p>
+      </div>
+      <div class="card min0">
+        <h3 style="margin:0 0 6px; font-size:15px; color:var(--warn)">The LLM is the execution engine</h3>
+        <p class="muted" style="font-size:14px">You already trust <em>code</em> over the model for the hard part —
+          <code>compute_trend</code> exists because the prompt says <strong>“NEVER do arithmetic yourself.”</strong> The
+          problem is the model still <em>stitches</em> those tools together one turn at a time. Move the stitching into
+          sandbox code.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. CHOSEN ARCHITECTURE -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><div><h2>The architecture you chose — extract → sandbox → report</h2>
+      <p class="sec-sub">Free-form code (Option B), guided and de-risked by smart-model-authored skills.</p></div></div>
+
+    <p class="dlabel">Runtime — the cheap model's loop (~3–4 turns)</p>
+    <div class="diagram-wrap">
+      <div class="mermaid">
+flowchart LR
+  Q["User question"] --> PLAN["Cheap LLM<br/>picks skills +<br/>writes extract SQL"]
+  PLAN --> PULL["Governed extract<br/>marts · filters / pre-agg<br/>agent_ro · RLS · SELECT-only"]
+  PULL --> DF[("Bounded DataFrame<br/>small · already scoped")]
+  DF --> SB
+  subgraph SB["Locked-down sandbox  ·  no net / fs / creds"]
+    CODE["Model-written pandas"] --> USE["calls skills.growth_rate()<br/>skills.trend_chart() …"]
+  end
+  SB --> R["ReportDraft"] --> A["Assembled report"]
+  LIB["Skill library"]:::lib -.preloaded in.-> SB
+  classDef lib fill:#16241a,stroke:#33502f,color:#9ece6a;
+      </div>
+    </div>
+    <p class="cap">Heavy lifting lives in the sandbox, not in model turns. The extract is bounded at pull time, so the
+      sandbox only ever handles a small, already-authorized frame.</p>
+
+    <p class="dlabel" style="margin-top:22px">Offline — the smart model authors the skills (the key idea)</p>
+    <div class="diagram-wrap">
+      <div class="mermaid">
+flowchart LR
+  YOU["You + smart model<br/>Opus / Fable"] --> WRITE["Write &amp; unit-test<br/>skills"]
+  WRITE --> TEST{"tests<br/>pass?"}
+  TEST -- no --> WRITE
+  TEST -- yes --> COMMIT["Commit to<br/>skill library"]
+  COMMIT -. consumed at runtime by .-> CHEAP["Cheap runtime model<br/>deepseek"]
+  classDef s fill:#241f16,stroke:#6b5a2a,color:#e0af68;
+  class YOU,WRITE s;
+      </div>
+    </div>
+    <div class="callout good" style="margin-top:14px">
+      <span class="lbl">Why this is powerful</span>
+      A <strong>dumb, cheap model produces smart-model-quality output</strong> because the expensive reasoning was spent
+      <em>once</em>, offline, writing and testing the skill — not re-derived on every user question. The runtime model's
+      job shrinks to “pick the right skills and feed them the right data.”
+    </div>
+    <div class="callout you" style="margin-top:12px">
+      <span class="lbl">Your emphasis — the offline pass bakes in presentation quality, not just math</span>
+      The skill library isn't only <em>how to compute growth</em> — it's <strong>how to present it well</strong>. The
+      visualisation and insight skills (§05 groups 2 &amp; 3) encode a <strong>single, tested presentation standard</strong>:
+      the same chart styling, the same headline shape, the same report structure on every answer. Because a smart model
+      designs them once, every cheap-model run inherits <strong>consistent, UX-maximised charts and headlines</strong> —
+      the output quality stops depending on how well the runtime model happens to phrase things that turn.
+    </div>
+  </section>
+
+  <!-- 5. SKILLS CATALOG -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><div><h2>The skills to build — grouped by job</h2>
+      <p class="sec-sub">One skill per prose knowledge page. We start at <strong>zero skills</strong> and grow the library page-by-page.</p></div></div>
+
+    <p class="muted" style="font-size:14px; margin-bottom:16px">Your three groups map almost 1:1 onto the existing
+      <code>knowledge/</code> tree — <code>analysis/</code> → data analysis, <code>presentation/</code> chart pages →
+      visualisation, <code>presentation/</code> structure pages → insight structure. Each skill below <strong>replaces a
+      markdown page</strong> the model reads and re-enacts today with <strong>tested code it just calls</strong>.</p>
+
+    <div class="grid cols-3">
+      <div class="grp">
+        <div class="gh"><h3>1 · Data analysis</h3><span class="gnum">the math</span></div>
+        <p class="gsub">from <code>knowledge/analysis/</code></p>
+        <div class="skill"><code>rolling_average(df, window=6)</code> <span class="pill">to build</span>
+          <span class="rep">↳ rolling-averages.md — the one 6-mo window for line &amp; growth</span></div>
+        <div class="skill"><code>growth_rate(df, *, metric, period)</code> <span class="pill">to build</span>
+          <span class="rep">↳ growth-rates.md — N-year growth off the rolling base, not raw months</span></div>
+        <div class="skill"><code>latest_value(df)</code> <span class="pill">to build</span>
+          <span class="rep">↳ latest-month.md — “latest” = 6-mo rolling at newest month</span></div>
+        <div class="skill"><code>gross_yield(rent, price)</code> <span class="pill">to build</span>
+          <span class="rep">↳ yield.md — annualised rent / price, weighted</span></div>
+      </div>
+      <div class="grp">
+        <div class="gh"><h3>2 · Visualisation</h3><span class="gnum">the charts</span></div>
+        <p class="gsub">from <code>knowledge/presentation/</code></p>
+        <div class="skill"><code>trend_chart(series)</code> <span class="pill">to build</span>
+          <span class="rep">↳ trend-charts.md — actual + 6-mo rolling overlay</span></div>
+        <div class="skill"><code>comparison_chart(frame)</code> <span class="pill">to build</span>
+          <span class="rep">↳ comparison-charts.md — bar / grouped-bar across entities</span></div>
+        <div class="skill"><code>profile_chart(frame)</code> <span class="pill">to build</span>
+          <span class="rep">↳ profile-sections.md — composition comparison per domain</span></div>
+        <p class="muted" style="font-size:12px; margin-top:12px">Each emits the same <code>ChartSpec</code> that
+          <code>make_chart</code> produces today, so the frontend renders identically.</p>
+      </div>
+      <div class="grp">
+        <div class="gh"><h3>3 · Insight structure</h3><span class="gnum">the report</span></div>
+        <p class="gsub">from <code>knowledge/presentation/</code></p>
+        <div class="skill"><code>make_insight(...)</code> <span class="pill">to build</span>
+          <span class="rep">↳ what-makes-an-insight.md — insight, not a restated row</span></div>
+        <div class="skill"><code>related_metrics(...)</code> <span class="pill">to build</span>
+          <span class="rep">↳ related-metrics.md — context metrics beyond the one asked</span></div>
+        <div class="skill"><code>build_report(...)</code> <span class="pill">to build</span>
+          <span class="rep">↳ report-structure.md — section order, when to skip one → <code>ReportDraft</code></span></div>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:16px">
+      <span class="lbl">Domain pages stay as knowledge, not skills</span>
+      The <code>knowledge/domains/</code> pages (property-sales / rent overviews, suburbs↔postcodes, property-types,
+      segments, bedrooms) describe <em>the schema and what to extract</em> — they guide the <strong>SQL extract</strong>,
+      not the sandbox math. They remain compact prose the model reads before writing the extract query.
+    </div>
+
+    <div class="callout you" style="margin-top:12px">
+      <span class="lbl">Your requirement — the model must flag skill gaps (we start from 0)</span>
+      Because the library starts empty, on day one almost every question hits a gap. So <code>run_analysis</code> returns a
+      typed <code>SkillGap</code> whenever the model reaches for math no skill covers — the model may fall back to inline
+      pandas to still answer, but it <strong>must name the gap</strong>. Gaps are logged to a backlog the smart model
+      works through next. That is the bootstrap loop: <strong>gap → backlog → Opus/Fable authors &amp; tests → library
+      grows → fewer gaps</strong>.
+    </div>
+
+    <pre class="code"><span class="c"># run_analysis result carries an explicit skill-gap signal — never silent</span>
+<span class="k">class</span> <span class="f">AnalysisResult</span>(BaseModel):
+    report: ReportDraft | <span class="n">None</span>
+    skills_used: <span class="n">list</span>[<span class="n">str</span>]         <span class="c"># ← logged per run → app.query_runs; the unit of eval/diagnosis</span>
+    skill_gaps: <span class="n">list</span>[SkillGap]        <span class="c"># e.g. SkillGap(need="seasonality_adjust", why="no skill for it")</span>
+    used_inline_math: <span class="n">bool</span>          <span class="c"># True ⇒ a skill probably should exist for this</span>
+
+<span class="c"># system prompt rule for the cheap model:</span>
+<span class="c">#   "Prefer skills.*. If no skill fits, you MAY write pandas, but you MUST record a SkillGap</span>
+<span class="c">#    naming what a future skill should do. Do NOT hand-roll growth/yield math silently."</span>
+<span class="c"># eval loop: a wrong answer → inspect_run.py shows skills_used → fix that skill or author the gap.</span></pre>
+  </section>
+
+  <!-- 6. YOUR TWO QUESTIONS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><div><h2>Your two questions, answered</h2>
+      <p class="sec-sub">How skills plug into Pydantic AI · what language the sandbox should use.</p></div></div>
+
+    <div class="grid cols-2" style="margin-bottom:16px">
+      <div class="qa min0">
+        <div class="qh"><span class="qbadge">Q · Pydantic AI</span><h3>How do skills get used?</h3></div>
+        <p>Skills live at <strong>two levels</strong>, and only a thin surface touches the agent:</p>
+        <ul class="clean">
+          <li><b>Inside the sandbox</b> — skills are a tested Python package the sandbox preloads; the model's generated
+            code just <code>import skills</code> and calls <code>skills.growth_rate(df, …)</code>.</li>
+          <li><b>To the agent</b> — one Pydantic AI tool, <code>run_analysis(code)</code>, executes that code. The model
+            learns which skills exist from the system prompt (their signatures + smart-model-written docstrings/examples)
+            or a small <code>list_skills()</code> / <code>read_skill()</code> tool.</li>
+          <li><b>Focus</b> — Pydantic AI <b>toolsets</b> / <code>prepare</code> can expose only the skills relevant to a
+            question, so the cheap model isn't drowned in options.</li>
+        </ul>
+        <div class="verdict">So in Pydantic AI it's <b>one tool + a preloaded library</b>, not 8 tools the model
+          orchestrates. The agent decides <em>what</em>; skills carry the <em>how</em>.</div>
+      </div>
+      <div class="qa min0">
+        <div class="qh"><span class="qbadge">Q · Language</span><h3>pandas, or something faster?</h3></div>
+        <p>Keep the model's surface in <strong>Python + pandas</strong>. The bottleneck here is model correctness and
+          turns, <em>not</em> runtime speed:</p>
+        <ul class="clean">
+          <li><b>LLMs write pandas most reliably</b> — a cheap model is far more accurate in Python than in Polars /
+            DuckDB SQL / Rust. Wrong code = more turns, the exact cost we're cutting.</li>
+          <li><b>Volume is handled upstream</b> — the extract is filtered / pre-aggregated in SQL, so the frame is
+            already small. pandas speed is a non-issue.</li>
+          <li><b>Hide fast engines in skills</b> — if one skill is genuinely heavy, implement <em>it</em> in Polars /
+            DuckDB / numpy under the hood. The model still just calls <code>skills.foo(df)</code>.</li>
+        </ul>
+        <div class="verdict"><b>Python + pandas at the surface; fast engines hidden inside skills; heavy aggregation
+          pushed to SQL.</b> Don't trade a non-bottleneck (speed) for a real one (model errors).</div>
+      </div>
+    </div>
+
+    <pre class="code"><span class="c"># 1 · Skills = a tested library the SANDBOX preloads — authored offline by Opus/Fable</span>
+<span class="c"># agent/skills/analysis.py</span>
+<span class="k">def</span> <span class="f">growth_rate</span>(df, *, metric, period):  ...   <span class="c"># fast engine can hide in here</span>
+<span class="k">def</span> <span class="f">rolling_average</span>(df, window=<span class="n">6</span>): ...      <span class="c"># the 6-month base, in tested code</span>
+<span class="k">def</span> <span class="f">trend_chart</span>(series) -> ChartSpec: ...     <span class="c"># same spec make_chart emits today</span>
+
+<span class="c"># 2 · The agent exposes ONE Pydantic AI tool that runs model-written code in the sandbox</span>
+<span class="d">@agent.tool</span>
+<span class="k">async def</span> <span class="f">run_analysis</span>(ctx, code: <span class="n">str</span>) -> AnalysisResult:
+    <span class="s">"""Execute pandas in the locked-down sandbox over the extracted frame `df`.
+    Available inside: import skills; skills.growth_rate(...), skills.trend_chart(...)."""</span>
+    <span class="k">return await</span> sandbox.<span class="f">run</span>(code, frames={<span class="s">"df"</span>: ctx.deps.extract})   <span class="c"># no DB handle, no net</span>
+
+<span class="c"># 3 · The cheap model writes SHORT code that leans on skills — not raw arithmetic</span>
+<span class="c">#     import skills</span>
+<span class="c">#     s = skills.rolling_average(df, 6)</span>
+<span class="c">#     g = skills.growth_rate(s, metric="avg_price", period=(2010, 2026))</span>
+<span class="c">#     result = skills.build_report(g, chart=skills.trend_chart(s))</span></pre>
+  </section>
+
+  <!-- 7. SANDBOX: BUILD & SCALE -->
+  <section>
+    <div class="sec-head"><span class="sec-num">07</span><div><h2>The sandbox — how it's built, and how it scales</h2>
+      <p class="sec-sub">How agents usually run LLM-written code, why you picked Pyodide/WASM, and what deploy looks like.</p></div></div>
+
+    <p class="dlabel">How teams usually sandbox LLM-written code (2026)</p>
+    <p class="muted" style="font-size:14px; margin-bottom:12px">The field has converged on four isolation levels. The
+      rule of thumb: <strong>shared-kernel containers are fine for code you wrote, not for code an LLM wrote</strong> — a
+      single kernel bug is an escape. Stronger isolation costs either overhead or library reach.</p>
+
+    <div class="tblwrap">
+      <table class="tbl">
+        <thead><tr><th>Approach</th><th>Isolation</th><th>Libraries</th><th>Cold start</th><th>Who uses it</th><th>Fit here</th></tr></thead>
+        <tbody>
+          <tr><td>Container (Docker / runc)</td><td class="no">Shared kernel — weak for untrusted</td><td class="yes">Any</td><td class="yes">Fast</td><td>Daytona (default)</td><td class="no">Too weak for LLM code</td></tr>
+          <tr><td>gVisor (user-space kernel)</td><td class="mid">Syscalls re-implemented</td><td class="yes">Most</td><td class="mid">Medium</td><td>Modal, Google</td><td class="mid">Solid, ops overhead</td></tr>
+          <tr><td>Firecracker micro-VM</td><td class="yes">Own kernel per run (KVM)</td><td class="yes">Any</td><td class="mid">~100&nbsp;ms</td><td>E2B, AWS Lambda</td><td class="mid">Gold standard, VM fleet to run</td></tr>
+          <tr class="pick"><td>Pyodide / WASM ✔</td><td class="yes">No syscalls at all — capability-scoped</td><td class="mid">WASM-compatible only</td><td class="yes">ms, in-process</td><td>NVIDIA (client-side)</td><td class="yes">Best fit — see below</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="src"><b>Research sources:</b>
+      <a href="https://modal.com/resources/best-code-execution-sandboxes-ai-agents">Modal — best code-execution sandboxes</a> ·
+      <a href="https://northflank.com/blog/best-code-execution-sandbox-for-ai-agents">Northflank</a> ·
+      <a href="https://manveerc.substack.com/p/ai-agent-sandboxing-guide">Sandboxing guide — Firecracker / gVisor</a> ·
+      <a href="https://www.spheron.network/blog/ai-agent-code-execution-sandbox-e2b-daytona-firecracker/">Spheron — E2B / Daytona / Firecracker</a></p>
+
+    <div class="grid cols-2" style="margin-top:18px">
+      <div class="card min0">
+        <h3 style="margin:0 0 6px; font-size:15px; color:var(--success)">Why Pyodide/WASM fits <em>this</em> app</h3>
+        <ul class="clean">
+          <li><b>We need almost nothing exotic</b> — pandas + numpy over a <em>small in-memory frame</em>. No GPU, no
+            network, no big-data engine. WASM's library limits mostly don't bite.</li>
+          <li><b>Strongest isolation, least ops</b> — no syscalls means no kernel to escape; no VM fleet or container
+            orchestrator to run. Ideal for a small/solo deploy.</li>
+          <li><b>The frame is bounded upstream</b> — extract-time SQL filters / pre-aggregates, so per-run memory is tiny
+            and predictable.</li>
+        </ul>
+      </div>
+      <div class="card min0">
+        <h3 style="margin:0 0 6px; font-size:15px; color:var(--warn)">The one constraint to respect</h3>
+        <p class="muted" style="font-size:14px">Pyodide runs <strong>CPython compiled to WebAssembly</strong> — pandas
+          and numpy ship as WASM wheels, but arbitrary C-extension libraries may not. So the “hide a fast engine
+          (Polars / DuckDB) inside a skill” idea has a caveat: use its <em>wasm build</em> if one exists, otherwise push
+          that heavy aggregation to <strong>SQL at extract time</strong> instead. For v1 the skills need only
+          pandas+numpy, so this doesn't block us.</p>
+      </div>
+    </div>
+
+    <p class="dlabel" style="margin-top:22px">How it's implemented &amp; the prototype→hardened path</p>
+    <div class="card">
+      <div class="steps">
+        <div class="step"><span class="sn">boundary</span><span class="st">The agent only ever sees one tool —
+          <code>run_analysis(code)</code>. <b>The executor behind it can swap without touching the agent or the
+          skills.</b> That's what lets us prototype fast, then harden.</span></div>
+        <div class="step"><span class="sn">Phase A</span><span class="st"><b>Quick sandbox</b> to prove the win — a
+          locked-down <code>subprocess</code> (no net / no fs / no env, CPU + memory + wall-clock caps) running the
+          skills over the injected frame. Fast to stand up; measures the turns/token drop immediately.</span></div>
+        <div class="step"><span class="sn">Phase B</span><span class="st"><b>Harden to Pyodide/WASM</b> — swap the
+          executor to run the same code inside a Pyodide runtime (hosted via a WASM engine / worker). Same
+          <code>run_analysis</code> surface, same skills, strictly stronger isolation.</span></div>
+      </div>
+    </div>
+
+    <div class="callout good" style="margin-top:14px">
+      <span class="lbl">How it scales on deploy</span>
+      WASM instances are <strong>cheap, stateless, and per-request</strong>: spin one up in milliseconds, cap it, discard
+      it. No warm VM pool to manage. Horizontal scale is just <strong>more app workers</strong>, each holding a pool of
+      pre-initialized Pyodide runtimes. Because the extract is bounded, per-run memory stays small and predictable — the
+      opposite of a Firecracker fleet that needs its own orchestration layer.
+    </div>
+  </section>
+
+  <!-- 8. BEFORE / AFTER -->
+  <section>
+    <div class="sec-head"><span class="sec-num">08</span><div><h2>Before &amp; after</h2>
+      <p class="sec-sub">Same system, changing over time.</p></div></div>
+    <div class="ba">
+      <div class="col today min0">
+        <h3>Today</h3><p class="sub">Model orchestrates fine-grained tools</p>
+        <dl>
+          <dt>Model turns / report</dt><dd class="n-bad">~15–19</dd>
+          <dt>Heavy lifting</dt><dd class="n-mut">per-turn tools</dd>
+          <dt>Intelligence source</dt><dd class="n-mut">runtime model + prose</dd>
+          <dt>Heavy 2-dataset Q</dt><dd class="n-bad">250k → stub</dd>
+          <dt>Runtime cost</dt><dd class="n-mut">scales with turns</dd>
+        </dl>
+      </div>
+      <div class="col target min0">
+        <h3>Target</h3><p class="sub">Cheap model runs skills in a sandbox</p>
+        <dl>
+          <dt>Model turns / report</dt><dd class="n-good">~3–4</dd>
+          <dt>Heavy lifting</dt><dd class="n-good">sandbox code</dd>
+          <dt>Intelligence source</dt><dd class="n-good">smart-model skills</dd>
+          <dt>Heavy 2-dataset Q</dt><dd class="n-good">one run, no ceiling</dd>
+          <dt>Runtime cost</dt><dd class="n-good">bounded &amp; cheap</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. DECISION RECAP -->
+  <section>
+    <div class="sec-head"><span class="sec-num">09</span><div><h2>Direction chosen — and why not the alternatives</h2>
+      <p class="sec-sub">You picked sandbox + skills. Here's how it stacks up.</p></div></div>
+    <div class="recap">
+      <div class="box chosen min0">
+        <h3>✔ Sandbox + skills (chosen)</h3>
+        <p class="why"><span class="chk">+</span> Heavy lifting in code, ~3–4 turns<br>
+          <span class="chk">+</span> No skill-gap dead-ends — model can still write code<br>
+          <span class="chk">+</span> Cheap runtime, smart-model quality<br>
+          <span class="xmark">−</span> Must build &amp; maintain a hardened sandbox</p>
+      </div>
+      <div class="box dim min0">
+        <h3>Pure parameterized skills</h3>
+        <p class="why">Safer (no code exec) but <span class="xmark">rigid</span> — every new question shape needs a new
+          skill, and the model can't improvise. Rejected: too many dead-ends.</p>
+      </div>
+      <div class="box dim min0">
+        <h3>Keep &amp; tune</h3>
+        <p class="why">Smallest change, but <span class="xmark">masks the cause</span> — token ceiling stays close and
+          procedure stays fragile prose. Rejected: doesn't fix the root.</p>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:14px">
+      <span class="lbl">The trade you're accepting</span>
+      The sandbox is a <strong>real new security surface</strong> — that's the cost of Option B. The plan treats
+      hardening it (§09) as a first-class build item, not an afterthought. The upside — flexibility + a cheap runtime
+      that punches above its weight — is worth it.
+    </div>
+  </section>
+
+  <!-- 10. PHASES -->
+  <section>
+    <div class="sec-head"><span class="sec-num">10</span><div><h2>Phased delivery — your order: prove first, harden after</h2>
+      <p class="sec-sub">Prototype the win on a quick sandbox, then harden to Pyodide, then grow the skill library.</p></div></div>
+    <div class="phases">
+      <div class="phase">
+        <div class="dot" style="color:var(--success)">0</div>
+        <div class="body">
+          <h3>Now — stopgap: raise the token cap <span class="pill have">confirmed</span></h3>
+          <p class="goal">Immediately bump <code>agent_total_tokens_limit</code> so today's heavy two-dataset question
+            stops falling to the stub while the restructure lands. Tokens are ~6× cache-inflated, so headroom is cheap.</p>
+          <div class="files"><span class="tagf">agent/config.py</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="dot">A</div>
+        <div class="body">
+          <h3>Prove one path on a quick sandbox <span class="pill have">start here</span></h3>
+          <p class="goal">Single-entity trend (“Hornsby house price trend”): governed extract → <code>run_analysis</code>
+            (locked-down <code>subprocess</code>) with a first <code>trend_chart</code> + <code>build_report</code> skill →
+            <code>ReportDraft</code>. Measure turns / tokens vs the <code>ffcb65bf</code> baseline in a live trace. This is
+            the go/no-go on the whole direction.</p>
+          <div class="files"><span class="tagf">agent/sandbox/runner.py</span><span class="tagf">agent/skills/trend_report.py</span><span class="tagf">llm_agent.py</span><span class="tagf">inspect_run.py</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="dot">B</div>
+        <div class="body">
+          <h3>Harden the executor → Pyodide / WASM</h3>
+          <p class="goal">Swap the subprocess for a Pyodide runtime behind the same <code>run_analysis</code> boundary —
+            no syscalls, capability-scoped, CPU / memory / wall-clock caps. Same skills, same agent surface, strictly
+            stronger isolation. Confirm the trend path still passes.</p>
+          <div class="files"><span class="tagf">agent/sandbox/pyodide_runner.py</span><span class="tagf">wasm host / worker</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="dot">C</div>
+        <div class="body">
+          <h3>Author the skill library (smart model)</h3>
+          <p class="goal">Use Opus / Fable to write &amp; unit-test the §05 catalog: <code>rolling_average</code>,
+            <code>growth_rate</code>, <code>latest_value</code>, <code>gross_yield</code>, <code>trend_chart</code>,
+            <code>comparison_chart</code>, <code>profile_chart</code>, <code>make_insight</code>,
+            <code>related_metrics</code>, <code>build_report</code>. Prioritised by the <code>SkillGap</code> backlog the
+            prototype logs.</p>
+          <div class="files"><span class="tagf">agent/skills/*.py</span><span class="tagf">tests/test_skills.py</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="dot">D</div>
+        <div class="body">
+          <h3>Retool the agent &amp; shrink knowledge</h3>
+          <p class="goal">Replace the fine-grained tool orchestration with <code>extract</code> + <code>run_analysis</code>
+            + <code>list_skills</code>. Collapse the prose <em>analysis/presentation</em> pages into the skill docstrings;
+            keep the <em>domain</em> pages as extract guidance. Re-run the eval question set for parity.</p>
+          <div class="files"><span class="tagf">knowledge/</span><span class="tagf">agent/report.py</span><span class="tagf">evals/</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. RISKS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">11</span><div><h2>Risks &amp; the sandbox security bar</h2>
+      <p class="sec-sub">This is the cost of Option B — treat it as a build requirement, not a caveat.</p></div></div>
+    <div class="card" style="margin-bottom:14px">
+      <p style="font-size:14px"><strong>The sandbox must, before it runs a single line of model-written code:</strong></p>
+      <div class="bar">
+        <span class="b"><b>✕</b> network</span>
+        <span class="b"><b>✕</b> filesystem</span>
+        <span class="b"><b>✕</b> DB credentials</span>
+        <span class="b"><b>✕</b> env / secrets</span>
+        <span class="b">⏱ wall-clock cap</span>
+        <span class="b">▣ memory cap</span>
+        <span class="b">◱ CPU cap</span>
+        <span class="b">＝ only the extracted DataFrame</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="risk"><span class="sev hi">High</span><div class="body">
+        <h4>Sandbox escape / resource exhaustion</h4>
+        <p>Model-written code is untrusted. A weak sandbox is an RCE path. <span class="q">Decided: Pyodide/WASM for the
+          hardened runtime (no syscalls to escape); a locked-down subprocess only for the Phase&nbsp;A prototype. Trade-off
+          accepted — skills stay pandas+numpy so WASM's library limits don't bite (see §07).</span></p></div></div>
+      <div class="risk"><span class="sev hi">High</span><div class="body">
+        <h4>Data governance boundary</h4>
+        <p>RLS is enforced at extract time; the sandbox must receive <em>only</em> that scoped frame — never a live
+          connection or a way to re-query. <span class="q">Enforce via a frozen DataFrame passed by value + zero DB
+          handle in scope.</span></p></div></div>
+      <div class="risk"><span class="sev md">Medium</span><div class="body">
+        <h4>Cheap model writes wrong code</h4>
+        <p>Free-form code can be incorrect. Mitigation: skills do the risky math (tested once), the model mostly wires
+          them together; <code>run_analysis</code> returns errors so it can self-correct within a turn budget.
+          <span class="q">Cap retries so a broken run can't loop.</span></p></div></div>
+      <div class="risk"><span class="sev md">Medium</span><div class="body">
+        <h4>Chart / report parity</h4>
+        <p>Skills must reproduce today's <code>make_chart</code> specs and <code>ReportDraft</code> shape so the frontend
+          renders identically. <span class="q">Snapshot-test skill output against current reports in the eval set.</span></p></div></div>
+      <div class="risk"><span class="sev lo">Low</span><div class="body">
+        <h4>Interim: the token ceiling <span class="pill have">resolved</span></h4>
+        <p>Until this lands, the heavy question falls to stub. <span class="q">Decided: bump
+          <code>agent_total_tokens_limit</code> now as a stopgap (tokens are ~6× cache-inflated) — Phase&nbsp;0. The
+          restructure then makes the ceiling moot.</span></p></div></div>
+    </div>
+  </section>
+
+  <!-- 12. CONFIRMED SCOPE + OPEN ITEMS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">12</span><div><h2>Confirmed scope — and the last few open items</h2>
+      <p class="sec-sub">Your decisions are locked in below. A handful of small choices remain before I start Phase&nbsp;A.</p></div></div>
+
+    <div class="recap" style="margin-bottom:18px">
+      <div class="box chosen min0"><h3>✔ Direction</h3>
+        <p class="why">Sandbox + skills (Option B). Cheap runtime model runs smart-model-authored skills in a locked-down sandbox.</p></div>
+      <div class="box chosen min0"><h3>✔ Start point</h3>
+        <p class="why">Phase&nbsp;A — prototype the trend path on a quick sandbox to prove the turns/token win, harden after.</p></div>
+      <div class="box chosen min0"><h3>✔ Sandbox tech</h3>
+        <p class="why">Pyodide / WASM for the hardened runtime; subprocess only for the prototype.</p></div>
+    </div>
+    <div class="callout good" style="margin-bottom:20px">
+      <span class="lbl">✔ Stopgap</span> Raise <code>agent_total_tokens_limit</code> now (Phase&nbsp;0) so the heavy question stops hitting the stub.
+    </div>
+
+    <p class="dlabel" style="margin-top:6px">Open items — now resolved</p>
+    <div class="recap" style="margin-bottom:16px">
+      <div class="box chosen min0"><h3>✔ Skill author</h3>
+        <p class="why"><strong>Opus 4.8</strong> writes &amp; unit-tests the skills offline — strongest coding + test authoring.</p></div>
+      <div class="box chosen min0"><h3>✔ run_analysis retries</h3>
+        <p class="why"><strong>2 retries</strong> — room to self-correct on a broken run without looping.</p></div>
+      <div class="box chosen min0"><h3>✔ Skill-gap policy</h3>
+        <p class="why"><strong>Inline pandas + log a SkillGap.</strong> Keep answering day-one; backlog the gap for Opus.</p></div>
+    </div>
+
+    <div class="callout you" style="margin-bottom:12px">
+      <span class="lbl">Your new requirement — record skills-used per run so evals close the loop</span>
+      Every run logs <strong>which skills it called</strong> (plus any <code>SkillGap</code>) into
+      <code>app.query_runs</code> alongside the existing trace. So when a diagnostic or eval flags a <em>wrong</em>
+      answer, we can see exactly which skill produced it — fix that one skill, or author the missing one — and the whole
+      system gets more correct over time. <strong>Skills become the unit of improvement</strong>, inspected via
+      <code>inspect_run.py</code>. See the telemetry added to <code>AnalysisResult</code> in §05.
+    </div>
+
+    <div class="callout">
+      <span class="lbl">Scope is fully confirmed — starting Phase 0 + Phase A</span>
+      Nothing left blocking. I'll raise the token cap now, then build the quick-sandbox trend prototype and measure it
+      against <code>ffcb65bf</code>. Annotate any element and hit <strong>Send to Agent</strong> if anything else comes up.
+    </div>
+  </section>
+
+  <div class="foot">
+    Rev 3 — updated from your polled feedback: added the <strong>§05 skills catalog</strong> (data analysis · visualisation
+    · insight structure, mapped 1:1 onto <code>knowledge/</code>), the <strong>skill-gap detection</strong> loop for
+    starting from zero, and <strong>§07 on how the sandbox is built &amp; scales</strong> (isolation-level research,
+    Pyodide/WASM rationale, deploy scaling). Confirmed scope folded in: <strong>Phase&nbsp;A prototype first · Pyodide/WASM ·
+    token cap raised now</strong>. Design matches the app's frontend system (<code>frontend/src/styles.css</code>). Claims
+    verified against <code>services/data-agent/</code> (knowledge tree + tools) and run <code>ffcb65bf</code>; sandbox
+    approaches from 2026 sources cited in §07.
+  </div>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad:true, securityLevel:'loose',
+    theme:'base',
+    themeVariables:{
+      background:'#1e222b', primaryColor:'#171a21', primaryTextColor:'#e7e9ee',
+      primaryBorderColor:'#2a2f3a', lineColor:'#6b7280', secondaryColor:'#1e222b',
+      tertiaryColor:'#12151c', fontfamily:'ui-sans-serif, system-ui, sans-serif',
+      clusterBkg:'#12151c', clusterBorder:'#2a2f3a', edgeLabelBackground:'#12151c',
+      nodeTextColor:'#e7e9ee'
+    }
+  });
+</script>
+</body>
+</html>

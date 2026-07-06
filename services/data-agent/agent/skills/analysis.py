@@ -104,6 +104,47 @@ def trend_series(
 
 
 @skill
+def rolling_average(
+    df: pd.DataFrame,
+    *,
+    month_col: str,
+    value_col: str,
+    den_col: str | None = None,
+    group_col: str | None = None,
+    window: int = 6,
+) -> pd.DataFrame:
+    """The N-month trailing-mean series — the smoothing primitive on its own.
+
+    Where ``trend_series`` returns the actual + rolling overlay for a chart, this
+    returns just the smoothed line: a DataFrame ``[month, value, series]`` with one
+    row per month (the ``window``-month trailing mean, the same one growth and
+    "latest" use). Use it when you want the smoothed values themselves — to read
+    off a figure, difference two months, or drive a plain (non-overlay) chart.
+
+    ``value = value_col / den_col`` when ``den_col`` is given, else ``value_col``.
+    Months before the first non-null mean are dropped. Ungrouped calls label the
+    single series with ``value_col``; grouped calls label each with its group.
+    """
+    grouped = _grouped(
+        df,
+        month_col=month_col,
+        value_col=value_col,
+        den_col=den_col,
+        count_col=None,
+        group_col=group_col,
+    )
+    rows: list[dict[str, Any]] = []
+    for group, series in grouped.items():
+        label = group if group != "_all" else value_col
+        means = analytics.rolling_average(series, window)
+        for point, mean in zip(series, means, strict=True):
+            if mean is None:
+                continue
+            rows.append({"month": f"{point['month']}-01", "value": round(mean, 2), "series": label})
+    return pd.DataFrame(rows, columns=["month", "value", "series"])
+
+
+@skill
 def growth_rate(
     df: pd.DataFrame,
     *,

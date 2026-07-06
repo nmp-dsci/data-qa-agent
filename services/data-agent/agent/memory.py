@@ -2,13 +2,13 @@
 
 Recall is called programmatically before the agent runs (not an agent-invoked
 tool) so it happens every turn regardless of model tool-calling discretion.
-Remember stays a tool in llm_agent.py since deciding *what* is durably worth
+Remember stays a tool in sandbox_agent.py since deciding *what* is durably worth
 remembering needs model judgment.
 
 Both functions catch their own exceptions and degrade to a no-op. A broken or
 ungranted memory table must not drag a good LLM+SQL answer down to the
-offline stub via the outer catch-all in llm_agent.py — memory is a nice-to-have
-personalization layer, not core functionality.
+offline stub via the outer catch-all in sandbox_agent.py — memory is a
+nice-to-have personalization layer, not core functionality.
 """
 
 from __future__ import annotations

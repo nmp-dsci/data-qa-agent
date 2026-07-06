@@ -31,6 +31,6 @@ Average price = `total_sale_value / nullif(n_sold, 0)` (composes across any wind
 ## Reliability
 Buckets are kept even when tiny. **Do not filter thin months out** of a trend or
 series with a `WHERE n_sold >= N` clause — keep every month and let the 6-month
-rolling average absorb the noise ([[analysis/rolling-averages]],
-[[analysis/latest-month]]). SELECT-only; RLS limits rows to the datasets the user
+rolling average absorb the noise (the `rolling_average` / `latest_value` skills
+apply the 6-month window). SELECT-only; RLS limits rows to the datasets the user
 may access.

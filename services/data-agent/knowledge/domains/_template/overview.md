@@ -17,11 +17,11 @@ applies_to: []
 
 ## The measure(s)
 - How to compute the headline metric from the raw columns (sum/count/median → rate).
-- Which analysis pages apply ([[analysis/growth-rates]], [[analysis/rolling-averages]]).
+- Which analysis skills apply (`growth_rate`, `rolling_average`, `latest_value`).
 
 ## Segmenter for profiles
 - What dimension composition profiles should break down by for THIS domain
-  ([[presentation/profile-sections]]).
+  (fed to the `profile_chart` skill).
 
 ## Gotchas
 - Grain traps, non-additive columns, missing dimensions, case sensitivity,

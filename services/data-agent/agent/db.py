@@ -15,6 +15,12 @@ _connect_args = {"ssl": True} if settings.db_ssl else {}
 engine = create_async_engine(
     settings.agent_database_url, pool_pre_ping=True, future=True, connect_args=_connect_args
 )
+# Elevated read-only engine for admin SQL-editor queries (admin_ro: BYPASSRLS,
+# SELECT on every schema). Only role == "admin" run_select(..., as_admin=True)
+# calls use it; the agent + regular users stay on `engine` (agent_ro, RLS-scoped).
+admin_engine = create_async_engine(
+    settings.admin_ro_database_url, pool_pre_ping=True, future=True, connect_args=_connect_args
+)
 
 
 def _jsonable(value: Any) -> Any:
@@ -27,15 +33,24 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-async def run_select(sql: str, *, user_id: str) -> dict[str, Any]:
-    """Execute a validated SELECT under the caller's RLS context (as agent_ro)."""
+async def run_select(sql: str, *, user_id: str, as_admin: bool = False) -> dict[str, Any]:
+    """Execute a validated SELECT, read-only, with a statement timeout + row cap.
+
+    Default (``as_admin=False``): as ``agent_ro`` under the caller's RLS context —
+    rows scoped to their datasets / own operational rows. ``as_admin=True`` (the
+    admin SQL editor only): as ``admin_ro`` (BYPASSRLS, SELECT on every schema) so
+    an admin can read any table and all rows. Still SELECT-only either way.
+    """
     safe = validate_select(sql)
-    async with engine.connect() as conn:
+    active_engine = admin_engine if as_admin else engine
+    async with active_engine.connect() as conn:
         async with conn.begin():
-            await conn.execute(
-                text("SELECT set_config('app.current_user_id', :uid, true)"),
-                {"uid": user_id or ""},
-            )
+            # RLS context only matters for the scoped role; admin_ro bypasses RLS.
+            if not as_admin:
+                await conn.execute(
+                    text("SELECT set_config('app.current_user_id', :uid, true)"),
+                    {"uid": user_id or ""},
+                )
             # SET LOCAL (not a bind param — Postgres doesn't allow parameterizing
             # this GUC) so a runaway or accidentally-unfiltered query against the
             # ~3M-row staging tables can't hang the connection; scoped to this

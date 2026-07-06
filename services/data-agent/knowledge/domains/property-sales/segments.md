@@ -15,7 +15,7 @@ month.
 - `area_band` and `zoning` are part of the grain — there is no 'ALL' row for them.
   Never SUM across them; for an all-segment figure use `mart_sales_summary` instead.
 - Use this table for "price by lot size" / "price by zone" questions and for
-  **house** composition profiles ([[presentation/profile-sections]]).
+  **house** composition profiles (the `profile_chart` skill).
 - Lot-size bands only make sense for **houses**. For units, profile by bedroom
   ([[domains/property-rent/bedrooms]]) — a strata apartment's land area is not
   meaningful.

@@ -1,4 +1,4 @@
-# Report-structure evals (K5) — formalizes the scratch questions from eval.md.
+# Report-structure evals (K5) — structured answer-quality cases for the /ask flow.
 #
 # Each case runs the real /ask flow (as `as_user`) and asserts the answer comes
 # back as a well-formed InsightReport. These are the deterministic structural +

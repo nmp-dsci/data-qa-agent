@@ -8,15 +8,19 @@ import logfire
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-# Configured before importing llm_agent: that module instruments pydantic-ai/
-# httpx at import time, which needs logfire.configure() to have already run.
+# Configured before importing sandbox_agent: agent_common (pulled in by that
+# module) instruments pydantic-ai/httpx at import time, which needs
+# logfire.configure() to have already run.
 logfire.configure(service_name="data-agent", send_to_logfire="if-token-present")
 
+from . import analytics  # noqa: E402
+from .chart import trend_overlay_encoding, validate_chart_spec  # noqa: E402
 from .config import settings  # noqa: E402
-from .db import engine, load_database_catalog, run_select  # noqa: E402
-from .llm_agent import maybe_answer_with_llm  # noqa: E402
+from .db import admin_engine, engine, load_database_catalog, run_select  # noqa: E402
+from .knowledge import knowledge_version  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
 from .provider import choose_provider  # noqa: E402
+from .sandbox_agent import answer_with_sandbox  # noqa: E402
 from .schema import get_catalog, merge_catalogs  # noqa: E402
 from .sql_assist import sql_assist  # noqa: E402
 from .sql_guardrails import UnsafeSQLError  # noqa: E402
@@ -26,6 +30,7 @@ from .sql_guardrails import UnsafeSQLError  # noqa: E402
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     await engine.dispose()
+    await admin_engine.dispose()
 
 
 app = FastAPI(title="data-qa-agent :: data-agent", version="0.1.0", lifespan=lifespan)
@@ -73,6 +78,34 @@ class SqlResult(BaseModel):
     error: str | None = None
 
 
+class ConfigItem(BaseModel):
+    key: str  # the env var / setting name
+    value: str  # display value (secrets shown as "set"/"not set", never the value)
+    note: str | None = None  # short human hint (allowed values, what the limit guards)
+    secret: bool = False
+
+
+class ConfigSection(BaseModel):
+    title: str
+    service: str
+    items: list[ConfigItem]
+
+
+def _redact_db_url(url: str) -> str:
+    """Strip credentials from a SQLAlchemy URL: keep driver/host/db, hide user:pw."""
+    try:
+        scheme, rest = url.split("://", 1)
+    except ValueError:
+        return "***"
+    if "@" in rest:
+        rest = rest.split("@", 1)[1]
+    return f"{scheme}://***@{rest}"
+
+
+def _secret_item(key: str, value: str | None, note: str | None = None) -> ConfigItem:
+    return ConfigItem(key=key, value="set" if value else "not set", note=note, secret=True)
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     selected = choose_provider(
@@ -81,12 +114,257 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "provider": selected[0] if selected else "stub"}
 
 
+def _money(value: Any) -> str:
+    try:
+        return f"${float(value):,.0f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _pct(value: Any) -> str:
+    try:
+        return f"{float(value):+.1f}%"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _sales_trend_stub_report(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a report-shaped fallback for the deterministic sales_trend stub.
+
+    The sandbox LLM path can fail before producing a report. For this high-value
+    trend intent, keep the UI experience consistent by deriving the chart and
+    headline maths from the same governed rows the stub already returned.
+    """
+    columns = result.get("columns", [])
+    rows = result.get("rows", [])
+    if not rows:
+        return None
+
+    try:
+        grouped = analytics.build_series(
+            columns,
+            rows,
+            month_col="month",
+            value_col="avg_sale_price",
+            count_col="n_sold",
+            group_col="suburb",
+        )
+    except KeyError:
+        return None
+
+    chart_values: list[dict[str, Any]] = []
+    latest_by_suburb: dict[str, dict[str, Any] | None] = {}
+    growth_5y: dict[str, float | None] = {}
+    growth_3y: dict[str, float | None] = {}
+    for suburb, series in grouped.items():
+        latest_by_suburb[suburb] = analytics.latest_reliable(series, smooth_window=6)
+        growth_5y[suburb] = analytics.growth_rate(series, years=5)
+        growth_3y[suburb] = analytics.growth_rate(series, years=3)
+        for point in analytics.chart_series(series, rolling_window=6):
+            chart_values.append(
+                {
+                    "month": f"{point['month']}-01",
+                    "value": point["value"],
+                    "series": suburb,
+                    "layer": point["layer"],
+                }
+            )
+
+    suburbs = sorted(grouped)
+    latest_parts = []
+    for suburb in suburbs:
+        latest = latest_by_suburb.get(suburb)
+        if latest:
+            latest_parts.append(f"{suburb} {_money(latest['value'])} ({latest['month']})")
+    growth_parts = [
+        f"{suburb} {_pct(growth)}"
+        for suburb, growth in sorted(growth_5y.items())
+        if growth is not None
+    ]
+    summary = (
+        f"House sale-price trend for {', '.join(suburbs)} from "
+        f"{min(p['month'] for s in grouped.values() for p in s)} to "
+        f"{max(p['month'] for s in grouped.values() for p in s)}."
+    )
+    if growth_parts:
+        summary += " Five-year growth: " + "; ".join(growth_parts) + "."
+
+    chart = validate_chart_spec(
+        {
+            "mark": "line",
+            "title": "House sale-price trend",
+            "encoding": trend_overlay_encoding(
+                {
+                    "x": {"field": "month", "type": "temporal", "title": None},
+                    "y": {
+                        "field": "value",
+                        "type": "quantitative",
+                        "title": "Average sale price",
+                        "axis": {"format": "$,.0f"},
+                    },
+                    "tooltip": [
+                        {"field": "series", "type": "nominal", "title": "Suburb"},
+                        {"field": "layer", "type": "nominal", "title": "Series"},
+                        {"field": "month", "type": "temporal", "title": "Month"},
+                        {
+                            "field": "value",
+                            "type": "quantitative",
+                            "title": "Average price",
+                            "format": "$,.0f",
+                        },
+                    ],
+                },
+                chart_values,
+            ),
+        }
+    )
+    chart = {**chart, "data": {"values": chart_values[:2000]}}
+
+    headlines = [
+        {
+            "element_id": f"headline:{idx}",
+            "label": suburb,
+            "value": _money(latest["value"]) if latest else "n/a",
+            "basis": f"latest 6-month average, {latest['month']}" if latest else "",
+            "related": False,
+            "query_ref": "Q1",
+        }
+        for idx, (suburb, latest) in enumerate(sorted(latest_by_suburb.items()))
+    ]
+    insights = [
+        {
+            "element_id": "insight:0",
+            "heading": "The chart uses both raw monthly values and a 6-month average",
+            "body": (
+                "Thin monthly sales can make the raw line jump. The bold 6-month "
+                "average gives the trend used for the headline growth figures."
+            ),
+            "query_refs": ["Q1"],
+            "chart": None,
+        }
+    ]
+    if latest_parts:
+        insights.append(
+            {
+                "element_id": "insight:1",
+                "heading": "Latest smoothed values",
+                "body": "; ".join(latest_parts) + ".",
+                "query_refs": ["Q1"],
+                "chart": None,
+            }
+        )
+    if growth_3y:
+        parts = [
+            f"{suburb} {_pct(growth)}"
+            for suburb, growth in sorted(growth_3y.items())
+            if growth is not None
+        ]
+        if parts:
+            insights.append(
+                {
+                    "element_id": "insight:2",
+                    "heading": "Recent three-year growth",
+                    "body": "; ".join(parts) + ".",
+                    "query_refs": ["Q1"],
+                    "chart": None,
+                }
+            )
+
+    report = {
+        "element_id": "report",
+        "summary": summary,
+        "headlines": headlines,
+        "insights": insights,
+        "profiles": [],
+        "main_chart": chart,
+        "queries": [
+            {
+                "element_id": "query:Q1",
+                "ref": "Q1",
+                "purpose": "monthly house sale-price trend by suburb",
+                "sql": result.get("sql"),
+                "columns": columns,
+                "rows": rows,
+                "row_count": result.get("row_count", 0),
+            }
+        ],
+        "knowledge_pages_used": [],
+        "knowledge_version": knowledge_version(),
+        "fallback_reason": "sandbox_llm_did_not_complete_report",
+    }
+    return {"answer": summary, "chart": chart, "report": report}
+
+
+@app.get("/agent/config", response_model=ConfigSection)
+async def agent_config() -> ConfigSection:
+    """Resolved data-agent config for the admin panel. Secrets are redacted."""
+    s = settings
+    active_model = s.deepseek_model if s.llm_provider == "deepseek" else s.model
+    items = [
+        ConfigItem(
+            key="SANDBOX_RUNTIME",
+            value=s.sandbox_runtime,
+            note="pyodide (WASM, hardened) | subprocess",
+        ),
+        ConfigItem(key="APP_ENV", value=s.app_env),
+        ConfigItem(key="LLM_PROVIDER", value=s.llm_provider, note="deepseek | anthropic"),
+        ConfigItem(key="model", value=active_model, note="model used by the active provider"),
+        _secret_item("DEEPSEEK_API_KEY", s.deepseek_api_key, note="empty = offline stub"),
+        _secret_item("ANTHROPIC_API_KEY", s.anthropic_api_key, note="empty = offline stub"),
+        ConfigItem(key="MAX_ROWS", value=str(s.max_rows), note="row cap for one result set"),
+        ConfigItem(
+            key="MAX_SQL_ATTEMPTS", value=str(s.max_sql_attempts), note="run_sql attempt budget"
+        ),
+        ConfigItem(
+            key="SQL_STATEMENT_TIMEOUT_MS",
+            value=str(s.sql_statement_timeout_ms),
+            note="hard per-statement timeout",
+        ),
+        ConfigItem(
+            key="SANDBOX_RUN_ATTEMPTS",
+            value=str(s.sandbox_run_attempts),
+            note="sandbox mode: run_analysis attempts",
+        ),
+        ConfigItem(
+            key="AGENT_REQUEST_LIMIT",
+            value=str(s.agent_request_limit),
+            note="primary runaway guard (requests/run)",
+        ),
+        ConfigItem(
+            key="AGENT_TOTAL_TOKENS_LIMIT",
+            value=str(s.agent_total_tokens_limit),
+            note="nominal token ceiling per run (~6x cache-inflated)",
+        ),
+        ConfigItem(
+            key="MAX_KNOWLEDGE_READS",
+            value=str(s.max_knowledge_reads),
+            note="knowledge pages loadable per run",
+        ),
+        ConfigItem(key="EMBEDDING_MODEL", value=s.embedding_model, note="local, no API key"),
+        ConfigItem(key="DB_SSL", value=s.db_ssl or "(none)"),
+        ConfigItem(
+            key="AGENT_DATABASE_URL",
+            value=_redact_db_url(s.agent_database_url),
+            note="agent + users: read-only, RLS enforced",
+        ),
+        ConfigItem(
+            key="ADMIN_RO_DATABASE_URL",
+            value=_redact_db_url(s.admin_ro_database_url),
+            note="admin SQL editor: read-only, BYPASSRLS, all schemas",
+        ),
+        _secret_item("LOGFIRE_TOKEN", s.logfire_token, note="ships traces to Logfire Cloud"),
+    ]
+    return ConfigSection(title="Data agent", service="data-agent", items=items)
+
+
 @app.post("/agent/ask", response_model=AgentAnswer)
 async def agent_ask(body: AskRequest) -> AgentAnswer:
     user_id = body.user.id
 
-    # Preferred path: the configured LLM provider. Falls back to the offline stub.
-    llm = await maybe_answer_with_llm(body.question, user_id=user_id)
+    # Preferred path: the sandbox agent on the configured LLM provider. Returns
+    # None (→ deterministic offline stub below) when no provider key is set or the
+    # run never produced a report.
+    llm = await answer_with_sandbox(body.question, user_id=user_id)
     if llm is not None:
         return AgentAnswer(**llm)
 
@@ -101,13 +379,18 @@ async def agent_ask(body: AskRequest) -> AgentAnswer:
         )
 
     answer = phrase_answer(body.question, intent, result)
+    fallback_report = _sales_trend_stub_report(result) if intent == "sales_trend" else None
+    if fallback_report is not None:
+        answer = fallback_report["answer"]
     return AgentAnswer(
         answer=answer,
         sql=result["sql"],
         columns=result["columns"],
         rows=result["rows"],
         row_count=result["row_count"],
+        chart=fallback_report["chart"] if fallback_report else None,
         engine="stub",
+        report=fallback_report["report"] if fallback_report else None,
         steps=[
             {
                 "kind": "sql",
@@ -125,13 +408,16 @@ async def agent_ask(body: AskRequest) -> AgentAnswer:
 async def agent_sql(body: SqlRequest) -> SqlResult:
     """Run raw user SQL through the SAME governed executor the agent uses.
 
-    run_select already enforces every guardrail: validate_select (SELECT-only,
-    single statement), the read-only agent_ro role, SET LOCAL RLS context, a
-    statement timeout, and the row cap. No new DB path is introduced — the SQL
-    editor is the agent's executor with a keyboard instead of an LLM.
+    run_select enforces every guardrail: validate_select (SELECT-only, single
+    statement), a read-only role, a statement timeout, and the row cap. Admins
+    run as admin_ro (BYPASSRLS, SELECT on every schema) so the SQL editor can
+    inspect any table incl. internal app.* ones; everyone else runs as agent_ro
+    under their RLS context (marts + staging, their own rows). Read-only either way.
     """
     try:
-        result = await run_select(body.sql, user_id=body.user.id)
+        result = await run_select(
+            body.sql, user_id=body.user.id, as_admin=(body.user.role == "admin")
+        )
     except UnsafeSQLError as exc:
         return SqlResult(sql=body.sql, error=str(exc))
     except Exception as exc:  # noqa: BLE001 — surface DB errors (syntax, timeout) to the editor

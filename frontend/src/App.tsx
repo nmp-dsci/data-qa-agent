@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
+  AdminConfig,
   AdminDataset,
   AdminEvent,
   AdminFeedback,
@@ -9,6 +10,7 @@ import {
   ask,
   AskResult,
   EvalCase,
+  getAdminConfig,
   getAdminDatasets,
   getAdminEvents,
   getAdminFeedback,
@@ -296,6 +298,7 @@ function AdminDashboard() {
   const [queryRuns, setQueryRuns] = useState<AdminQueryRun[]>([]);
   const [feedback, setFeedback] = useState<AdminFeedback[]>([]);
   const [evalCases, setEvalCases] = useState<EvalCase[]>([]);
+  const [config, setConfig] = useState<AdminConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [eventTypeFilter, setEventTypeFilter] = useState("");
@@ -318,8 +321,9 @@ function AdminDashboard() {
       getAdminQueryRuns(),
       getAdminFeedback(),
       getEvalCases(),
+      getAdminConfig(),
     ])
-      .then(([events, users, datasets, queryRuns, fb, ec]) => {
+      .then(([events, users, datasets, queryRuns, fb, ec, cfg]) => {
         if (!active) return;
         setEvents(events);
         setUsers(users);
@@ -327,6 +331,7 @@ function AdminDashboard() {
         setQueryRuns(queryRuns);
         setFeedback(fb);
         setEvalCases(ec);
+        setConfig(cfg);
         setError(null);
       })
       .catch((e) => {
@@ -355,6 +360,7 @@ function AdminDashboard() {
       {error && <p className="error">{error}</p>}
       {!loading && (
         <>
+          {config && <ConfigView config={config} />}
           <section>
             <h3>Datasets</h3>
             <div className="table-wrap">
@@ -530,6 +536,45 @@ function AdminDashboard() {
         </>
       )}
     </main>
+  );
+}
+
+function ConfigView({ config }: { config: AdminConfig }) {
+  return (
+    <section className="config">
+      <h3>Configuration</h3>
+      <p className="muted">
+        Resolved runtime config across services. Secrets are redacted — values marked{" "}
+        <span className="badge secret">secret</span> only show whether they are set.
+      </p>
+      <div className="config-grid">
+        {config.sections.map((s) => (
+          <div key={s.service} className="config-card">
+            <h4>
+              {s.title} <code className="config-svc">{s.service}</code>
+            </h4>
+            {s.error ? (
+              <p className="error">{s.error}</p>
+            ) : (
+              <table className="config-table">
+                <tbody>
+                  {s.items.map((item) => (
+                    <tr key={item.key}>
+                      <th>{item.key}</th>
+                      <td>
+                        <code>{item.value}</code>
+                        {item.secret && <span className="badge secret">secret</span>}
+                        {item.note && <span className="config-note">{item.note}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

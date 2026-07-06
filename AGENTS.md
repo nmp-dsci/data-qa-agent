@@ -16,7 +16,7 @@ The goal is a **v1 end-to-end system that is built to evolve** — a learning-or
 reference implementation, not a throwaway prototype.
 
 Current branch: `init-ds-app`. The full architecture proposal lives in
-`.lavish/data-qa-agent-architecture.html` (open with `npx -y lavish-axi .lavish/data-qa-agent-architecture.html`).
+`.lavish/s00_data-qa-agent-architecture.html` (open with `npx -y lavish-axi .lavish/s00_data-qa-agent-architecture.html`).
 
 ---
 

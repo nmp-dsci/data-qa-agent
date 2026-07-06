@@ -1,0 +1,13 @@
+{
+  "name": "data-agent-pyodide-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pyodide/WASM host for the hardened run_analysis sandbox (Phase B).",
+  "scripts": {
+    "warmup": "node warmup.mjs"
+  },
+  "dependencies": {
+    "pyodide": "314.0.2"
+  }
+}

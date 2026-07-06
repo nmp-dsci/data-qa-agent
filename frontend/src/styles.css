@@ -198,6 +198,13 @@ tbody tr:last-child td { border-bottom: none; }
 .chip:disabled { opacity: .4; cursor: default; }
 .result-filter { margin: 8px 0; width: 220px; max-width: 100%; background: var(--panel);
   border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+.chart-builder { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.chart-controls { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 8px; align-items: end; }
+.chart-controls label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.chart-controls label span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.chart-controls select { width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  border-radius: 7px; padding: 6px 8px; font-size: 12px; outline: none; }
+.chart-controls select:focus { border-color: var(--accent-2); }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 .sort-ind { color: var(--accent); }
@@ -341,10 +348,23 @@ th.sortable:hover { color: var(--text); }
 .fb-status-dismissed, .fb-status-archived { color: var(--muted); }
 .fb-status-user_memory { color: #c58fff; border-color: #5a3a6b; }
 
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px; }
+.config-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.config-card h4 { margin: 0 0 8px; font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; }
+.config-svc { color: var(--muted); font-size: 11px; font-weight: 400; }
+.config-table { width: 100%; }
+.config-table th, .config-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; vertical-align: top; white-space: normal; }
+.config-table th { color: var(--muted); font-weight: 500; font-size: 12px; width: 42%; text-transform: none; letter-spacing: 0; background: transparent; position: static; }
+.config-table td code { color: var(--text); word-break: break-all; }
+.config-note { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.badge.secret { color: var(--accent); border-color: #5a4a2b; margin-left: 6px; }
+
 @media (max-width: 720px) {
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .event-row { grid-template-columns: 1fr; gap: 3px; }
   .sqled { grid-template-columns: 1fr; }
   .schema-panel { max-height: 180px; }
+  .chart-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fb-box.pinned { position: static; width: auto; max-width: none; box-shadow: none; }
+  .config-grid { grid-template-columns: 1fr; }
 }

@@ -15,7 +15,7 @@ applies_to: [house, unit, apartment, property type, "houses vs units", dwelling]
   will understate a house-only trend (houses are pricier) or overstate a unit one.
 - 'unit' covers apartments / strata dwellings. For units, land/lot size is not
   meaningful — profile them by **bedroom band**, not sqm
-  ([[presentation/profile-sections]], [[domains/property-rent/bedrooms]]).
+  (the `profile_chart` skill, [[domains/property-rent/bedrooms]]).
 - Only use 'ALL' when the user genuinely wants the whole market blended, or as a
   denominator for share calculations.
 - When comparing house vs unit, keep them as two series (colour by type), same as

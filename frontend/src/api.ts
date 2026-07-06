@@ -172,6 +172,24 @@ export interface AdminEvent {
   username: string | null;
 }
 
+export interface ConfigItem {
+  key: string;
+  value: string;
+  note: string | null;
+  secret: boolean;
+}
+
+export interface ConfigSection {
+  title: string;
+  service: string;
+  items: ConfigItem[];
+  error: string | null;
+}
+
+export interface AdminConfig {
+  sections: ConfigSection[];
+}
+
 export interface AdminUser {
   id: string;
   username: string;
@@ -365,6 +383,10 @@ export function getAdminDatasets(): Promise<AdminDataset[]> {
 
 export function getAdminQueryRuns(): Promise<AdminQueryRun[]> {
   return adminGet<AdminQueryRun[]>("/admin/query-runs");
+}
+
+export function getAdminConfig(): Promise<AdminConfig> {
+  return adminGet<AdminConfig>("/admin/config");
 }
 
 export async function submitFeedback(input: FeedbackInput): Promise<{ id: string }> {

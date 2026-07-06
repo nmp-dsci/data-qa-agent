@@ -33,12 +33,13 @@ feedback can tell which knowledge produced an answer.
 2. Admins triage it (`/admin` → Feedback): **promote** to an eval case, save as
    **user memory**, or **dismiss**. Promoted cases live in `app.eval_cases`
    (DB-backed, status toggleable stale↔active, auto-archive after 3 stale cycles).
-3. `evals/run_eval_cases` / `POST /admin/eval-cases/run-staleness` re-checks cases
-   and flags stale ones.
-4. `python evals/curator.py` reads the signals and writes a **proposal** under
-   `evals/curator_proposals/` grouping them by implicated page — a human applies
-   the edits they agree with as a normal PR. Nothing here is auto-applied, because
-   it steers SQL generation.
+3. `POST /admin/eval-cases/run-staleness` re-checks cases and flags stale ones.
+
+The write step that turns those signals into edits is deliberately left loose for
+now: after the sandbox+skills restructure the unit of improvement is the tested
+**skill** (`agent/skills/`), not a knowledge page, so a knowledge-page curator no
+longer fits. A human reads the promoted eval cases and edits the relevant skill or
+domain page directly. (The old `evals/curator.py` proposal generator was removed.)
 
 ## Hygiene
 `python -m agent.knowledge --lint` checks for broken `[[cross-links]]`, missing

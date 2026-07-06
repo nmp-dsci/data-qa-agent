@@ -49,6 +49,14 @@ async def assist_sql_on_agent(
         return cast(dict[str, Any], resp.json())
 
 
+async def fetch_agent_config() -> dict[str, Any]:
+    """Fetch the data-agent's resolved config section (secrets already redacted there)."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(f"{settings.agent_url}/agent/config")
+        resp.raise_for_status()
+        return cast(dict[str, Any], resp.json())
+
+
 async def fetch_catalog(*, role: str) -> dict[str, Any]:
     """Fetch the structured schema catalog for the SQL editor's browser."""
     async with httpx.AsyncClient(timeout=30.0) as client:

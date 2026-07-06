@@ -78,15 +78,17 @@ from .analysis import (  # noqa: E402
     gross_yield,
     growth_rate,
     latest_value,
+    rolling_average,
     top_growth,
     trend_series,
 )
-from .charts import comparison_chart, trend_chart  # noqa: E402
+from .charts import comparison_chart, profile_chart, trend_chart  # noqa: E402
 from .reporting import build_report, make_insight, related_metrics  # noqa: E402
 
 __all__ = [
     # analysis
     "trend_series",
+    "rolling_average",
     "growth_rate",
     "latest_value",
     "top_growth",
@@ -94,6 +96,7 @@ __all__ = [
     # charts
     "trend_chart",
     "comparison_chart",
+    "profile_chart",
     # reporting
     "build_report",
     "make_insight",

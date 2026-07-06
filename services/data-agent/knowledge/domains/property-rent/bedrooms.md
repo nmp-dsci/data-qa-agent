@@ -13,7 +13,7 @@ or 'unknown'). Grain: postcode + property_type + bedroom_band + month.
 - `bedroom_band` is part of the grain — there is no 'ALL' bedroom row. Never SUM
   across it; for an all-bedroom figure use `mart_rent_summary`.
 - Use this for "rent by bedroom" questions and as the composition segmenter for
-  **units** ([[presentation/profile-sections]]) — bedrooms, not lot size, is what
+  **units** (the `profile_chart` skill) — bedrooms, not lot size, is what
   differentiates apartments.
 - For a composition share (% of bonds that are 2-bedroom), sum `n_rented` per band
   and divide by the postcode total.

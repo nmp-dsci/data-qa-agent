@@ -1,9 +1,9 @@
 """Vega-Lite chart-spec validation for the make_chart tool.
 
 The model only ever supplies mark/encoding/layer/params/title/width/height —
-never `data`. make_chart() (in llm_agent.py) splices `data.values` in
-server-side from an already-DB-sourced query or a Python-computed analytics
-series, so a hallucinated number can't reach the chart even if the model tried.
+never `data`. The chart skills (agent/skills/charts.py) splice `data.values` in
+from an already-DB-sourced, sandbox-held frame, so a hallucinated number can't
+reach the chart even if the model tried.
 
 This module validates the model's half of the spec: an allowlist of top-level
 keys, a known-safe set of mark types, layered sub-specs (validated recursively),

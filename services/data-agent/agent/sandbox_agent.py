@@ -1,17 +1,17 @@
-"""Sandbox agent path (restructure Phase A) — extract → run_analysis → report.
+"""The agent path — extract → run_analysis → report (restructure).
 
-An alternative to the fine-grained orchestrator in ``llm_agent`` (selected by
-``settings.agent_mode == "sandbox"``). Here the cheap model does one governed
-SQL *extract*, then hands the analysis to skills running in the locked-down
-sandbox via a single ``run_analysis(code)`` tool — instead of stitching
-run_sql/compute_trend/make_chart together across ~19 turns. The heavy lifting
-lives in tested skills, so the model's job shrinks to "pull the right data, call
-the right skills."
+The only agent architecture (the fine-grained-tool orchestrator was removed once
+this proved out). The cheap model does one governed SQL *extract*, then hands the
+analysis to tested skills running in the locked-down sandbox via a single
+``run_analysis(code)`` tool — instead of stitching run_sql/compute_trend/make_chart
+together across ~19 turns. The heavy lifting lives in the skills, so the model's
+job shrinks to "pull the right data, call the right skills."
 
-Wiring only — the win is measured live (needs the provider + marts up). It reuses
-the orchestrator's knowledge/provider/trace machinery so the admin trace shape is
-identical. Default config keeps the orchestrator; flip AGENT_MODE=sandbox to try
-this path.
+Analysis/presentation know-how lives in the skills (their docstrings + the catalog
+below), so knowledge is consulted only for DOMAIN/extract guidance — which table,
+columns, and grain to pull. Trace flattening / lookup helpers come from
+``agent_common``; when no provider key is set the caller falls back to the
+deterministic offline stub.
 """
 
 from __future__ import annotations
@@ -21,17 +21,14 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from .config import settings
-from .knowledge import knowledge_version, read_knowledge, search_knowledge_result
-
-# Reuse the orchestrator's trace flattening + lookup helpers so this path's admin
-# trace is byte-identical in shape and lookup_values behaves the same.
-from .llm_agent import (  # noqa: E402
+from .agent_common import (
     _ENV_VAR,
     _PYDANTIC_AI_AVAILABLE,
     _build_trace,
     _lookup_values_sql,
 )
+from .config import settings
+from .knowledge import knowledge_version, read_knowledge, search_knowledge_result
 from .memory import recall_memories, remember_memory
 from .provider import choose_provider
 from .report import select_primary_query
@@ -51,6 +48,8 @@ Available inside run_analysis (import-free; call as skills.<name>):
   # data analysis (over the extracted DataFrame `df`; avg price = value_col/den_col)
   trend_series(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
       -> long-form actual + rolling series for charting.
+  rolling_average(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
+      -> [month, value, series] just the N-month smoothed line (no actual layer).
   growth_rate(df, *, month_col, value_col, years, den_col=None, group_col=None)
       -> % growth over `years` on the 6-month rolling base.
   top_growth(df, *, month_col, value_col, group_col, years, den_col=None, n=5, ascending=False)
@@ -62,6 +61,8 @@ Available inside run_analysis (import-free; call as skills.<name>):
   # visualisation (consistent house style, validated)
   trend_chart(series_df, *, title=None) -> chart spec
   comparison_chart(df, *, category_col, value_col, title=None, series_col=None) -> chart spec
+  profile_chart(df, *, category_col, segment_col, value_col, title=None, normalize=True)
+      -> stacked composition bars (each entity's segment mix as % shares).
   # insight structure
   make_insight(heading, body, *, query_refs=None, chart=None) -> insight
   related_metrics([{label,value,basis}, ...]) -> related headline tiles
@@ -80,9 +81,11 @@ DATA-INSIGHT REPORT — not prose. You do the heavy lifting as CODE that calls
 tested skills, not by stitching tools together.
 
 Work in this order:
-1. search_knowledge(query) to find the 1-3 relevant pages (how to compute growth,
-   which metric, how to structure the report). Domain pages tell you which table
-   and columns to extract; the compact schema below lists them all.
+1. search_knowledge(query) to find the 1-2 relevant DOMAIN pages: which table,
+   columns, and grain to extract for this entity/metric (e.g. sales have suburb,
+   rent only postcode). You do NOT need knowledge for how to compute growth/yield
+   or structure the report — that lives in the tested skills below; just call them.
+   The compact schema at the end lists every table and column.
 2. extract(sql, name, purpose): write ONE read-only SELECT that pulls the monthly
    series you need — SELECT month + the metric columns (e.g. total_sale_value,
    n_sold), filtered to the entity (suburb/postcode). KEEP EVERY MONTH (never add
@@ -143,9 +146,9 @@ Schema reference (exact table/column names):
 class SandboxBudgetExhausted(Exception):
     """The model kept calling extract/run_analysis after its budget was spent.
 
-    Like the orchestrator's SqlBudgetExhausted: the over-budget tool returns a
-    "STOP" string once as a courtesy, but some models (DeepSeek here) ignore it
-    and loop the tool, burning the whole request budget over ~90s before stubbing.
+    The over-budget tool returns a "STOP" string once as a courtesy, but some
+    models (DeepSeek here) ignore it and loop the tool, burning the whole request
+    budget over ~90s before stubbing.
     On the second post-budget call we raise instead, so the run stops promptly and
     salvages any report already built rather than flailing to the request cap.
     """
@@ -392,6 +395,11 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
             return "no data yet — call extract(sql) first to load a DataFrame."
         if ctx.deps.run_calls >= max_runs:
             ctx.deps.run_refusals += 1
+            if ctx.deps.report is None:
+                raise SandboxBudgetExhausted(
+                    "run_analysis budget was spent before a report was built. "
+                    "The analysis code must assign `result = skills.build_report(...)`."
+                )
             if ctx.deps.run_refusals > 1:
                 raise SandboxBudgetExhausted(
                     f"run_analysis called after the {max_runs}-attempt budget was spent"
@@ -413,6 +421,14 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         )
         if result.error:
             return f"run_analysis error (fix and retry): {result.error}"
+        if result.report is None:
+            missing_report = (
+                "sandbox code completed but did not assign a report dict to `result`. "
+                "Fix the code and end with `result = skills.build_report(...)`."
+            )
+            ctx.deps.steps[-1]["status"] = "error"
+            ctx.deps.steps[-1]["error"] = missing_report
+            return f"run_analysis error (fix and retry): {missing_report}"
         ctx.deps.report = result.report
         gap_note = f" Skill gaps recorded: {ctx.deps.skill_gaps}." if ctx.deps.skill_gaps else ""
         return (

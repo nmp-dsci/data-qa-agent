@@ -26,7 +26,7 @@ function objectLabel(o: PageObject): string {
   return String(d["label"] ?? d["title"] ?? d["heading"] ?? o.type);
 }
 
-function ObjectBody({ o }: { o: PageObject }) {
+export function ObjectBody({ o }: { o: PageObject }) {
   const d = o.data;
   switch (o.type) {
     case "kpi":

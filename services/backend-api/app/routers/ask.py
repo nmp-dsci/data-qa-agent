@@ -45,6 +45,10 @@ class AskResponse(BaseModel):
     steps: list[dict[str, Any]] = []
     # Structured InsightReport (K2) — present on the LLM path; None for the stub.
     report: dict[str, Any] | None = None
+    # Pages contract (s07): Summary → Insights pages of governed objects the
+    # frontend's template registry renders with visx. Also embedded in the
+    # stored report (messages.report.pages) so history reopen restores them.
+    pages: list[dict[str, Any]] | None = None
 
 
 async def _log_event(conn: Any, user_id: str, event_type: str, payload: dict | None = None) -> None:
@@ -118,6 +122,7 @@ async def ask(
     output_tokens = result.get("output_tokens")
     steps = result.get("steps") or []
     report = result.get("report")
+    pages = result.get("pages")
 
     # tx2: record the assistant's answer and mark agent as finished.
     async with rls_connection(user.id) as conn:
@@ -194,4 +199,5 @@ async def ask(
         # Only admins get the step-by-step trace in chat; it's still persisted for all runs.
         steps=steps if user.role == "admin" else [],
         report=report,
+        pages=pages,
     )

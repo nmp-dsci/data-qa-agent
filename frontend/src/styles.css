@@ -471,7 +471,23 @@ th.sortable:hover { color: var(--text); }
 .config-note { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .badge.secret { color: var(--accent); border-color: var(--warn-border); margin-left: 6px; }
 
+/* Report engine (s07): pages, KPI tiles, visx charts */
+.answer-page { display: flex; flex-direction: column; gap: 8px; }
+.page-region { display: flex; flex-direction: column; gap: 8px; }
+.page-two-col { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 10px; align-items: start; }
+.page-obj { cursor: pointer; }
+.kpi-tile { min-width: 0; }
+.kpi-growth { font-size: 12px; font-weight: 600; margin-left: 8px; }
+.kpi-growth.up { color: var(--good); }
+.kpi-growth.down { color: var(--bad); }
+.kpi-spark { display: block; margin-top: 6px; opacity: .9; }
+.chart-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em;
+  margin-bottom: 6px; }
+.admin-subtabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.admin-subtabs .chip { font-size: 12.5px; padding: 5px 12px; }
+
 @media (max-width: 720px) {
+  .page-two-col { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .event-row { grid-template-columns: 1fr; gap: 3px; }
   .sqled { grid-template-columns: 1fr; }

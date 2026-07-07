@@ -16,7 +16,7 @@ import {
   type SqlRunResult,
   type User,
 } from "../../lib/api";
-import { VegaChart } from "../../ui/VegaChart";
+import { SpecChart } from "../../ui/SpecChart";
 
 const SAMPLE_SQL = `-- Read-only · RLS-scoped · audited. Cmd/Ctrl+Enter to run.
 SELECT suburb,
@@ -885,7 +885,7 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
             </label>
           </div>
           {chartSpec ? (
-            <VegaChart spec={chartSpec} />
+            <SpecChart spec={chartSpec} />
           ) : (
             <p className="muted sqled-hint">Select a numeric Y column to chart.</p>
           )}

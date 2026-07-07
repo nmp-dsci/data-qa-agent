@@ -1,0 +1,228 @@
+"""Pages contract (s07) — deterministic composition + driver analysis.
+
+Unit tests: an InsightReport composes into validated Summary → Insights pages
+(element_ids preserved for the feedback/eval loop, chart data lifted from the
+validated house specs), and driver_analysis ranks the attribute that most
+explains a metric via % contribution.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pandas as pd
+
+from agent.pages import PagesEnvelope, chart_object_from_spec, compose_pages
+from agent.skills import driver_analysis, reset
+
+
+def _trend_spec() -> dict[str, Any]:
+    """The shape agent/skills/charts.py trend_chart emits (validated + data)."""
+    return {
+        "mark": "line",
+        "title": "Median weekly rent",
+        "encoding": {
+            "x": {"field": "month", "type": "temporal", "title": None},
+            "y": {"field": "value", "type": "quantitative"},
+            "color": {"field": "series", "type": "nominal", "title": None},
+        },
+        "data": {
+            "values": [
+                {"month": "2025-01-01", "value": 640, "series": "2077", "layer": "actual"},
+                {"month": "2025-01-01", "value": 645, "series": "2077", "layer": "6-mo avg"},
+                {"month": "2025-02-01", "value": 660, "series": "2077", "layer": "actual"},
+                {"month": "2025-02-01", "value": 652, "series": "2077", "layer": "6-mo avg"},
+            ]
+        },
+    }
+
+
+def _bar_spec() -> dict[str, Any]:
+    """The shape comparison_chart emits: bar, category x, value y."""
+    return {
+        "mark": "bar",
+        "title": "Median rent by bedrooms",
+        "encoding": {
+            "x": {"field": "bedroom_band", "type": "nominal"},
+            "y": {"field": "median_weekly_rent", "type": "quantitative"},
+        },
+        "data": {
+            "values": [
+                {"bedroom_band": "1", "median_weekly_rent": 566},
+                {"bedroom_band": "2", "median_weekly_rent": 671},
+                {"bedroom_band": "3", "median_weekly_rent": 810},
+            ]
+        },
+    }
+
+
+def _report() -> dict[str, Any]:
+    return {
+        "element_id": "report",
+        "summary": "Hornsby (2077) 2br unit median rent is $671/wk, up 6.1% YoY.",
+        "headlines": [
+            {
+                "element_id": "headline:0",
+                "label": "2br unit median rent",
+                "value": "$671/wk",
+                "basis": "6-mo rolling, 2026-05",
+                "related": False,
+                "query_ref": "Q1",
+            },
+            {
+                "element_id": "headline:1",
+                "label": "3br unit median rent",
+                "value": "$810/wk",
+                "basis": "6-mo rolling, 2026-05",
+                "related": True,
+                "query_ref": "Q1",
+            },
+        ],
+        "insights": [
+            {
+                "element_id": "insight:0",
+                "heading": "3-bed units drove the rise",
+                "body": "3br grew +7.3% YoY vs +6.1% for 2br.",
+                "query_refs": ["Q1"],
+                "chart": _bar_spec(),
+            }
+        ],
+        "profiles": [],
+        "main_chart": _trend_spec(),
+        "queries": [
+            {
+                "element_id": "query:Q1",
+                "ref": "Q1",
+                "purpose": "rent by bedrooms",
+                "sql": "SELECT 1",
+                "columns": [],
+                "rows": [],
+                "row_count": 3,
+            }
+        ],
+        "knowledge_pages_used": [],
+        "knowledge_version": "abc1234",
+    }
+
+
+def test_compose_pages_summary_then_insights() -> None:
+    pages, steps = compose_pages(_report(), question="hornsby rent by bedrooms")
+    assert [p["template"] for p in pages] == ["summary", "insights"]
+
+    summary = pages[0]
+    kinds = [o["type"] for o in summary["objects"]]
+    assert kinds.count("kpi") == 1  # only the primary (non-related) headline
+    assert "trend" in kinds and "text" in kinds
+    # element_ids preserved → pinned feedback keeps working.
+    kpi = next(o for o in summary["objects"] if o["type"] == "kpi")
+    assert kpi["element_id"] == "headline:0"
+    assert kpi["region"] == "hero"
+    trend = next(o for o in summary["objects"] if o["type"] == "trend")
+    assert trend["element_id"] == "report:chart"
+    assert trend["data"]["intent"] == "line"
+    assert len(trend["data"]["rows"]) == 4
+
+    insights = pages[1]
+    breakdown = next(o for o in insights["objects"] if o["type"] == "breakdown")
+    assert breakdown["data"]["dimension"] == "bedroom_band"
+    assert breakdown["data"]["measure"] == "median_weekly_rent"
+    assert breakdown["explains"] == "headline:0"
+    note = next(o for o in insights["objects"] if o["type"] == "insight")
+    assert note["element_id"] == "insight:0"
+    assert note["data"]["refs"] == ["Q1"]
+
+    # Whole output re-validates against the schema (what the frontend consumes).
+    PagesEnvelope(pages=pages)  # does not raise
+
+    # Trace records the composition for app.query_runs.
+    kinds = [s["kind"] for s in steps]
+    assert "object_build" in kinds
+    assert "template_pick" in kinds
+    assert kinds[-1] == "page_compose"
+    assert steps[-1]["status"] == "success"
+    assert steps[-1]["templates"] == ["summary", "insights"]
+
+
+def test_compose_pages_empty_report_yields_no_pages() -> None:
+    report = {
+        "summary": "",
+        "headlines": [],
+        "insights": [],
+        "profiles": [],
+        "main_chart": None,
+        "queries": [],
+    }
+    pages, steps = compose_pages(report)
+    assert pages == []
+    assert steps[-1]["kind"] == "page_compose"
+
+
+def test_compose_pages_never_raises_on_garbage() -> None:
+    pages, steps = compose_pages({"headlines": "not-a-list", "main_chart": 42})
+    assert pages == []
+    assert steps[-1]["status"] in ("success", "error")
+
+
+def test_chart_object_grouped_bar_becomes_compare() -> None:
+    spec = {
+        "mark": "bar",
+        "encoding": {
+            "x": {"field": "bedroom_band", "type": "nominal"},
+            "y": {"field": "median_weekly_rent", "type": "quantitative"},
+            "xOffset": {"field": "property_type"},
+            "color": {"field": "property_type", "type": "nominal"},
+        },
+        "data": {
+            "values": [
+                {"bedroom_band": "2", "median_weekly_rent": 671, "property_type": "unit"},
+                {"bedroom_band": "2", "median_weekly_rent": 664, "property_type": "house"},
+            ]
+        },
+    }
+    obj = chart_object_from_spec(spec, element_id="x", region="chart")
+    assert obj is not None
+    assert obj.type == "compare"
+    assert obj.data["group"] == "property_type"
+    assert obj.data["intent"] == "grouped-bar"
+
+
+def test_driver_analysis_ranks_percent_contribution() -> None:
+    reset()
+    # bedroom_band separates rent strongly; property_type barely moves it.
+    df = pd.DataFrame(
+        [
+            {"property_type": "unit", "bedroom_band": "1", "total": 566 * 10, "n": 10},
+            {"property_type": "unit", "bedroom_band": "3", "total": 810 * 10, "n": 10},
+            {"property_type": "house", "bedroom_band": "1", "total": 570 * 10, "n": 10},
+            {"property_type": "house", "bedroom_band": "3", "total": 820 * 10, "n": 10},
+        ]
+    )
+    out = driver_analysis(
+        df, dimensions=["property_type", "bedroom_band"], value_col="total", den_col="n"
+    )
+    assert out["top_dimension"] == "bedroom_band"
+    ranked = {r["dimension"]: r for r in out["ranked"]}
+    assert ranked["bedroom_band"]["score_pct"] > ranked["property_type"]["score_pct"]
+    levels = ranked["bedroom_band"]["levels"]
+    assert levels[0]["level"] == "3"  # sorted by value desc
+    assert levels[0]["delta_pct"] > 0 > levels[-1]["delta_pct"]
+    shares = [lv["share_pct"] for lv in levels]
+    assert abs(sum(shares) - 100.0) < 0.5
+
+
+def test_driver_analysis_without_denominator_uses_mean() -> None:
+    reset()
+    df = pd.DataFrame(
+        [
+            {"band": "a", "v": 10.0},
+            {"band": "a", "v": 12.0},
+            {"band": "b", "v": 30.0},
+            {"band": "b", "v": 32.0},
+        ]
+    )
+    out = driver_analysis(df, dimensions=["band"], value_col="v")
+    assert out["top_dimension"] == "band"
+    assert out["overall"] == 21.0
+    levels = {lv["level"]: lv for lv in out["ranked"][0]["levels"]}
+    assert levels["b"]["value"] == 31.0
+    assert levels["a"]["value"] == 11.0

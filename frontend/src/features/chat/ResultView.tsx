@@ -4,8 +4,9 @@
 import { useState } from "react";
 import { AskResult } from "../../lib/api";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
-import { VegaChart } from "../../ui/VegaChart";
+import { SpecChart } from "../../ui/SpecChart";
 import { ReportView } from "./ReportView";
+import { PagesView } from "../../report-engine/PagesView";
 
 export function ResultView({
   result,
@@ -49,7 +50,14 @@ export function ResultView({
           })}
         />
       )}
-      {result.report ? (
+      {result.report && result.pages && result.pages.length > 0 ? (
+        <PagesView
+          pages={result.pages}
+          report={result.report}
+          messageId={result.message_id}
+          onOpenSql={onOpenSql}
+        />
+      ) : result.report ? (
         <ReportView report={result.report} messageId={result.message_id} onOpenSql={onOpenSql} />
       ) : (
         <LegacyResult result={result} />
@@ -70,7 +78,7 @@ function LegacyResult({ result }: { result: AskResult }) {
         </div>
       )}
       {showSql && result.sql && <pre className="sql">{result.sql}</pre>}
-      {result.chart && <VegaChart spec={result.chart} />}
+      {result.chart && <SpecChart spec={result.chart} />}
       {result.rows.length > 0 && (
         <div className="table-wrap">
           <table>

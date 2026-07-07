@@ -2,7 +2,7 @@
 // query refs — every element clickable for pinned feedback (element_id-keyed).
 import { useRef, useState } from "react";
 import { Headline, InsightReport, QueryRef } from "../../lib/api";
-import { VegaChart } from "../../ui/VegaChart";
+import { SpecChart } from "../../ui/SpecChart";
 import { FeedbackBox, FeedbackMarker, FeedbackMarkerIcon, Selected } from "./FeedbackBox";
 
 export function ReportView({
@@ -118,7 +118,7 @@ export function ReportView({
                     </span>
                   ))}
                 </div>
-                {ins.chart && <VegaChart spec={ins.chart} />}
+                {ins.chart && <SpecChart spec={ins.chart} />}
               </div>
             ))}
           </div>
@@ -152,7 +152,7 @@ export function ReportView({
                 </span>
               ))}
             </div>
-            {p.chart && <VegaChart spec={p.chart} />}
+            {p.chart && <SpecChart spec={p.chart} />}
           </div>
         </div>
       ))}
@@ -176,7 +176,7 @@ export function ReportView({
             {feedbackMarkers["report:chart"] && (
               <FeedbackMarkerIcon marker={feedbackMarkers["report:chart"]} />
             )}
-            <VegaChart spec={report.main_chart} />
+            <SpecChart spec={report.main_chart} />
           </div>
         </>
       )}
@@ -253,7 +253,7 @@ function HeadlineTile({
   );
 }
 
-function QueryRefCard({
+export function QueryRefCard({
   q,
   selected,
   marker,

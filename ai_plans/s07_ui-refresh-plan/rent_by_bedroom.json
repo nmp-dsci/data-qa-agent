@@ -1,0 +1,117 @@
+{
+  "question": "can you show me postcode for hornsby suburb weekly rent by bedrooms",
+  "resolved": {
+    "note": "Rent data is at POSTCODE grain (the rent source has no suburb). Hornsby suburb -> postcode 2077. So the honest answer is postcode 2077, weekly rent by bedroom_band.",
+    "postcode": "2077",
+    "suburb": "Hornsby",
+    "metric": "median_weekly_rent (AUD/week)",
+    "window": "months >= 2024-01-01, averaged per bedroom_band x property_type"
+  },
+  "source": {
+    "mart": "marts.property_rent",
+    "grain": "postcode + property_type + bedroom_band + month",
+    "dataset": "nsw_rent (RLS-scoped)"
+  },
+  "sql": "SELECT bedroom_band, property_type,\n       round(avg(median_weekly_rent))::int AS median_weekly_rent,\n       sum(n_rented)::int AS n_rented\nFROM marts.property_rent\nWHERE postcode = '2077' AND month >= '2024-01-01'\nGROUP BY bedroom_band, property_type\nORDER BY property_type, bedroom_band;",
+  "primary_chart": {
+    "kind": "comparison_bar",
+    "encoding": {
+      "x": "bedroom_band",
+      "y": "median_weekly_rent",
+      "series": "property_type"
+    },
+    "title": "Hornsby (2077) \u2014 median weekly rent by bedrooms"
+  },
+  "columns": [
+    "bedroom_band",
+    "property_type",
+    "median_weekly_rent",
+    "n_rented"
+  ],
+  "rows": [
+    {
+      "bedroom_band": "0",
+      "property_type": "house",
+      "median_weekly_rent": 430,
+      "n_rented": 4
+    },
+    {
+      "bedroom_band": "1",
+      "property_type": "house",
+      "median_weekly_rent": 509,
+      "n_rented": 143
+    },
+    {
+      "bedroom_band": "2",
+      "property_type": "house",
+      "median_weekly_rent": 664,
+      "n_rented": 467
+    },
+    {
+      "bedroom_band": "3",
+      "property_type": "house",
+      "median_weekly_rent": 837,
+      "n_rented": 498
+    },
+    {
+      "bedroom_band": "4",
+      "property_type": "house",
+      "median_weekly_rent": 981,
+      "n_rented": 266
+    },
+    {
+      "bedroom_band": "5+",
+      "property_type": "house",
+      "median_weekly_rent": 1190,
+      "n_rented": 74
+    },
+    {
+      "bedroom_band": "unknown",
+      "property_type": "house",
+      "median_weekly_rent": 731,
+      "n_rented": 26
+    },
+    {
+      "bedroom_band": "0",
+      "property_type": "unit",
+      "median_weekly_rent": 408,
+      "n_rented": 63
+    },
+    {
+      "bedroom_band": "1",
+      "property_type": "unit",
+      "median_weekly_rent": 566,
+      "n_rented": 927
+    },
+    {
+      "bedroom_band": "2",
+      "property_type": "unit",
+      "median_weekly_rent": 671,
+      "n_rented": 2757
+    },
+    {
+      "bedroom_band": "3",
+      "property_type": "unit",
+      "median_weekly_rent": 810,
+      "n_rented": 349
+    },
+    {
+      "bedroom_band": "4",
+      "property_type": "unit",
+      "median_weekly_rent": 953,
+      "n_rented": 10
+    },
+    {
+      "bedroom_band": "5+",
+      "property_type": "unit",
+      "median_weekly_rent": 1400,
+      "n_rented": 1
+    },
+    {
+      "bedroom_band": "unknown",
+      "property_type": "unit",
+      "median_weekly_rent": 643,
+      "n_rented": 69
+    }
+  ]
+}

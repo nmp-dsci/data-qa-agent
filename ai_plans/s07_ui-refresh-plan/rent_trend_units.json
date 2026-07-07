@@ -1,0 +1,638 @@
+{
+  "question": "Hornsby (2077) unit weekly rent trend by bedrooms (1/2/3-bed)",
+  "source": {
+    "mart": "marts.property_rent",
+    "dataset": "nsw_rent"
+  },
+  "sql": "SELECT to_char(month,'YYYY-MM') AS month, bedroom_band,\n       round(median_weekly_rent)::int AS median_weekly_rent\nFROM marts.property_rent\nWHERE postcode='2077' AND property_type='unit'\n  AND bedroom_band IN ('1','2','3') AND month >= '2023-01-01'\nORDER BY month, bedroom_band;",
+  "primary_chart": {
+    "kind": "trend_line",
+    "encoding": {
+      "x": "month",
+      "y": "median_weekly_rent",
+      "series": "bedroom_band"
+    }
+  },
+  "columns": [
+    "month",
+    "bedroom_band",
+    "median_weekly_rent"
+  ],
+  "rows": [
+    {
+      "month": "2023-01",
+      "bedroom_band": "1",
+      "median_weekly_rent": 450
+    },
+    {
+      "month": "2023-01",
+      "bedroom_band": "2",
+      "median_weekly_rent": 540
+    },
+    {
+      "month": "2023-01",
+      "bedroom_band": "3",
+      "median_weekly_rent": 680
+    },
+    {
+      "month": "2023-02",
+      "bedroom_band": "1",
+      "median_weekly_rent": 460
+    },
+    {
+      "month": "2023-02",
+      "bedroom_band": "2",
+      "median_weekly_rent": 560
+    },
+    {
+      "month": "2023-02",
+      "bedroom_band": "3",
+      "median_weekly_rent": 705
+    },
+    {
+      "month": "2023-03",
+      "bedroom_band": "1",
+      "median_weekly_rent": 470
+    },
+    {
+      "month": "2023-03",
+      "bedroom_band": "2",
+      "median_weekly_rent": 583
+    },
+    {
+      "month": "2023-03",
+      "bedroom_band": "3",
+      "median_weekly_rent": 760
+    },
+    {
+      "month": "2023-04",
+      "bedroom_band": "1",
+      "median_weekly_rent": 500
+    },
+    {
+      "month": "2023-04",
+      "bedroom_band": "2",
+      "median_weekly_rent": 600
+    },
+    {
+      "month": "2023-04",
+      "bedroom_band": "3",
+      "median_weekly_rent": 795
+    },
+    {
+      "month": "2023-05",
+      "bedroom_band": "1",
+      "median_weekly_rent": 510
+    },
+    {
+      "month": "2023-05",
+      "bedroom_band": "2",
+      "median_weekly_rent": 600
+    },
+    {
+      "month": "2023-05",
+      "bedroom_band": "3",
+      "median_weekly_rent": 770
+    },
+    {
+      "month": "2023-06",
+      "bedroom_band": "1",
+      "median_weekly_rent": 500
+    },
+    {
+      "month": "2023-06",
+      "bedroom_band": "2",
+      "median_weekly_rent": 610
+    },
+    {
+      "month": "2023-06",
+      "bedroom_band": "3",
+      "median_weekly_rent": 745
+    },
+    {
+      "month": "2023-07",
+      "bedroom_band": "1",
+      "median_weekly_rent": 530
+    },
+    {
+      "month": "2023-07",
+      "bedroom_band": "2",
+      "median_weekly_rent": 618
+    },
+    {
+      "month": "2023-07",
+      "bedroom_band": "3",
+      "median_weekly_rent": 730
+    },
+    {
+      "month": "2023-08",
+      "bedroom_band": "1",
+      "median_weekly_rent": 520
+    },
+    {
+      "month": "2023-08",
+      "bedroom_band": "2",
+      "median_weekly_rent": 630
+    },
+    {
+      "month": "2023-08",
+      "bedroom_band": "3",
+      "median_weekly_rent": 750
+    },
+    {
+      "month": "2023-09",
+      "bedroom_band": "1",
+      "median_weekly_rent": 523
+    },
+    {
+      "month": "2023-09",
+      "bedroom_band": "2",
+      "median_weekly_rent": 630
+    },
+    {
+      "month": "2023-09",
+      "bedroom_band": "3",
+      "median_weekly_rent": 740
+    },
+    {
+      "month": "2023-10",
+      "bedroom_band": "1",
+      "median_weekly_rent": 530
+    },
+    {
+      "month": "2023-10",
+      "bedroom_band": "2",
+      "median_weekly_rent": 630
+    },
+    {
+      "month": "2023-10",
+      "bedroom_band": "3",
+      "median_weekly_rent": 750
+    },
+    {
+      "month": "2023-11",
+      "bedroom_band": "1",
+      "median_weekly_rent": 540
+    },
+    {
+      "month": "2023-11",
+      "bedroom_band": "2",
+      "median_weekly_rent": 620
+    },
+    {
+      "month": "2023-11",
+      "bedroom_band": "3",
+      "median_weekly_rent": 760
+    },
+    {
+      "month": "2023-12",
+      "bedroom_band": "1",
+      "median_weekly_rent": 520
+    },
+    {
+      "month": "2023-12",
+      "bedroom_band": "2",
+      "median_weekly_rent": 650
+    },
+    {
+      "month": "2023-12",
+      "bedroom_band": "3",
+      "median_weekly_rent": 760
+    },
+    {
+      "month": "2024-01",
+      "bedroom_band": "1",
+      "median_weekly_rent": 530
+    },
+    {
+      "month": "2024-01",
+      "bedroom_band": "2",
+      "median_weekly_rent": 630
+    },
+    {
+      "month": "2024-01",
+      "bedroom_band": "3",
+      "median_weekly_rent": 765
+    },
+    {
+      "month": "2024-02",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2024-02",
+      "bedroom_band": "2",
+      "median_weekly_rent": 650
+    },
+    {
+      "month": "2024-02",
+      "bedroom_band": "3",
+      "median_weekly_rent": 820
+    },
+    {
+      "month": "2024-03",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2024-03",
+      "bedroom_band": "2",
+      "median_weekly_rent": 660
+    },
+    {
+      "month": "2024-03",
+      "bedroom_band": "3",
+      "median_weekly_rent": 835
+    },
+    {
+      "month": "2024-04",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2024-04",
+      "bedroom_band": "2",
+      "median_weekly_rent": 650
+    },
+    {
+      "month": "2024-04",
+      "bedroom_band": "3",
+      "median_weekly_rent": 780
+    },
+    {
+      "month": "2024-05",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2024-05",
+      "bedroom_band": "2",
+      "median_weekly_rent": 665
+    },
+    {
+      "month": "2024-05",
+      "bedroom_band": "3",
+      "median_weekly_rent": 810
+    },
+    {
+      "month": "2024-06",
+      "bedroom_band": "1",
+      "median_weekly_rent": 543
+    },
+    {
+      "month": "2024-06",
+      "bedroom_band": "2",
+      "median_weekly_rent": 670
+    },
+    {
+      "month": "2024-06",
+      "bedroom_band": "3",
+      "median_weekly_rent": 830
+    },
+    {
+      "month": "2024-07",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2024-07",
+      "bedroom_band": "2",
+      "median_weekly_rent": 670
+    },
+    {
+      "month": "2024-07",
+      "bedroom_band": "3",
+      "median_weekly_rent": 800
+    },
+    {
+      "month": "2024-08",
+      "bedroom_band": "1",
+      "median_weekly_rent": 540
+    },
+    {
+      "month": "2024-08",
+      "bedroom_band": "2",
+      "median_weekly_rent": 670
+    },
+    {
+      "month": "2024-08",
+      "bedroom_band": "3",
+      "median_weekly_rent": 750
+    },
+    {
+      "month": "2024-09",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2024-09",
+      "bedroom_band": "2",
+      "median_weekly_rent": 660
+    },
+    {
+      "month": "2024-09",
+      "bedroom_band": "3",
+      "median_weekly_rent": 800
+    },
+    {
+      "month": "2024-10",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2024-10",
+      "bedroom_band": "2",
+      "median_weekly_rent": 660
+    },
+    {
+      "month": "2024-10",
+      "bedroom_band": "3",
+      "median_weekly_rent": 765
+    },
+    {
+      "month": "2024-11",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2024-11",
+      "bedroom_band": "2",
+      "median_weekly_rent": 650
+    },
+    {
+      "month": "2024-11",
+      "bedroom_band": "3",
+      "median_weekly_rent": 730
+    },
+    {
+      "month": "2024-12",
+      "bedroom_band": "1",
+      "median_weekly_rent": 530
+    },
+    {
+      "month": "2024-12",
+      "bedroom_band": "2",
+      "median_weekly_rent": 650
+    },
+    {
+      "month": "2024-12",
+      "bedroom_band": "3",
+      "median_weekly_rent": 785
+    },
+    {
+      "month": "2025-01",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2025-01",
+      "bedroom_band": "2",
+      "median_weekly_rent": 650
+    },
+    {
+      "month": "2025-01",
+      "bedroom_band": "3",
+      "median_weekly_rent": 800
+    },
+    {
+      "month": "2025-02",
+      "bedroom_band": "1",
+      "median_weekly_rent": 560
+    },
+    {
+      "month": "2025-02",
+      "bedroom_band": "2",
+      "median_weekly_rent": 650
+    },
+    {
+      "month": "2025-02",
+      "bedroom_band": "3",
+      "median_weekly_rent": 850
+    },
+    {
+      "month": "2025-03",
+      "bedroom_band": "1",
+      "median_weekly_rent": 550
+    },
+    {
+      "month": "2025-03",
+      "bedroom_band": "2",
+      "median_weekly_rent": 650
+    },
+    {
+      "month": "2025-03",
+      "bedroom_band": "3",
+      "median_weekly_rent": 800
+    },
+    {
+      "month": "2025-04",
+      "bedroom_band": "1",
+      "median_weekly_rent": 570
+    },
+    {
+      "month": "2025-04",
+      "bedroom_band": "2",
+      "median_weekly_rent": 670
+    },
+    {
+      "month": "2025-04",
+      "bedroom_band": "3",
+      "median_weekly_rent": 830
+    },
+    {
+      "month": "2025-05",
+      "bedroom_band": "1",
+      "median_weekly_rent": 570
+    },
+    {
+      "month": "2025-05",
+      "bedroom_band": "2",
+      "median_weekly_rent": 680
+    },
+    {
+      "month": "2025-05",
+      "bedroom_band": "3",
+      "median_weekly_rent": 768
+    },
+    {
+      "month": "2025-06",
+      "bedroom_band": "1",
+      "median_weekly_rent": 578
+    },
+    {
+      "month": "2025-06",
+      "bedroom_band": "2",
+      "median_weekly_rent": 660
+    },
+    {
+      "month": "2025-06",
+      "bedroom_band": "3",
+      "median_weekly_rent": 728
+    },
+    {
+      "month": "2025-07",
+      "bedroom_band": "1",
+      "median_weekly_rent": 565
+    },
+    {
+      "month": "2025-07",
+      "bedroom_band": "2",
+      "median_weekly_rent": 680
+    },
+    {
+      "month": "2025-07",
+      "bedroom_band": "3",
+      "median_weekly_rent": 800
+    },
+    {
+      "month": "2025-08",
+      "bedroom_band": "1",
+      "median_weekly_rent": 595
+    },
+    {
+      "month": "2025-08",
+      "bedroom_band": "2",
+      "median_weekly_rent": 675
+    },
+    {
+      "month": "2025-08",
+      "bedroom_band": "3",
+      "median_weekly_rent": 825
+    },
+    {
+      "month": "2025-09",
+      "bedroom_band": "1",
+      "median_weekly_rent": 590
+    },
+    {
+      "month": "2025-09",
+      "bedroom_band": "2",
+      "median_weekly_rent": 695
+    },
+    {
+      "month": "2025-09",
+      "bedroom_band": "3",
+      "median_weekly_rent": 835
+    },
+    {
+      "month": "2025-10",
+      "bedroom_band": "1",
+      "median_weekly_rent": 585
+    },
+    {
+      "month": "2025-10",
+      "bedroom_band": "2",
+      "median_weekly_rent": 700
+    },
+    {
+      "month": "2025-10",
+      "bedroom_band": "3",
+      "median_weekly_rent": 875
+    },
+    {
+      "month": "2025-11",
+      "bedroom_band": "1",
+      "median_weekly_rent": 570
+    },
+    {
+      "month": "2025-11",
+      "bedroom_band": "2",
+      "median_weekly_rent": 700
+    },
+    {
+      "month": "2025-11",
+      "bedroom_band": "3",
+      "median_weekly_rent": 890
+    },
+    {
+      "month": "2025-12",
+      "bedroom_band": "1",
+      "median_weekly_rent": 585
+    },
+    {
+      "month": "2025-12",
+      "bedroom_band": "2",
+      "median_weekly_rent": 690
+    },
+    {
+      "month": "2025-12",
+      "bedroom_band": "3",
+      "median_weekly_rent": 828
+    },
+    {
+      "month": "2026-01",
+      "bedroom_band": "1",
+      "median_weekly_rent": 570
+    },
+    {
+      "month": "2026-01",
+      "bedroom_band": "2",
+      "median_weekly_rent": 700
+    },
+    {
+      "month": "2026-01",
+      "bedroom_band": "3",
+      "median_weekly_rent": 825
+    },
+    {
+      "month": "2026-02",
+      "bedroom_band": "1",
+      "median_weekly_rent": 615
+    },
+    {
+      "month": "2026-02",
+      "bedroom_band": "2",
+      "median_weekly_rent": 660
+    },
+    {
+      "month": "2026-02",
+      "bedroom_band": "3",
+      "median_weekly_rent": 850
+    },
+    {
+      "month": "2026-03",
+      "bedroom_band": "1",
+      "median_weekly_rent": 600
+    },
+    {
+      "month": "2026-03",
+      "bedroom_band": "2",
+      "median_weekly_rent": 680
+    },
+    {
+      "month": "2026-03",
+      "bedroom_band": "3",
+      "median_weekly_rent": 800
+    },
+    {
+      "month": "2026-04",
+      "bedroom_band": "1",
+      "median_weekly_rent": 615
+    },
+    {
+      "month": "2026-04",
+      "bedroom_band": "2",
+      "median_weekly_rent": 720
+    },
+    {
+      "month": "2026-04",
+      "bedroom_band": "3",
+      "median_weekly_rent": 840
+    },
+    {
+      "month": "2026-05",
+      "bedroom_band": "1",
+      "median_weekly_rent": 600
+    },
+    {
+      "month": "2026-05",
+      "bedroom_band": "2",
+      "median_weekly_rent": 718
+    },
+    {
+      "month": "2026-05",
+      "bedroom_band": "3",
+      "median_weekly_rent": 880
+    }
+  ]
+}

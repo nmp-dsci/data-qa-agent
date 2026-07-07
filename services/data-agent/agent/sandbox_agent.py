@@ -30,6 +30,7 @@ from .agent_common import (
 from .config import settings
 from .knowledge import knowledge_version, read_knowledge, search_knowledge_result
 from .memory import recall_memories, remember_memory
+from .pages import compose_pages
 from .provider import choose_provider
 from .report import select_primary_query
 from .sandbox import run_code
@@ -59,6 +60,10 @@ Available inside run_analysis (import-free; call as skills.<name>):
       -> {"value","month"}: latest 6-month-smoothed value + its month.
   gross_yield(rent_df, price_df, *, key_cols, weekly_rent_col, price_col)
       -> annualised gross rental yield %.
+  driver_analysis(df, *, dimensions, value_col, den_col=None, top=3)
+      -> which attribute most explains high/low values of the metric (% contribution):
+         {"top_dimension", "overall", "ranked":[{dimension, score_pct, levels}]}.
+         Use for "why/what drives X" and to power the Insights breakdown.
   # visualisation (consistent house style, validated)
   trend_chart(series_df, *, title=None) -> chart spec
   comparison_chart(df, *, category_col, value_col, title=None, series_col=None) -> chart spec
@@ -126,6 +131,12 @@ Work in this order:
    Chart choice is also a skill choice: trend over time -> trend_chart; different
    scales on one axis -> dual_axis_chart; ranked comparisons -> comparison_chart;
    composition -> profile_chart; spread/outliers -> distribution_chart.
+   ANSWER SHAPE: the app renders your report as pages — a SUMMARY (latest value +
+   growth + trend) that captures the answer, then INSIGHTS that explain it. So:
+   always include a latest_value + growth headline and a trend/comparison chart;
+   when the question asks WHY or the extract has attribute columns (e.g. a type or
+   band), call driver_analysis and add an insight naming the strongest driver with
+   a comparison_chart of its levels.
 5. If the available marts genuinely cannot answer the question, call
    no_answer("<short reason>") instead of forcing a report — an honest "this data
    doesn't cover that" beats a misleading answer.
@@ -239,7 +250,23 @@ async def answer_with_sandbox(question: str, *, user_id: str) -> dict[str, Any] 
             # Model never produced a report — let the caller fall back to the stub.
             return None
 
+        report = {
+            **deps.report,
+            "queries": _query_list(deps.queries),
+            "knowledge_pages_used": deps.knowledge_pages,
+            "knowledge_version": knowledge_version(),
+        }
+        # Pages contract (s07): compose Summary → Insights pages from the governed
+        # report objects. The composition steps join deps.steps BEFORE the decision
+        # log is built, so admins see object-build → template-pick → page-compose
+        # both as raw steps and as decisions in app.query_runs.
+        pages, page_steps = compose_pages(report, question=question)
+        if pages:
+            report["pages"] = pages
+        deps.steps.extend(page_steps)
+
         trace = _merge_decision_log(_build_trace(messages), deps.steps)
+        trace.extend(page_steps)
         # Telemetry (your requirement): record which skills produced this answer +
         # any gaps, as a trace step that persists into app.query_runs.
         trace.append(
@@ -254,16 +281,11 @@ async def answer_with_sandbox(question: str, *, user_id: str) -> dict[str, Any] 
         input_tokens = sum(s.get("input_tokens") or 0 for s in model_steps) or None
         output_tokens = sum(s.get("output_tokens") or 0 for s in model_steps) or None
 
-        report = {
-            **deps.report,
-            "queries": _query_list(deps.queries),
-            "knowledge_pages_used": deps.knowledge_pages,
-            "knowledge_version": knowledge_version(),
-        }
         primary = select_primary_query(deps.queries)
         return {
             "answer": report.get("summary", ""),
             "report": report,
+            "pages": pages or None,
             "sql": primary.get("sql") if primary else None,
             "columns": primary.get("columns", []) if primary else [],
             "rows": primary.get("rows", []) if primary else [],
@@ -412,6 +434,25 @@ def _decision_log(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "status": status,
                     }
                 )
+        elif kind == "template_pick":
+            decisions.append(
+                {
+                    "type": "template",
+                    "choice": step.get("template"),
+                    "why": why,
+                    "status": status,
+                }
+            )
+        elif kind == "page_compose":
+            templates = step.get("templates") or []
+            decisions.append(
+                {
+                    "type": "pages",
+                    "choice": " + ".join(templates) if templates else None,
+                    "why": why,
+                    "status": status,
+                }
+            )
         elif kind == "no_answer":
             decisions.append(
                 {

@@ -244,6 +244,75 @@ def latest_value(
 
 
 @skill
+def driver_analysis(
+    df: pd.DataFrame,
+    *,
+    dimensions: list[str],
+    value_col: str,
+    den_col: str | None = None,
+    top: int = 3,
+) -> dict[str, Any]:
+    """Rank which attribute most explains high/low values of a metric.
+
+    The Insights-page primitive: for each candidate dimension (e.g.
+    ``["property_type", "bedroom_band"]``), compute each level's metric
+    (``sum(value_col)/sum(den_col)`` when ``den_col`` is given — the additive
+    rule — else the mean of ``value_col``), its volume share, and its % delta
+    from the overall metric. A dimension's **discrimination score** is the
+    volume-weighted mean absolute % deviation of its level metrics from the
+    overall — the "% contribution" method: bigger spread ⇒ stronger driver.
+
+    Returns ``{"top_dimension", "overall", "ranked": [{dimension, score_pct,
+    levels: [{level, value, share_pct, delta_pct}, ...]}, ...]}`` with levels
+    sorted by value descending (``top`` + remainder collapsed is the caller's
+    presentation choice; all levels are returned).
+    """
+    value = pd.to_numeric(df[value_col], errors="coerce")
+    den = pd.to_numeric(df[den_col], errors="coerce") if den_col else None
+    if den is not None:
+        total_den = float(den.sum())
+        overall = float(value.sum()) / total_den if total_den else None
+    else:
+        overall = float(value.mean()) if len(value) else None
+    if overall in (None, 0):
+        return {"top_dimension": None, "overall": overall, "ranked": []}
+
+    ranked: list[dict[str, Any]] = []
+    for dim in dimensions:
+        if dim not in df.columns:
+            continue
+        work = df.assign(__v=value, __d=(den if den is not None else 1.0))
+        grouped = work.groupby(dim, dropna=True).agg(v=("__v", "sum"), d=("__d", "sum"))
+        grouped = grouped[grouped["d"] > 0]
+        if grouped.empty:
+            continue
+        # sum/sum is the additive rule with a denominator, the plain mean without.
+        level_metric = grouped["v"] / grouped["d"]
+        weights = grouped["d"] / float(grouped["d"].sum())
+        deltas = (level_metric - overall) / overall * 100.0
+        score = float((weights * deltas.abs()).sum())
+        levels = [
+            {
+                "level": str(idx),
+                "value": round(float(level_metric.loc[idx]), 2),
+                "share_pct": round(float(weights.loc[idx]) * 100.0, 1),
+                "delta_pct": round(float(deltas.loc[idx]), 1),
+            }
+            for idx in level_metric.sort_values(ascending=False).index
+        ]
+        ranked.append({"dimension": dim, "score_pct": round(score, 1), "levels": levels})
+
+    ranked.sort(key=lambda r: r["score_pct"], reverse=True)
+    if top > 0:
+        ranked = ranked[:top]
+    return {
+        "top_dimension": ranked[0]["dimension"] if ranked else None,
+        "overall": round(overall, 2),
+        "ranked": ranked,
+    }
+
+
+@skill
 def gross_yield(
     rent_df: pd.DataFrame,
     price_df: pd.DataFrame,

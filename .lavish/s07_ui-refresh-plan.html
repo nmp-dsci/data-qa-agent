@@ -1,0 +1,900 @@
+<title>UI Refresh Plan v2 — report engine + visx</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --panel-3: #232833;
+    --border: #2a2f3a;
+    --border-2: #363d4a;
+    --text: #e7e9ee;
+    --muted: #9aa3b2;
+    --faint: #6b7280;
+    --accent: #b48a3f;      /* house gold */
+    --accent-2: #6ea8fe;    /* house blue */
+    --good: #7fd18b;
+    --warn: #f0c674;
+    --bad: #ff8a8a;
+    --purple: #d0a2ff;
+    --radius: 12px;
+    --shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(110,168,254,.08), transparent 60%),
+      radial-gradient(1000px 500px at -10% 10%, rgba(180,138,63,.08), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { width: min(1180px, 100%); margin: 0 auto; padding: 0 22px 120px; }
+  a { color: var(--accent-2); text-decoration: none; }
+
+  .topnav { position: sticky; top: 0; z-index: 40; backdrop-filter: blur(10px);
+    background: rgba(15,17,21,.82); border-bottom: 1px solid var(--border); }
+  .topnav-inner { width: min(1180px,100%); margin: 0 auto; padding: 10px 22px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .brand { font-weight: 700; letter-spacing: .2px; display: flex; align-items: center; gap: 9px; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(180,138,63,.18); }
+  .topnav nav { display: flex; gap: 3px; flex-wrap: wrap; margin-left: auto; }
+  .topnav nav a { color: var(--muted); font-size: 13px; padding: 5px 9px; border-radius: 8px; }
+  .topnav nav a:hover { color: var(--text); background: var(--panel-2); }
+
+  .hero { padding: 54px 0 26px; }
+  .kicker { color: var(--accent); font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; }
+  .hero h1 { font-size: clamp(30px, 4.6vw, 44px); line-height: 1.12; margin: 12px 0 10px; letter-spacing: -.3px; padding-bottom: 4px; }
+  .hero p.lead { color: var(--muted); font-size: 17px; max-width: 72ch; margin: 0; }
+  .hero-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 11px;
+    border-radius: 999px; border: 1px solid var(--border-2); background: var(--panel); color: var(--muted); }
+  .chip strong { color: var(--text); font-weight: 600; }
+  .chip.gold { border-color: #6b5a2a; color: var(--warn); }
+  .chip.blue { border-color: #2f5a7a; color: var(--accent-2); }
+  .chip.green { border-color: #2f5a3a; color: var(--good); }
+
+  section.block { margin-top: 46px; scroll-margin-top: 70px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .sec-num { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 14px;
+    border: 1px solid var(--border-2); border-radius: 8px; padding: 2px 9px; }
+  h2.sec-title { font-size: 25px; margin: 0; letter-spacing: -.3px; }
+  .sec-sub { color: var(--muted); margin: 8px 0 0; max-width: 82ch; }
+
+  h3 { font-size: 16px; margin: 26px 0 12px; }
+  .eyebrow { color: var(--muted); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin: 0 0 10px; }
+
+  .card { background: linear-gradient(180deg, var(--panel), var(--panel) 60%, rgba(23,26,33,.6));
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .grid { display: grid; gap: 14px; }
+  .cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .cols-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  @media (max-width: 860px) { .cols-2, .cols-3 { grid-template-columns: 1fr; } }
+
+  ul.clean { margin: 0; padding: 0; list-style: none; }
+  ul.clean li { position: relative; padding: 5px 0 5px 20px; color: var(--text); font-size: 14px; }
+  ul.clean li::before { content: ""; position: absolute; left: 4px; top: 12px; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--accent-2); }
+  ul.clean li.warn::before { background: var(--warn); }
+  ul.clean li.done::before { background: var(--good); }
+  ul.clean li .m { color: var(--muted); }
+
+  .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px;
+    border-radius: 6px; border: 1px solid var(--border-2); color: var(--muted); white-space: nowrap; }
+  .tag.new { color: var(--good); border-color: #2f5a3a; background: rgba(127,209,139,.06); }
+  .tag.keep { color: var(--accent-2); border-color: #2f5a7a; }
+  .tag.high { color: var(--warn); border-color: #6b5a2a; }
+  .tag.drop { color: var(--bad); border-color: #6b3a3a; }
+
+  code, .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace; font-size: 12.5px; }
+  code { background: #0b0d11; border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; color: var(--purple); }
+
+  table.data { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  table.data th, table.data td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.data thead th { background: var(--panel-2); color: var(--muted); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .04em; }
+  table.data tbody tr:last-child td { border-bottom: none; }
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+
+  .mock { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--bg); box-shadow: var(--shadow); }
+  .mock .bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+  .mock .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a4150; display: inline-block; }
+  .mock .bar .u { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .mock .tabs { display: flex; gap: 3px; padding: 8px 12px 0; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .mock .tabs .t { font-size: 12px; color: var(--muted); padding: 6px 11px; border-radius: 7px 7px 0 0; border: 1px solid transparent; border-bottom: none; }
+  .mock .tabs .t.on { color: var(--text); background: var(--bg); border-color: var(--border); position: relative; top: 1px; }
+  .mock .tabs .t.new { color: var(--good); }
+  .mock .body { padding: 14px; display: grid; gap: 10px; }
+  .mtile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; }
+  .mtile .lab { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .mtile .val { font-size: 20px; font-weight: 700; margin-top: 3px; }
+  .mtile .val .up { color: var(--good); font-size: 12px; font-weight: 600; }
+  .spark { display: flex; align-items: flex-end; gap: 3px; height: 34px; margin-top: 8px; }
+  .spark i { flex: 1; background: linear-gradient(180deg, var(--accent-2), rgba(110,168,254,.25)); border-radius: 2px; min-width: 3px; }
+  .barrow { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 5px 0; }
+  .barrow .n { width: 92px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .barrow .track { flex: 1; height: 9px; background: var(--panel-3); border-radius: 5px; overflow: hidden; }
+  .barrow .track > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #d8b063); }
+
+  .phase { display: grid; grid-template-columns: 100px 1fr; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .phase:last-child { border-bottom: none; }
+  .phase .w { color: var(--accent); font-weight: 700; font-size: 13px; }
+  .phase .w small { display: block; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .phase h4 { margin: 0 0 4px; font-size: 15px; }
+  .phase p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .phase.hero-phase { background: rgba(180,138,63,.05); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; padding-left: 12px; }
+
+  .callout { border-left: 3px solid var(--accent); background: rgba(180,138,63,.06); border-radius: 0 10px 10px 0;
+    padding: 12px 16px; margin: 14px 0; }
+  .callout.blue { border-left-color: var(--accent-2); background: rgba(110,168,254,.06); }
+  .callout.green { border-left-color: var(--good); background: rgba(127,209,139,.05); }
+  .callout .k { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); font-weight: 700; }
+  .callout.blue .k { color: var(--accent-2); }
+  .callout.green .k { color: var(--good); }
+
+  .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; overflow-x: auto; }
+
+  .codeblock { background: #0b0d11; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+    overflow-x: auto; margin: 0; }
+  .codeblock code { background: none; border: none; padding: 0; color: var(--text); font-size: 12.5px; line-height: 1.6; white-space: pre; display: block; }
+  .codeblock .k { color: var(--accent-2); } .codeblock .s { color: var(--good); } .codeblock .c { color: var(--faint); } .codeblock .p { color: var(--purple); }
+
+  .tpl { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel); }
+  .tpl .id { font-family: ui-monospace, monospace; font-size: 12px; color: var(--purple); }
+  .tpl .rgn { display: inline-block; font-size: 10.5px; color: var(--muted); border: 1px solid var(--border-2);
+    border-radius: 5px; padding: 1px 6px; margin: 3px 4px 0 0; }
+
+  .decision { background: var(--panel); border: 1px solid var(--border-2); border-radius: 12px; padding: 16px 18px; margin-top: 14px; }
+  .decision .q { font-weight: 600; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .decision .q .ic { color: var(--accent); }
+  .opts { display: grid; gap: 8px; }
+  .opts label { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 9px; cursor: pointer; background: var(--panel-2); transition: border-color .12s, background .12s; }
+  .opts label:hover { border-color: var(--border-2); }
+  .opts label:has(input:checked) { border-color: var(--accent); background: rgba(180,138,63,.08); }
+  .opts .ol { color: var(--muted); font-size: 13.5px; }
+  .opts .ol b { color: var(--text); font-weight: 600; }
+  .opts input { margin-top: 3px; accent-color: var(--accent); }
+  .queue-btn { margin-top: 12px; background: var(--accent); color: #1a1206; border: none; font-weight: 700;
+    padding: 9px 16px; border-radius: 9px; font-size: 13.5px; cursor: pointer; }
+  .queue-btn:hover { filter: brightness(1.06); }
+  .queue-note { color: var(--faint); font-size: 12px; margin-top: 8px; }
+
+  .dlog { display: grid; grid-template-columns: 190px 1fr; gap: 0 14px; font-size: 13.5px; }
+  .dlog > div { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .dlog > div:nth-last-child(-n+2) { border-bottom: none; }
+  .dlog .dk { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; padding-top: 10px; }
+  @media (max-width: 700px) { .dlog { grid-template-columns: 1fr; } .dlog .dk { border-bottom: none; padding-bottom: 0; } }
+
+  .foot { margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--border); color: var(--faint); font-size: 12.5px; }
+</style>
+
+<div class="topnav">
+  <div class="topnav-inner">
+    <span class="brand"><span class="dot"></span> UI Refresh v2 · data-qa-agent</span>
+    <nav>
+      <a href="#state">State</a>
+      <a href="#arch">Architecture</a>
+      <a href="#contract">Contract</a>
+      <a href="#pages">Pages</a>
+      <a href="#charts">Charts</a>
+      <a href="#example">Example</a>
+      <a href="#refactor">Refactor</a>
+      <a href="#tabs">Tabs</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#decisions">Decisions</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="kicker">Frontend Plan · s07 · v2 — rewritten to the decided direction</div>
+    <h1>From fixed report renderer to a page-based report engine</h1>
+    <p class="lead">The direction is locked: the <b>agent emits pages of governed objects</b> (data + intent — never chart
+      specs or layout), the <b>frontend owns a fixed template registry</b> and renders everything with <b>visx</b>.
+      Every answer leads with a <b>Summary</b> page (latest number + growth) and explains itself with an
+      <b>Insights</b> page (driver analysis). Around that core: de-monolith the React app, refresh the design system,
+      and reshape the tabs.</p>
+    <div class="hero-meta">
+      <span class="chip"><strong>React 19</strong> + Vite + TS</span>
+      <span class="chip gold">App.tsx <strong>1,668 lines</strong> → feature modules</span>
+      <span class="chip blue">Charts: <strong>visx only</strong>, frontend-authored</span>
+      <span class="chip green">Answer = <strong>Summary → Insights</strong> pages</span>
+      <span class="chip">3 tabs → <strong>4</strong> (+Settings)</span>
+    </div>
+  </header>
+
+  <!-- 01 · CURRENT STATE -->
+  <section class="block" id="state">
+    <div class="sec-head"><span class="sec-num">01</span><h2 class="sec-title">Where the app is today</h2></div>
+    <p class="sec-sub">A working but monolithic slice. One 1,668-line component owns login, tabs, chat, admin and report
+      rendering. The agent authors charts as Vega-Lite specs; the frontend has one hard-coded report layout. Both of
+      those are what this plan replaces.</p>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <p class="eyebrow">The 6 source files</p>
+        <div class="tbl-wrap">
+          <table class="data">
+            <thead><tr><th>File</th><th>Lines</th><th>Fate</th></tr></thead>
+            <tbody>
+              <tr><td><code>App.tsx</code></td><td>1,668</td><td>Split into <code>features/*</code> + <code>ui/*</code></td></tr>
+              <tr><td><code>SqlEditor.tsx</code></td><td>~600</td><td>Keep; grow catalog panel</td></tr>
+              <tr><td><code>VegaChart.tsx</code></td><td>72</td><td><span class="tag drop">retire</span> replaced by visx components</td></tr>
+              <tr><td><code>api.ts</code></td><td>~455</td><td>Keep; add pages/objects DTOs</td></tr>
+              <tr><td><code>auth.ts</code></td><td>—</td><td>Keep as-is</td></tr>
+              <tr><td><code>styles.css</code></td><td>376</td><td>Tokenize into a real token set</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="eyebrow" style="margin-top:14px">Agent side — what gets retired</p>
+        <ul class="clean">
+          <li class="warn"><code>agent/skills/charts.py</code> — Vega-Lite spec skills (<code>trend_chart</code>, <code>comparison_chart</code>)</li>
+          <li class="warn">Chart-spec allowlist validator + dark-theme overlay</li>
+          <li class="warn"><code>vega / vega-lite / vega-embed</code> npm deps</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">What already works well (keep &amp; thread through)</p>
+        <ul class="clean">
+          <li><b>Governed objects with <code>element_id</code>s</b> — powers element-pinned feedback → evals; must survive intact</li>
+          <li><b>Agent trace</b> — model turns, tool calls, tokens, decision log per <code>query_runs</code> row</li>
+          <li><b>Deep admin</b> — datasets, users, query runs, feedback triage, eval cases, config</li>
+          <li><b>Governed SQL editor</b> — schema tree, RLS-scoped, AI assist, draft tabs</li>
+          <li><b>Conversations</b> — <code>/ask</code> already threads a <code>conversation_id</code></li>
+        </ul>
+        <p class="eyebrow" style="margin-top:14px">Pain points the refresh targets</p>
+        <ul class="clean">
+          <li class="warn">One fixed report layout — agent can't shape the answer's presentation</li>
+          <li class="warn">Agent authors chart specs — frontend has no control of look/interaction</li>
+          <li class="warn">No routing (tabs are <code>useState</code>), no deep links, no state layer</li>
+          <li class="warn">Past conversations invisible; schema catalog buried; dark-only CSS</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 · TARGET ARCHITECTURE -->
+  <section class="block" id="arch">
+    <div class="sec-head"><span class="sec-num">02</span><h2 class="sec-title">Target architecture — how an answer works now</h2></div>
+    <p class="sec-sub">Three pillars, decided: <b>(a)</b> the agent emits <b>pages of typed objects</b> carrying data + intent,
+      <b>(b)</b> the frontend owns a <b>fixed, published template registry</b> the agent picks from,
+      <b>(c)</b> <b>visx chart functions</b> render every visual. The <code>element_id</code> threads end-to-end, so the
+      pinned-feedback → evals loop is untouched.</p>
+
+    <div class="mermaid">
+flowchart TB
+  Q(["User question"]) --> AG
+  subgraph agent["data-agent · governed (Pydantic AI + RLS)"]
+    direction TB
+    AG["plan + run_sql"] --> DRV["driver-analysis skill<br/>rank explanatory attributes"]
+    DRV --> OBJ["build objects<br/>type · data · intent<br/>+ stable element_id"]
+    OBJ --> PG["compose pages<br/>pick template id<br/>assign objects to regions"]
+  end
+  PG -->|"JSON: pages[] of objects"| API["backend-api<br/>persists trace to query_runs"]
+  API --> FE
+  subgraph fe["frontend · renders the agent output"]
+    direction TB
+    FE["receive pages[]"] --> REG["template registry<br/>resolves page layout"]
+    REG --> RND["object renderers<br/>type → component, by region"]
+    RND --> VISX["visx chart functions<br/>Trend · Breakdown · KPI · Compare"]
+    VISX --> P1["Page 1 · Summary<br/>latest number + growth"]
+    VISX --> P2["Page 2 · Insights<br/>drivers by attribute"]
+  end
+  P1 --> FB["element-pinned feedback → evals"]
+  P2 --> FB
+  FB -.->|element_id preserved| OBJ
+    </div>
+
+    <div class="grid cols-3" style="margin-top:16px">
+      <div class="card">
+        <p class="eyebrow">Agent (composition)</p>
+        <ul class="clean">
+          <li>Emits <b>data + intent</b>, never specs/layout</li>
+          <li>Picks a published <code>template</code> id per page</li>
+          <li>Assigns each object to a <code>region</code></li>
+          <li>Runs the driver-analysis skill for Insights</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Frontend (presentation)</p>
+        <ul class="clean">
+          <li>Owns the <b>template registry</b> + layouts</li>
+          <li>Maps <code>type</code> → component, places by region</li>
+          <li>Renders all charts with <b>visx</b></li>
+          <li>Themes everything off design tokens</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Governance (unchanged)</p>
+        <ul class="clean">
+          <li>SQL runs read-only under RLS</li>
+          <li><code>element_id</code>s stable end-to-end</li>
+          <li>Pinned feedback → eval cases keep working</li>
+          <li>Every run traced in <code>query_runs</code></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 · AGENT OUTPUT CONTRACT -->
+  <section class="block" id="contract">
+    <div class="sec-head"><span class="sec-num">03</span><h2 class="sec-title">The agent output — exact JSON contract</h2></div>
+    <p class="sec-sub">The agent returns an ordered list of <b>pages</b>; each page names a <b>template</b> and fills its regions with
+      typed <b>objects</b>. Each object keeps a stable <code>element_id</code>. The schema is validated before rendering.</p>
+
+    <pre class="codeblock" style="margin-top:14px"><code>{
+  <span class="k">"answer_id"</span>: <span class="s">"run_9f2a…"</span>,
+  <span class="k">"pages"</span>: [
+    {
+      <span class="k">"template"</span>: <span class="s">"summary"</span>,          <span class="c">// picked from the published registry</span>
+      <span class="k">"objects"</span>: [
+        { <span class="k">"type"</span>: <span class="s">"kpi"</span>,   <span class="k">"element_id"</span>: <span class="s">"k1"</span>, <span class="k">"region"</span>: <span class="s">"hero"</span>,
+          <span class="k">"data"</span>: { <span class="k">"label"</span>: <span class="s">"2br unit median rent"</span>, <span class="k">"latest"</span>: <span class="p">671</span>, <span class="k">"unit"</span>: <span class="s">"$/wk"</span>,
+                   <span class="k">"growth"</span>: { <span class="k">"yoy"</span>: <span class="p">0.061</span>, <span class="k">"mom"</span>: <span class="p">0.008</span> },
+                   <span class="k">"series"</span>: [ {<span class="k">"month"</span>:<span class="s">"2025-01"</span>,<span class="k">"value"</span>:<span class="p">632</span>}, <span class="c">…</span> ] } },
+        { <span class="k">"type"</span>: <span class="s">"trend"</span>, <span class="k">"element_id"</span>: <span class="s">"t1"</span>, <span class="k">"region"</span>: <span class="s">"chart"</span>,
+          <span class="k">"data"</span>: { <span class="k">"intent"</span>: <span class="s">"line"</span>, <span class="k">"x"</span>: <span class="s">"month"</span>, <span class="k">"y"</span>: <span class="s">"value"</span>, <span class="k">"series"</span>: [ <span class="c">…</span> ] } }
+      ]
+    },
+    {
+      <span class="k">"template"</span>: <span class="s">"insights"</span>,
+      <span class="k">"objects"</span>: [
+        { <span class="k">"type"</span>: <span class="s">"breakdown"</span>, <span class="k">"element_id"</span>: <span class="s">"b1"</span>, <span class="k">"region"</span>: <span class="s">"chart"</span>, <span class="k">"explains"</span>: <span class="s">"k1"</span>,
+          <span class="k">"data"</span>: { <span class="k">"intent"</span>: <span class="s">"bar"</span>, <span class="k">"dimension"</span>: <span class="s">"bedroom_band"</span>, <span class="k">"measure"</span>: <span class="s">"median_weekly_rent"</span>,
+                   <span class="k">"rows"</span>: [ {<span class="k">"bedroom_band"</span>:<span class="s">"2"</span>,<span class="k">"value"</span>:<span class="p">671</span>,<span class="k">"growth"</span>:<span class="p">0.061</span>}, <span class="c">…</span> ] } },
+        { <span class="k">"type"</span>: <span class="s">"insight"</span>, <span class="k">"element_id"</span>: <span class="s">"i1"</span>, <span class="k">"region"</span>: <span class="s">"note"</span>,
+          <span class="k">"data"</span>: { <span class="k">"text"</span>: <span class="s">"3-bed units drove the rise (+7.3% YoY)"</span>, <span class="k">"refs"</span>: [<span class="s">"b1"</span>] } }
+      ]
+    }
+  ]
+}</code></pre>
+    <p class="queue-note" style="margin:8px 0 0"><code>template</code> = published registry id · <code>region</code> = slot in that template ·
+      <code>type</code>+<code>data</code> = governed content (visx renders from <code>data.intent</code>) · <code>explains</code>/<code>refs</code> wire insights to the numbers they explain.</p>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <p class="eyebrow">Object types (v1)</p>
+        <div class="tbl-wrap">
+          <table class="data">
+            <thead><tr><th>Type</th><th>Data</th><th>Rendered by</th></tr></thead>
+            <tbody>
+              <tr><td><code>kpi</code></td><td>label · latest · unit · growth · series</td><td>KPI tile (+sparkline)</td></tr>
+              <tr><td><code>trend</code></td><td>intent: line · x/y · series</td><td>visx <code>Trend</code></td></tr>
+              <tr><td><code>breakdown</code></td><td>intent: bar · dimension · measure · rows</td><td>visx <code>Breakdown</code></td></tr>
+              <tr><td><code>compare</code></td><td>intent: grouped-bar · 2 series</td><td>visx <code>Compare</code></td></tr>
+              <tr><td><code>insight</code></td><td>text · refs[]</td><td>Note / annotation</td></tr>
+              <tr><td><code>query_ref</code></td><td>sql · row_count · purpose</td><td>Query card (keep today's)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Agent-side work this implies</p>
+        <ul class="clean">
+          <li class="warn"><b>System prompt + few-shot</b> rewritten so the LLM emits this pages/objects JSON</li>
+          <li class="warn"><b>Schema validation</b> on output (Pydantic) — reject/repair malformed pages before they reach the frontend</li>
+          <li class="warn"><b>Tracing update</b> — record <i>object-build → template-pick → page-compose</i> as steps in the <code>query_runs</code> trace (visible in Admin + <code>inspect_run.py</code>)</li>
+          <li class="warn"><b>Retire</b> <code>charts.py</code> spec skills + validator; <code>build_report</code> becomes <code>build_pages</code></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 · PAGES & TEMPLATES -->
+  <section class="block" id="pages">
+    <div class="sec-head"><span class="sec-num">04</span><h2 class="sec-title">Pages &amp; templates — Summary always, Insights when it explains</h2></div>
+    <p class="sec-sub">The answer is an ordered list of pages over the same governed objects. <b>Page 1 · Summary always leads</b> —
+      it captures the answer and builds trust: the latest number in a time series with its growth rates.
+      <b>Page 2 · Insights explains it</b> — driver analysis over the attributes that roll up to the top-line.
+      A detail/report page is <b>not required</b>.</p>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card" style="padding:12px">
+        <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px"><span class="tag new">page 1</span><b style="font-size:13.5px">Summary</b><span style="margin-left:auto; font-size:11px; color:var(--faint)">template: <code>summary</code></span></div>
+        <div class="mock" style="box-shadow:none">
+          <div class="body" style="padding:10px; gap:7px">
+            <div class="mtile" style="padding:8px"><div class="lab">2br unit median rent · latest</div><div class="val" style="font-size:17px">$671<span style="font-size:11px;color:var(--muted)">/wk</span> <span class="up" style="font-size:11px">▲ +6.1% YoY</span></div></div>
+            <div class="mtile" style="padding:8px"><div class="lab">trend (time series)</div><div class="spark" style="height:28px"><i style="height:38%"></i><i style="height:50%"></i><i style="height:46%"></i><i style="height:66%"></i><i style="height:80%"></i><i style="height:92%"></i></div></div>
+          </div>
+        </div>
+        <p style="font-size:11.5px; color:var(--faint); margin:8px 0 0">Latest number in a time series + growth — the answer, at a glance</p>
+      </div>
+      <div class="card" style="padding:12px">
+        <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px"><span class="tag">page 2</span><b style="font-size:13.5px">Insights</b><span style="margin-left:auto; font-size:11px; color:var(--faint)">template: <code>insights</code></span></div>
+        <div class="mock" style="box-shadow:none">
+          <div class="body" style="padding:10px; gap:7px">
+            <div class="mtile" style="padding:8px"><div class="lab">what rolls up to the +6.1% — by bedrooms</div>
+              <div class="barrow" style="margin-top:6px"><span class="n">3br ▲ +7.3%</span><span class="track"><span style="width:92%"></span></span></div>
+              <div class="barrow"><span class="n">2br ▲ +6.1%</span><span class="track"><span style="width:78%"></span></span></div>
+              <div class="barrow"><span class="n">1br ▲ +3.6%</span><span class="track"><span style="width:55%"></span></span></div>
+            </div>
+            <div class="mtile" style="padding:8px"><div style="font-size:11px; color:var(--muted)">3-bed units drove the rise; houses lagged units at 1–2br.</div></div>
+          </div>
+        </div>
+        <p style="font-size:11.5px; color:var(--faint); margin:8px 0 0">Drivers by attribute (property type · bedrooms) that explain the top-line</p>
+      </div>
+    </div>
+
+    <div class="callout blue">
+      <div class="k">Insights = driver analysis (a real agent capability, not just a breakdown)</div>
+      <div style="margin-top:6px; font-size:13.5px">
+        The Insights page identifies the <b>biggest discriminator</b>: which available attribute most explains high vs low values
+        of the headline metric — e.g. for rent, is <b>property_type</b> or <b>bedroom_band</b> the stronger driver of higher rent?
+        For a <b>suburb / comparison</b>, it surfaces <b>mix differences</b> — the % split of property type / bedrooms that explains
+        the gap (suburb A skews 3-bed houses; suburb B skews 1–2-bed units). Implemented as an agent
+        <b>driver / variance-decomposition skill</b> that ranks attributes by explanatory power, then renders the top drivers into the
+        <code>insights</code> template. <span class="m">Ranking method (variance decomposition vs mutual info vs % contribution) is an open question below.</span>
+      </div>
+    </div>
+
+    <h3>Published template registry — the agent picks by id, fills regions</h3>
+    <p class="sec-sub" style="margin-bottom:12px"><b>Fixed registry, not agent-directed free-form layout</b> (decided, revisitable in §11): predictable,
+      themable, testable — and every region is a known slot for feedback/evals. New template = new frontend layout + registry entry.</p>
+    <div class="grid cols-2">
+      <div class="tpl">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px"><span class="id">summary</span> <span class="tag new">page 1 · always</span></div>
+        <p style="margin:0 0 6px; font-size:12.5px; color:var(--muted)">Captures the answer &amp; builds trust: latest number in a time series + growth rates.</p>
+        <span class="rgn">hero: KPI + growth</span><span class="rgn">chart: trend</span><span class="rgn">note: 1-line takeaway</span>
+      </div>
+      <div class="tpl">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px"><span class="id">insights</span> <span class="tag">page 2</span></div>
+        <p style="margin:0 0 6px; font-size:12.5px; color:var(--muted)">Ranks the biggest driver + breakdown: which attribute most explains the top-line.</p>
+        <span class="rgn">chart: driver ranking</span><span class="rgn">tiles: driver KPIs</span><span class="rgn">note: annotations</span>
+      </div>
+      <div class="tpl">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px"><span class="id">one-col</span> <span class="tag">generic</span></div>
+        <p style="margin:0 0 6px; font-size:12.5px; color:var(--muted)">Narrative, focused answer stacked vertically.</p>
+        <span class="rgn">headline</span><span class="rgn">chart</span><span class="rgn">insights</span>
+      </div>
+      <div class="tpl">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px"><span class="id">two-col</span> <span class="tag">generic</span></div>
+        <p style="margin:0 0 6px; font-size:12.5px; color:var(--muted)">Chart beside narrative for side-by-side reading.</p>
+        <span class="rgn">headline row</span><span class="rgn">chart (left)</span><span class="rgn">insights (right)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 · CHARTS: VISX -->
+  <section class="block" id="charts">
+    <div class="sec-head"><span class="sec-num">05</span><h2 class="sec-title">Chart layer — visx only, frontend-authored</h2></div>
+    <p class="sec-sub"><b>Decided:</b> the frontend authors every chart with <b>visx</b> (D3 primitives) for maximum control and one
+      consistent house style. Vega-Lite (agent-authored) is retired; Recharts was considered and dropped —
+      one library, one styling system.</p>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <p class="eyebrow">Chart functions to build (the visx library)</p>
+        <div class="tbl-wrap">
+          <table class="data">
+            <thead><tr><th>Function</th><th>Intent</th><th>Used for</th></tr></thead>
+            <tbody>
+              <tr><td><code>Trend</code></td><td><code>line</code></td><td>Summary time series; multi-series by attribute</td></tr>
+              <tr><td><code>Breakdown</code></td><td><code>bar</code></td><td>Insights drivers; metric by dimension (+growth labels)</td></tr>
+              <tr><td><code>Compare</code></td><td><code>grouped-bar</code></td><td>house vs unit, suburb vs suburb</td></tr>
+              <tr><td><code>KPITile</code></td><td><code>kpi</code></td><td>Latest number + growth + sparkline</td></tr>
+              <tr><td><code>Axis · Legend · Tooltip</code></td><td>—</td><td>Shared primitives all charts compose</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="queue-note" style="margin:8px 0 0">~4–5 reusable components, reused by chat answers, the SQL editor's "result → chart", and the Admin KPI strip.</p>
+      </div>
+      <div class="card">
+        <p class="eyebrow">What visx buys · what it costs</p>
+        <ul class="clean">
+          <li class="done">Compose <b>tiles + charts + annotations</b> in one layout the template controls</li>
+          <li class="done">Custom marks — growth callouts, reference lines, gradients, lollipops</li>
+          <li class="done">Interaction when useful: hover, brush, crossfilter, animation</li>
+          <li class="done">One styling system in code → every chart matches the house tokens</li>
+          <li class="warn">Low-level: scales/axes/legends are ours to build (hence the shared primitives)</li>
+          <li class="warn">Migration: agent stops emitting specs; <code>VegaChart.tsx</code> + vega deps removed</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 · WORKED EXAMPLE -->
+  <section class="block" id="example">
+    <div class="sec-head"><span class="sec-num">06</span><h2 class="sec-title">Worked example — Hornsby rent by bedrooms</h2></div>
+    <p class="sec-sub">The pinned question: <i>“can you show me postcode for hornsby suburb weekly rent by bedrooms”</i>.
+      The rent mart is at <b>postcode grain</b> (no suburb) → “Hornsby” resolves to <b>postcode 2077</b>. Real data + SQL live in
+      <code>ai_plans/s07_ui-refresh-plan/</code> (<code>rent_by_bedroom.json</code>, <code>rent_trend_units.json</code>) so this stays iterable —
+      the mock below gets swapped for the real visx sandbox screenshot.</p>
+
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px"><span class="tag new">visx composition</span><b>One composed answer — tiles + growth beside the bar chart</b></div>
+      <p style="color:var(--muted); font-size:12.5px; margin:0 0 12px"><b>Row 1 · col 1:</b> latest-number tiles with secondary growth rate. <b>Row 1 · col 2:</b> grouped bar chart.
+        Rendered by visx from the same governed rows, laid out by the <code>two-col</code> template.</p>
+      <div class="mock" style="box-shadow:none">
+        <div class="body" style="padding:12px; gap:12px; grid-template-columns:minmax(0,0.9fr) minmax(0,1.1fr); align-items:stretch">
+          <div style="display:grid; gap:10px; align-content:start">
+            <div class="mtile"><div class="lab">2br unit · median</div><div class="val">$671<span style="font-size:12px; color:var(--muted); font-weight:500">/wk</span> <span class="up">▲ +6.1% YoY</span></div></div>
+            <div class="mtile"><div class="lab">3br unit · median</div><div class="val">$810<span style="font-size:12px; color:var(--muted); font-weight:500">/wk</span> <span class="up">▲ +7.3% YoY</span></div></div>
+            <div class="mtile"><div class="lab">1br unit · median</div><div class="val">$566<span style="font-size:12px; color:var(--muted); font-weight:500">/wk</span> <span style="color:var(--warn); font-size:12px; font-weight:600">▲ +3.6%</span></div></div>
+          </div>
+          <div class="mtile" style="display:flex; flex-direction:column">
+            <div class="lab" style="margin-bottom:6px">median weekly rent by bedrooms · house vs unit</div>
+            <svg viewBox="-16 -6 384 172" width="100%" style="overflow:visible; flex:1" role="img" aria-label="visx grouped bar: median weekly rent by bedrooms, house vs unit">
+              <g font-size="9" fill="#9aa3b2" font-family="ui-sans-serif,system-ui">
+                <line x1="34" y1="8" x2="34" y2="128" stroke="#2a2f3a"/>
+                <line x1="34" y1="128" x2="352" y2="128" stroke="#2a2f3a"/>
+                <line x1="34" y1="18" x2="352" y2="18" stroke="#20242e" stroke-dasharray="3 3"/>
+                <line x1="34" y1="73" x2="352" y2="73" stroke="#20242e" stroke-dasharray="3 3"/>
+                <g>
+                  <rect x="44"  y="88"  width="14" height="40" rx="2" fill="#b48a3f"/><rect x="59"  y="84"  width="14" height="44" rx="2" fill="#6ea8fe"/>
+                  <rect x="90"  y="76"  width="14" height="52" rx="2" fill="#b48a3f"/><rect x="105" y="75"  width="14" height="53" rx="2" fill="#6ea8fe"/>
+                  <rect x="136" y="62"  width="14" height="66" rx="2" fill="#b48a3f"/><rect x="151" y="64"  width="14" height="64" rx="2" fill="#6ea8fe"/>
+                  <rect x="182" y="51"  width="14" height="77" rx="2" fill="#b48a3f"/><rect x="197" y="53"  width="14" height="75" rx="2" fill="#6ea8fe"/>
+                  <rect x="228" y="34"  width="14" height="94" rx="2" fill="#b48a3f"/><rect x="243" y="18"  width="14" height="110" rx="2" fill="#6ea8fe"/>
+                </g>
+                <text x="58" y="140">1br</text><text x="104" y="140">2br</text><text x="150" y="140">3br</text><text x="196" y="140">4br</text><text x="240" y="140">5+br</text>
+                <rect x="276" y="20" width="9" height="9" rx="2" fill="#b48a3f"/><text x="289" y="28">house</text>
+                <rect x="276" y="34" width="9" height="9" rx="2" fill="#6ea8fe"/><text x="289" y="42">unit</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <p class="queue-note" style="margin:10px 0 0">Real saved medians (unit 1/2/3/4/5+ ≈ $566/$671/$810/$953/$1400 /wk from <code>marts.property_rent</code>);
+        growth figures illustrative until the driver skill computes them. This exact answer doubles as the Agent-Config demo seed (§08).</p>
+    </div>
+  </section>
+
+  <!-- 07 · REFACTOR -->
+  <section class="block" id="refactor">
+    <div class="sec-head"><span class="sec-num">07</span><h2 class="sec-title">Refactor — monolith → feature modules (incremental)</h2></div>
+    <p class="sec-sub"><b>Decided: incremental</b> — extract one feature per PR; the app runs the whole time. Split
+      <code>App.tsx</code> along feature seams, add a router so tabs become real routes, and a thin shared layer.</p>
+
+    <div class="mermaid">
+flowchart TB
+  subgraph now["Today — one file"]
+    A["App.tsx · 1,668 lines<br/>login + shell + chat + admin + report"]
+  end
+  subgraph target["Target — feature modules under src/"]
+    SH["app/ — shell, router, theme"]
+    CH["features/chat<br/>+ History sidebar"]
+    SQ["features/sql<br/>+ Catalog"]
+    AD["features/admin<br/>+ Agent-Config"]
+    SET["features/settings<br/>· NEW"]
+    RE["report-engine/<br/>templates · renderers · registry"]
+    UI["ui/ — Button, Card, Table<br/>+ visx charts"]
+    LIB["lib/ — api, hooks, query cache"]
+  end
+  A -->|extract| SH
+  A -->|extract| CH
+  A -->|extract| AD
+  CH --> RE
+  RE --> UI
+  SH --> UI
+  SQ --> UI
+  AD --> UI
+  SET --> UI
+  UI --> LIB
+    </div>
+
+    <div class="grid cols-3" style="margin-top:16px">
+      <div class="card">
+        <p class="eyebrow">Structure</p>
+        <ul class="clean">
+          <li><code>src/app/</code> shell + router + providers</li>
+          <li><code>src/features/*</code> one folder per tab</li>
+          <li><code>src/report-engine/</code> templates, registry, object renderers</li>
+          <li><code>src/ui/</code> primitives + visx charts · <code>src/lib/</code> api, hooks</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Dependencies</p>
+        <ul class="clean">
+          <li class="done"><b>+ @visx/*</b> — scales, shapes, axis, tooltip</li>
+          <li><b>+ react-router</b> — routes/deep links</li>
+          <li><b>+ @tanstack/react-query</b> — data fetching/cache</li>
+          <li class="warn"><b>− vega, vega-lite, vega-embed</b> — removed</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Principles</p>
+        <ul class="clean">
+          <li>One feature per PR; app never breaks</li>
+          <li>API DTOs are the contract; tokenize CSS first</li>
+          <li>Feedback-popover logic survives Report* extraction intact</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 · TABS -->
+  <section class="block" id="tabs">
+    <div class="sec-head"><span class="sec-num">08</span><h2 class="sec-title">Tabs — 4 total, each with features + tasks</h2></div>
+    <p class="sec-sub">Keep Chat · SQL Editor · Admin; add <b>Settings</b>. History lives as a <b>sidebar in Chat</b>; the Catalog lives
+      <b>inside the SQL editor</b>; the <b>Dashboards tab is dropped</b> — a dashboard is just a view-page rendered inline in an answer.</p>
+
+    <div class="mock" style="margin:16px 0">
+      <div class="bar"><i></i><i></i><i></i><span class="u">admin · localhost:5230</span></div>
+      <div class="tabs">
+        <span class="t on">Chat</span>
+        <span class="t">SQL Editor</span>
+        <span class="t">Admin</span>
+        <span class="t new">Settings ✦</span>
+      </div>
+      <div class="body" style="grid-template-columns:200px 1fr">
+        <div class="mtile" style="padding:9px">
+          <div class="lab">Conversations</div>
+          <div style="font-size:11.5px; margin-top:6px; color:var(--text)">▸ Hornsby rent by bedrooms</div>
+          <div style="font-size:11.5px; margin-top:4px; color:var(--muted)">▸ Top growth suburbs</div>
+          <div style="font-size:11.5px; margin-top:4px; color:var(--muted)">▸ Rent vs sale yield</div>
+          <div style="font-size:11px; margin-top:8px; color:var(--accent)">+ New conversation</div>
+        </div>
+        <div style="display:grid; gap:8px">
+          <div class="mtile" style="padding:9px"><div class="lab">Page 1 · Summary</div><div class="val" style="font-size:15px">$671/wk <span class="up" style="font-size:10px">▲ +6.1% YoY</span></div></div>
+          <div class="mtile" style="padding:9px"><div class="lab">Page 2 · Insights</div><div style="font-size:11px; color:var(--muted); margin-top:3px">3-bed units drove the rise — biggest driver: bedroom count</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px"><span class="tag keep">keep</span><b>Chat</b></div>
+        <p class="eyebrow">Features</p>
+        <ul class="clean">
+          <li><b>History sidebar</b> — past conversations; click to reopen</li>
+          <li><b>New conversation</b> = fresh thread; follow-ups stay multi-turn</li>
+          <li>Answers render as <b>Summary → Insights</b> pages (report engine)</li>
+          <li>Streaming + "agent working" step states</li>
+          <li>Element-pinned feedback kept intact</li>
+        </ul>
+        <p class="eyebrow" style="margin-top:12px">Tasks</p>
+        <ul class="clean">
+          <li class="warn">Sidebar + thread layout; list/reopen via <code>query_runs</code> + <code>conversation_id</code></li>
+          <li class="warn">Swap fixed ReportView → report-engine page renderer</li>
+          <li>SSE streaming from <code>/ask</code>; skeleton loaders</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px"><span class="tag keep">keep</span><b>SQL Editor</b></div>
+        <p class="eyebrow">Features</p>
+        <ul class="clean">
+          <li><b>Catalog lives here</b> — schema tree promoted to a browsable panel</li>
+          <li>Column profiling + dbt lineage/freshness inline</li>
+          <li>Results → chart with one click (same visx components)</li>
+          <li>Save queries as named, shareable snippets</li>
+        </ul>
+        <p class="eyebrow" style="margin-top:12px">Tasks</p>
+        <ul class="clean">
+          <li>Expand schema sidebar → catalog (search, profiling, lineage)</li>
+          <li>Profiling endpoint; read the dbt manifest the agent already uses</li>
+          <li>"Result → chart" via visx; persist drafts server-side</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px"><span class="tag keep">keep</span><b>Admin</b></div>
+        <p class="eyebrow">Features</p>
+        <ul class="clean">
+          <li>Sub-tabs: <b>Observability</b> · <b>Quality</b> · <b>Agent-Config</b></li>
+          <li><b>Agent-Config</b> — page layouts + charts available, demo-seeded with the Hornsby example so admin sees what the agent can compose</li>
+          <li>Trace viewer shows the new steps: object-build → template-pick → page-compose</li>
+          <li>Feedback triage &amp; eval cases kept; visx KPI/trend strip</li>
+        </ul>
+        <p class="eyebrow" style="margin-top:12px">Tasks</p>
+        <ul class="clean">
+          <li class="warn">Extract <code>AdminDashboard</code> from App.tsx (biggest chunk)</li>
+          <li class="warn">New <code>agent_config</code> table + seed; Agent-Config view</li>
+          <li>Unify 5 tables into shared <code>DataTable</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px"><span class="tag new">new</span><b>Settings / Profile</b></div>
+        <p class="eyebrow">Features</p>
+        <ul class="clean">
+          <li>Light/dark theme toggle</li>
+          <li>Model provider (Claude / DeepSeek)</li>
+          <li>Manage remembered preferences (agent memory)</li>
+          <li>View my data access &amp; role</li>
+        </ul>
+        <p class="eyebrow" style="margin-top:12px">Tasks</p>
+        <ul class="clean">
+          <li>Theme persistence + token wiring</li>
+          <li>Surface agent memory read/delete API</li>
+          <li>Read-only access summary from RLS</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px"><span class="tag new">Admin · Agent-Config</span><b>What the agent can compose — demo-seeded</b></div>
+      <p style="color:var(--muted); font-size:12.5px; margin:0 0 12px">New <code>agent_config</code> table, seeded from the worked example so an admin sees the building blocks at a glance.</p>
+      <div class="grid cols-2" style="gap:12px">
+        <div>
+          <p class="eyebrow">Page layouts available</p>
+          <div class="tbl-wrap"><table class="data">
+            <thead><tr><th>Template</th><th>Regions</th><th>Demo</th></tr></thead>
+            <tbody>
+              <tr><td><code>summary</code></td><td>hero · chart · note</td><td>Hornsby 2br $671 +6.1%</td></tr>
+              <tr><td><code>insights</code></td><td>chart · tiles · note</td><td>drivers by bedrooms</td></tr>
+              <tr><td><code>one-col</code></td><td>headline · chart · insights</td><td>—</td></tr>
+              <tr><td><code>two-col</code></td><td>headline · chart | insights</td><td>—</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div>
+          <p class="eyebrow">Charts available (visx)</p>
+          <div class="tbl-wrap"><table class="data">
+            <thead><tr><th>Chart fn</th><th>Intent</th><th>Demo</th></tr></thead>
+            <tbody>
+              <tr><td><code>Trend</code></td><td><code>line</code></td><td>rent by month, 1/2/3-bed</td></tr>
+              <tr><td><code>Breakdown</code></td><td><code>bar</code></td><td>median rent by bedroom_band</td></tr>
+              <tr><td><code>KPITile</code></td><td><code>kpi</code></td><td>latest + growth</td></tr>
+              <tr><td><code>Compare</code></td><td><code>grouped-bar</code></td><td>house vs unit</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Cross-cutting features</h3>
+    <div class="grid cols-3">
+      <div class="card"><p class="eyebrow">Interaction</p><ul class="clean">
+        <li>Streaming agent responses (step/token)</li>
+        <li>Command palette (⌘K) — jump, ask, run</li>
+        <li>Keyboard shortcuts across tabs</li>
+      </ul></div>
+      <div class="card"><p class="eyebrow">Polish &amp; trust</p><ul class="clean">
+        <li>Skeletons + real empty states + error toasts</li>
+        <li>Export (CSV / PNG / copy) on tables &amp; charts</li>
+        <li>Onboarding hints for first-run</li>
+      </ul></div>
+      <div class="card"><p class="eyebrow">Platform</p><ul class="clean">
+        <li>Light/dark + responsive layout</li>
+        <li>Deep-linkable routes (share an answer)</li>
+        <li>a11y pass — focus, contrast, roles</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 09 · DESIGN SYSTEM -->
+  <section class="block" id="design">
+    <div class="sec-head"><span class="sec-num">09</span><h2 class="sec-title">Design system refresh</h2></div>
+    <p class="sec-sub">Formalize the 9 ad-hoc CSS variables into a token set, add a light theme, and extract shared primitives —
+      the templates and visx charts all read from the same tokens. This page is rendered in those tokens as a preview.</p>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <p class="eyebrow">Token layers</p>
+        <ul class="clean">
+          <li><b>Primitives</b> — palette scales, spacing, radii, type ramp</li>
+          <li><b>Semantic</b> — <code>--bg</code>, <code>--panel</code>, <code>--text</code>, <code>--accent</code>, <code>--good/warn/bad</code></li>
+          <li><b>Theme</b> — light + dark via <code>data-theme</code>, respect <code>prefers-color-scheme</code></li>
+          <li><b>Chart tokens</b> — one categorical palette all visx charts read from</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Shared UI primitives to extract</p>
+        <ul class="clean">
+          <li><code>Button</code>, <code>Chip</code>, <code>Badge</code>, <code>Card</code>, <code>Tabs</code></li>
+          <li><code>DataTable</code> — the admin tables repeat 5×; unify sort/filter/sticky</li>
+          <li><code>KPITile</code>, <code>EmptyState</code>, <code>Skeleton</code>, <code>Popover</code> (feedback box)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="k">House palette (preserved)</div>
+      <div style="margin-top:8px; display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--muted)">
+        <span>● <span style="color:var(--accent)">gold</span> <code>#b48a3f</code> primary</span>
+        <span>● <span style="color:var(--accent-2)">blue</span> <code>#6ea8fe</code> links</span>
+        <span>● <span style="color:var(--purple)">purple</span> <code>#d0a2ff</code> claude</span>
+        <span>● <span style="color:var(--good)">green</span> up · <span style="color:var(--bad)">red</span> down</span>
+        <span>bg <code>#0f1115</code> → panels <code>#171a21 / #1e222b</code></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 · ROADMAP -->
+  <section class="block" id="roadmap">
+    <div class="sec-head"><span class="sec-num">10</span><h2 class="sec-title">Phased rollout</h2></div>
+    <p class="sec-sub">Incremental — the app keeps running and each phase ships something usable. Phase 3, the report engine,
+      is the centerpiece and the biggest lift.</p>
+
+    <div class="card" style="margin-top:14px">
+      <div class="phase"><div class="w">Phase 1<small>foundation</small></div><div><h4>Tokens + routing + query layer</h4><p>Tokenize <code>styles.css</code>, add react-router (tabs → routes), add react-query. No visible feature change — sets up everything else.</p></div></div>
+      <div class="phase"><div class="w">Phase 2<small>de-monolith</small></div><div><h4>Extract features from App.tsx</h4><p>Split Chat, Admin, Report* into <code>features/*</code> + <code>ui/*</code> primitives (shared <code>DataTable</code>, <code>Card</code>, <code>Tabs</code>). Behaviour identical, code testable. Feedback-popover logic preserved.</p></div></div>
+      <div class="phase hero-phase"><div class="w">Phase 3<small>report engine</small></div><div><h4>Templates + visx charts + agent pages contract</h4><p><b>Frontend:</b> template registry (<code>summary</code>, <code>insights</code>, one/two-col), object renderers (<code>type</code>→component by <code>region</code>), visx chart functions (Trend, Breakdown, Compare, KPITile, Axis/Legend/Tooltip).
+        <b>Agent:</b> system prompt + few-shot to emit pages/objects with schema validation; driver-analysis skill for Insights; tracing records object-build → template-pick → page-compose; retire <code>charts.py</code> + validator.
+        <b>Admin:</b> <code>agent_config</code> table + Agent-Config view, demo-seeded with the Hornsby example.</p></div></div>
+      <div class="phase"><div class="w">Phase 4<small>tabs &amp; panels</small></div><div><h4>Chat history sidebar → SQL catalog → Settings</h4><p>History sidebar is nearly free (conversations already in <code>query_runs</code>); catalog grows out of the schema tree; Settings is light. (Dashboards tab deferred — out of scope.)</p></div></div>
+      <div class="phase"><div class="w">Phase 5<small>cross-cutting</small></div><div><h4>Streaming, ⌘K, export, mobile, a11y</h4><p>Layer the product-wide features once the structure is in place.</p></div></div>
+    </div>
+  </section>
+
+  <!-- 11 · DECISIONS & RISKS -->
+  <section class="block" id="decisions">
+    <div class="sec-head"><span class="sec-num">11</span><h2 class="sec-title">Decision log, risks &amp; what's still open</h2></div>
+
+    <div class="card" style="margin-top:14px">
+      <p class="eyebrow">Decision log — locked during this review</p>
+      <div class="dlog">
+        <div class="dk">Charts</div><div><b>visx only, frontend-authored.</b> Agent stops emitting chart specs (retire <code>charts.py</code> + validator + <code>VegaChart.tsx</code> + vega deps). Recharts considered and dropped — one library, one style.</div>
+        <div class="dk">Agent output</div><div><b>Pages of governed objects</b> — <code>pages[] → {template, objects:[{type, element_id, region, data+intent}]}</code>. Data + intent only; schema-validated; <code>element_id</code>s preserved for feedback/evals.</div>
+        <div class="dk">Layout freedom</div><div><b>Fixed template registry</b> (<code>summary</code> · <code>insights</code> · <code>one-col</code> · <code>two-col</code>). Agent picks a published id + fills regions; it cannot invent layout.</div>
+        <div class="dk">Pages</div><div><b>Summary always leads</b> (latest number in a time series + growth — builds trust); <b>Insights explains</b> (driver analysis: biggest discriminator, mix differences). Detail/report page dropped.</div>
+        <div class="dk">Tabs</div><div><b>3 → 4</b>: Chat, SQL Editor, Admin, +Settings. <b>Dashboards tab dropped</b> (dashboard = inline view-page). History = Chat sidebar (new conversation = new thread; multi-turn within). Catalog = inside the SQL editor.</div>
+        <div class="dk">Refactor</div><div><b>Incremental</b> — one feature per PR, app runs the whole time.</div>
+        <div class="dk">Evidence</div><div>Worked example pinned to real data — <code>ai_plans/s07_ui-refresh-plan/</code> (Hornsby/2077, <code>marts.property_rent</code>).</div>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:14px">
+      <div class="card"><p class="eyebrow">Risks / migration concerns</p><ul class="clean">
+        <li class="warn"><b>Report-engine scope</b> — Phase 3 spans agent prompt, output schema, tracing, frontend registry and visx; keep it behind the old renderer until pages parse reliably</li>
+        <li class="warn"><b>LLM output validity</b> — pages/objects JSON needs strict validation + repair; eval cases should cover malformed output</li>
+        <li class="warn"><b>visx build-out</b> — cap the chart library at ~4–5 reusable components; resist bespoke one-offs early</li>
+        <li class="warn"><b>Feedback pinning</b> — element-pinned popover must survive both the extraction and the new page renderer</li>
+      </ul></div>
+      <div class="card"><p class="eyebrow" style="color:var(--good)">Open items — resolved ✓</p><ul class="clean">
+        <li class="done">Driver ranking: <b>% contribution first</b>, upgrade later</li>
+        <li class="done">Light theme: <b>tokens theme-ready in Phase 1</b>; toggle ships with Settings</li>
+        <li class="done">visx: <b>seed from gallery examples</b>, restyle to house tokens</li>
+        <li class="done"><b>Implementation green-lit</b> — all phases 1–5, fully tested</li>
+      </ul></div>
+    </div>
+
+    <form class="decision" data-lavish-question="open-items" onsubmit="event.preventDefault(); const f=new FormData(event.currentTarget); const parts=[]; const d=f.get('driver'); const t=f.get('theme'); const v=f.get('visx'); if(d) parts.push('driver ranking: '+d); if(t) parts.push('light theme: '+t); if(v) parts.push('visx start: '+v); if(parts.length){ window.lavish?.queuePrompt('Open items decided — '+parts.join('; '), {tag:'decision', text:parts.join(' · '), element:event.currentTarget, data:{question:'open-items', answer:parts}}); }">
+      <p class="q"><span class="ic">◆</span> The three remaining open items — answer any subset</p>
+      <div class="grid cols-3" style="gap:10px">
+        <div>
+          <p class="eyebrow">Driver ranking</p>
+          <div class="opts">
+            <label><input type="radio" name="driver" value="simple % contribution first, upgrade later (recommended)"><span class="ol"><b>% contribution first</b> (simple, explainable)</span></label>
+            <label><input type="radio" name="driver" value="variance decomposition"><span class="ol">Variance decomposition</span></label>
+            <label><input type="radio" name="driver" value="mutual information"><span class="ol">Mutual information</span></label>
+          </div>
+        </div>
+        <div>
+          <p class="eyebrow">Light theme</p>
+          <div class="opts">
+            <label><input type="radio" name="theme" value="build tokens theme-ready in Phase 1, ship toggle with Settings (recommended)"><span class="ol"><b>Theme-ready in P1</b>, toggle ships with Settings</span></label>
+            <label><input type="radio" name="theme" value="dark-only for now"><span class="ol">Dark-only for now</span></label>
+          </div>
+        </div>
+        <div>
+          <p class="eyebrow">visx start</p>
+          <div class="opts">
+            <label><input type="radio" name="visx" value="seed from visx gallery examples, restyle to house tokens (recommended)"><span class="ol"><b>Seed from gallery</b>, restyle to tokens</span></label>
+            <label><input type="radio" name="visx" value="build from scratch"><span class="ol">Build from scratch</span></label>
+          </div>
+        </div>
+      </div>
+      <button class="queue-btn" type="submit">Queue answers</button>
+      <p class="queue-note">Everything else is locked (see the decision log). Next step after this: turn Phase 1 into the first PR.</p>
+    </form>
+  </section>
+
+  <div class="foot">
+    Plan artifact v2 · <code>.lavish/s07_ui-refresh-plan.html</code> — rewritten to the decided direction after seven review rounds; rendered in the app's own dark tokens.
+    Worked-example data + SQL: <code>ai_plans/s07_ui-refresh-plan/</code> (real rows from the running DB).
+    Facts verified against <code>frontend/src/</code>, <code>services/data-agent/agent/skills/charts.py</code>, <code>services/data-pipeline/dbt/models/marts/</code>.
+  </div>
+</div>
+
+<script>
+  try {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      themeVariables: {
+        background: "#171a21", primaryColor: "#1e222b", primaryTextColor: "#e7e9ee",
+        primaryBorderColor: "#2a2f3a", lineColor: "#6ea8fe", fontFamily: "ui-sans-serif, system-ui, sans-serif",
+        clusterBkg: "#141821", clusterBorder: "#2a2f3a"
+      }
+    });
+  } catch (e) {}
+</script>

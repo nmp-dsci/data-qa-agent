@@ -106,6 +106,24 @@ export interface InsightReport {
   knowledge_version: string;
 }
 
+// Pages contract (s07): the agent's answer as an ordered list of pages, each
+// naming a frontend-owned template and filling its regions with typed objects
+// carrying data + intent (never chart specs or layout).
+export type PageObjectType = "kpi" | "trend" | "breakdown" | "compare" | "insight" | "text";
+
+export interface PageObject {
+  type: PageObjectType;
+  element_id: string;
+  region: string;
+  data: Record<string, unknown>;
+  explains?: string | null;
+}
+
+export interface Page {
+  template: "summary" | "insights" | "one-col" | "two-col";
+  objects: PageObject[];
+}
+
 export interface AskResult {
   conversation_id: string;
   message_id: string;
@@ -122,6 +140,7 @@ export interface AskResult {
   latency_ms: number | null;
   steps: AgentStep[];
   report: InsightReport | null;
+  pages: Page[] | null;
 }
 
 export interface FeedbackInput {
@@ -398,6 +417,24 @@ export function getAdminQueryRuns(): Promise<AdminQueryRun[]> {
 
 export function getAdminConfig(): Promise<AdminConfig> {
   return adminGet<AdminConfig>("/admin/config");
+}
+
+export interface AgentConfigEntry {
+  kind: string;
+  name: string;
+  title: string;
+  description: string;
+  spec: Record<string, unknown>;
+  demo: Record<string, unknown>;
+}
+
+export interface AgentConfigResponse {
+  templates: AgentConfigEntry[];
+  charts: AgentConfigEntry[];
+}
+
+export function getAdminAgentConfig(): Promise<AgentConfigResponse> {
+  return adminGet<AgentConfigResponse>("/admin/agent-config");
 }
 
 export async function submitFeedback(input: FeedbackInput): Promise<{ id: string }> {

@@ -14,6 +14,7 @@ import {
 } from "../../lib/api";
 import { formatTime } from "../../lib/format";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
+import { AgentConfigView } from "./AgentConfigView";
 import { ConfigView } from "./ConfigView";
 import { FeedbackAdmin } from "./FeedbackAdmin";
 
@@ -26,8 +27,17 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
+type AdminTab = "observability" | "quality" | "agent-config";
+
+const ADMIN_TABS: { id: AdminTab; label: string }[] = [
+  { id: "observability", label: "Observability" },
+  { id: "quality", label: "Quality" },
+  { id: "agent-config", label: "Agent-Config" },
+];
+
 export function AdminPage() {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<AdminTab>("observability");
   const [eventTypeFilter, setEventTypeFilter] = useState("");
   const [eventUserFilter, setEventUserFilter] = useState("");
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
@@ -63,16 +73,36 @@ export function AdminPage() {
     <main className="admin">
       <section className="admin-band">
         <h2>Admin Dashboard</h2>
-        <div className="metrics">
-          <Metric label="Users" value={users.length} />
-          <Metric label="Datasets" value={datasets.length} />
-          <Metric label="Events" value={events.length} />
-          <Metric label="Query runs" value={queryRuns.length} />
+        <div className="admin-subtabs">
+          {ADMIN_TABS.map((t) => (
+            <button
+              key={t.id}
+              className={tab === t.id ? "chip active" : "chip"}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
+        {tab === "observability" && (
+          <div className="metrics">
+            <Metric label="Users" value={users.length} />
+            <Metric label="Datasets" value={datasets.length} />
+            <Metric label="Events" value={events.length} />
+            <Metric label="Query runs" value={queryRuns.length} />
+          </div>
+        )}
       </section>
-      {loading && <p className="muted">Loading admin data...</p>}
-      {error && <p className="error">{error.message}</p>}
-      {!loading && (
+      {tab === "agent-config" && <AgentConfigView />}
+      {tab === "quality" &&
+        (loading ? (
+          <p className="muted">Loading admin data...</p>
+        ) : (
+          <FeedbackAdmin feedback={feedback} evalCases={evalCases} onRefresh={refreshLoop} />
+        ))}
+      {tab === "observability" && loading && <p className="muted">Loading admin data...</p>}
+      {tab === "observability" && error && <p className="error">{error.message}</p>}
+      {tab === "observability" && !loading && (
         <>
           {config && <ConfigView config={config} />}
           <section>
@@ -213,7 +243,6 @@ export function AdminPage() {
               </table>
             </div>
           </section>
-          <FeedbackAdmin feedback={feedback} evalCases={evalCases} onRefresh={refreshLoop} />
           <section>
             <h3>Events</h3>
             <div className="event-filters">

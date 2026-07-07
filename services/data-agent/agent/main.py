@@ -19,6 +19,7 @@ from .config import settings  # noqa: E402
 from .db import admin_engine, engine, load_database_catalog, run_select  # noqa: E402
 from .knowledge import knowledge_version  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
+from .pages import compose_pages  # noqa: E402
 from .provider import choose_provider  # noqa: E402
 from .sandbox_agent import answer_with_sandbox  # noqa: E402
 from .schema import get_catalog, merge_catalogs  # noqa: E402
@@ -62,6 +63,9 @@ class AgentAnswer(BaseModel):
     steps: list[dict[str, Any]] = []
     # Structured InsightReport (K2) — present on the LLM path; None for the stub.
     report: dict[str, Any] | None = None
+    # Pages contract (s07): Summary → Insights pages of governed objects
+    # (data + intent) the frontend's template registry renders with visx.
+    pages: list[dict[str, Any]] | None = None
 
 
 class SqlRequest(BaseModel):
@@ -382,6 +386,23 @@ async def agent_ask(body: AskRequest) -> AgentAnswer:
     fallback_report = _sales_trend_stub_report(result) if intent == "sales_trend" else None
     if fallback_report is not None:
         answer = fallback_report["answer"]
+    steps: list[dict[str, Any]] = [
+        {
+            "kind": "sql",
+            "attempt": 1,
+            "sql": result["sql"],
+            "status": "success",
+            "row_count": result["row_count"],
+            "intent": intent,
+        }
+    ]
+    pages: list[dict[str, Any]] | None = None
+    report = fallback_report["report"] if fallback_report else None
+    if report is not None:
+        pages, page_steps = compose_pages(report, question=body.question)
+        steps.extend(page_steps)
+        if pages:
+            report["pages"] = pages
     return AgentAnswer(
         answer=answer,
         sql=result["sql"],
@@ -390,17 +411,9 @@ async def agent_ask(body: AskRequest) -> AgentAnswer:
         row_count=result["row_count"],
         chart=fallback_report["chart"] if fallback_report else None,
         engine="stub",
-        report=fallback_report["report"] if fallback_report else None,
-        steps=[
-            {
-                "kind": "sql",
-                "attempt": 1,
-                "sql": result["sql"],
-                "status": "success",
-                "row_count": result["row_count"],
-                "intent": intent,
-            }
-        ],
+        report=report,
+        pages=pages or None,
+        steps=steps,
     )
 
 

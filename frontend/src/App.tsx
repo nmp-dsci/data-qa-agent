@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   AdminConfig,
   AdminDataset,
@@ -57,13 +58,32 @@ const SUGGESTIONS = [
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authMode, setAuthMode] = useState<"dev" | "entra">("dev");
-  const [view, setView] = useState<View>("chat");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sqlSeed, setSqlSeed] = useState<{ sql: string; nonce: number } | null>(null);
+
+  // Tabs are real routes: /chat, /sql, /admin (deep-linkable, back-button aware).
+  const location = useLocation();
+  const navigate = useNavigate();
+  const view: View = location.pathname.startsWith("/sql")
+    ? "sql"
+    : location.pathname.startsWith("/admin")
+      ? "admin"
+      : "chat";
+  const setView = useCallback((v: View) => navigate(`/${v}`), [navigate]);
+
+  // Normalize unknown paths and guard the admin route by role.
+  useEffect(() => {
+    const known = ["/chat", "/sql", "/admin"];
+    if (!known.some((p) => location.pathname.startsWith(p))) {
+      navigate("/chat", { replace: true });
+    } else if (user && location.pathname.startsWith("/admin") && user.role !== "admin") {
+      navigate("/chat", { replace: true });
+    }
+  }, [location.pathname, user, navigate]);
 
   function openInSqlEditor(sqlText: string) {
     setSqlSeed({ sql: sqlText, nonce: Date.now() });

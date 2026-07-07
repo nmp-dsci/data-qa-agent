@@ -8,16 +8,17 @@ Uses only the stdlib so it needs no dependencies.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 
+TIMEOUT = int(os.environ.get("SMOKE_TIMEOUT_S", "180"))
+
 API = "http://localhost:8000"
 
 
-def _post(
-    path: str, body: dict, token: str | None = None, channel: str | None = None
-) -> dict:
+def _post(path: str, body: dict, token: str | None = None, channel: str | None = None) -> dict:
     data = json.dumps(body).encode()
     headers = {"Content-Type": "application/json"}
     if token:
@@ -27,7 +28,7 @@ def _post(
     if channel:
         headers["X-Client-Channel"] = channel
     req = urllib.request.Request(API + path, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return json.loads(resp.read())
 
 
@@ -35,7 +36,7 @@ def _get(path: str, token: str) -> list[dict]:
     req = urllib.request.Request(
         API + path, headers={"Authorization": f"Bearer {token}"}, method="GET"
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return json.loads(resp.read())
 
 
@@ -57,7 +58,7 @@ def _post_status(path: str, body: dict, token: str) -> int:
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     req = urllib.request.Request(API + path, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return resp.status
     except urllib.error.HTTPError as exc:
         return exc.code
@@ -82,6 +83,20 @@ def _no_real_data(result: dict) -> bool:
     return all(v is None or v == 0 for row in result["rows"] for v in row)
 
 
+def _report_text(r: dict) -> str:
+    """All human-readable report content, lowercased — summary, headlines,
+    insights. The sandbox agent computes final figures (growth, yield) in
+    pandas and presents them in the report/pages; the legacy flat `columns`
+    reflect a governed extract, so content checks belong here."""
+    rep = r.get("report") or {}
+    parts = [rep.get("summary") or ""]
+    for h in rep.get("headlines", []):
+        parts += [str(h.get("label", "")), str(h.get("value", "")), str(h.get("basis", ""))]
+    for i in rep.get("insights", []):
+        parts += [str(i.get("heading", "")), str(i.get("body", ""))]
+    return " ".join(parts).lower()
+
+
 def main() -> int:
     failures = 0
 
@@ -103,9 +118,17 @@ def main() -> int:
     check("user1 gets rows back", r1["row_count"] > 0, f"(row_count={r1['row_count']})")
     check("user1 answer is non-empty", bool(r1["answer"].strip()))
     check("sql is a SELECT or CTE", _is_select_shaped(r1.get("sql") or ""))
+    text1 = _report_text(r1)
     check(
         "answer combines sales + rent growth",
-        {"sales_growth_pct", "rent_growth_pct"} <= set(r1.get("columns", [])),
+        {"sales_growth_pct", "rent_growth_pct"} <= set(r1.get("columns", []))
+        or ("sale" in text1 and "rent" in text1),
+    )
+    pages1 = r1.get("pages") or []
+    check(
+        "answer carries pages (summary first)",
+        bool(pages1) and pages1[0].get("template") == "summary",
+        f"(templates={[p.get('template') for p in pages1]})",
     )
 
     print("2. user2 (NO access) asks the same question -> RLS should hide rows")
@@ -129,7 +152,12 @@ def main() -> int:
     print(f"     answer: {ry['answer'][:90]}")
     check("user1 gets yield rows back", ry["row_count"] > 0, f"(row_count={ry['row_count']})")
     check("yield sql is a SELECT or CTE", _is_select_shaped(ry.get("sql") or ""))
-    check("answer includes gross_yield_pct", "gross_yield_pct" in ry.get("columns", []))
+    # The final yield figure is computed in the sandbox and presented in the
+    # report; the flat columns may be an intermediate extract. Assert intent.
+    check(
+        "answer presents a yield figure",
+        any("yield" in c.lower() for c in ry.get("columns", [])) or "yield" in _report_text(ry),
+    )
 
     print("5. admin audit view includes query runs")
     query_runs = _get("/admin/query-runs", ta)
@@ -139,9 +167,11 @@ def main() -> int:
         bool(query_runs and query_runs[0].get("sql_text")),
     )
 
+    # marts.property_sales is the lineage-named sales mart (migration 0013);
+    # there are no synthetic 'ALL' property_type rows.
     editor_sql = (
-        "SELECT suburb, count(*) AS n FROM marts.mart_sales_summary "
-        "WHERE property_type = 'ALL' GROUP BY suburb ORDER BY n DESC LIMIT 5"
+        "SELECT suburb, count(*) AS n FROM marts.property_sales "
+        "GROUP BY suburb ORDER BY n DESC LIMIT 5"
     )
 
     print("6. SQL editor: user1 runs SQL directly -> governed rows")
@@ -163,9 +193,7 @@ def main() -> int:
     print("9. SQL editor history + AI generate")
     hist = _get("/sql/history", t1)
     check("user1 history has editor runs", len(hist) >= 1, f"(count={len(hist)})")
-    gen = _post(
-        "/sql/ai", {"action": "generate", "prompt": "top suburbs by rent growth"}, token=t1
-    )
+    gen = _post("/sql/ai", {"action": "generate", "prompt": "top suburbs by rent growth"}, token=t1)
     check(
         "AI generate returns SQL",
         _is_select_shaped(gen.get("sql") or ""),

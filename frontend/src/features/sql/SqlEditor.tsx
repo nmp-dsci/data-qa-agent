@@ -19,14 +19,15 @@ import {
 import { SpecChart } from "../../ui/SpecChart";
 
 const SAMPLE_SQL = `-- Read-only · RLS-scoped · audited. Cmd/Ctrl+Enter to run.
+-- Additive rule: derive averages from sum(total)/sum(count), never avg(avg).
 SELECT suburb,
-       round(max(median_price) FILTER (WHERE month >= '2024-01-01')
-           / nullif(min(median_price), 0) * 100 - 100, 1) AS growth_pct
-FROM marts.mart_sales_summary
+       round(sum(total_sale_value) FILTER (WHERE month >= '2024-01-01')
+           / nullif(sum(n_sold) FILTER (WHERE month >= '2024-01-01'), 0)) AS avg_price_2024_on
+FROM marts.property_sales
 WHERE property_type = 'house'
 GROUP BY suburb
 HAVING sum(n_sold) >= 50
-ORDER BY growth_pct DESC
+ORDER BY avg_price_2024_on DESC
 LIMIT 10;`;
 
 const TABS_KEY = "sqled.tabs.v1";

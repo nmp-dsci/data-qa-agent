@@ -1,22 +1,28 @@
 // App shell: auth gate, header, routed tab nav. Conversation state lives here
 // (not in ChatPage) so switching tabs never loses the thread; sqlSeed carries
 // "Open in SQL editor" from a chat report into the editor.
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ask,
   AskResult,
+  askStream,
   ConversationMessage,
   getConversationMessages,
   track,
   User,
 } from "../lib/api";
 import { bootstrap, loadAuthConfig, loginDev, loginEntra, logout as authLogout } from "../lib/auth";
+import { getTheme, setTheme } from "../lib/theme";
 import { ChatMsg, ChatPage } from "../features/chat/ChatPage";
 import { AdminPage } from "../features/admin/AdminPage";
-import { SqlEditor } from "../features/sql/SqlEditor";
 import { SettingsPage } from "../features/settings/SettingsPage";
+
+// Code-split the SQL editor: CodeMirror only loads when the tab is opened.
+const SqlEditor = lazy(() =>
+  import("../features/sql/SqlEditor").then((m) => ({ default: m.SqlEditor })),
+);
+import { Command, CommandPalette } from "../ui/CommandPalette";
 import { Login } from "./Login";
 
 type View = "chat" | "sql" | "admin" | "settings";
@@ -57,7 +63,21 @@ export default function App() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sqlSeed, setSqlSeed] = useState<{ sql: string; nonce: number } | null>(null);
+  const [working, setWorking] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const queryClient = useQueryClient();
+
+  // ⌘K / Ctrl+K opens the command palette anywhere in the app.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Tabs are real routes: /chat, /sql, /admin, /settings (deep-linkable).
   const location = useLocation();
@@ -151,8 +171,13 @@ export default function App() {
     setLoading(true);
     track("question_submitted", { question: q });
     const isNewConversation = conversationId === null;
+    setWorking("Agent is working…");
     try {
-      const result = await ask(q, conversationId);
+      const result = await askStream(q, conversationId, (s) => {
+        if (s.state === "working" && s.elapsed_s != null) {
+          setWorking(`Agent is working… ${s.elapsed_s}s`);
+        }
+      });
       setConversationId(result.conversation_id);
       setMessages((m) => [...m, { role: "assistant", content: result.answer, result }]);
       if (isNewConversation) {
@@ -166,6 +191,7 @@ export default function App() {
       ]);
     } finally {
       setLoading(false);
+      setWorking(null);
     }
   }
 
@@ -190,6 +216,31 @@ export default function App() {
     track("conversation_new");
   }
 
+  const commands: Command[] = [
+    { id: "chat", label: "Go to Chat", hint: "navigate", run: () => setView("chat") },
+    { id: "sql", label: "Go to SQL Editor", hint: "navigate", run: () => setView("sql") },
+    ...(user?.role === "admin"
+      ? [{ id: "admin", label: "Go to Admin", hint: "navigate", run: () => setView("admin") }]
+      : []),
+    { id: "settings", label: "Go to Settings", hint: "navigate", run: () => setView("settings") },
+    {
+      id: "new-conv",
+      label: "New conversation",
+      hint: "chat",
+      run: () => {
+        newConversation();
+        setView("chat");
+      },
+    },
+    {
+      id: "theme",
+      label: `Switch to ${getTheme() === "dark" ? "light" : "dark"} theme`,
+      hint: "appearance",
+      run: () => setTheme(getTheme() === "dark" ? "light" : "dark"),
+    },
+    { id: "signout", label: "Sign out", hint: "session", run: () => void logout() },
+  ];
+
   if (!user) {
     return (
       <Login
@@ -203,6 +254,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
       <header>
         <div>
           <strong>data-qa-agent</strong>
@@ -216,18 +268,27 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="tabs">
+      <nav className="tabs" role="tablist" aria-label="App sections">
         <button
+          role="tab"
+          aria-selected={view === "chat"}
           className={view === "chat" ? "tab active" : "tab"}
           onClick={() => setView("chat")}
         >
           Chat
         </button>
-        <button className={view === "sql" ? "tab active" : "tab"} onClick={() => setView("sql")}>
+        <button
+          role="tab"
+          aria-selected={view === "sql"}
+          className={view === "sql" ? "tab active" : "tab"}
+          onClick={() => setView("sql")}
+        >
           SQL Editor
         </button>
         {user.role === "admin" && (
           <button
+            role="tab"
+            aria-selected={view === "admin"}
             className={view === "admin" ? "tab active" : "tab"}
             onClick={() => setView("admin")}
           >
@@ -235,6 +296,8 @@ export default function App() {
           </button>
         )}
         <button
+          role="tab"
+          aria-selected={view === "settings"}
           className={view === "settings" ? "tab active" : "tab"}
           onClick={() => setView("settings")}
         >
@@ -245,20 +308,23 @@ export default function App() {
       {view === "admin" && <AdminPage />}
       {view === "settings" && <SettingsPage user={user} />}
       {view === "sql" && (
-        <SqlEditor
-          user={user}
-          seedSql={sqlSeed}
-          onSendToChat={(text) => {
-            setView("chat");
-            setInput(text);
-          }}
-        />
+        <Suspense fallback={<main className="muted">Loading SQL editor…</main>}>
+          <SqlEditor
+            user={user}
+            seedSql={sqlSeed}
+            onSendToChat={(text) => {
+              setView("chat");
+              setInput(text);
+            }}
+          />
+        </Suspense>
       )}
       {view === "chat" && (
         <ChatPage
           user={user}
           messages={messages}
           loading={loading}
+          working={working}
           error={error}
           input={input}
           setInput={setInput}

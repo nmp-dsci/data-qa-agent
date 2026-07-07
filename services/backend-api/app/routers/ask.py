@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -62,8 +66,6 @@ async def _log_event(conn: Any, user_id: str, event_type: str, payload: dict | N
 
 
 def _json(obj: Any) -> str:
-    import json
-
     return json.dumps(obj)
 
 
@@ -259,4 +261,48 @@ async def ask(
         steps=steps if user.role == "admin" else [],
         report=report,
         pages=pages,
+    )
+
+
+def _sse(event: str, data: dict[str, Any] | str) -> str:
+    payload = data if isinstance(data, str) else json.dumps(data)
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+@router.post("/ask/stream")
+async def ask_stream(
+    body: AskRequest,
+    user: CurrentUser = Depends(get_current_user),
+    channel: str = Depends(get_channel),
+) -> StreamingResponse:
+    """SSE variant of /ask: status heartbeats while the agent works, then the
+    full result. Same auth, persistence and payload as /ask (which it wraps) —
+    the frontend shows live progress instead of a silent spinner, and finer
+    step-level events can join this channel without another contract change.
+    """
+
+    async def gen() -> AsyncIterator[str]:
+        task = asyncio.ensure_future(ask(body, user, channel))
+        started = time.perf_counter()
+        yield _sse("status", {"state": "started"})
+        try:
+            while True:
+                done, _ = await asyncio.wait({task}, timeout=2.0)
+                if done:
+                    break
+                yield _sse(
+                    "status",
+                    {"state": "working", "elapsed_s": int(time.perf_counter() - started)},
+                )
+            result = task.result()
+            yield _sse("result", result.model_dump_json())
+        except HTTPException as exc:
+            yield _sse("error", {"detail": str(exc.detail), "status": exc.status_code})
+        except Exception as exc:  # noqa: BLE001 — surface the failure to the stream
+            yield _sse("error", {"detail": str(exc)})
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -62,6 +62,7 @@ export function ChatPage({
   user,
   messages,
   loading,
+  working,
   error,
   input,
   setInput,
@@ -74,6 +75,7 @@ export function ChatPage({
   user: User;
   messages: ChatMsg[];
   loading: boolean;
+  working?: string | null;
   error: string | null;
   input: string;
   setInput: (v: string) => void;
@@ -102,6 +104,11 @@ export function ChatPage({
                   </button>
                 ))}
               </div>
+              <p className="onboard-hint">
+                Answers open with a <b>Summary</b> (latest number + growth) and an{" "}
+                <b>Insights</b> page explaining it. Click any element to leave feedback ·{" "}
+                <kbd>⌘K</kbd> opens the command palette.
+              </p>
             </div>
           )}
 
@@ -122,7 +129,7 @@ export function ChatPage({
           ))}
           {loading && (
             <div className="msg assistant">
-              <div className="bubble">Agent is working…</div>
+              <div className="bubble">{working ?? "Agent is working…"}</div>
             </div>
           )}
           {error && <p className="error">{error}</p>}

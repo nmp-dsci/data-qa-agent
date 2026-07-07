@@ -1,12 +1,13 @@
 // Bars — breakdown (metric by one dimension) and compare (grouped by a second
 // series). Powers the Insights driver view, comparison answers, and the SQL
 // editor's result→chart. Colors + labels come from the design tokens.
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { AxisBottom, AxisLeft } from "@visx/axis";
 import { Group } from "@visx/group";
 import { ParentSize } from "@visx/responsive";
 import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
+import { downloadSvgAsPng } from "./exportPng";
 import { chartPalette, chartTheme, formatValue } from "./tokens";
 
 export interface BarsData {
@@ -173,8 +174,21 @@ function BarsInner({ data, width, height }: { data: BarsData; width: number; hei
 }
 
 export function Bars({ data, height = 280 }: { data: BarsData; height?: number }) {
+  const ref = useRef<HTMLDivElement | null>(null);
   return (
-    <div className="chart">
+    <div className="chart" ref={ref}>
+      <button
+        className="chart-export"
+        aria-label="Export chart as PNG"
+        title="Export chart as PNG"
+        onClick={(e) => {
+          e.stopPropagation();
+          const svg = ref.current?.querySelector("svg");
+          if (svg) downloadSvgAsPng(svg, data.title ?? "chart");
+        }}
+      >
+        PNG
+      </button>
       {data.title && <div className="chart-title">{data.title}</div>}
       <ParentSize debounceTime={50}>
         {({ width }) => (width > 0 ? <BarsInner data={data} width={width} height={height} /> : null)}

@@ -471,6 +471,37 @@ th.sortable:hover { color: var(--text); }
 .config-note { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .badge.secret { color: var(--accent); border-color: var(--warn-border); margin-left: 6px; }
 
+/* a11y: consistent keyboard-focus affordance */
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+a:focus-visible, [role="option"]:focus-visible {
+  outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: var(--radius-sm);
+}
+
+/* ⌘K command palette */
+.palette-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 60;
+  display: flex; justify-content: center; padding-top: 14vh; }
+.palette { width: min(520px, calc(100vw - 32px)); align-self: flex-start; background: var(--panel);
+  border: 1px solid var(--border-2); border-radius: var(--radius-xl); overflow: hidden;
+  box-shadow: var(--shadow-pop); }
+.palette-input { width: 100%; background: var(--panel-2); border: none; border-bottom: 1px solid var(--border);
+  color: var(--text); padding: 13px 16px; font-size: 14px; outline: none; }
+.palette-list { list-style: none; margin: 0; padding: 6px; max-height: 320px; overflow-y: auto; }
+.palette-item { display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px;
+  border-radius: var(--radius); font-size: 13.5px; cursor: pointer; }
+.palette-item.active { background: var(--panel-2); }
+.palette-hint { color: var(--muted); font-size: 11.5px; }
+
+/* Onboarding + chart export */
+.onboard-hint { font-size: 12.5px; color: var(--muted); margin-top: 16px; }
+.onboard-hint kbd { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px;
+  padding: 1px 6px; font-size: 11px; font-family: inherit; }
+.chart { position: relative; }
+.chart-export { position: absolute; top: 8px; right: 8px; z-index: 2; font-size: 10px;
+  color: var(--muted); background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 2px 7px; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.chart:hover .chart-export, .chart-export:focus-visible { opacity: 1; }
+.chart-export:hover { color: var(--accent-2); border-color: var(--accent-2); }
+
 /* Chat history sidebar */
 .chat-layout { flex: 1; display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 0; }
 .chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }

@@ -351,6 +351,70 @@ export async function ask(question: string, conversationId: string | null): Prom
   return resp.json();
 }
 
+export interface AskStatus {
+  state: string;
+  elapsed_s?: number;
+}
+
+/** SSE variant of ask(): live status while the agent works, then the result.
+ *  Falls back to plain ask() if the stream can't be established. */
+export async function askStream(
+  question: string,
+  conversationId: string | null,
+  onStatus: (s: AskStatus) => void,
+): Promise<AskResult> {
+  let resp: Response;
+  try {
+    resp = await fetch(`${API}/ask/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ question, conversation_id: conversationId }),
+    });
+  } catch {
+    return ask(question, conversationId);
+  }
+  if (!resp.ok || !resp.body) return ask(question, conversationId);
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // SSE frames are separated by a blank line.
+    for (;;) {
+      const sep = buffer.indexOf("\n\n");
+      if (sep === -1) break;
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const eventLine = frame.split("\n").find((l) => l.startsWith("event: "));
+      const dataLine = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!eventLine || !dataLine) continue;
+      const event = eventLine.slice(7).trim();
+      const data = dataLine.slice(6);
+      if (event === "status") {
+        try {
+          onStatus(JSON.parse(data) as AskStatus);
+        } catch {
+          /* ignore malformed status frames */
+        }
+      } else if (event === "result") {
+        return JSON.parse(data) as AskResult;
+      } else if (event === "error") {
+        let detail = data;
+        try {
+          detail = (JSON.parse(data) as { detail?: string }).detail ?? data;
+        } catch {
+          /* keep raw */
+        }
+        throw new Error(`Ask failed: ${detail}`);
+      }
+    }
+  }
+  throw new Error("Ask stream ended without a result");
+}
+
 export async function runSql(sql: string): Promise<SqlRunResult> {
   const resp = await fetch(`${API}/sql`, {
     method: "POST",

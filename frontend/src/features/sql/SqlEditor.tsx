@@ -15,8 +15,8 @@ import {
   type SqlHistoryItem,
   type SqlRunResult,
   type User,
-} from "./api";
-import { VegaChart } from "./VegaChart";
+} from "../../lib/api";
+import { VegaChart } from "../../ui/VegaChart";
 
 const SAMPLE_SQL = `-- Read-only · RLS-scoped · audited. Cmd/Ctrl+Enter to run.
 SELECT suburb,

@@ -3,14 +3,50 @@
 // "Open in SQL editor" from a chat report into the editor.
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ask, track, User } from "../lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  ask,
+  AskResult,
+  ConversationMessage,
+  getConversationMessages,
+  track,
+  User,
+} from "../lib/api";
 import { bootstrap, loadAuthConfig, loginDev, loginEntra, logout as authLogout } from "../lib/auth";
 import { ChatMsg, ChatPage } from "../features/chat/ChatPage";
 import { AdminPage } from "../features/admin/AdminPage";
 import { SqlEditor } from "../features/sql/SqlEditor";
+import { SettingsPage } from "../features/settings/SettingsPage";
 import { Login } from "./Login";
 
-type View = "chat" | "sql" | "admin";
+type View = "chat" | "sql" | "admin" | "settings";
+
+/** Rebuild a renderable result from a stored assistant message (history reopen). */
+function messageToChat(m: ConversationMessage): ChatMsg {
+  if (m.role === "user") return { role: "user", content: m.content };
+  const report = m.report;
+  const result: AskResult | undefined = report
+    ? {
+        conversation_id: "",
+        message_id: m.id,
+        run_id: "",
+        answer: m.content,
+        sql: m.sql_generated,
+        columns: [],
+        rows: [],
+        row_count: 0,
+        chart: null,
+        engine: "history",
+        input_tokens: null,
+        output_tokens: null,
+        latency_ms: null,
+        steps: [],
+        report,
+        pages: report.pages ?? null,
+      }
+    : undefined;
+  return { role: "assistant", content: m.content, result };
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -21,20 +57,23 @@ export default function App() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sqlSeed, setSqlSeed] = useState<{ sql: string; nonce: number } | null>(null);
+  const queryClient = useQueryClient();
 
-  // Tabs are real routes: /chat, /sql, /admin (deep-linkable, back-button aware).
+  // Tabs are real routes: /chat, /sql, /admin, /settings (deep-linkable).
   const location = useLocation();
   const navigate = useNavigate();
   const view: View = location.pathname.startsWith("/sql")
     ? "sql"
     : location.pathname.startsWith("/admin")
       ? "admin"
-      : "chat";
+      : location.pathname.startsWith("/settings")
+        ? "settings"
+        : "chat";
   const setView = useCallback((v: View) => navigate(`/${v}`), [navigate]);
 
   // Normalize unknown paths and guard the admin route by role.
   useEffect(() => {
-    const known = ["/chat", "/sql", "/admin"];
+    const known = ["/chat", "/sql", "/admin", "/settings"];
     if (!known.some((p) => location.pathname.startsWith(p))) {
       navigate("/chat", { replace: true });
     } else if (user && location.pathname.startsWith("/admin") && user.role !== "admin") {
@@ -100,6 +139,7 @@ export default function App() {
     setView("chat");
     setMessages([]);
     setConversationId(null);
+    queryClient.clear();
   }
 
   async function send(question: string) {
@@ -110,10 +150,14 @@ export default function App() {
     setMessages((m) => [...m, { role: "user", content: q }]);
     setLoading(true);
     track("question_submitted", { question: q });
+    const isNewConversation = conversationId === null;
     try {
       const result = await ask(q, conversationId);
       setConversationId(result.conversation_id);
       setMessages((m) => [...m, { role: "assistant", content: result.answer, result }]);
+      if (isNewConversation) {
+        void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      }
     } catch (e) {
       setError((e as Error).message);
       setMessages((m) => [
@@ -123,6 +167,27 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function openConversation(id: string) {
+    if (id === conversationId) return;
+    setError(null);
+    try {
+      const msgs = await getConversationMessages(id);
+      setMessages(msgs.map(messageToChat));
+      setConversationId(id);
+      track("conversation_reopened", { conversation_id: id });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  function newConversation() {
+    setMessages([]);
+    setConversationId(null);
+    setError(null);
+    setInput("");
+    track("conversation_new");
   }
 
   if (!user) {
@@ -169,16 +234,23 @@ export default function App() {
             Admin
           </button>
         )}
+        <button
+          className={view === "settings" ? "tab active" : "tab"}
+          onClick={() => setView("settings")}
+        >
+          Settings
+        </button>
       </nav>
 
       {view === "admin" && <AdminPage />}
+      {view === "settings" && <SettingsPage user={user} />}
       {view === "sql" && (
         <SqlEditor
           user={user}
           seedSql={sqlSeed}
-          onSendToChat={(sqlText) => {
+          onSendToChat={(text) => {
             setView("chat");
-            setInput(sqlText);
+            setInput(text);
           }}
         />
       )}
@@ -192,6 +264,9 @@ export default function App() {
           setInput={setInput}
           onSend={send}
           onOpenSql={openInSqlEditor}
+          conversationId={conversationId}
+          onOpenConversation={openConversation}
+          onNewConversation={newConversation}
         />
       )}
     </div>

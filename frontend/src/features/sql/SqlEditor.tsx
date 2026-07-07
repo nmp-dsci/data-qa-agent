@@ -31,6 +31,40 @@ LIMIT 10;`;
 
 const TABS_KEY = "sqled.tabs.v1";
 const USER_VISIBLE_SCHEMAS = new Set(["marts", "staging"]);
+// dbt docs (lineage + model docs) — served by the pipeline-docs job locally.
+const DBT_DOCS_URL = (import.meta.env.VITE_DBT_DOCS_URL as string) ?? "http://localhost:8180";
+
+/** Governed profiling queries — run through the same read-only /sql executor. */
+function profileTableSql(schema: string, table: string): string {
+  return `-- Profile ${schema}.${table}\nSELECT count(*) AS row_count\nFROM ${schema}.${table};`;
+}
+
+function profileColumnSql(schema: string, table: string, column: string): string {
+  return (
+    `-- Profile ${schema}.${table}.${column}\n` +
+    `SELECT count(*)                    AS rows,\n` +
+    `       count(${column})           AS non_null,\n` +
+    `       count(DISTINCT ${column})  AS distinct_values,\n` +
+    `       min(${column})             AS min_value,\n` +
+    `       max(${column})             AS max_value\n` +
+    `FROM ${schema}.${table};`
+  );
+}
+
+/** Filter the catalog by a search term over table + column names. */
+function searchCatalog(tables: CatalogTable[], term: string): CatalogTable[] {
+  const t = term.trim().toLowerCase();
+  if (!t) return tables;
+  return tables
+    .map((table) => {
+      const tableHit = `${table.schema}.${table.table}`.toLowerCase().includes(t);
+      const cols = table.columns.filter((c) => c.name.toLowerCase().includes(t));
+      if (tableHit) return table;
+      if (cols.length > 0) return { ...table, columns: cols };
+      return null;
+    })
+    .filter((x): x is CatalogTable => x !== null);
+}
 
 interface Draft {
   id: string;
@@ -295,6 +329,7 @@ export function SqlEditor({
   const [viewMode, setViewMode] = useState<"grid" | "chart">("grid");
   const [sort, setSort] = useState<{ col: number; dir: "asc" | "desc" } | null>(null);
   const [filter, setFilter] = useState("");
+  const [catalogSearch, setCatalogSearch] = useState("");
 
   const [history, setHistory] = useState<SqlHistoryItem[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -306,6 +341,10 @@ export function SqlEditor({
   activeIdRef.current = activeId;
   const active = results[activeId] ?? { result: null, error: null };
   const sidebarCatalog = useMemo(() => catalogForUser(catalog, user), [catalog, user]);
+  const visibleCatalog = useMemo(
+    () => searchCatalog(sidebarCatalog, catalogSearch),
+    [sidebarCatalog, catalogSearch],
+  );
 
   // Persist drafts.
   useEffect(() => {
@@ -514,11 +553,31 @@ export function SqlEditor({
   return (
     <div className="sqled">
       <aside className="schema-panel">
-        <div className="schema-title">Schema</div>
+        <div className="schema-head">
+          <div className="schema-title">Data catalog</div>
+          <a
+            className="schema-docs"
+            href={DBT_DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            title="dbt docs — model documentation + lineage graph"
+          >
+            lineage ↗
+          </a>
+        </div>
+        <input
+          className="catalog-search"
+          value={catalogSearch}
+          placeholder="Search tables & columns…"
+          onChange={(e) => setCatalogSearch(e.target.value)}
+        />
         {sidebarCatalog.length === 0 && <div className="muted sqled-hint">Loading schema…</div>}
-        {Object.entries(groupCatalog(sidebarCatalog)).map(([schemaName, tables]) => {
+        {sidebarCatalog.length > 0 && visibleCatalog.length === 0 && (
+          <div className="muted sqled-hint">No matches.</div>
+        )}
+        {Object.entries(groupCatalog(visibleCatalog)).map(([schemaName, tables]) => {
           const schemaKey = `schema:${schemaName}`;
-          const schemaOpen = expanded[schemaKey];
+          const schemaOpen = expanded[schemaKey] || catalogSearch.trim() !== "";
           return (
             <div className="schema-node" key={schemaName}>
               <div
@@ -533,7 +592,7 @@ export function SqlEditor({
                 <div className="schema-children">
                   {tables.map((t) => {
                     const key = `${t.schema}.${t.table}`;
-                    const open = expanded[key];
+                    const open = expanded[key] || catalogSearch.trim() !== "";
                     return (
                       <div className="tbl" key={key}>
                         <div
@@ -553,18 +612,58 @@ export function SqlEditor({
                           </span>
                         </div>
                         {open && (
-                          <ul className="cols">
-                            {t.columns.map((c) => (
-                              <li
-                                key={c.name}
-                                onClick={() => insertAtCursor(viewRef.current, c.name)}
-                                title={c.description ?? ""}
+                          <>
+                            <div className="tbl-actions">
+                              <button
+                                className="chip"
+                                title={`Row count for ${key} (governed, read-only)`}
+                                onClick={() => {
+                                  addTab(profileTableSql(t.schema, t.table));
+                                  void run();
+                                }}
                               >
-                                <span>{c.name}</span>
-                                <span className="ctype">{c.type ?? ""}</span>
-                              </li>
-                            ))}
-                          </ul>
+                                profile
+                              </button>
+                              {onSendToChat && (
+                                <button
+                                  className="chip"
+                                  title="Ask the data agent about this table"
+                                  onClick={() =>
+                                    onSendToChat(
+                                      `Tell me about ${key} — what does it contain and what insights can you produce from it?`,
+                                    )
+                                  }
+                                >
+                                  ask agent
+                                </button>
+                              )}
+                            </div>
+                            <ul className="cols">
+                              {t.columns.map((c) => (
+                                <li
+                                  key={c.name}
+                                  onClick={() => insertAtCursor(viewRef.current, c.name)}
+                                  title={c.description ?? ""}
+                                >
+                                  <span>{c.name}</span>
+                                  <span className="col-side">
+                                    <span className="ctype">{c.type ?? ""}</span>
+                                    <button
+                                      className="col-profile"
+                                      title={`Profile ${c.name}: nulls, distinct, min/max`}
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
+                                        addTab(profileColumnSql(t.schema, t.table, c.name));
+                                        void run();
+                                      }}
+                                    >
+                                      Σ
+                                    </button>
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
                         )}
                       </div>
                     );

@@ -437,6 +437,74 @@ export function getAdminAgentConfig(): Promise<AgentConfigResponse> {
   return adminGet<AgentConfigResponse>("/admin/agent-config");
 }
 
+// --- Conversations (Chat history sidebar) ---
+
+export interface ConversationSummary {
+  id: string;
+  title: string | null;
+  created_at: string;
+  last_at: string | null;
+  message_count: number;
+}
+
+export interface ConversationMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sql_generated: string | null;
+  report: (InsightReport & { pages?: Page[] }) | null;
+  created_at: string;
+}
+
+export async function getConversations(): Promise<ConversationSummary[]> {
+  const resp = await fetch(`${API}/conversations`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load conversations (${resp.status})`);
+  return resp.json();
+}
+
+export async function getConversationMessages(id: string): Promise<ConversationMessage[]> {
+  const resp = await fetch(`${API}/conversations/${id}/messages`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load conversation (${resp.status})`);
+  return resp.json();
+}
+
+// --- Profile / Settings ---
+
+export interface UserMemory {
+  id: string;
+  kind: string | null;
+  content: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface MyAccess {
+  role: string;
+  rls_note: string;
+  datasets: { slug: string; name: string; status: string; access: string }[];
+}
+
+export async function getMyMemories(): Promise<UserMemory[]> {
+  const resp = await fetch(`${API}/me/memories`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load memories (${resp.status})`);
+  return resp.json();
+}
+
+export async function deleteMyMemory(id: string): Promise<{ deleted: boolean }> {
+  const resp = await fetch(`${API}/me/memories/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Could not delete memory (${resp.status})`);
+  return resp.json();
+}
+
+export async function getMyAccess(): Promise<MyAccess> {
+  const resp = await fetch(`${API}/me/access`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load access (${resp.status})`);
+  return resp.json();
+}
+
 export async function submitFeedback(input: FeedbackInput): Promise<{ id: string }> {
   const resp = await fetch(`${API}/feedback`, {
     method: "POST",

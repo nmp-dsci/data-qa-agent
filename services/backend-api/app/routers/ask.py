@@ -11,7 +11,7 @@ from sqlalchemy import text
 from ..agent_client import ask_agent
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
-from ..db import rls_connection
+from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["ask"])
 
@@ -65,6 +65,65 @@ def _json(obj: Any) -> str:
     import json
 
     return json.dumps(obj)
+
+
+@router.get("/conversations")
+async def list_conversations(
+    user: CurrentUser = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """The current user's conversations for the Chat history sidebar.
+
+    RLS already scopes rows; the explicit user_id filter keeps an admin's
+    sidebar to their own threads even where admin read policies are broader.
+    """
+    async with rls_connection(user.id) as conn:
+        rows = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT c.id, c.title, c.created_at, "
+                        "  coalesce(max(m.created_at), c.created_at) AS last_at, "
+                        "  count(m.id) AS message_count "
+                        "FROM app.conversations c "
+                        "LEFT JOIN app.messages m ON m.conversation_id = c.id "
+                        "WHERE c.user_id = current_setting('app.current_user_id', true)::uuid "
+                        "GROUP BY c.id, c.title, c.created_at "
+                        "ORDER BY coalesce(max(m.created_at), c.created_at) DESC "
+                        "LIMIT 100"
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return [{k: jsonable(v) for k, v in r.items()} for r in rows]
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def conversation_messages(
+    conversation_id: str,
+    user: CurrentUser = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """A conversation's messages (with stored reports incl. pages) for reopen."""
+    async with rls_connection(user.id) as conn:
+        rows = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT m.id, m.role, m.content, m.sql_generated, m.report, m.created_at "
+                        "FROM app.messages m "
+                        "JOIN app.conversations c ON c.id = m.conversation_id "
+                        "WHERE m.conversation_id = :cid "
+                        "  AND c.user_id = current_setting('app.current_user_id', true)::uuid "
+                        "ORDER BY m.created_at ASC"
+                    ),
+                    {"cid": conversation_id},
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return [{k: jsonable(v) for k, v in r.items()} for r in rows]
 
 
 @router.post("/ask", response_model=AskResponse)

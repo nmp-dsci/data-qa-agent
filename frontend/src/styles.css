@@ -471,6 +471,38 @@ th.sortable:hover { color: var(--text); }
 .config-note { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .badge.secret { color: var(--accent); border-color: var(--warn-border); margin-left: 6px; }
 
+/* Chat history sidebar */
+.chat-layout { flex: 1; display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 0; }
+.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.conv-panel { border-right: 1px solid var(--border); padding: 12px; overflow-y: auto; }
+.conv-new { width: 100%; background: var(--panel-2); border: 1px dashed var(--border-2); color: var(--accent);
+  padding: 8px 10px; border-radius: var(--radius); font-size: 12.5px; margin-bottom: 12px; text-align: left; }
+.conv-new:hover { border-color: var(--accent); }
+.conv-item { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  background: transparent; border: 1px solid transparent; color: var(--text); padding: 7px 8px;
+  border-radius: var(--radius-sm); font-size: 12.5px; margin-bottom: 2px; }
+.conv-item:hover { background: var(--panel-2); }
+.conv-item.active { background: var(--panel-2); border-color: var(--border); }
+.conv-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-meta { color: var(--muted); font-size: 11px; }
+
+/* Data catalog panel (SQL editor) */
+.schema-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.schema-head .schema-title { margin-bottom: 0; }
+.schema-docs { font-size: 11px; color: var(--accent-2); text-decoration: none; }
+.catalog-search { width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius-sm); padding: 6px 8px; font-size: 12px; margin-bottom: 10px; outline: none; }
+.catalog-search:focus { border-color: var(--accent-2); }
+.tbl-actions { display: flex; gap: 6px; margin: 2px 0 4px 22px; }
+.col-side { display: inline-flex; align-items: center; gap: 6px; }
+.col-profile { background: none; border: 1px solid var(--border); color: var(--muted); font-size: 10px;
+  border-radius: 4px; padding: 0 5px; line-height: 1.5; cursor: pointer; }
+.col-profile:hover { color: var(--accent); border-color: var(--warn-border); }
+
+/* Settings */
+.settings section { display: flex; flex-direction: column; gap: 10px; }
+.settings-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
 /* Report engine (s07): pages, KPI tiles, visx charts */
 .answer-page { display: flex; flex-direction: column; gap: 8px; }
 .page-region { display: flex; flex-direction: column; gap: 8px; }

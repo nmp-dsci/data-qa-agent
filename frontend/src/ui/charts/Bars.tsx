@@ -190,9 +190,15 @@ export function Bars({ data, height = 280 }: { data: BarsData; height?: number }
         PNG
       </button>
       {data.title && <div className="chart-title">{data.title}</div>}
-      <ParentSize debounceTime={50}>
-        {({ width }) => (width > 0 ? <BarsInner data={data} width={width} height={height} /> : null)}
-      </ParentSize>
+      {/* ParentSize measures via an absolutely-positioned probe — it needs an
+          explicit-height parent or the chart collapses to ~0. */}
+      <div style={{ height }}>
+        <ParentSize debounceTime={50}>
+          {({ width }) =>
+            width > 0 ? <BarsInner data={data} width={width} height={height} /> : null
+          }
+        </ParentSize>
+      </div>
     </div>
   );
 }

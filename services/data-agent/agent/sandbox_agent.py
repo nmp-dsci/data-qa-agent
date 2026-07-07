@@ -16,6 +16,7 @@ deterministic offline stub.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass, field
@@ -199,13 +200,34 @@ class _SbDeps:
     skill_gaps: list[dict[str, str]] = field(default_factory=list)
     used_inline_math: bool = False
     steps: list[dict[str, Any]] = field(default_factory=list)
+    # Optional live-progress channel: when the streaming endpoint supplies a
+    # queue, tools push a compact {n, action, detail} event as they run so the
+    # Chat UI can show a running step list. None on the plain /agent/ask path.
+    progress: asyncio.Queue[dict[str, Any]] | None = None
+    progress_n: int = 0
 
     def next_id(self, prefix: str, store: dict[str, Any]) -> str:
         return f"{prefix}{len(store) + 1}"
 
+    def emit(self, action: str, detail: str = "") -> None:
+        """Best-effort live-progress event; a no-op off the streaming path."""
+        if self.progress is None:
+            return
+        self.progress_n += 1
+        self.progress.put_nowait({"n": self.progress_n, "action": action, "detail": detail})
 
-async def answer_with_sandbox(question: str, *, user_id: str) -> dict[str, Any] | None:
-    """Run the sandbox agent path; None to fall back to the offline stub."""
+
+async def answer_with_sandbox(
+    question: str,
+    *,
+    user_id: str,
+    progress: asyncio.Queue[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Run the sandbox agent path; None to fall back to the offline stub.
+
+    When ``progress`` is supplied (the streaming endpoint), tools push live
+    step events onto it as they run.
+    """
     if not _PYDANTIC_AI_AVAILABLE:
         return None
     selected = choose_provider(
@@ -229,7 +251,7 @@ async def answer_with_sandbox(question: str, *, user_id: str) -> dict[str, Any] 
         )
         _register_sandbox_tools(agent, max_extracts, max_runs)
 
-        deps = _SbDeps(user_id=user_id)
+        deps = _SbDeps(user_id=user_id, progress=progress)
         usage_limits = UsageLimits(
             request_limit=settings.agent_request_limit,
             total_tokens_limit=settings.agent_total_tokens_limit,
@@ -472,6 +494,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
     @agent.tool(name="search_knowledge")
     async def search_knowledge_tool(ctx: RunContext[_SbDeps], query: str, why: str = "") -> str:
         """Search the Insight Playbook for pages relevant to the question."""
+        ctx.deps.emit("Searching knowledge", query)
         text, inlined = search_knowledge_result(query)
         for name in inlined:
             if name not in ctx.deps.knowledge_pages:
@@ -489,6 +512,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
             return f"(already loaded '{name}' earlier — see above.)"
         if ctx.deps.knowledge_reads >= settings.max_knowledge_reads:
             return "knowledge read limit reached; proceed with the pages you have."
+        ctx.deps.emit("Reading knowledge", name)
         ctx.deps.knowledge_pages.append(name)
         ctx.deps.knowledge_reads += 1
         ctx.deps.steps.append({"kind": "knowledge", "status": "read", "name": name, "why": why})
@@ -497,6 +521,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
     @agent.tool(name="describe_table")
     async def describe_table_tool(ctx: RunContext[_SbDeps], table: str, why: str = "") -> str:
         """Full column-level docs for one table (schema.table)."""
+        ctx.deps.emit("Inspecting schema", table)
         ctx.deps.steps.append({"kind": "schema", "status": "described", "table": table, "why": why})
         return describe_table(table)
 
@@ -513,6 +538,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         Pass the schema-qualified table the column lives in (see the mart index /
         describe_table). Dataset-agnostic — no default table.
         """
+        ctx.deps.emit("Resolving values", f"{table}.{column}")
         sql = _lookup_values_sql(table, column, pattern)
         if sql is None:
             return f"lookup_values: unknown table/column {table!r}.{column!r}."
@@ -551,6 +577,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
             return "STOP: no extract attempts left. Analyse the frames you have."
         ctx.deps.sql_calls += 1
         remaining = max_extracts - ctx.deps.sql_calls
+        ctx.deps.emit("Querying data", purpose or f"attempt {ctx.deps.sql_calls}")
         try:
             frame, result = await run_extract(sql, user_id=ctx.deps.user_id)
         except Exception as exc:  # noqa: BLE001 — let the model self-correct
@@ -624,6 +651,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
                 )
             return "STOP: no run_analysis attempts left. Use the report already built."
         ctx.deps.run_calls += 1
+        ctx.deps.emit("Building the report", "")
         result = run_code(code, frames=ctx.deps.frames)
         ctx.deps.skills_used = result.skills_used
         ctx.deps.skill_gaps = [g.model_dump() for g in result.skill_gaps]
@@ -664,6 +692,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         report. Give a short, user-facing reason (what's missing / what the data
         does cover). Then return a one-line confirmation.
         """
+        ctx.deps.emit("Concluding", "data can't answer this")
         ctx.deps.no_answer = reason
         ctx.deps.steps.append({"kind": "no_answer", "reason": reason, "why": why})
         return "recorded no_answer; now return a one-line confirmation."
@@ -671,6 +700,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
     @agent.tool
     async def remember(ctx: RunContext[_SbDeps], fact: str) -> str:
         """Store a durable user preference about how they want answers."""
+        ctx.deps.emit("Saving preference", fact)
         await remember_memory(ctx.deps.user_id, fact)
         ctx.deps.steps.append({"kind": "memory", "status": "saved", "fact": fact})
         return "remembered"

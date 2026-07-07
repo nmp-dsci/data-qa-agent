@@ -5,6 +5,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AskProgress,
   AskResult,
   askStream,
   ConversationMessage,
@@ -27,28 +28,32 @@ import { Login } from "./Login";
 
 type View = "chat" | "sql" | "admin" | "settings";
 
-/** Rebuild a renderable result from a stored assistant message (history reopen). */
+/** Rebuild a renderable result from a stored assistant message (history reopen).
+ *  Result meta (engine/tokens/latency) and the admin agent trace are joined
+ *  from the message's query_run by the API, so a reopened answer shows the same
+ *  trace expander an in-session answer does — not just report-bearing ones. */
 function messageToChat(m: ConversationMessage): ChatMsg {
   if (m.role === "user") return { role: "user", content: m.content };
   const report = m.report;
-  const result: AskResult | undefined = report
+  const hasRenderable = report != null || m.steps.length > 0 || m.sql_generated != null;
+  const result: AskResult | undefined = hasRenderable
     ? {
         conversation_id: "",
         message_id: m.id,
-        run_id: "",
+        run_id: m.run_id ?? "",
         answer: m.content,
         sql: m.sql_generated,
         columns: [],
         rows: [],
         row_count: 0,
         chart: null,
-        engine: "history",
-        input_tokens: null,
-        output_tokens: null,
-        latency_ms: null,
-        steps: [],
+        engine: m.engine ?? "history",
+        input_tokens: m.input_tokens,
+        output_tokens: m.output_tokens,
+        latency_ms: m.latency_ms,
+        steps: m.steps,
         report,
-        pages: report.pages ?? null,
+        pages: report?.pages ?? null,
       }
     : undefined;
   return { role: "assistant", content: m.content, result };
@@ -64,6 +69,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [sqlSeed, setSqlSeed] = useState<{ sql: string; nonce: number } | null>(null);
   const [working, setWorking] = useState<string | null>(null);
+  const [progress, setProgress] = useState<AskProgress[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const queryClient = useQueryClient();
 
@@ -172,12 +178,18 @@ export default function App() {
     track("question_submitted", { question: q });
     const isNewConversation = conversationId === null;
     setWorking("Agent is working…");
+    setProgress([]);
     try {
-      const result = await askStream(q, conversationId, (s) => {
-        if (s.state === "working" && s.elapsed_s != null) {
-          setWorking(`Agent is working… ${s.elapsed_s}s`);
-        }
-      });
+      const result = await askStream(
+        q,
+        conversationId,
+        (s) => {
+          if (s.state === "working" && s.elapsed_s != null) {
+            setWorking(`Agent is working… ${s.elapsed_s}s`);
+          }
+        },
+        (p) => setProgress((prev) => [...prev, p]),
+      );
       setConversationId(result.conversation_id);
       setMessages((m) => [...m, { role: "assistant", content: result.answer, result }]);
       if (isNewConversation) {
@@ -325,6 +337,7 @@ export default function App() {
           messages={messages}
           loading={loading}
           working={working}
+          progress={progress}
           error={error}
           input={input}
           setInput={setInput}

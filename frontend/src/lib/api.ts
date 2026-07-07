@@ -356,12 +356,20 @@ export interface AskStatus {
   elapsed_s?: number;
 }
 
-/** SSE variant of ask(): live status while the agent works, then the result.
- *  Falls back to plain ask() if the stream can't be established. */
+/** A live agent step while the answer is being built (running step list). */
+export interface AskProgress {
+  n: number;
+  action: string;
+  detail?: string;
+}
+
+/** SSE variant of ask(): live status + step progress while the agent works, then
+ *  the result. Falls back to plain ask() if the stream can't be established. */
 export async function askStream(
   question: string,
   conversationId: string | null,
   onStatus: (s: AskStatus) => void,
+  onProgress?: (p: AskProgress) => void,
 ): Promise<AskResult> {
   let resp: Response;
   try {
@@ -398,6 +406,12 @@ export async function askStream(
           onStatus(JSON.parse(data) as AskStatus);
         } catch {
           /* ignore malformed status frames */
+        }
+      } else if (event === "progress") {
+        try {
+          onProgress?.(JSON.parse(data) as AskProgress);
+        } catch {
+          /* ignore malformed progress frames */
         }
       } else if (event === "result") {
         return JSON.parse(data) as AskResult;
@@ -518,6 +532,15 @@ export interface ConversationMessage {
   sql_generated: string | null;
   report: (InsightReport & { pages?: Page[] }) | null;
   created_at: string;
+  // Joined from the message's latest query_run so a reopened thread restores
+  // the same result meta an in-session answer shows. `steps` is admin-only
+  // (empty otherwise); the rest may be null for pre-audit / legacy messages.
+  run_id: string | null;
+  engine: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  latency_ms: number | null;
+  steps: AgentStep[];
 }
 
 export async function getConversations(): Promise<ConversationSummary[]> {

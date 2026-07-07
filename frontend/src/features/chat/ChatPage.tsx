@@ -3,7 +3,7 @@
 // past conversations (new conversation = fresh thread, follow-ups in the same
 // thread stay multi-turn).
 import { useQuery } from "@tanstack/react-query";
-import { AskResult, ConversationSummary, getConversations, User } from "../../lib/api";
+import { AskProgress, AskResult, ConversationSummary, getConversations, User } from "../../lib/api";
 import { ResultView } from "./ResultView";
 
 export interface ChatMsg {
@@ -58,11 +58,39 @@ function ConversationList({
   );
 }
 
+function WorkingBubble({
+  working,
+  progress,
+}: {
+  working?: string | null;
+  progress: AskProgress[];
+}) {
+  return (
+    <div className="msg assistant">
+      <div className="bubble">
+        <div className="working-head">{working ?? "Agent is working…"}</div>
+        {progress.length > 0 && (
+          <ol className="working-steps">
+            {progress.map((p) => (
+              <li key={p.n} className="working-step">
+                <span className="working-step-n">{p.n}</span>
+                <span className="working-step-action">{p.action}</span>
+                {p.detail && <span className="working-step-detail">{p.detail}</span>}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ChatPage({
   user,
   messages,
   loading,
   working,
+  progress,
   error,
   input,
   setInput,
@@ -76,6 +104,7 @@ export function ChatPage({
   messages: ChatMsg[];
   loading: boolean;
   working?: string | null;
+  progress: AskProgress[];
   error: string | null;
   input: string;
   setInput: (v: string) => void;
@@ -127,11 +156,7 @@ export function ChatPage({
               </div>
             </div>
           ))}
-          {loading && (
-            <div className="msg assistant">
-              <div className="bubble">{working ?? "Agent is working…"}</div>
-            </div>
-          )}
+          {loading && <WorkingBubble working={working} progress={progress} />}
           {error && <p className="error">{error}</p>}
         </main>
 

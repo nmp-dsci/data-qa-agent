@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 import logfire
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 # Configured before importing sandbox_agent: agent_common (pulled in by that
@@ -361,14 +364,20 @@ async def agent_config() -> ConfigSection:
     return ConfigSection(title="Data agent", service="data-agent", items=items)
 
 
-@app.post("/agent/ask", response_model=AgentAnswer)
-async def agent_ask(body: AskRequest) -> AgentAnswer:
+async def _answer(
+    body: AskRequest, progress: asyncio.Queue[dict[str, Any]] | None = None
+) -> AgentAnswer:
+    """Produce an answer for one question (shared by /agent/ask and its stream).
+
+    When ``progress`` is supplied, the sandbox agent pushes live step events onto
+    it as it works; the caller drains and forwards them as SSE frames.
+    """
     user_id = body.user.id
 
     # Preferred path: the sandbox agent on the configured LLM provider. Returns
     # None (→ deterministic offline stub below) when no provider key is set or the
     # run never produced a report.
-    llm = await answer_with_sandbox(body.question, user_id=user_id)
+    llm = await answer_with_sandbox(body.question, user_id=user_id, progress=progress)
     if llm is not None:
         return AgentAnswer(**llm)
 
@@ -414,6 +423,46 @@ async def agent_ask(body: AskRequest) -> AgentAnswer:
         report=report,
         pages=pages or None,
         steps=steps,
+    )
+
+
+@app.post("/agent/ask", response_model=AgentAnswer)
+async def agent_ask(body: AskRequest) -> AgentAnswer:
+    return await _answer(body)
+
+
+def _sse(event: str, data: dict[str, Any] | str) -> str:
+    payload = data if isinstance(data, str) else json.dumps(data)
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+@app.post("/agent/ask/stream")
+async def agent_ask_stream(body: AskRequest) -> StreamingResponse:
+    """SSE variant of /agent/ask: forwards the sandbox agent's live step events
+    (``progress`` frames) as they happen, then one ``result`` frame with the full
+    AgentAnswer. A ``status`` heartbeat every 2s keeps the connection warm while a
+    single step runs. Same answer/persistence contract as /agent/ask."""
+
+    async def gen() -> AsyncIterator[str]:
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        task = asyncio.ensure_future(_answer(body, progress=queue))
+        while not task.done() or not queue.empty():
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=2.0)
+            except TimeoutError:
+                yield _sse("status", {"state": "working"})
+                continue
+            yield _sse("progress", event)
+        try:
+            result = task.result()
+            yield _sse("result", result.model_dump_json())
+        except Exception as exc:  # noqa: BLE001 — surface the failure to the stream
+            yield _sse("error", {"detail": str(exc)})
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

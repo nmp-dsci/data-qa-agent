@@ -369,6 +369,22 @@ th.sortable:hover { color: var(--text); }
 .decision-choice { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .decision-why { margin-top: 3px; color: var(--muted); }
 
+/* Live "agent is working" step list (SSE progress) */
+.working-head { font-weight: 600; color: var(--text); }
+.working-steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.working-step { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--text);
+  animation: working-step-in .18s ease-out; }
+.working-step-n { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--panel-2); color: var(--muted); font-size: 10px; flex: 0 0 18px;
+  font-variant-numeric: tabular-nums; }
+.working-step-action { font-weight: 600; white-space: nowrap; }
+.working-step-detail { color: var(--muted); font-size: 11.5px; min-width: 0; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Latest step reads as active until the next one arrives. */
+.working-step:last-child .working-step-n { background: var(--accent); color: var(--accent-ink); }
+.working-step:last-child .working-step-action { color: var(--accent); }
+@keyframes working-step-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
 /* Insight report (K3) */
 .report { margin-top: 6px; display: flex; flex-direction: column; gap: 10px; position: relative; overflow: visible; }
 .report-sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent);

@@ -11,7 +11,7 @@ the Azure Bicep in `../` stays as a reference and is **not** touched by this.
 
 | Module | State | Run by | What it creates |
 |--------|-------|--------|-----------------|
-| `bootstrap/` | **local** | you, once, with admin creds | S3 state bucket + DynamoDB lock, GitHub-OIDC provider + CI deploy role |
+| `bootstrap/` | **local** | you, once, with admin creds | S3 state bucket (S3-native locking), GitHub-OIDC provider + CI deploy role |
 | `foundations/` | remote (S3) | you now; CI later | VPC + subnets, Aurora Serverless v2, ECR repos, Secrets Manager entries, S3 data bucket |
 
 `bootstrap` uses local state because it creates the very bucket the others use as a
@@ -47,16 +47,17 @@ terraform apply
 
 ### 3. Verify (Phase A definition-of-done)
 
-Enable pgvector on the new cluster, exactly like the local pgvector container:
+`terraform apply` completing cleanly (VPC, Aurora, ECR, Secrets, S3 in the
+outputs) **is** Phase A done.
 
-```bash
-HOST=$(terraform output -raw aurora_endpoint)
-# password: pull from Secrets Manager (never echo it into shell history in shared envs)
-psql "host=$HOST port=5432 dbname=dataqa user=postgres sslmode=require" \
-  -c "CREATE EXTENSION IF NOT EXISTS vector;" -c "\dx"
-```
-
-Seeing `vector` in the extension list = Phase A done.
+Note on pgvector: the cluster is **private by design** (no public access; the
+security group only admits traffic from inside the VPC), so you can't `psql` to
+it from your laptop — and you don't need to. The `vector` + `pgcrypto`
+extensions are created by the **db-migrate job** as part of `alembic upgrade
+head` (revision `0001` executes `db/init/01_schema.sql`), which runs *inside*
+the VPC in Phase D. That is where pgvector is confirmed. Aurora PostgreSQL 16
+allow-lists `vector`, and the job connects as the master role, so the
+`CREATE EXTENSION` succeeds there.
 
 ## Notes / knobs
 

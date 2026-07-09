@@ -3,11 +3,6 @@ output "state_bucket" {
   value       = aws_s3_bucket.tfstate.id
 }
 
-output "lock_table" {
-  description = "DynamoDB table used for state locking."
-  value       = aws_dynamodb_table.tf_lock.name
-}
-
 output "github_deploy_role_arn" {
   description = "IAM role ARN for GitHub Actions OIDC (used in Phase E deploy-aws.yml)."
   value       = aws_iam_role.github_deploy.arn

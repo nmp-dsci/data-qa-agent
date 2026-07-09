@@ -1,0 +1,836 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Template Studio — Agent-Config rework plan</title>
+
+<script type="module">
+  import mermaid from "https://esm.sh/mermaid@11?bundle";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    themeVariables: {
+      background: "#171a21",
+      primaryColor: "#1e222b",
+      primaryTextColor: "#e7e9ee",
+      primaryBorderColor: "#363d4a",
+      lineColor: "#6b7688",
+      fontSize: "13px",
+      fontFamily: "ui-sans-serif, system-ui, sans-serif",
+    },
+  });
+</script>
+
+<script type="module">
+  // Code surfaces use @pierre/diffs per the code playbook.
+  import { File, FileDiff } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const theme = { light: "github-light", dark: "github-dark" };
+  const options = { theme, themeType: "dark", overflow: "wrap" };
+
+  const contractJson = {
+    name: "answer.pages.json  ·  what data-agent emits (pages.py)",
+    contents: `{
+  "pages": [
+    {
+      "template": "summary",
+      "objects": [
+        {
+          "type": "kpi",
+          "element_id": "headline:0",
+          "region": "hero",
+          "data": {
+            "label": "2 bd unit median rent",
+            "value": "$671/wk",
+            "basis": "6-mo rolling \\u00b7 2026-05"
+          }
+        },
+        {
+          "type": "trend",
+          "element_id": "report:chart",
+          "region": "chart",
+          "data": {
+            "intent": "line",
+            "x": "month", "y": "value", "series": "series",
+            "title": "Median weekly rent by month \\u00b7 2077",
+            "rows": [ { "month": "2025-01-01", "value": 500, "series": "1 bd" }, "\\u2026" ]
+          }
+        },
+        {
+          "type": "text",
+          "element_id": "report:summary",
+          "region": "note",
+          "data": { "text": "2-bed units lead at +6.1% YoY; supply near the station stays tight." }
+        }
+      ]
+    }
+  ]
+}
+`,
+  };
+
+  const proposedOld = {
+    name: "pages contract  ·  today (named regions)",
+    contents: `{
+  "template": "two-col",
+  "objects": [
+    { "type": "kpi",       "region": "headline",  "data": {} },
+    { "type": "breakdown", "region": "chart",     "data": { "intent": "bar" } },
+    { "type": "insight",   "region": "insights",  "data": {} }
+  ]
+}
+`,
+  };
+  const proposedNew = {
+    name: "pages contract  ·  locked (column model + role + height)",
+    contents: `{
+  "template": "three-col",
+  "columns": [
+    [ { "type": "kpi",       "role": "headline", "data": {} } ],
+    [ { "type": "trend",     "role": "chart",    "data": { "intent": "line", "height": "fill" } } ],
+    [ { "type": "insight",   "role": "insight",  "data": {} },
+      { "type": "breakdown", "role": "chart",    "data": { "intent": "bar", "height": 240 } } ]
+  ]
+}
+`,
+  };
+
+  new File(options).render({
+    containerWrapper: document.querySelector("#code-contract"),
+    file: contractJson,
+  });
+  new FileDiff({ ...options, diffStyle: "split" }).render({
+    containerWrapper: document.querySelector("#code-contract-diff"),
+    oldFile: proposedOld,
+    newFile: proposedNew,
+  });
+</script>
+
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --panel-3: #232833;
+    --border: #2a2f3a;
+    --border-2: #363d4a;
+    --text: #e7e9ee;
+    --muted: #9aa3b2;
+    --accent: #b48a3f;
+    --accent-soft: #f0c674;
+    --blue: #6ea8fe;
+    --green: #9ece6a;
+    --red: #f2777a;
+    --amber: #e0af68;
+    --purple: #a882e8;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; min-width: 0; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+    font-size: 15px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 22px 120px; }
+
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent-soft);
+       margin: 0 0 14px; font-weight: 700; }
+  h3 { font-size: 17px; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--panel-3);
+         padding: 1px 5px; border-radius: 4px; color: var(--accent-soft); }
+  .lead { color: var(--muted); font-size: 16px; max-width: 78ch; }
+  .muted { color: var(--muted); }
+  a { color: var(--blue); }
+
+  section { margin: 40px 0; }
+  .divider { height: 1px; background: var(--border); margin: 6px 0 0; }
+
+  .kicker { display: inline-block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid var(--border-2); border-radius: 999px; padding: 3px 11px; margin-bottom: 16px; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .card + .card { margin-top: 12px; }
+
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 780px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+  /* problem/goal callouts */
+  .callout { border-left: 3px solid var(--accent); background: var(--panel-2); border-radius: 0 10px 10px 0;
+    padding: 14px 18px; margin: 0 0 12px; }
+  .callout.warn { border-color: var(--red); }
+  .callout.good { border-color: var(--green); }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel-2); color: var(--muted); font-weight: 600; font-size: 11.5px;
+       text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.file { font-family: var(--mono); font-size: 12px; color: var(--blue); white-space: nowrap; }
+
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+    border: 1px solid var(--border-2); white-space: nowrap; }
+  .pill.bug { color: var(--red); border-color: #6b2a2a; background: #2a1a1c; }
+  .pill.rename { color: var(--amber); border-color: #6b5a2a; background: #2a2415; }
+  .pill.feat { color: var(--green); border-color: #33502f; background: #1c2a1a; }
+  .pill.test { color: var(--blue); border-color: #2a4a6b; background: #172230; }
+
+  /* phase rail */
+  .phase { display: grid; grid-template-columns: 44px 1fr; gap: 14px; margin: 0 0 10px; }
+  .phase .num { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center;
+    font-weight: 700; font-size: 18px; background: var(--panel-3); border: 1px solid var(--border-2); color: var(--accent-soft); }
+  .phase-body { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; }
+  .phase-body h3 { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .phase-body ul { margin: 8px 0 0; padding-left: 18px; }
+  .phase-body li { margin: 4px 0; }
+  .tag-est { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  /* diagram */
+  .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px;
+    overflow-x: auto; text-align: center; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  /* code surfaces */
+  #code-contract, #code-contract-diff { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .code-cap { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
+
+  /* ---------- product mock (renamed tab) ---------- */
+  .mock { border: 1px solid var(--border-2); border-radius: 14px; overflow: hidden; background: var(--bg);
+    box-shadow: 0 18px 50px rgba(0,0,0,.4); }
+  .mock-top { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border);
+    background: var(--panel); }
+  .mock-top .brand { font-weight: 800; letter-spacing: -0.01em; }
+  .mock-top .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--warn-border, #6b5a2a);
+    color: var(--accent-soft); background: #2a2415; font-weight: 600; }
+  .subtabs { display: flex; gap: 6px; padding: 12px 16px 0; }
+  .chip { font-size: 12.5px; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--muted); cursor: default; }
+  .chip.active { background: var(--accent); color: #1a1206; border-color: var(--accent); font-weight: 700; }
+  .chip.renamed { outline: 2px dashed var(--green); outline-offset: 2px; }
+  .mock-body { padding: 16px; }
+  .mock-sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--accent-soft);
+    font-weight: 700; margin: 0 0 8px; }
+
+  .seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: 8px; overflow: hidden; }
+  .seg button { font-size: 12.5px; padding: 6px 14px; background: var(--panel-2); color: var(--muted); border: none;
+    border-right: 1px solid var(--border-2); cursor: pointer; font-family: inherit; }
+  .seg button:last-child { border-right: none; }
+  .seg button.on { background: var(--accent); color: #1a1206; font-weight: 700; }
+
+  .colpick { display: grid; gap: 8px; margin: 12px 0; }
+  .colpick .row { display: grid; grid-template-columns: 90px 1fr auto; gap: 10px; align-items: center; }
+  @media (max-width: 560px) { .colpick .row { grid-template-columns: 90px 1fr; } }
+  .colpick label { font-size: 12.5px; color: var(--muted); }
+  select.fake { font-family: inherit; font-size: 12.5px; padding: 5px 8px; background: var(--panel-3);
+    color: var(--text); border: 1px solid var(--border-2); border-radius: 7px; }
+
+  /* fake rendered page inside preview */
+  .canvas { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 12px;
+    margin-top: 8px; }
+  .canvas-cols { display: grid; gap: 10px; }
+  .obj { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--panel-2); min-height: 74px; }
+  .obj .otag { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .obj.kpi .big { font-size: 20px; font-weight: 800; margin-top: 2px; }
+  .obj.kpi .up { color: var(--green); font-size: 12px; font-weight: 700; }
+  .spark { display: block; margin-top: 6px; }
+  .obj.chart { background: var(--panel-2); }
+  .obj.insight { background: #191d26; }
+  .obj.insight .ihead { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+  .obj.insight .ibody { font-size: 12.5px; color: var(--muted); }
+
+  details.expander { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); margin-top: 10px; }
+  details.expander > summary { cursor: pointer; padding: 10px 14px; font-size: 12.5px; color: var(--accent-soft);
+    font-weight: 600; list-style: none; display: flex; align-items: center; gap: 8px; }
+  details.expander > summary::-webkit-details-marker { display: none; }
+  details.expander > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+  details.expander[open] > summary::before { transform: rotate(90deg); }
+  details.expander pre { margin: 0; padding: 0 14px 14px; overflow-x: auto; font-family: var(--mono);
+    font-size: 11.5px; color: var(--text); }
+  details.expander pre .k { color: var(--blue); }
+  details.expander pre .s { color: var(--green); }
+  details.expander pre .n { color: var(--amber); }
+
+  /* test matrix */
+  .matrix td.y { color: var(--green); font-weight: 700; text-align: center; }
+  .matrix th.rot { font-size: 11px; }
+  .matrix td.lay { font-weight: 700; color: var(--accent-soft); white-space: nowrap; }
+
+  /* decisions / input */
+  .decision { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .decision + .decision { margin-top: 12px; }
+  .decision h3 { margin-bottom: 4px; }
+  .opts { display: grid; gap: 8px; margin: 12px 0 10px; }
+  .opts label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border-2);
+    border-radius: 9px; background: var(--panel-2); cursor: pointer; font-size: 13.5px; }
+  .opts label:hover { border-color: var(--accent); }
+  .opts input { margin-top: 3px; }
+  .opts .rec { color: var(--green); font-weight: 700; font-size: 11px; border: 1px solid #33502f; border-radius: 5px;
+    padding: 0 6px; margin-left: 6px; }
+  .opts .desc { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .qbtn { font-family: inherit; font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 9px;
+    background: var(--accent); color: #1a1206; border: none; cursor: pointer; }
+  .qbtn.ghost { background: transparent; color: var(--accent-soft); border: 1px solid var(--border-2); }
+  .queued { font-size: 12px; color: var(--green); margin-left: 10px; }
+
+  ul.clean { margin: 8px 0 0; padding-left: 18px; }
+  ul.clean li { margin: 5px 0; }
+  .foot { color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--border); margin-top: 40px; padding-top: 16px; }
+</style>
+
+<div class="wrap">
+
+  <span class="kicker">Plan · data-qa-agent · s08 · decisions locked ✓</span>
+  <h1>Template Studio</h1>
+  <p class="lead">
+    Rework the <code>Agent-Config</code> tab (→ <strong>Template Studio</strong>) and the page-templating path
+    <strong>front to back</strong> so an admin (and an automated test) can drive the exact contract the data-agent
+    sends and watch it render — through the same interface a human uses. Fixes the one-col preview, renames the
+    surface, exposes the contract JSON, generalises to a <strong>column layout model</strong>, adds a three-column
+    layout with <strong>per-object height</strong>, and lands combinatorial <strong>Playwright</strong> UI tests.
+  </p>
+  <div class="callout good" style="margin-top:14px">
+    <strong>Locked with you:</strong> D1 name = <code>Template Studio</code> · D2 model = <strong>column model</strong>
+    (regions become presets) · D3 tests = <strong>Playwright</strong> against <code>make up</code> ·
+    D4 scope = <strong>chat cut-over</strong> — live answers run on the same column contract, data-agent updated to
+    emit it, and since we don't need backward compatibility, stored query data is <strong>cleared</strong> (clean
+    cut, no dual-shape code). Plus your preview note: objects get an optional <strong>height</strong> so a lone
+    chart can fill an unbalanced column (§6).
+  </div>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>1 · Goal &amp; why now</h2>
+    <div class="callout">
+      <strong>The point of the preview</strong> is to show how the <em>Data-Agent informs the frontend to build a
+      page</em>, then watch that page get filled with insights that answer the question. Today the preview is a
+      hard-coded demo that quietly diverges from what actually renders in chat — so it can't be trusted as a test
+      surface, and it hides the contract it's supposed to teach.
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <h3>Trust</h3>
+        <p class="muted" style="margin:0">The preview must render through the <em>same</em> code path as a real answer, or it proves nothing.</p>
+      </div>
+      <div class="card">
+        <h3>Legibility</h3>
+        <p class="muted" style="margin:0">Every preview should expose the JSON the agent would have emitted to produce it.</p>
+      </div>
+      <div class="card">
+        <h3>Coverage</h3>
+        <p class="muted" style="margin:0">Every layout × every chart-per-column must be checkable — by a human and in CI.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>2 · Current state (verified in code)</h2>
+    <p class="muted">How a page gets built today, and the two structural problems that cause the reported bugs.</p>
+
+    <div class="mermaid">
+flowchart TD
+  A["data-agent<br/>agent/pages.py · compose_pages()"] -->|"Page + PageObject JSON"| B["/ask API"]
+  B --> C["frontend lib/api.ts"]
+  C --> D["report-engine/PagesView.tsx<br/>+ registry.ts (templates)"]
+  D --> E["visx charts<br/>Trend · Bars · KPITile"]
+
+  F[("app.agent_config<br/>migration 0014 seed")] --> G["/admin/agent-config API"]
+  G --> H["features/admin/AgentConfigView.tsx"]
+  H --> I["AgentConfigDemo.tsx<br/>DUPLICATE renderer + hard-coded data"]
+  I --> E
+
+  A -. "TEMPLATE_IDS<br/>must stay in sync" .- F
+  D -. "layout values<br/>must stay in sync" .- F
+
+  classDef good fill:#1c2a1a,stroke:#9ece6a,color:#e7e9ee;
+  classDef bad fill:#2a1a1c,stroke:#f2777a,color:#e7e9ee;
+  class D good;
+  class I bad;
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:#1c2a1a;border:1px solid #9ece6a"></span> production renderer (source of truth)</span>
+      <span><span class="sw" style="background:#2a1a1c;border:1px solid #f2777a"></span> duplicate renderer — drifts, causes bugs</span>
+      <span><span class="sw" style="background:var(--panel-2);border:1px dashed #6b7688"></span> hand-maintained sync (no enforcement)</span>
+    </div>
+
+    <div class="grid2" style="margin-top:14px">
+      <div class="callout warn">
+        <strong>Problem A — the renderer is forked.</strong>
+        <code>PagesView.tsx</code> (chat) and <code>AgentConfigDemo.tsx</code> (preview) each hand-roll region→layout
+        placement. They have <em>already</em> diverged: chat now puts insights left / chart right, the preview still
+        puts chart left. Any layout fix has to be made twice — the root cause of "one-col doesn't show right."
+      </div>
+      <div class="callout warn">
+        <strong>Problem B — the registry is forked three ways.</strong>
+        Template ids &amp; layouts live in <code>registry.ts</code> (frontend), <code>pages.py</code>
+        (<code>TEMPLATE_IDS</code>), and the <code>0014</code> seed (<code>app.agent_config</code>). Nothing keeps
+        them in sync, so adding <code>three-col</code> means editing three places by hand.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>3 · The reported issues → root cause</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Your ask</th><th>Type</th><th>Verified root cause</th><th>Where</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>one-col doesn't show when selected in the preview</td>
+            <td><span class="pill bug">bug</span></td>
+            <td>Preview uses the forked <code>DemoPage</code> renderer whose two-col branch now captures the
+              <code>one-col</code> demo (its layout flipped to two-col this session), so it never renders as one column.</td>
+            <td class="file">AgentConfigDemo.tsx:220</td>
+          </tr>
+          <tr>
+            <td>Call it "Template Preview", not "Demo Preview"</td>
+            <td><span class="pill rename">rename</span></td>
+            <td>Heading string only; trivial. Also drop the word "demo" from the caption copy.</td>
+            <td class="file">AgentConfigView.tsx:66</td>
+          </tr>
+          <tr>
+            <td>Show the JSON the data-agent would have provided</td>
+            <td><span class="pill feat">feature</span></td>
+            <td>No contract is surfaced. The exact <code>Page</code>+<code>PageObject</code> shape already exists in
+              <code>pages.py</code>; the preview builds it in memory but discards it. Surface it in an expander.</td>
+            <td class="file">AgentConfigDemo.tsx:134</td>
+          </tr>
+          <tr>
+            <td>Add three-col</td>
+            <td><span class="pill feat">feature</span></td>
+            <td>No <code>three-col</code> anywhere. Needs a template id + a CSS grid + composer support in all three
+              synced places (Problem B).</td>
+            <td class="file">registry.ts · pages.py · 0014</td>
+          </tr>
+          <tr>
+            <td>Test in the frontend via this page — same interface a human uses</td>
+            <td><span class="pill test">testing</span></td>
+            <td>No frontend test runner exists at all (no Vitest/Playwright in <code>package.json</code>). Only a
+              stdlib API <code>smoke_test.py</code>. Nothing drives the UI.</td>
+            <td class="file">frontend/package.json</td>
+          </tr>
+          <tr>
+            <td>Rename "Agent-Config" to something better</td>
+            <td><span class="pill rename">rename</span></td>
+            <td>Tab label + <code>AdminTab</code> id. See decision D1 for the name.</td>
+            <td class="file">AdminPage.tsx:30</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>4 · The contract this teaches</h2>
+    <p class="muted">This is the JSON the data-agent emits for one answer page — and exactly what the Template
+      Preview should reveal. The agent picks a <strong>template</strong> and fills typed <strong>objects</strong>
+      carrying <code>data</code> + <code>intent</code> — never chart specs, never layout.</p>
+    <div id="code-contract"></div>
+    <p class="code-cap" style="margin-top:8px">Source: <code>agent/pages.py</code> · <code>PageObject</code> / <code>Page</code> models and <code>compose_pages()</code>.
+      This is <em>today's</em> shape — Phase 4 cuts it over to the column model (§8); the principle (agent emits
+      data + intent, never chart specs or CSS) is unchanged.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>5 · Proposed approach</h2>
+    <p class="muted">Five phases. Phase 1 removes the fork so everything after it is tested once and rendered once.</p>
+
+    <div class="phase">
+      <div class="num">1</div>
+      <div class="phase-body">
+        <h3>Unify the renderer &amp; the registry <span class="tag-est">— foundation, unblocks the rest</span></h3>
+        <ul>
+          <li>Extract one <code>&lt;PageLayout&gt;</code> from <code>PagesView</code> that takes a page + template and
+            places objects. Chat, preview, and the new playground all call it. Delete <code>DemoPage</code>.</li>
+          <li>Make <code>registry.ts</code> the single frontend source; assert at build/test time that its ids match
+            <code>TEMPLATE_IDS</code> and the <code>0014</code> seed (a tiny contract test), closing Problem B.</li>
+          <li>Fixing one-col here fixes it in both chat and preview at once.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="num">2</div>
+      <div class="phase-body">
+        <h3>Rename &amp; relabel <span class="tag-est">— copy + one tab id</span></h3>
+        <ul>
+          <li>Tab <code>Agent-Config</code> → <code>Template Studio</code>; section <code>Demo preview</code> → <code>Template Preview</code>.</li>
+          <li>Rewrite the caption to describe the contract-teaching purpose, not "demo".</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="num">3</div>
+      <div class="phase-body">
+        <h3>Contract inspector <span class="tag-est">— the "show the JSON" ask</span></h3>
+        <ul>
+          <li>Under every Template Preview, a collapsible <code>▸ Contract JSON (what Data-Agent sent)</code> showing
+            the real <code>Page</code> object that produced the render.</li>
+          <li>Syntax-highlighted, copy button. It updates live with the preview.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="num">4</div>
+      <div class="phase-body">
+        <h3>Column model front-to-back: chat cut-over, three-col + the Template Playground <span class="tag-est">— the core change</span></h3>
+        <ul>
+          <li>Ship the <strong>column model</strong> (D2): template = N ordered columns; placement is positional
+            (<code>columns[i][j]</code>), meaning stays typed (<code>type</code> + optional semantic
+            <code>role</code> replacing today's <code>region</code> — see §8). <code>summary</code>/<code>insights</code>
+            become presets over it; add <code>three-col</code> + a 3-track CSS grid.</li>
+          <li><strong>Data-agent update (yes, it's needed):</strong> rewrite <code>compose_pages()</code> in
+            <code>agent/pages.py</code> to emit the <code>columns</code> contract, and update the report/chart skills +
+            page-composition prompt so the model picks a Template Studio template and fills its columns. The Pydantic
+            envelope validates the new shape only — the agent physically cannot emit layout the frontend can't render.</li>
+          <li><strong>Chat runs on it (D4):</strong> <code>/ask</code> answers render through the same unified
+            <code>&lt;PageLayout&gt;</code> + registry the Studio uses — Template Studio isn't a side demo, it's the
+            literal catalogue of what chat answers are built from. Answer a question → the agent populates a template
+            with insights → chat renders it.</li>
+          <li><strong>Clean cut-over, no backward compat (your call):</strong> migration <code>0015</code> clears the
+            stored <code>pages</code>/report payloads in <code>app.query_runs</code> (run metadata, SQL text and audit
+            rows are kept). Old conversations reopen without a rendered report (re-ask to regenerate); in exchange we
+            ship zero dual-shape validation or legacy-renderer code.</li>
+          <li><strong>Per-object height</strong> (your note): each object may carry an optional
+            <code>data.height</code> (px, or semantic <code>sm/md/lg/fill</code>). A lone chart in a column can be
+            made taller — or <code>fill</code> — so it doesn't leave an empty gap beside a taller stacked column. The
+            visx charts already accept a <code>height</code> prop (<code>Trend</code>/<code>Bars</code> default 280),
+            so this is mostly plumbing the value through <code>&lt;PageLayout&gt;</code>.</li>
+          <li>A playground: pick layout <code>one-col / two-col / three-col</code>; for each column pick a chart type
+            (<code>tiles · line · bar · grouped-bar · kpi</code>, extensible) and its height. It generates the
+            contract JSON and renders it through <code>&lt;PageLayout&gt;</code> live.</li>
+          <li>This makes the layout control, "what can go in each column", and column balance visible and manipulable.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="num">5</div>
+      <div class="phase-body">
+        <h3>Combinatorial UI tests · Playwright <span class="tag-est">— same interface a human uses</span></h3>
+        <ul>
+          <li>Drive the playground in a real browser: for every layout × per-column chart type, assert the page
+            renders (chart SVG present, no error boundary, object count matches the JSON).</li>
+          <li>Interaction tests: switching layout re-flows objects; changing a column's chart type re-renders; the
+            Contract JSON stays in sync with the DOM.</li>
+          <li><strong>Live-chat E2E (D4):</strong> ask a real question in chat and assert the answer arrives as a
+            column-model page that renders — proving the data-agent → contract → frontend path end-to-end, not just
+            the playground.</li>
+          <li>Runs in CI headless against <code>make up</code>, mirroring the existing smoke test's spirit.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>6 · What the renamed tab looks like</h2>
+    <p class="muted">A mock in the app's own dark admin style — Template Preview with the contract expander, plus the
+      Playground driving layout × per-column chart type.</p>
+
+    <div class="mock">
+      <div class="mock-top">
+        <span class="brand">data-qa-agent</span>
+        <span class="badge">Admin</span>
+        <span class="muted" style="margin-left:auto;font-size:12px">Admin Dashboard</span>
+      </div>
+      <div class="subtabs">
+        <span class="chip">Observability</span>
+        <span class="chip">Quality</span>
+        <span class="chip active renamed">Template Studio</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="mock-sec-label">Template Preview — how Data-Agent builds this page</div>
+        <div class="canvas">
+          <div class="canvas-cols" style="grid-template-columns: 0.9fr 1.1fr">
+            <div>
+              <div class="obj kpi">
+                <div class="otag">kpi · headline</div>
+                <div class="big">$671/wk <span class="up">▲ 6.1%</span></div>
+                <svg class="spark" width="120" height="22" viewBox="0 0 120 22"><polyline fill="none" stroke="#b48a3f" stroke-width="2" points="0,18 20,16 40,17 60,12 80,10 100,6 120,4"/></svg>
+              </div>
+              <div class="obj insight" style="margin-top:10px">
+                <div class="ihead">Widening gap</div>
+                <div class="ibody">3-bed dwellings pulled ahead of 1-bed over the window.</div>
+              </div>
+            </div>
+            <div>
+              <div class="obj chart" style="height:100%;display:flex;flex-direction:column">
+                <div class="otag">trend · chart · <span style="color:var(--green)">height: fill</span></div>
+                <svg width="100%" height="100%" viewBox="0 0 260 180" preserveAspectRatio="none" style="flex:1;min-height:150px">
+                  <polyline fill="none" stroke="#6ea8fe" stroke-width="2" points="0,150 40,138 80,110 120,100 160,74 200,52 260,30"/>
+                  <polyline fill="none" stroke="#b48a3f" stroke-width="2" points="0,162 40,156 80,132 120,122 160,98 200,80 260,58"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">
+          ↑ Your note applied: the chart takes <code>height: "fill"</code> so it stretches to match the taller
+          left column instead of leaving an empty gap. A chart can also take a fixed <code>height: 360</code>.
+        </p>
+
+        <details class="expander" open>
+          <summary>Contract JSON — what Data-Agent sent to render this</summary>
+<pre><span class="k">"template"</span>: <span class="s">"two-col"</span>,
+<span class="k">"objects"</span>: [
+  { <span class="k">"type"</span>: <span class="s">"kpi"</span>,     <span class="k">"region"</span>: <span class="s">"headline"</span>, <span class="k">"data"</span>: { <span class="k">"value"</span>: <span class="s">"$671/wk"</span> } },
+  { <span class="k">"type"</span>: <span class="s">"trend"</span>,   <span class="k">"region"</span>: <span class="s">"chart"</span>,    <span class="k">"data"</span>: { <span class="k">"intent"</span>: <span class="s">"line"</span>, <span class="k">"height"</span>: <span class="s">"fill"</span> } },
+  { <span class="k">"type"</span>: <span class="s">"insight"</span>, <span class="k">"region"</span>: <span class="s">"insights"</span>, <span class="k">"data"</span>: { <span class="k">"heading"</span>: <span class="s">"Widening gap"</span> } }
+]</pre>
+        </details>
+
+        <div style="height:22px"></div>
+        <div class="mock-sec-label">Template Playground — build a page from a contract</div>
+        <div class="card" style="background:var(--panel)">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <span class="muted" style="font-size:12.5px">Layout</span>
+            <div class="seg">
+              <button>one-col</button>
+              <button>two-col</button>
+              <button class="on">three-col</button>
+            </div>
+          </div>
+          <div class="colpick">
+            <div class="row"><label>Column 1</label><select class="fake"><option>kpi (tiles)</option></select><select class="fake"><option>height: md</option></select></div>
+            <div class="row"><label>Column 2</label><select class="fake"><option>line (trend)</option></select><select class="fake"><option>height: fill</option></select></div>
+            <div class="row"><label>Column 3</label><select class="fake"><option>bar (breakdown)</option></select><select class="fake"><option>height: md</option></select></div>
+          </div>
+          <div class="canvas">
+            <div class="canvas-cols" style="grid-template-columns: repeat(3, minmax(0,1fr))">
+              <div class="obj kpi"><div class="otag">kpi</div><div class="big" style="font-size:16px">$671/wk</div></div>
+              <div class="obj chart"><div class="otag">line</div>
+                <svg width="100%" height="60" viewBox="0 0 120 60" preserveAspectRatio="none"><polyline fill="none" stroke="#6ea8fe" stroke-width="2" points="0,48 30,40 60,30 90,20 120,12"/></svg>
+              </div>
+              <div class="obj chart"><div class="otag">bar</div>
+                <svg width="100%" height="60" viewBox="0 0 120 60"><rect x="8" y="30" width="18" height="30" fill="#b48a3f"/><rect x="34" y="20" width="18" height="40" fill="#b48a3f"/><rect x="60" y="10" width="18" height="50" fill="#b48a3f"/><rect x="86" y="24" width="18" height="36" fill="#b48a3f"/></svg>
+              </div>
+            </div>
+          </div>
+          <details class="expander" style="margin-top:10px">
+            <summary>Generated contract JSON</summary>
+<pre><span class="k">"template"</span>: <span class="s">"three-col"</span>,
+<span class="k">"columns"</span>: [
+  [ { <span class="k">"type"</span>: <span class="s">"kpi"</span> } ],
+  [ { <span class="k">"type"</span>: <span class="s">"trend"</span>,     <span class="k">"data"</span>: { <span class="k">"intent"</span>: <span class="s">"line"</span>, <span class="k">"height"</span>: <span class="n">360</span> } } ],
+  [ { <span class="k">"type"</span>: <span class="s">"breakdown"</span>, <span class="k">"data"</span>: { <span class="k">"intent"</span>: <span class="s">"bar"</span> } } ]
+]</pre>
+          </details>
+        </div>
+
+      </div>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin-top:8px">Dashed green outline marks the renamed tab. Mock only — spacing/labels are indicative.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>7 · Test coverage the playground unlocks</h2>
+    <p class="muted">The playground <em>is</em> the test surface. Each cell = a browser test that picks the layout,
+      sets the column's chart type, and asserts the object renders. Extend a column dropdown → the matrix grows for free.</p>
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>Layout \ chart-per-column</th>
+            <th class="rot">tiles / kpi</th>
+            <th class="rot">line (trend)</th>
+            <th class="rot">bar (breakdown)</th>
+            <th class="rot">grouped-bar</th>
+            <th class="rot">insight / text</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="lay">one-col</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="lay">two-col</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="lay">three-col</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr style="opacity:.55"><td class="lay">+ future: <code>map</code>, <code>heatmap</code>, …</td>
+            <td colspan="4" class="muted" style="font-size:12px">new chart types join every row automatically — the suite iterates the chart registry, not a hard-coded list</td><td class="y">✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="card"><h3 style="font-size:14px">Render assertions</h3>
+        <ul class="clean muted"><li>chart <code>&lt;svg&gt;</code> present per chart object</li><li>object count in DOM == count in contract JSON</li><li>no React error boundary / empty-state on any combo</li></ul></div>
+      <div class="card"><h3 style="font-size:14px">Interaction assertions</h3>
+        <ul class="clean muted"><li>switch layout → columns re-flow, objects preserved</li><li>change a column's chart type → that cell re-renders</li><li>set a column height (<code>md/lg/fill</code>) → chart resizes; <code>fill</code> stretches to the column</li><li>Contract JSON pane stays consistent with the render</li></ul></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3 style="font-size:14px">Designed to grow: adding a new chart type (e.g. <code>map</code>)</h3>
+      <p class="muted" style="font-size:13px;margin-bottom:8px">
+        Yes — extensibility is a design goal, not an afterthought. The chart registry becomes the <em>single</em>
+        registration point; everything else derives from it. Adding <code>map</code> is a 4-step checklist:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Step</th><th>Where</th><th>What you get for free</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Build the visx component (<code>Map.tsx</code>) accepting <code>data + height</code></td><td class="file">ui/charts/</td><td>tooltips/theming via shared tokens</td></tr>
+            <tr><td>2</td><td>Register it: object type <code>map</code>, intent, demo data</td><td class="file">report-engine/registry.ts</td><td>renders in chat answers, Template Preview, <em>and</em> the Playground dropdown — no extra wiring</td></tr>
+            <tr><td>3</td><td>Seed a registry row so admins see it</td><td class="file">app.agent_config</td><td>appears in the Charts table with its demo</td></tr>
+            <tr><td>4</td><td>(when the agent should use it) teach the composer the new type</td><td class="file">agent/pages.py + skill</td><td>Playwright matrix picks it up automatically — every layout × <code>map</code> is tested on the next run</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="code-cap" style="margin-top:8px">
+        The Playwright suite enumerates chart types from the registry at runtime, so the test matrix and the
+        playground's per-column options grow with the library — steps 1–3 alone make a new chart fully previewable
+        and tested before the agent ever emits it.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>8 · Decisions — locked ✓</h2>
+    <p class="muted">Resolved with you in review. These are now baked into the phases and file list above.</p>
+
+    <div class="grid2">
+      <div class="decision">
+        <h3 style="font-size:15px">D1 · Tab name</h3>
+        <p style="margin:6px 0 0"><span class="pill feat">Template Studio</span></p>
+        <p class="muted" style="font-size:12.5px;margin-top:8px">Templates + charts + a place to build &amp; test pages. Replaces <code>Agent-Config</code>.</p>
+      </div>
+      <div class="decision">
+        <h3 style="font-size:15px">D2 · Layout model</h3>
+        <p style="margin:6px 0 0"><span class="pill feat">Column model</span></p>
+        <p class="muted" style="font-size:12.5px;margin-top:8px">Template = N ordered columns of any object type; <code>summary</code>/<code>insights</code> become presets. <code>element_id</code>s preserved for feedback/evals.</p>
+      </div>
+      <div class="decision">
+        <h3 style="font-size:15px">D3 · Test framework</h3>
+        <p style="margin:6px 0 0"><span class="pill test">Playwright</span></p>
+        <p class="muted" style="font-size:12.5px;margin-top:8px">Real browser against <code>make up</code> — truest to "same interface a human uses". Vitest/RTL optional as a fast complement.</p>
+      </div>
+      <div class="decision">
+        <h3 style="font-size:15px">D4 · Chat cut-over &amp; data reset</h3>
+        <p style="margin:6px 0 0"><span class="pill feat">Chat runs the new contract</span> <span class="pill rename">clear query data</span></p>
+        <p class="muted" style="font-size:12.5px;margin-top:8px">Data-agent updated to emit the column contract; live chat answers populate Studio templates. No backward compat — migration clears stored report payloads (metadata/SQL/audit kept).</p>
+      </div>
+    </div>
+
+    <div class="decision" style="margin-top:12px">
+      <h3 style="font-size:15px">Contract shape: today → the locked column model</h3>
+      <div class="grid2" style="margin-top:6px">
+        <div><p class="code-cap">Today (named regions)</p></div>
+        <div><p class="code-cap">Locked (column model + per-object height)</p></div>
+      </div>
+      <div id="code-contract-diff"></div>
+
+      <div style="margin-top:14px">
+        <h3 style="font-size:15px">How an object lands in the layout — placement is positional, meaning is typed</h3>
+        <p class="muted" style="font-size:13px">
+          Your question: <em>"shouldn't the object say 'headline' / 'insights' for column 1 and 'chart' for
+          column 2 — how do you know which object lands where?"</em> In the column model those are two separate
+          concerns, and splitting them is the point:
+        </p>
+        <div class="grid2">
+          <div class="card" style="background:var(--panel-2)">
+            <h3 style="font-size:13px;color:var(--accent-soft)">WHERE it lands — position in <code>columns</code></h3>
+            <p class="muted" style="font-size:12.5px;margin:0">
+              <code>columns[i][j]</code> <em>is</em> the placement: object in array <code>i</code> renders in column
+              <code>i</code> (left→right), slot <code>j</code> (top→bottom). The data-agent controls layout purely by
+              where it puts the object in the JSON — no name lookup, nothing to mismatch, and the renderer can never
+              disagree with the contract. (Today's named <code>region</code> is exactly such a lookup, and a typo'd
+              or unknown region silently appends to the end — that ambiguity goes away.)
+            </p>
+          </div>
+          <div class="card" style="background:var(--panel-2)">
+            <h3 style="font-size:13px;color:var(--accent-soft)">WHAT it is — <code>type</code> (+ <code>role</code>)</h3>
+            <p class="muted" style="font-size:12.5px;margin:0">
+              <code>type: kpi | trend | breakdown | …</code> picks the renderer. An optional
+              <code>role: "headline" | "insight" | …</code> keeps the <em>semantic</em> label — carried over from
+              today's <code>region</code> so element-pinned feedback, eval snapshots, and the agent's own reasoning
+              ("this KPI is the headline") keep working. <code>role</code> never affects placement.
+            </p>
+          </div>
+        </div>
+        <p class="code-cap" style="margin-top:10px">
+          So <code>"columns": [ [kpi, insight], [trend] ]</code> reads: column 1 = headline tile then insight card;
+          column 2 = the chart. Presets like <code>summary</code> are just named recipes that expand to a
+          <code>columns</code> arrangement. Plus optional per-object <code>height</code> from your earlier note.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>9 · Risks &amp; migration — all questions resolved</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3 style="font-size:14px">Feedback / eval continuity</h3>
+        <p class="muted" style="margin:0">Element-pinned feedback keys off <code>element_id</code> and stored snapshots include <code>region</code>. A column model must preserve ids and keep a stable placement key, or historical feedback rows orphan.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:14px">Backwards compatibility — resolved: clean cut-over</h3>
+        <p class="muted" style="margin:0">Your call: no dual-shape support. Migration <code>0015</code> clears stored
+          <code>pages</code>/report payloads in <code>app.query_runs</code>; run metadata, SQL and the audit trail
+          stay. Old chats reopen without a rendered report (re-ask regenerates); the codebase carries exactly one
+          contract shape. Feedback rows pinned to cleared reports are archived rather than deleted so the evals
+          pipeline keeps its history.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:14px">Front↔back sync</h3>
+        <p class="muted" style="margin:0">Three sources of template truth stay a hazard until a contract test asserts <code>registry.ts</code> == <code>TEMPLATE_IDS</code> == seed. Ship that test in Phase 1.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:14px">Formerly open — resolved in review</h3>
+        <ul class="clean muted" style="margin-top:2px">
+          <li><strong>Agent can use every template</strong> incl. <code>three-col</code> — chat answers are populated
+            from the Template Studio catalogue (D4), so nothing is preview-only.</li>
+          <li><strong>Any object type in any column</strong> — a column is an ordered list; KPI tiles can stack above
+            a chart in the same column.</li>
+          <li><strong>Both test paths ship</strong>: playground combos run client-side (fast matrix); one live-chat
+            <code>/ask</code> E2E proves the agent→frontend contract for real.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>10 · File touch-list</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>File</th><th>Change</th><th>Phase</th></tr></thead>
+        <tbody>
+          <tr><td class="file">report-engine/PagesView.tsx</td><td>extract shared <code>&lt;PageLayout&gt;</code>; plumb per-object <code>height</code></td><td>1,4</td></tr>
+          <tr><td class="file">report-engine/registry.ts</td><td>single source; column model + <code>three-col</code></td><td>1,4</td></tr>
+          <tr><td class="file">ui/charts/Trend.tsx · Bars.tsx</td><td>accept <code>height: sm/md/lg/fill</code> (numeric prop already exists)</td><td>4</td></tr>
+          <tr><td class="file">admin/AgentConfigDemo.tsx</td><td>delete <code>DemoPage</code>; call <code>&lt;PageLayout&gt;</code>; emit contract JSON</td><td>1,3</td></tr>
+          <tr><td class="file">admin/AgentConfigView.tsx</td><td>"Template Preview" copy; contract expander + Playground (layout + per-col type/height)</td><td>2,3,4</td></tr>
+          <tr><td class="file">admin/AdminPage.tsx</td><td>rename tab → <code>Template Studio</code> + <code>AdminTab</code> id</td><td>2</td></tr>
+          <tr><td class="file">agent/pages.py</td><td>rewrite <code>compose_pages()</code> → <code>columns</code> contract; <code>three-col</code> in <code>TEMPLATE_IDS</code>; validate <code>role</code>/<code>height</code></td><td>4</td></tr>
+          <tr><td class="file">agent/skills + composition prompt</td><td>agent picks a Studio template &amp; fills columns to answer the question (chat cut-over, D4)</td><td>4</td></tr>
+          <tr><td class="file">features/chat/ChatPage.tsx · ReportView.tsx</td><td>render answers via unified <code>&lt;PageLayout&gt;</code>; drop legacy pages path</td><td>4</td></tr>
+          <tr><td class="file">migrations/0015_column_pages.py</td><td>seed <code>three-col</code> + column specs in <code>app.agent_config</code>; <strong>clear</strong> stored <code>query_runs</code> pages/report payloads (keep metadata/SQL/audit)</td><td>4</td></tr>
+          <tr><td class="file">frontend/styles.css</td><td><code>.page-three-col</code> grid + <code>height:fill</code> stretch</td><td>4</td></tr>
+          <tr><td class="file">frontend/package.json + tests/e2e/</td><td>Playwright + playground combinatorial suite</td><td>5</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="foot">
+    Plan artifact · grounded against <code>pages.py</code>, <code>PagesView.tsx</code>, <code>AgentConfigDemo.tsx</code>,
+    <code>AgentConfigView.tsx</code>, <code>AdminPage.tsx</code>, migration <code>0014</code>.
+    Design source: the app's own dark admin design system (CSS tokens from <code>styles.css</code>).
+    Queue the three decisions or annotate any element, then I'll implement.
+  </div>
+
+</div>

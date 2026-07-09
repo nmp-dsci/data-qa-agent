@@ -1,0 +1,19 @@
+# Terraform — never commit state or local vars
+.terraform/
+.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Local variable files may hold real values — keep only the examples
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Keep the provider lock file committed (.terraform.lock.hcl) for reproducible runs

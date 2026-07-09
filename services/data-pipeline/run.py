@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -40,8 +41,31 @@ def _configure_connection() -> None:
     os.environ.setdefault("DBT_DBNAME", parts.path.lstrip("/") or "dataqa")
 
 
+def _wake_database() -> None:
+    """Connect-with-retry until the DB accepts (Aurora auto-pause resume, s12).
+
+    A paused Serverless v2 cluster refuses/times out the first connections
+    while it resumes (~15-60s). dlt/dbt don't retry, so absorb it here.
+    """
+    import psycopg2  # dlt[postgres] ships it
+
+    url = os.environ["DESTINATION__POSTGRES__CREDENTIALS"]
+    last: Exception | None = None
+    for attempt in range(1, 25):
+        try:
+            psycopg2.connect(url, connect_timeout=15).close()
+            print(f"==> database awake (attempt {attempt})")
+            return
+        except psycopg2.OperationalError as e:  # refused/timeout while resuming
+            last = e
+            print(f"==> waiting for database (attempt {attempt}): {str(e).splitlines()[0][:90]}")
+            time.sleep(10)
+    raise SystemExit(f"database never became reachable: {last}")
+
+
 def main() -> None:
     _configure_connection()
+    _wake_database()
 
     # 1) dlt ingest (import after env is set so dlt picks up credentials).
     import ingest

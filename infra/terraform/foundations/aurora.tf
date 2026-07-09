@@ -41,6 +41,11 @@ resource "aws_rds_cluster" "main" {
   serverlessv2_scaling_configuration {
     min_capacity = var.db_min_acu # 0 = scale-to-zero / auto-pause
     max_capacity = var.db_max_acu
+    # Default pause window is 5 idle minutes — it paused mid-pipeline (the
+    # ~10-min normalize holds no DB connection) and the load step timed out
+    # against the resume. 1h keeps scale-to-zero economics overnight without
+    # the hair-trigger.
+    seconds_until_auto_pause = 3600
   }
 
   # Dev posture — easy to tear down and rebuild from Alembic migrations.

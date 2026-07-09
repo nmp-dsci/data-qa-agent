@@ -213,6 +213,28 @@ tbody tr:last-child td { border-bottom: none; }
 .agent-demo-caption { flex: 1; min-width: 0; font-size: 12px; }
 .agent-demo-canvas { padding: 16px; }
 .agent-demo-canvas .answer-page { margin: 0; }
+
+/* Template Studio: contract JSON inspector + playground */
+.contract-json { border-top: 1px solid var(--border); background: var(--panel-2); }
+.contract-json > summary { cursor: pointer; padding: 9px 14px; font-size: 12.5px; color: var(--accent-soft);
+  display: flex; align-items: center; gap: 10px; list-style: none; }
+.contract-json > summary::-webkit-details-marker { display: none; }
+.contract-json > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+.contract-json[open] > summary::before { transform: rotate(90deg); }
+.contract-copy { margin-left: auto; font-size: 11px; padding: 2px 10px; }
+.contract-json pre { margin: 0; padding: 4px 14px 14px; overflow-x: auto; max-height: 360px;
+  font-size: 11.5px; line-height: 1.45; color: var(--text); }
+.playground-controls { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 12px; }
+.playground-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.playground-label { font-size: 12.5px; color: var(--muted); min-width: 72px; }
+.playground-row select { font-size: 12.5px; padding: 5px 8px; background: var(--panel-3);
+  color: var(--text); border: 1px solid var(--border-2); border-radius: 7px; }
+.seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: 8px; overflow: hidden; }
+.seg button { font-size: 12.5px; padding: 6px 14px; background: var(--panel-2); color: var(--muted);
+  border: none; border-right: 1px solid var(--border-2); cursor: pointer; font-family: inherit; }
+.seg button:last-child { border-right: none; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+section > .agent-demo-canvas { border: 1px solid var(--border); border-radius: var(--radius); }
 .event-filters, .fb-admin-actions { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
 .event-filters select, .fb-admin-actions select { background: var(--panel); border: 1px solid var(--border); color: var(--text);
   padding: 6px 8px; border-radius: var(--radius-sm); font-size: 13px; }
@@ -563,11 +585,17 @@ a:focus-visible, [role="option"]:focus-visible {
 .settings section { display: flex; flex-direction: column; gap: 10px; }
 .settings-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
-/* Report engine (s07): pages, KPI tiles, visx charts */
+/* Report engine (s08 column model): pages, KPI tiles, visx charts */
 .answer-page { display: flex; flex-direction: column; gap: 8px; }
-.page-region { display: flex; flex-direction: column; gap: 8px; }
-.page-two-col { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 10px; align-items: start; }
+/* Positional columns: tracks come inline from the registry (per template). */
+.page-cols { display: grid; gap: 10px; align-items: stretch; }
+.page-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* Runs of consecutive KPI tiles share a responsive grid inside a column. */
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .page-obj { cursor: pointer; }
+/* height:"fill" — the card stretches to the tallest sibling column. */
+.page-obj.fill { flex: 1; display: flex; flex-direction: column; min-height: 260px; }
+.page-obj.fill .chart-vfill { flex: 1; display: flex; flex-direction: column; }
 .kpi-tile { min-width: 0; }
 .kpi-growth { font-size: 12px; font-weight: 600; margin-left: 8px; }
 .kpi-growth.up { color: var(--good); }
@@ -575,11 +603,23 @@ a:focus-visible, [role="option"]:focus-visible {
 .kpi-spark { display: block; margin-top: 6px; opacity: .9; }
 .chart-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em;
   margin-bottom: 6px; }
+.chart-plot svg { display: block; }
+.chart-plot rect[fill="transparent"] { cursor: crosshair; }
+/* Hover tooltip shared by the visx charts (see ui/charts/ChartTip.tsx). */
+.chart-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 96px; max-width: 220px;
+  padding: 7px 9px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .28); font-size: 12px; line-height: 1.35; }
+.chart-tip-title { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.chart-tip-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.chart-tip-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.chart-tip-label { color: var(--text); }
+.chart-tip-val { margin-left: auto; font-weight: 600; color: var(--text); padding-left: 10px; }
 .admin-subtabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .admin-subtabs .chip { font-size: 12.5px; padding: 5px 12px; }
 
 @media (max-width: 720px) {
-  .page-two-col { grid-template-columns: 1fr; }
+  /* !important: column tracks are set inline from the registry. */
+  .page-cols { grid-template-columns: 1fr !important; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .event-row { grid-template-columns: 1fr; gap: 3px; }
   .sqled { grid-template-columns: 1fr; }

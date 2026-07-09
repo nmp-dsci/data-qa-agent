@@ -375,11 +375,17 @@ async def _answer(
     user_id = body.user.id
 
     # Preferred path: the sandbox agent on the configured LLM provider. Returns
-    # None (→ deterministic offline stub below) when no provider key is set or the
-    # run never produced a report.
+    # None (→ deterministic offline stub below) when no provider key is set; a
+    # salvage dict (fallback=True) when the LLM ran but never completed a report
+    # — its trace (model turns, tool calls, tokens) stays with the stub answer.
     llm = await answer_with_sandbox(body.question, user_id=user_id, progress=progress)
+    salvage: dict[str, Any] | None = None
     if llm is not None:
-        return AgentAnswer(**llm)
+        if not llm.get("fallback"):
+            return AgentAnswer(**llm)
+        salvage = llm
+
+    salvaged_steps: list[dict[str, Any]] = list(salvage["steps"]) if salvage else []
 
     sql, intent = build_sql(body.question)
     try:
@@ -388,7 +394,12 @@ async def _answer(
         return AgentAnswer(
             answer=f"I couldn't run that safely: {exc}",
             sql=sql,
-            steps=[{"kind": "sql", "attempt": 1, "sql": sql, "status": "error", "error": str(exc)}],
+            input_tokens=salvage.get("input_tokens") if salvage else None,
+            output_tokens=salvage.get("output_tokens") if salvage else None,
+            steps=[
+                *salvaged_steps,
+                {"kind": "sql", "attempt": 1, "sql": sql, "status": "error", "error": str(exc)},
+            ],
         )
 
     answer = phrase_answer(body.question, intent, result)
@@ -396,6 +407,7 @@ async def _answer(
     if fallback_report is not None:
         answer = fallback_report["answer"]
     steps: list[dict[str, Any]] = [
+        *salvaged_steps,
         {
             "kind": "sql",
             "attempt": 1,
@@ -403,7 +415,7 @@ async def _answer(
             "status": "success",
             "row_count": result["row_count"],
             "intent": intent,
-        }
+        },
     ]
     pages: list[dict[str, Any]] | None = None
     report = fallback_report["report"] if fallback_report else None
@@ -420,6 +432,8 @@ async def _answer(
         row_count=result["row_count"],
         chart=fallback_report["chart"] if fallback_report else None,
         engine="stub",
+        input_tokens=salvage.get("input_tokens") if salvage else None,
+        output_tokens=salvage.get("output_tokens") if salvage else None,
         report=report,
         pages=pages or None,
         steps=steps,

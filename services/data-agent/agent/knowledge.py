@@ -218,8 +218,10 @@ def search_knowledge_result(
         )
     out = [f"Top {len(top)} knowledge pages for {query!r}:"]
     inlined: list[str] = []
-    for _score, p, snippet in top:
-        if len(p.body) <= inline_char_limit:
+    for rank, (_score, p, snippet) in enumerate(top):
+        # The top hit is ALWAYS inlined in full: the model reads it anyway, and
+        # excerpting it costs a whole extra read_knowledge model turn.
+        if rank == 0 or len(p.body) <= inline_char_limit:
             inlined.append(p.name)
             out.append(
                 f"\n### {p.name}  ({p.rel_path}) — full page inlined below "

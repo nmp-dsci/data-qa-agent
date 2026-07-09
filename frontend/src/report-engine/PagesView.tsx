@@ -1,15 +1,13 @@
-// PagesView — renders the agent's pages contract: each page resolves its
-// template from the registry, objects render by type (visx charts, KPI tiles,
-// insight notes) placed by region. Every object stays clickable for
-// element-pinned feedback with its original element_id, so the feedback →
-// evals loop is unchanged from the classic report renderer.
+// PagesView — chat's report renderer: each page renders through the shared
+// PageLayout (the same component Template Studio uses, so previews can never
+// drift from real answers). Every object stays clickable for element-pinned
+// feedback with its original element_id, so the feedback → evals loop is
+// unchanged.
 import { useState } from "react";
 import { InsightReport, Page, PageObject } from "../lib/api";
-import { Bars, BarsData } from "../ui/charts/Bars";
-import { KPIData, KPITile } from "../ui/charts/KPITile";
-import { Trend, TrendData } from "../ui/charts/Trend";
 import { FeedbackBox, FeedbackMarker, FeedbackMarkerIcon, Selected } from "../features/chat/FeedbackBox";
 import { QueryRefCard } from "../features/chat/ReportView";
+import { ObjectBody, objectCardClass, PageLayout } from "./PageLayout";
 import { templateFor } from "./registry";
 
 type PickFn = (
@@ -26,55 +24,12 @@ function objectLabel(o: PageObject): string {
   return String(d["label"] ?? d["title"] ?? d["heading"] ?? o.type);
 }
 
-export function ObjectBody({ o }: { o: PageObject }) {
-  const d = o.data;
-  switch (o.type) {
-    case "kpi":
-      return <KPITile data={d as unknown as KPIData} />;
-    case "trend":
-      return (
-        <Trend
-          data={{
-            x: String(d["x"] ?? "month"),
-            y: String(d["y"] ?? "value"),
-            series: (d["series"] as string | null) ?? null,
-            title: (d["title"] as string | null) ?? null,
-            rows: (d["rows"] as Record<string, unknown>[]) ?? [],
-          } satisfies TrendData}
-        />
-      );
-    case "breakdown":
-    case "compare":
-      return (
-        <Bars
-          data={{
-            dimension: String(d["dimension"] ?? ""),
-            measure: String(d["measure"] ?? ""),
-            group: (d["group"] as string | null) ?? null,
-            title: (d["title"] as string | null) ?? null,
-            rows: (d["rows"] as Record<string, unknown>[]) ?? [],
-          } satisfies BarsData}
-        />
-      );
-    case "insight":
-      return (
-        <div className="i-body">
-          {d["heading"] != null && String(d["heading"]) !== "" && (
-            <div className="i-head">{String(d["heading"])}</div>
-          )}
-          {String(d["text"] ?? "")}{" "}
-          {((d["refs"] as string[]) ?? []).map((q) => (
-            <span key={q} className="i-ref">
-              [{q}]
-            </span>
-          ))}
-        </div>
-      );
-    case "text":
-      return <div className="i-body">{String(d["text"] ?? "")}</div>;
-    default:
-      return null;
-  }
+/** A compact snapshot (no bulky rows) stored with feedback. */
+function summarizeData(o: PageObject): Record<string, unknown> {
+  const { rows, series, ...rest } = o.data;
+  const rowCount = Array.isArray(rows) ? rows.length : undefined;
+  void series;
+  return { ...rest, row_count: rowCount };
 }
 
 function PageObjectCard({
@@ -88,21 +43,16 @@ function PageObjectCard({
   marker?: FeedbackMarker;
   onPick: PickFn;
 }) {
-  const cls =
-    o.type === "kpi"
-      ? "h-tile page-obj"
-      : o.type === "insight" || o.type === "text"
-        ? "insight-card page-obj"
-        : "chart-card page-obj";
   return (
     <div
-      className={`${cls}${selected?.ref === o.element_id ? " sel" : ""}`}
+      className={`${objectCardClass(o)}${selected?.ref === o.element_id ? " sel" : ""}`}
+      data-object-type={o.type}
       onClick={(e) =>
         onPick(
           o.type,
           o.element_id,
           objectLabel(o),
-          { type: o.type, region: o.region, ...summarizeData(o) },
+          { type: o.type, role: o.role ?? null, ...summarizeData(o) },
           e.currentTarget.outerHTML,
           e.currentTarget,
         )
@@ -111,77 +61,6 @@ function PageObjectCard({
       {marker && <FeedbackMarkerIcon marker={marker} />}
       <ObjectBody o={o} />
     </div>
-  );
-}
-
-/** A compact snapshot (no bulky rows) stored with feedback. */
-function summarizeData(o: PageObject): Record<string, unknown> {
-  const { rows, series, ...rest } = o.data;
-  const rowCount = Array.isArray(rows) ? rows.length : undefined;
-  void series;
-  return { ...rest, row_count: rowCount };
-}
-
-function PageSection({
-  page,
-  index,
-  selected,
-  markers,
-  onPick,
-}: {
-  page: Page;
-  index: number;
-  selected: Selected | null;
-  markers: Record<string, FeedbackMarker>;
-  onPick: PickFn;
-}) {
-  const template = templateFor(page);
-  const byRegion = new Map<string, PageObject[]>();
-  for (const o of page.objects) {
-    const arr = byRegion.get(o.region) ?? [];
-    arr.push(o);
-    byRegion.set(o.region, arr);
-  }
-  const orderedRegions = [
-    ...template.regions.filter((r) => byRegion.has(r)),
-    ...[...byRegion.keys()].filter((r) => !template.regions.includes(r)),
-  ];
-
-  const renderRegion = (region: string) => {
-    const objs = byRegion.get(region) ?? [];
-    const isHero = objs.every((o) => o.type === "kpi");
-    return (
-      <div key={region} className={isHero ? "headline-grid" : "page-region"}>
-        {objs.map((o) => (
-          <PageObjectCard
-            key={o.element_id}
-            o={o}
-            selected={selected}
-            marker={markers[o.element_id]}
-            onPick={onPick}
-          />
-        ))}
-      </div>
-    );
-  };
-
-  const chartRegions = orderedRegions.filter((r) => r === "chart");
-  const otherRegions = orderedRegions.filter((r) => r !== "chart");
-
-  return (
-    <section className="answer-page">
-      <p className="report-sec">
-        Page {index + 1} · {template.label}
-      </p>
-      {template.layout === "two-col" && chartRegions.length > 0 ? (
-        <div className="page-two-col">
-          <div>{chartRegions.map(renderRegion)}</div>
-          <div>{otherRegions.map(renderRegion)}</div>
-        </div>
-      ) : (
-        orderedRegions.map(renderRegion)
-      )}
-    </section>
   );
 }
 
@@ -217,14 +96,23 @@ export function PagesView({
   return (
     <div className="report">
       {pages.map((page, i) => (
-        <PageSection
-          key={i}
-          page={page}
-          index={i}
-          selected={selected}
-          markers={markers}
-          onPick={pick}
-        />
+        <section className="answer-page" key={i}>
+          <p className="report-sec">
+            Page {i + 1} · {templateFor(page).label}
+          </p>
+          <PageLayout
+            page={page}
+            renderObject={(o) => (
+              <PageObjectCard
+                key={o.element_id}
+                o={o}
+                selected={selected}
+                marker={markers[o.element_id]}
+                onPick={pick}
+              />
+            )}
+          />
+        </section>
       ))}
 
       {report.queries.length > 0 && (

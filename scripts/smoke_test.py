@@ -130,6 +130,13 @@ def main() -> int:
         bool(pages1) and pages1[0].get("template") == "summary",
         f"(templates={[p.get('template') for p in pages1]})",
     )
+    # s08 column model: each page is columns[i][j] of typed objects.
+    check(
+        "pages use the column contract",
+        bool(pages1)
+        and isinstance(pages1[0].get("columns"), list)
+        and all(isinstance(col, list) for col in pages1[0]["columns"]),
+    )
 
     print("2. user2 (NO access) asks the same question -> RLS should hide rows")
     t2 = login("user2")

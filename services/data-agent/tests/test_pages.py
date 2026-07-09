@@ -105,29 +105,39 @@ def _report() -> dict[str, Any]:
     }
 
 
+def _objects(page: dict[str, Any]) -> list[dict[str, Any]]:
+    return [o for col in page["columns"] for o in col]
+
+
 def test_compose_pages_summary_then_insights() -> None:
     pages, steps = compose_pages(_report(), question="hornsby rent by bedrooms")
     assert [p["template"] for p in pages] == ["summary", "insights"]
 
+    # Column model: placement is positional — column 1 = KPIs + note,
+    # column 2 = the main chart (height: fill).
     summary = pages[0]
-    kinds = [o["type"] for o in summary["objects"]]
+    assert len(summary["columns"]) == 2
+    left, right = summary["columns"]
+    kinds = [o["type"] for o in _objects(summary)]
     assert kinds.count("kpi") == 1  # only the primary (non-related) headline
     assert "trend" in kinds and "text" in kinds
     # element_ids preserved → pinned feedback keeps working.
-    kpi = next(o for o in summary["objects"] if o["type"] == "kpi")
+    kpi = next(o for o in left if o["type"] == "kpi")
     assert kpi["element_id"] == "headline:0"
-    assert kpi["region"] == "hero"
-    trend = next(o for o in summary["objects"] if o["type"] == "trend")
+    assert kpi["role"] == "headline"
+    trend = right[0]
+    assert trend["type"] == "trend"
     assert trend["element_id"] == "report:chart"
     assert trend["data"]["intent"] == "line"
+    assert trend["data"]["height"] == "fill"
     assert len(trend["data"]["rows"]) == 4
 
     insights = pages[1]
-    breakdown = next(o for o in insights["objects"] if o["type"] == "breakdown")
+    breakdown = next(o for o in _objects(insights) if o["type"] == "breakdown")
     assert breakdown["data"]["dimension"] == "bedroom_band"
     assert breakdown["data"]["measure"] == "median_weekly_rent"
     assert breakdown["explains"] == "headline:0"
-    note = next(o for o in insights["objects"] if o["type"] == "insight")
+    note = next(o for o in _objects(insights) if o["type"] == "insight")
     assert note["element_id"] == "insight:0"
     assert note["data"]["refs"] == ["Q1"]
 
@@ -179,11 +189,45 @@ def test_chart_object_grouped_bar_becomes_compare() -> None:
             ]
         },
     }
-    obj = chart_object_from_spec(spec, element_id="x", region="chart")
+    obj = chart_object_from_spec(spec, element_id="x")
     assert obj is not None
     assert obj.type == "compare"
+    assert obj.role == "chart"
     assert obj.data["group"] == "property_type"
     assert obj.data["intent"] == "grouped-bar"
+
+
+def test_page_rejects_more_columns_than_template_allows() -> None:
+    import pytest
+
+    from agent.pages import Page, PageObject
+
+    obj = PageObject(type="text", element_id="t", data={"text": "x"})
+    # three-col takes 3 columns; one-col takes 1.
+    Page(template="three-col", columns=[[obj], [obj], [obj]])  # ok
+    with pytest.raises(ValueError):
+        Page(template="one-col", columns=[[obj], [obj]])
+
+
+def test_page_object_height_validation() -> None:
+    import pytest
+
+    from agent.pages import PageObject
+
+    PageObject(type="trend", element_id="c", data={"height": "fill"})  # ok
+    PageObject(type="trend", element_id="c", data={"height": 360})  # ok
+    with pytest.raises(ValueError):
+        PageObject(type="trend", element_id="c", data={"height": "huge"})
+    with pytest.raises(ValueError):
+        PageObject(type="trend", element_id="c", data={"height": 20})
+
+
+def test_template_ids_cover_column_limits() -> None:
+    from agent.pages import TEMPLATE_COLUMNS, TEMPLATE_IDS
+
+    assert set(TEMPLATE_IDS) == set(TEMPLATE_COLUMNS)
+    assert "three-col" in TEMPLATE_IDS
+    assert TEMPLATE_COLUMNS["three-col"] == 3
 
 
 def test_driver_analysis_ranks_percent_contribution() -> None:

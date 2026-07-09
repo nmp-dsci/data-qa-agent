@@ -1,12 +1,13 @@
 // Bars — breakdown (metric by one dimension) and compare (grouped by a second
 // series). Powers the Insights driver view, comparison answers, and the SQL
 // editor's result→chart. Colors + labels come from the design tokens.
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AxisBottom, AxisLeft } from "@visx/axis";
 import { Group } from "@visx/group";
 import { ParentSize } from "@visx/responsive";
 import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
+import { ChartTip, TipState } from "./ChartTip";
 import { downloadSvgAsPng } from "./exportPng";
 import { chartPalette, chartTheme, formatValue } from "./tokens";
 
@@ -48,6 +49,7 @@ const MAX_CATEGORIES = 20;
 function BarsInner({ data, width, height }: { data: BarsData; width: number; height: number }) {
   const theme = chartTheme();
   const palette = chartPalette();
+  const [tip, setTip] = useState<TipState | null>(null);
   const all = useMemo(() => parseData(data), [data]);
 
   const categories = useMemo(
@@ -90,7 +92,8 @@ function BarsInner({ data, width, height }: { data: BarsData; width: number; hei
     grouped ? palette[Math.max(0, groups.indexOf(g)) % palette.length] : palette[0];
 
   return (
-    <svg width={width} height={height} role="img" aria-label={data.title ?? "bar chart"}>
+    <div className="chart-plot" style={{ position: "relative", width, height }}>
+      <svg width={width} height={height} role="img" aria-label={data.title ?? "bar chart"}>
       <Group left={MARGIN.left} top={MARGIN.top}>
         {yScale.ticks(4).map((t) => (
           <line
@@ -109,13 +112,42 @@ function BarsInner({ data, width, height }: { data: BarsData; width: number; hei
           const bw = groupScale.bandwidth();
           const y = yScale(Math.max(0, d.value));
           const h = Math.abs(yScale(d.value) - yScale(0));
+          const showTip = () =>
+            setTip({
+              left: MARGIN.left + bx + bw / 2,
+              top: MARGIN.top + y,
+              title: d.category,
+              rows: [
+                {
+                  label: d.group || data.measure,
+                  value: formatValue(d.value, data.measure),
+                  color: color(d.group),
+                },
+                ...(d.growth != null
+                  ? [
+                      {
+                        label: "growth",
+                        value: `${d.growth >= 0 ? "+" : ""}${d.growth.toFixed(1)}%`,
+                      },
+                    ]
+                  : []),
+              ],
+            });
           return (
             <g key={i}>
-              <Bar x={bx} y={y} width={bw} height={h} rx={2} fill={color(d.group)}>
-                <title>
-                  {`${d.category}${d.group ? ` · ${d.group}` : ""}: ${formatValue(d.value, data.measure)}`}
-                </title>
-              </Bar>
+              <Bar x={bx} y={y} width={bw} height={h} rx={2} fill={color(d.group)} />
+              {/* Hover target: the full column for single bars (easy to hit thin
+                  bars), just this bar when clustered so each group reads its own. */}
+              <rect
+                x={grouped ? bx : x0}
+                y={0}
+                width={grouped ? bw : xScale.bandwidth()}
+                height={innerH}
+                fill="transparent"
+                onMouseEnter={showTip}
+                onMouseMove={showTip}
+                onMouseLeave={() => setTip(null)}
+              />
               {d.growth != null && !grouped && (
                 <text
                   x={bx + bw / 2}
@@ -169,14 +201,17 @@ function BarsInner({ data, width, height }: { data: BarsData; width: number; hei
           ))}
         </Group>
       )}
-    </svg>
+      </svg>
+      <ChartTip tip={tip} width={width} />
+    </div>
   );
 }
 
-export function Bars({ data, height = 280 }: { data: BarsData; height?: number }) {
+export function Bars({ data, height = 280 }: { data: BarsData; height?: number | "fill" }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const fill = height === "fill";
   return (
-    <div className="chart" ref={ref}>
+    <div className={fill ? "chart chart-vfill" : "chart"} ref={ref}>
       <button
         className="chart-export"
         aria-label="Export chart as PNG"
@@ -191,12 +226,14 @@ export function Bars({ data, height = 280 }: { data: BarsData; height?: number }
       </button>
       {data.title && <div className="chart-title">{data.title}</div>}
       {/* ParentSize measures via an absolutely-positioned probe — it needs an
-          explicit-height parent or the chart collapses to ~0. */}
-      <div style={{ height }}>
+          explicit-height parent or the chart collapses to ~0. "fill" instead
+          stretches to the flexed column and reads ParentSize's height. */}
+      <div style={fill ? { flex: 1, minHeight: 220 } : { height: height as number }}>
         <ParentSize debounceTime={50}>
-          {({ width }) =>
-            width > 0 ? <BarsInner data={data} width={width} height={height} /> : null
-          }
+          {({ width, height: measured }) => {
+            const h = fill ? Math.max(220, measured) : (height as number);
+            return width > 0 ? <BarsInner data={data} width={width} height={h} /> : null;
+          }}
         </ParentSize>
       </div>
     </div>

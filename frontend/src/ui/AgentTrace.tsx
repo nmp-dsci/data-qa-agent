@@ -34,6 +34,11 @@ const STEP_LABELS: Record<string, string> = {
   analytics: "Analytics",
   knowledge: "Knowledge",
   decision_log: "Decision Log",
+  fallback: "Fell back to stub",
+  object_build: "Page objects",
+  template_pick: "Template pick",
+  page_compose: "Page compose",
+  analysis: "Analysis telemetry",
 };
 
 function stepLabel(s: AgentStep): string {

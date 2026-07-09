@@ -25,5 +25,9 @@ services/*/uv.lock
 node_modules/
 frontend/dist/
 
+# Playwright output
+frontend/test-results/
+frontend/playwright-report/
+
 # OS / editor
 .DS_Store

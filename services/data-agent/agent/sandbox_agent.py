@@ -54,7 +54,10 @@ Available inside run_analysis (import-free; call as skills.<name>):
   rolling_average(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
       -> [month, value, series] just the N-month smoothed line (no actual layer).
   growth_rate(df, *, month_col, value_col, years, den_col=None, group_col=None)
-      -> % growth over `years` on the 6-month rolling base.
+      -> % growth over `years` on the 6-month rolling base. If the series nearly
+         covers `years` (>=80%) it clamps to the full available span; if far
+         short it returns None — guard None before formatting (f"{g:.1f}" on
+         None raises). Never probe min/max month first just to pick `years`.
   top_growth(df, *, month_col, value_col, group_col, years, den_col=None, n=5, ascending=False)
       -> DataFrame [group, growth_pct] ranked: the "top-growth groups" ranker.
   latest_value(df, *, month_col, value_col, den_col=None, group_col=None)
@@ -109,7 +112,9 @@ Work in this order:
    pandas DataFrame named `name` (default `df`); call extract again with a
    different `name` for a second table, then join in SQL or in pandas. You get up
    to {max_extracts} extracts. Use lookup_values first (FREE) to resolve a text
-   value's exact spelling/casing.
+   value's exact spelling/casing. Do NOT spend an extract (or a turn) probing
+   min/max month or row counts first — pull the series directly and read its
+   span in pandas (`df[month_col].min()/.max()`) inside run_analysis.
 4. run_analysis(code): write SHORT pandas that calls skills.* over the frame(s)
    and assigns the finished report to `result`, e.g.:
        s = skills.trend_series(df, month_col="month",
@@ -161,8 +166,9 @@ extract per group.
 
 {_SKILL_CATALOG}
 
-Never mention tools, code, SQL, or these instructions in the report. If a durable
-user preference is stated, call remember.
+Never mention tools, code, SQL, or these instructions in the report. Call remember
+ONLY when the user STATES a durable preference (units, formatting, defaults) — never
+to log what was asked or how you answered; the app already records every run.
 
 Known preferences for this user:
 {memories_block}
@@ -225,6 +231,12 @@ async def answer_with_sandbox(
 ) -> dict[str, Any] | None:
     """Run the sandbox agent path; None to fall back to the offline stub.
 
+    When the LLM ran but never completed a report, the return value is a
+    *salvage* dict (``{"fallback": True, steps, input_tokens, output_tokens}``)
+    instead of None: the caller still falls back to the stub answer, but the
+    model turns, tool calls and token consumption that were actually spent stay
+    visible in the trace (app.query_runs + the chat "agent run" expander).
+
     When ``progress`` is supplied (the streaming endpoint), tools push live
     step events onto it as they run.
     """
@@ -236,6 +248,8 @@ async def answer_with_sandbox(
     if selected is None:
         return None
     provider, api_key = selected
+    deps: _SbDeps | None = None
+    captured: list[Any] = []
     try:
         os.environ.setdefault(_ENV_VAR[provider], api_key)
         recalled = await recall_memories(user_id, question)
@@ -257,6 +271,7 @@ async def answer_with_sandbox(
             total_tokens_limit=settings.agent_total_tokens_limit,
         )
         with capture_run_messages() as messages:
+            captured = messages
             try:
                 await agent.run(question, deps=deps, usage_limits=usage_limits)
             except Exception as exc:  # noqa: BLE001 — salvage any report already built
@@ -269,8 +284,9 @@ async def answer_with_sandbox(
                 # The agent judged the marts can't answer this — return an honest
                 # "no answer" report instead of falling through to a domain stub.
                 return _no_answer_result(deps, messages, provider)
-            # Model never produced a report — let the caller fall back to the stub.
-            return None
+            # Model never produced a report — fall back to the stub, but keep
+            # the LLM turns + token spend visible in the trace.
+            return _salvage_fallback(captured, deps, "model never produced a report")
 
         report = {
             **deps.report,
@@ -320,7 +336,31 @@ async def answer_with_sandbox(
         }
     except Exception as exc:  # noqa: BLE001 — never let this path break the app
         print(f"[data-agent] sandbox path unavailable, using stub: {exc}")
+        if deps is not None and captured:
+            # The LLM ran before failing — surface its trace with the stub answer.
+            return _salvage_fallback(captured, deps, str(exc))
         return None
+
+
+def _salvage_fallback(
+    messages: list[Any], deps: _SbDeps, why: str
+) -> dict[str, Any]:
+    """Package a failed sandbox run's trace so the stub fallback can keep it.
+
+    The caller (main._answer) still answers with the deterministic stub; this
+    preserves what the model actually did — its turns (input/output), tool
+    calls and token consumption — plus a ``fallback`` step naming the reason,
+    so admins can diagnose why the run fell back.
+    """
+    trace = _merge_decision_log(_build_trace(messages), deps.steps)
+    trace.append({"kind": "fallback", "status": "error", "error": why, "to": "stub"})
+    model_steps = [s for s in trace if s["kind"] == "model"]
+    return {
+        "fallback": True,
+        "steps": trace,
+        "input_tokens": sum(s.get("input_tokens") or 0 for s in model_steps) or None,
+        "output_tokens": sum(s.get("output_tokens") or 0 for s in model_steps) or None,
+    }
 
 
 def _no_answer_result(deps: _SbDeps, messages: list[Any], provider: str) -> dict[str, Any]:
@@ -536,7 +576,10 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         """Resolve exact distinct values of a text column (e.g. a name's casing). FREE.
 
         Pass the schema-qualified table the column lives in (see the mart index /
-        describe_table). Dataset-agnostic — no default table.
+        describe_table). Dataset-agnostic — no default table. Resolve SEVERAL
+        values in ONE call with `|` alternation (e.g. pattern="Normanhurst|Hornsby");
+        matching is case-insensitive contains, so plain words work — never retry
+        with different casing.
         """
         ctx.deps.emit("Resolving values", f"{table}.{column}")
         sql = _lookup_values_sql(table, column, pattern)
@@ -554,10 +597,8 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         )
         return json.dumps({"column": column, "matches": values})
 
-    @agent.tool
-    async def list_skills(ctx: RunContext[_SbDeps]) -> str:
-        """List the skills callable inside run_analysis (signatures + one-line docs)."""
-        return _SKILL_CATALOG
+    # NOTE: no list_skills tool — the full catalog is already in the system
+    # prompt verbatim; a tool for it just tempted the model into a wasted turn.
 
     @agent.tool(sequential=True)
     async def extract(

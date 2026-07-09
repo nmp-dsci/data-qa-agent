@@ -1,9 +1,14 @@
 """The pages contract — the agent's report-grade answer as renderable pages.
 
-The s07 UI direction: an answer is an ordered list of *pages*; each page names a
-frontend-owned **template** (from the published registry) and fills its regions
-with typed **objects** carrying data + intent — never chart specs or layout. The
-frontend renders every object with its visx components.
+The s08 column model: an answer is an ordered list of *pages*; each page names a
+frontend-owned **template** (from the published registry) and carries an ordered
+list of **columns**, each an ordered list of typed **objects** with data +
+intent — never chart specs or CSS. Placement is purely positional:
+``columns[i][j]`` renders in column *i* (left→right), slot *j* (top→bottom).
+An object's optional ``role`` keeps the semantic label ("headline", "chart",
+"insight" — the old region names) for feedback/eval continuity; it never
+affects placement. Objects may carry ``data.height`` (px or sm/md/lg/fill) so
+a lone chart can fill an unbalanced column.
 
 Two producers exist:
 
@@ -24,33 +29,74 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 # The published template registry — the frontend owns the layouts; the agent
-# side may only reference these ids. Kept in sync with app.agent_config seed
-# and the frontend's report-engine registry.
-TEMPLATE_IDS = ("summary", "insights", "one-col", "two-col")
+# side may only reference these ids. Kept in sync with the app.agent_config
+# seed (migration 0015) and the frontend's report-engine registry.
+TEMPLATE_IDS = ("summary", "insights", "one-col", "two-col", "three-col")
+
+# Max columns per template. A page may fill fewer (empty columns collapse).
+TEMPLATE_COLUMNS: dict[str, int] = {
+    "summary": 2,
+    "insights": 2,
+    "one-col": 1,
+    "two-col": 2,
+    "three-col": 3,
+}
+
+# Semantic height names the frontend resolves (sm/md/lg → px, fill → stretch).
+HEIGHT_NAMES = ("sm", "md", "lg", "fill")
 
 ObjectType = Literal["kpi", "trend", "breakdown", "compare", "insight", "text"]
+TemplateId = Literal["summary", "insights", "one-col", "two-col", "three-col"]
 
 
 class PageObject(BaseModel):
-    """One governed object placed in a template region."""
+    """One governed object placed in a page column."""
 
     type: ObjectType
     element_id: str
-    region: str
+    # Semantic label (headline / chart / insight / note …) — feedback and the
+    # agent's reasoning use it; placement never does.
+    role: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)
     # Optional wiring: which object this one explains (e.g. a breakdown that
     # decomposes a kpi's growth).
     explains: str | None = None
 
+    @field_validator("data")
+    @classmethod
+    def _validate_height(cls, v: dict[str, Any]) -> dict[str, Any]:
+        height = v.get("height")
+        if height is None:
+            return v
+        if isinstance(height, bool):  # bool is an int subclass — reject explicitly
+            raise ValueError("data.height must be px or one of sm/md/lg/fill")
+        if isinstance(height, (int, float)):
+            if not 80 <= float(height) <= 1200:
+                raise ValueError("data.height px must be between 80 and 1200")
+            return v
+        if isinstance(height, str) and height in HEIGHT_NAMES:
+            return v
+        raise ValueError("data.height must be px or one of sm/md/lg/fill")
+
 
 class Page(BaseModel):
-    """One page of the answer: a template id + the objects filling its regions."""
+    """One page of the answer: a template id + ordered columns of objects."""
 
-    template: Literal["summary", "insights", "one-col", "two-col"]
-    objects: list[PageObject] = Field(default_factory=list)
+    template: TemplateId
+    columns: list[list[PageObject]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _columns_fit_template(self) -> "Page":
+        limit = TEMPLATE_COLUMNS[self.template]
+        if len(self.columns) > limit:
+            raise ValueError(
+                f"template {self.template!r} renders at most {limit} columns, "
+                f"got {len(self.columns)}"
+            )
+        return self
 
 
 class PagesEnvelope(BaseModel):
@@ -113,7 +159,12 @@ def _spec_title(spec: dict[str, Any]) -> str | None:
 
 
 def chart_object_from_spec(
-    spec: dict[str, Any] | None, *, element_id: str, region: str, explains: str | None = None
+    spec: dict[str, Any] | None,
+    *,
+    element_id: str,
+    role: str = "chart",
+    height: int | str | None = "fill",
+    explains: str | None = None,
 ) -> PageObject | None:
     """Lift a validated house chart spec into a data+intent page object."""
     if not isinstance(spec, dict):
@@ -124,6 +175,7 @@ def chart_object_from_spec(
     mark = _spec_mark(spec)
     encoding = _spec_encoding(spec)
     title = _spec_title(spec)
+    extra: dict[str, Any] = {} if height is None else {"height": height}
     if mark in ("line", "area", "point"):
         x: str = _enc_field(encoding, "x") or "month"
         y: str = _enc_field(encoding, "y") or "value"
@@ -134,7 +186,7 @@ def chart_object_from_spec(
         return PageObject(
             type="trend",
             element_id=element_id,
-            region=region,
+            role=role,
             explains=explains,
             data={
                 "intent": "line",
@@ -143,6 +195,7 @@ def chart_object_from_spec(
                 "series": series,
                 "title": title,
                 "rows": values,
+                **extra,
             },
         )
     if mark == "bar":
@@ -155,7 +208,7 @@ def chart_object_from_spec(
         return PageObject(
             type=obj_type,
             element_id=element_id,
-            region=region,
+            role=role,
             explains=explains,
             data={
                 "intent": "grouped-bar" if obj_type == "compare" else "bar",
@@ -164,13 +217,14 @@ def chart_object_from_spec(
                 "group": group,
                 "title": title,
                 "rows": values,
+                **extra,
             },
         )
     return None
 
 
 # ---------------------------------------------------------------------------
-# Deterministic composition: InsightReport → pages
+# Deterministic composition: InsightReport → pages (column model)
 # ---------------------------------------------------------------------------
 
 
@@ -194,7 +248,7 @@ def compose_pages(
                 "kind": "page_compose",
                 "status": "success",
                 "templates": [p["template"] for p in out],
-                "object_count": sum(len(p["objects"]) for p in out),
+                "object_count": sum(len(col) for p in out for col in p["columns"]),
                 "why": f"composed from report for: {question[:80]}" if question else "",
             }
         )
@@ -204,6 +258,11 @@ def compose_pages(
         return [], steps
 
 
+def _page(template: TemplateId, columns: list[list[PageObject]]) -> Page:
+    """Build a page, dropping empty columns (placement stays positional)."""
+    return Page(template=template, columns=[c for c in columns if c])
+
+
 def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
     headlines = [h for h in report.get("headlines", []) if isinstance(h, dict)]
     insights = [i for i in report.get("insights", []) if isinstance(i, dict)]
@@ -211,14 +270,16 @@ def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
     summary_text = (report.get("summary") or "").strip()
 
     # --- Page 1 · Summary: the answer at a glance -------------------------
-    summary_objects: list[PageObject] = []
+    # Column 1: headline KPI tiles + the summary note. Column 2: the main
+    # trend chart, height:fill so it stretches to the stacked left column.
+    left: list[PageObject] = []
     primary_headlines = [h for h in headlines if not h.get("related")] or headlines
     for h in primary_headlines[:4]:
-        summary_objects.append(
+        left.append(
             PageObject(
                 type="kpi",
-                element_id=str(h.get("element_id") or f"headline:{len(summary_objects)}"),
-                region="hero",
+                element_id=str(h.get("element_id") or f"headline:{len(left)}"),
+                role="headline",
                 data={
                     "label": h.get("label", ""),
                     "value": h.get("value", ""),
@@ -226,31 +287,30 @@ def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
                 },
             )
         )
-    main_chart_obj = chart_object_from_spec(
-        report.get("main_chart"), element_id="report:chart", region="chart"
-    )
-    if main_chart_obj is not None:
-        summary_objects.append(main_chart_obj)
     if summary_text:
-        summary_objects.append(
+        left.append(
             PageObject(
                 type="text",
                 element_id="report:summary",
-                region="note",
+                role="note",
                 data={"text": summary_text},
             )
         )
+    main_chart_obj = chart_object_from_spec(
+        report.get("main_chart"), element_id="report:chart", role="chart"
+    )
+    summary_cols: list[list[PageObject]] = [left, [main_chart_obj] if main_chart_obj else []]
     steps.append(
         {
             "kind": "object_build",
             "status": "success",
             "page": "summary",
-            "objects": [o.type for o in summary_objects],
+            "objects": [o.type for col in summary_cols for o in col],
         }
     )
 
     pages: list[Page] = []
-    if summary_objects:
+    if any(summary_cols):
         steps.append(
             {
                 "kind": "template_pick",
@@ -259,31 +319,32 @@ def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
                 "why": "answers lead with the latest number + trend",
             }
         )
-        pages.append(Page(template="summary", objects=summary_objects))
+        pages.append(_page("summary", summary_cols))
 
     # --- Page 2 · Insights: what explains the top line --------------------
-    insight_objects: list[PageObject] = []
-    first_kpi = next((o.element_id for o in summary_objects if o.type == "kpi"), None)
+    # Column 1: insight cards. Column 2: the breakdown/comparison chart that
+    # explains the headline (from the first insight/profile carrying a chart).
+    first_kpi = next((o.element_id for o in left if o.type == "kpi"), None)
 
-    # A breakdown/comparison chart attached to an insight or profile explains
-    # the headline; lift the first renderable one into the chart region.
+    note_col: list[PageObject] = []
+    chart_col: list[PageObject] = []
     for source in [*insights, *profiles]:
         chart_obj = chart_object_from_spec(
             source.get("chart"),
             element_id=f"{source.get('element_id', 'insight')}:chart",
-            region="chart",
+            role="chart",
             explains=first_kpi,
         )
         if chart_obj is not None:
-            insight_objects.append(chart_obj)
+            chart_col.append(chart_obj)
             break
 
     for ins in insights[:4]:
-        insight_objects.append(
+        note_col.append(
             PageObject(
                 type="insight",
-                element_id=str(ins.get("element_id") or f"insight:{len(insight_objects)}"),
-                region="note",
+                element_id=str(ins.get("element_id") or f"insight:{len(note_col)}"),
+                role="insight",
                 explains=first_kpi,
                 data={
                     "heading": ins.get("heading", ""),
@@ -297,10 +358,10 @@ def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
             "kind": "object_build",
             "status": "success",
             "page": "insights",
-            "objects": [o.type for o in insight_objects],
+            "objects": [o.type for col in (note_col, chart_col) for o in col],
         }
     )
-    if insight_objects:
+    if note_col or chart_col:
         steps.append(
             {
                 "kind": "template_pick",
@@ -309,6 +370,6 @@ def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
                 "why": "insight cards / breakdown present — explain the headline",
             }
         )
-        pages.append(Page(template="insights", objects=insight_objects))
+        pages.append(_page("insights", [note_col, chart_col]))
 
     return pages

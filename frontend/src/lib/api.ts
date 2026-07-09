@@ -106,22 +106,27 @@ export interface InsightReport {
   knowledge_version: string;
 }
 
-// Pages contract (s07): the agent's answer as an ordered list of pages, each
-// naming a frontend-owned template and filling its regions with typed objects
-// carrying data + intent (never chart specs or layout).
+// Pages contract (s08 column model): the agent's answer as an ordered list of
+// pages, each naming a frontend-owned template and carrying ordered columns of
+// typed objects with data + intent (never chart specs or CSS). Placement is
+// positional (columns[i][j]); `role` is the semantic label (headline / chart /
+// insight — feedback + evals key off it) and never affects placement. Objects
+// may carry data.height (px or "sm"|"md"|"lg"|"fill").
 export type PageObjectType = "kpi" | "trend" | "breakdown" | "compare" | "insight" | "text";
 
 export interface PageObject {
   type: PageObjectType;
   element_id: string;
-  region: string;
+  role?: string | null;
   data: Record<string, unknown>;
   explains?: string | null;
 }
 
+export type TemplateId = "summary" | "insights" | "one-col" | "two-col" | "three-col";
+
 export interface Page {
-  template: "summary" | "insights" | "one-col" | "two-col";
-  objects: PageObject[];
+  template: TemplateId;
+  columns: PageObject[][];
 }
 
 export interface AskResult {

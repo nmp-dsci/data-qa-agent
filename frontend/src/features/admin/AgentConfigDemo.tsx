@@ -1,10 +1,11 @@
-// Live demo previews for the Agent-Config registry. Each chart/template entry
-// is rendered with representative sample data (the Hornsby rent-by-bedrooms
-// worked example) through the SAME production renderers the report engine uses
-// (ObjectBody + the visx charts), so the preview is exactly what the agent
-// would compose — an admin can click an entry and see its visualisation.
-import type { AgentConfigEntry, Page, PageObject } from "../../lib/api";
-import { ObjectBody } from "../../report-engine/PagesView";
+// Template Studio demo data — representative sample objects (the Hornsby
+// rent-by-bedrooms worked example) composed into column-model pages. The
+// preview renders them through the SAME PageLayout the chat report engine
+// uses, so what the Studio shows is exactly what the agent's answers produce —
+// and the generated Page object doubles as the "Contract JSON" the inspector
+// exposes (what Data-Agent would have sent to render the page).
+import type { AgentConfigEntry, Page, PageObject, PageObjectType, TemplateId } from "../../lib/api";
+import { PageLayout } from "../../report-engine/PageLayout";
 import { TEMPLATES } from "../../report-engine/registry";
 
 // --- Sample data (deterministic, so previews are stable) -------------------
@@ -22,8 +23,8 @@ function trendRows(): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
   for (const [name, base, slope] of series) {
     for (let m = 0; m < 18; m++) {
-      const year = 2025 + Math.floor((0 + m) / 12);
-      const month = ((0 + m) % 12) + 1;
+      const year = 2025 + Math.floor(m / 12);
+      const month = (m % 12) + 1;
       const wobble = ((m * 7) % 5) - 2; // deterministic ±2 jitter
       rows.push({
         month: `${year}-${String(month).padStart(2, "0")}-01`,
@@ -35,15 +36,19 @@ function trendRows(): Record<string, unknown>[] {
   return rows;
 }
 
+type Height = number | "sm" | "md" | "lg" | "fill";
+
 const OBJ = {
-  breakdown: (): PageObject => ({
+  breakdown: (height: Height = "md"): PageObject => ({
     type: "breakdown",
     element_id: "demo:breakdown",
-    region: "chart",
+    role: "chart",
     data: {
+      intent: "bar",
       dimension: "bedroom_band",
       measure: "median_rent",
       title: "Median weekly rent by bedrooms · Hornsby 2077",
+      height,
       rows: [
         { bedroom_band: "1 bd", median_rent: 520, growth: 3.6 },
         { bedroom_band: "2 bd", median_rent: 671, growth: 6.1 },
@@ -52,15 +57,17 @@ const OBJ = {
       ],
     },
   }),
-  compare: (): PageObject => ({
+  compare: (height: Height = "md"): PageObject => ({
     type: "compare",
     element_id: "demo:compare",
-    region: "chart",
+    role: "chart",
     data: {
+      intent: "grouped-bar",
       dimension: "bedroom_band",
       measure: "median_rent",
       group: "property_type",
       title: "House vs unit median rent by bedrooms",
+      height,
       rows: [
         { bedroom_band: "1 bd", property_type: "unit", median_rent: 520 },
         { bedroom_band: "1 bd", property_type: "house", median_rent: 560 },
@@ -71,164 +78,143 @@ const OBJ = {
       ],
     },
   }),
-  kpi: (region = "hero"): PageObject => ({
+  kpi: (id = "demo:kpi", label = "2 bd unit median rent", value = "$671/wk", yoy = 0.061): PageObject => ({
     type: "kpi",
-    element_id: `demo:kpi:${region}`,
-    region,
+    element_id: id,
+    role: "headline",
     data: {
-      label: "2 bd unit median rent",
-      value: "$671/wk",
+      label,
+      value,
       basis: "6-mo rolling · 2026-05",
-      growth: { yoy: 0.061 },
+      growth: { yoy },
       series: SPARK,
     },
   }),
-  trend: (): PageObject => ({
+  trend: (height: Height = "fill"): PageObject => ({
     type: "trend",
     element_id: "demo:trend",
-    region: "chart",
+    role: "chart",
     data: {
+      intent: "line",
       x: "month",
       y: "value",
       series: "series",
       title: "Median weekly rent by month · postcode 2077",
+      height,
       rows: trendRows(),
     },
   }),
-  insight: (id: string, region: string, heading: string, text: string): PageObject => ({
+  insight: (id: string, heading: string, text: string): PageObject => ({
     type: "insight",
     element_id: id,
-    region,
+    role: "insight",
     data: { heading, text, refs: ["Q1"] },
+  }),
+  note: (text: string): PageObject => ({
+    type: "text",
+    element_id: "demo:note",
+    role: "note",
+    data: { text },
   }),
 };
 
-/** The single demo object for a chart-registry entry, keyed by its object_type. */
-export function chartDemoObject(entry: AgentConfigEntry): PageObject | null {
-  const type = String(entry.spec["object_type"] ?? "");
+/** A demo object of the given type — used by chart previews AND the playground. */
+export function demoObjectOfType(type: PageObjectType, height: Height = "md"): PageObject {
   switch (type) {
     case "breakdown":
-      return OBJ.breakdown();
+      return OBJ.breakdown(height);
     case "compare":
-      return OBJ.compare();
+      return OBJ.compare(height);
     case "kpi":
-      return OBJ.kpi("chart");
+      return OBJ.kpi();
     case "trend":
-      return OBJ.trend();
-    default:
-      return null;
-  }
-}
-
-/** A KPI tile for the "tiles" region (per-bedroom-band summary numbers). */
-function tile(id: string, label: string, value: string, yoy: number): PageObject {
-  return {
-    type: "kpi",
-    element_id: id,
-    region: "tiles",
-    data: { label, value, basis: "6-mo rolling · 2026-05", growth: { yoy }, series: SPARK },
-  };
-}
-
-/** A full demo page (objects filling the template's regions) for a template. */
-export function templateDemoPage(entry: AgentConfigEntry): Page | null {
-  const name = entry.name as Page["template"];
-  const objectsByTemplate: Record<string, PageObject[]> = {
-    summary: [
-      OBJ.kpi("hero"),
-      OBJ.trend(),
-      OBJ.insight(
-        "demo:note",
-        "note",
-        "What drives it",
-        "2-bed units lead at +6.1% YoY; supply near the station stays tight.",
-      ),
-    ],
-    insights: [
-      OBJ.breakdown(),
-      tile("demo:t1", "1 bd", "$520/wk", 0.036),
-      tile("demo:t2", "2 bd", "$671/wk", 0.061),
-      tile("demo:t3", "3 bd", "$820/wk", 0.073),
-      OBJ.insight(
-        "demo:note",
-        "note",
+      return OBJ.trend(height);
+    case "insight":
+      return OBJ.insight(
+        "demo:insight",
         "Drivers by bedroom band",
         "3 bd +7.3% > 2 bd +6.1% > 1 bd +3.6% — larger dwellings are appreciating fastest.",
-      ),
-    ],
-    "one-col": [
-      OBJ.kpi("headline"),
-      OBJ.trend(),
-      OBJ.insight("demo:i1", "insights", "Steady climb", "Median rent rose every quarter across all bedroom bands."),
-      OBJ.insight("demo:i2", "insights", "Widening gap", "3-bed dwellings pulled ahead of 1-bed over the window."),
-    ],
-    "two-col": [
-      OBJ.kpi("headline"),
-      OBJ.breakdown(),
-      OBJ.insight("demo:i1", "insights", "Steady climb", "Median rent rose every quarter across all bedroom bands."),
-      OBJ.insight("demo:i2", "insights", "Widening gap", "3-bed dwellings pulled ahead of 1-bed over the window."),
-    ],
+      );
+    case "text":
+      return OBJ.note("2-bed units lead at +6.1% YoY; supply near the station stays tight.");
+  }
+}
+
+/** The single demo object for a chart-registry entry, keyed by its object_type. */
+export function chartDemoObject(entry: AgentConfigEntry): PageObject | null {
+  const type = String(entry.spec["object_type"] ?? "") as PageObjectType;
+  if (!["breakdown", "compare", "kpi", "trend", "insight", "text"].includes(type)) return null;
+  return demoObjectOfType(type);
+}
+
+const INSIGHT_STEADY = () =>
+  OBJ.insight("demo:i1", "Steady climb", "Median rent rose every quarter across all bedroom bands.");
+const INSIGHT_GAP = () =>
+  OBJ.insight("demo:i2", "Widening gap", "3-bed dwellings pulled ahead of 1-bed over the window.");
+
+/** A full demo page (columns filled positionally) for a template entry. */
+export function templateDemoPage(name: string): Page | null {
+  const template = name as TemplateId;
+  if (!(template in TEMPLATES)) return null;
+  const pagesByTemplate: Record<TemplateId, Page> = {
+    summary: {
+      template: "summary",
+      columns: [
+        [
+          OBJ.kpi(),
+          OBJ.note("2-bed units lead at +6.1% YoY; supply near the station stays tight."),
+        ],
+        [OBJ.trend("fill")],
+      ],
+    },
+    insights: {
+      template: "insights",
+      columns: [
+        [
+          OBJ.kpi("demo:t1", "1 bd", "$520/wk", 0.036),
+          OBJ.kpi("demo:t2", "2 bd", "$671/wk", 0.061),
+          OBJ.kpi("demo:t3", "3 bd", "$820/wk", 0.073),
+          OBJ.insight(
+            "demo:note",
+            "Drivers by bedroom band",
+            "3 bd +7.3% > 2 bd +6.1% > 1 bd +3.6% — larger dwellings are appreciating fastest.",
+          ),
+        ],
+        [OBJ.breakdown("fill")],
+      ],
+    },
+    "one-col": {
+      template: "one-col",
+      columns: [[OBJ.kpi(), OBJ.trend("md"), INSIGHT_STEADY(), INSIGHT_GAP()]],
+    },
+    "two-col": {
+      template: "two-col",
+      columns: [
+        [OBJ.kpi(), INSIGHT_STEADY(), INSIGHT_GAP()],
+        [OBJ.breakdown("fill")],
+      ],
+    },
+    "three-col": {
+      template: "three-col",
+      columns: [
+        [OBJ.kpi(), INSIGHT_GAP()],
+        [OBJ.trend("fill")],
+        [OBJ.breakdown("fill")],
+      ],
+    },
   };
-  const objects = objectsByTemplate[name];
-  if (!objects) return null;
-  return { template: name, objects };
+  return pagesByTemplate[template];
 }
 
-// --- Rendering (mirrors PagesView's PageSection layout, minus feedback) -----
-
-function cardClass(o: PageObject): string {
-  if (o.type === "kpi") return "h-tile page-obj";
-  if (o.type === "insight" || o.type === "text") return "insight-card page-obj";
-  return "chart-card page-obj";
+/** The Page contract a selected registry entry previews (also shown as JSON). */
+export function demoPageFor(entry: AgentConfigEntry, kind: "chart" | "template"): Page | null {
+  if (kind === "template") return templateDemoPage(entry.name);
+  const obj = chartDemoObject(entry);
+  return obj ? { template: "one-col", columns: [[obj]] } : null;
 }
 
-function DemoObjectCard({ o }: { o: PageObject }) {
-  return (
-    <div className={cardClass(o)}>
-      <ObjectBody o={o} />
-    </div>
-  );
-}
-
-function DemoRegion({ objs }: { objs: PageObject[] }) {
-  const isHero = objs.every((o) => o.type === "kpi");
-  return (
-    <div className={isHero ? "headline-grid" : "page-region"}>
-      {objs.map((o) => (
-        <DemoObjectCard key={o.element_id} o={o} />
-      ))}
-    </div>
-  );
-}
-
-function DemoPage({ page }: { page: Page }) {
-  const template = TEMPLATES[page.template] ?? TEMPLATES["one-col"];
-  const byRegion = new Map<string, PageObject[]>();
-  for (const o of page.objects) {
-    const arr = byRegion.get(o.region) ?? [];
-    arr.push(o);
-    byRegion.set(o.region, arr);
-  }
-  const orderedRegions = [
-    ...template.regions.filter((r) => byRegion.has(r)),
-    ...[...byRegion.keys()].filter((r) => !template.regions.includes(r)),
-  ];
-  const chartRegions = orderedRegions.filter((r) => r === "chart");
-  const otherRegions = orderedRegions.filter((r) => r !== "chart");
-  const region = (r: string) => <DemoRegion key={r} objs={byRegion.get(r) ?? []} />;
-
-  if (template.layout === "two-col" && chartRegions.length > 0) {
-    return (
-      <div className="page-two-col">
-        <div>{chartRegions.map(region)}</div>
-        <div>{otherRegions.map(region)}</div>
-      </div>
-    );
-  }
-  return <>{orderedRegions.map(region)}</>;
-}
-
-/** Renders the demo visualisation for a selected registry entry. */
+/** Renders the demo visualisation for a selected registry entry — through the
+ *  production PageLayout, so the preview IS what chat answers render. */
 export function AgentConfigDemoPreview({
   entry,
   kind,
@@ -236,20 +222,11 @@ export function AgentConfigDemoPreview({
   entry: AgentConfigEntry;
   kind: "chart" | "template";
 }) {
-  if (kind === "chart") {
-    const obj = chartDemoObject(entry);
-    if (!obj) return <p className="muted">No preview available for this chart.</p>;
-    return (
-      <div className="answer-page">
-        <DemoRegion objs={[obj]} />
-      </div>
-    );
-  }
-  const page = templateDemoPage(entry);
-  if (!page) return <p className="muted">No preview available for this template.</p>;
+  const page = demoPageFor(entry, kind);
+  if (!page) return <p className="muted">No preview available for this entry.</p>;
   return (
     <div className="answer-page">
-      <DemoPage page={page} />
+      <PageLayout page={page} />
     </div>
   );
 }

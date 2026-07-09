@@ -1,12 +1,14 @@
-// Agent-Config: the published composition registry — page layouts + charts the
-// agent can compose with, demo-seeded from the Hornsby worked example
-// (app.agent_config, migration 0014). Each row is clickable; selecting one
-// renders a live demo visualisation in the preview panel via the same report
-// engine the agent's answers use.
+// Template Studio — the published composition registry (page templates + chart
+// functions) with a live Template Preview, the contract JSON that produced it,
+// and a playground for composing pages by hand. Everything renders through the
+// SAME PageLayout the chat report engine uses, so what the Studio shows is
+// exactly how the Data-Agent informs the frontend to build an answer page.
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AgentConfigEntry, getAdminAgentConfig } from "../../lib/api";
-import { AgentConfigDemoPreview } from "./AgentConfigDemo";
+import { AgentConfigDemoPreview, demoPageFor } from "./AgentConfigDemo";
+import { ContractJson } from "./ContractJson";
+import { TemplatePlayground } from "./TemplatePlayground";
 
 type Selection = { kind: "template" | "chart"; name: string };
 
@@ -17,18 +19,20 @@ function demoText(demo: Record<string, unknown>): string {
   return parts.join(" → ") || "—";
 }
 
-function DemoPanel({ entry, kind }: { entry: AgentConfigEntry; kind: Selection["kind"] }) {
+function PreviewPanel({ entry, kind }: { entry: AgentConfigEntry; kind: Selection["kind"] }) {
+  const page = demoPageFor(entry, kind);
   return (
-    <div className="agent-demo-panel">
+    <div className="agent-demo-panel" data-testid="template-preview">
       <div className="agent-demo-head">
         <span className={`badge ${kind === "chart" ? "deepseek" : "stub"}`}>{kind}</span>
         <strong>{entry.title}</strong>
         <code>{entry.name}</code>
         <span className="muted agent-demo-caption">{demoText(entry.demo)}</span>
       </div>
-      <div className="agent-demo-canvas report">
+      <div className="agent-demo-canvas report" data-testid="template-preview-canvas">
         <AgentConfigDemoPreview entry={entry} kind={kind} />
       </div>
+      {page && <ContractJson page={page} testId="template-preview-json" />}
     </div>
   );
 }
@@ -47,7 +51,7 @@ export function AgentConfigView() {
     return null;
   }, [data, selected]);
 
-  if (q.isLoading) return <p className="muted">Loading agent config...</p>;
+  if (q.isLoading) return <p className="muted">Loading template studio...</p>;
   if (q.error) return <p className="error">{(q.error as Error).message}</p>;
   if (!data) return null;
 
@@ -63,29 +67,31 @@ export function AgentConfigView() {
     <>
       {selectedEntry && selection && (
         <section>
-          <h3>Demo preview</h3>
+          <h3>Template Preview</h3>
           <p className="muted">
-            A live render of the selected template/chart with sample data — exactly what the agent
-            composes into an answer. Click any row below to preview it.
+            How the Data-Agent informs the frontend to build a page: it picks a template, fills its
+            columns with typed objects (data + intent — never chart specs), and the report engine
+            renders it. This preview uses the production renderer with sample data; expand the
+            contract JSON to see exactly what the agent sends. Click any row below to preview it.
           </p>
-          <DemoPanel entry={selectedEntry} kind={selection.kind} />
+          <PreviewPanel entry={selectedEntry} kind={selection.kind} />
         </section>
       )}
 
       <section>
         <h3>Page layouts available</h3>
         <p className="muted">
-          The template registry: the agent picks a template id per page and fills its regions — it
-          cannot invent layout. New template = new frontend layout + a row here.
+          The template registry: the agent picks a template id per page and fills its columns
+          positionally (<code>columns[i][j]</code> = column i, slot j) — it cannot invent layout.
+          New template = new frontend layout + a row here.
         </p>
         <div className="table-wrap">
-          <table>
+          <table data-testid="templates-table">
             <thead>
               <tr>
                 <th>Template</th>
                 <th>Title</th>
-                <th>Regions</th>
-                <th>Layout</th>
+                <th>Columns</th>
                 <th>Purpose</th>
                 <th>Demo</th>
               </tr>
@@ -94,6 +100,7 @@ export function AgentConfigView() {
               {data.templates.map((t) => (
                 <tr
                   key={t.name}
+                  data-testid={`template-row-${t.name}`}
                   className={`selectable-row${isSel("template", t.name) ? " active" : ""}`}
                   onClick={() => setSelected({ kind: "template", name: t.name })}
                 >
@@ -101,8 +108,7 @@ export function AgentConfigView() {
                     <code>{t.name}</code>
                   </td>
                   <td>{t.title}</td>
-                  <td>{((t.spec["regions"] as string[]) ?? []).join(" · ")}</td>
-                  <td>{String(t.spec["layout"] ?? "one-col")}</td>
+                  <td>{String(t.spec["columns"] ?? 1)}</td>
                   <td className="wide-cell">{t.description}</td>
                   <td className="wide-cell">{demoText(t.demo)}</td>
                 </tr>
@@ -116,10 +122,10 @@ export function AgentConfigView() {
         <h3>Charts available (visx)</h3>
         <p className="muted">
           The chart functions the frontend renders from an object's <code>data.intent</code> — the
-          agent emits data + intent, never chart specs.
+          agent emits data + intent, never chart specs. Any chart can go in any column.
         </p>
         <div className="table-wrap">
-          <table>
+          <table data-testid="charts-table">
             <thead>
               <tr>
                 <th>Chart fn</th>
@@ -133,6 +139,7 @@ export function AgentConfigView() {
               {data.charts.map((c) => (
                 <tr
                   key={c.name}
+                  data-testid={`chart-row-${c.name}`}
                   className={`selectable-row${isSel("chart", c.name) ? " active" : ""}`}
                   onClick={() => setSelected({ kind: "chart", name: c.name })}
                 >
@@ -151,6 +158,8 @@ export function AgentConfigView() {
           </table>
         </div>
       </section>
+
+      <TemplatePlayground />
     </>
   );
 }

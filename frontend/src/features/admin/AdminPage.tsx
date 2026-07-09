@@ -27,12 +27,12 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-type AdminTab = "observability" | "quality" | "agent-config";
+type AdminTab = "observability" | "quality" | "template-studio";
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "observability", label: "Observability" },
   { id: "quality", label: "Quality" },
-  { id: "agent-config", label: "Agent-Config" },
+  { id: "template-studio", label: "Template Studio" },
 ];
 
 export function AdminPage() {
@@ -93,7 +93,7 @@ export function AdminPage() {
           </div>
         )}
       </section>
-      {tab === "agent-config" && <AgentConfigView />}
+      {tab === "template-studio" && <AgentConfigView />}
       {tab === "quality" &&
         (loading ? (
           <p className="muted">Loading admin data...</p>

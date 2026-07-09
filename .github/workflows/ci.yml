@@ -25,7 +25,9 @@ jobs:
         run: uv run pytest -q
       - name: Pytest (data-agent service)
         working-directory: services/data-agent
-        run: uv run pytest -q
+        # --extra llm: pandas/pydantic-ai/fastembed live in the llm extra and
+        # the pages/skills/sandbox tests import them.
+        run: uv run --extra llm pytest -q
 
   frontend-build:
     runs-on: ubuntu-latest

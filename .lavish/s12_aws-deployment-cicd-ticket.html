@@ -271,9 +271,9 @@ flowchart TB
           <li>✅ <strong>Cost sign-off</strong> (~$25–50/mo infra + LLM) — approved</li>
           <li>✅ <strong>Ran the TF bootstrap + foundations apply</strong> — infra live in <code class="inline">ap-southeast-2</code></li>
           <li>🤖 <strong>DB password + <code class="inline">JWT_SECRET</code></strong> — <em>Terraform auto-generates → Secrets Manager; nothing for you to do</em></li>
-          <li>⏳ <strong>LLM API key</strong> → Secrets Manager — Phase&nbsp;D</li>
-          <li>⏳ <strong>CloudFront URL → Google client</strong> (origin + redirect) — Phase&nbsp;D</li>
-          <li>⏳ <strong>Full ~580MB CSVs</strong> → S3 (or OK me to push from <code class="inline">data/</code>) — Phase&nbsp;C</li>
+          <li>✅ <strong>LLM API key</strong> — set in Secrets Manager via CLI</li>
+          <li>✅ <strong>CloudFront URL → Google client</strong> — JS origin added (redirect URI not needed: GIS ID-token flow)</li>
+          <li>✅ <strong>Full CSVs</strong> — uploaded to S3 (585MB + 76MB)</li>
         </ul>
       </div></div>
     </div>
@@ -291,10 +291,10 @@ flowchart TB
           <tr><td class="sticky-col bg-base-100 font-medium">Run the one-time bootstrap (TF state + OIDC role)</td><td><span class="badge badge-sm badge-success">✅ done</span></td><td>Applied — state backend + OIDC role live</td><td><span class="badge badge-sm badge-ghost">access</span></td><td>A</td></tr>
           <tr><td colspan="5" class="bg-base-200 font-semibold text-xs uppercase">🔑 Secrets (you generate → store)</td></tr>
           <tr><td class="sticky-col bg-base-100 font-medium">DB password + <code class="inline">JWT_SECRET</code></td><td><span class="badge badge-sm badge-info">🤖 auto</span></td><td>Terraform generates → Secrets Manager <span class="text-xs text-base-content/60">(no human handles it)</span></td><td><span class="badge badge-sm badge-error">secret</span></td><td>A/E</td></tr>
-          <tr><td class="sticky-col bg-base-100 font-medium">LLM API key (DeepSeek or Anthropic)</td><td><span class="badge badge-sm badge-warning">⏳ pending</span></td><td>Secrets Manager</td><td><span class="badge badge-sm badge-error">secret</span></td><td>D</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">LLM API key (DeepSeek or Anthropic)</td><td><span class="badge badge-sm badge-success">✅ set</span></td><td><code class="inline">data-qa/llm-api-key</code> via <code class="inline">put-secret-value</code></td><td><span class="badge badge-sm badge-error">secret</span></td><td>D</td></tr>
           <tr><td colspan="5" class="bg-base-200 font-semibold text-xs uppercase">🔓 Google (cloud) + data</td></tr>
-          <tr><td class="sticky-col bg-base-100 font-medium">Add the CloudFront URL as an authorized origin + redirect URI</td><td><span class="badge badge-sm badge-warning">⏳ Phase D</span></td><td>Google Cloud Console <span class="text-xs text-base-content/60">(same client as s11)</span></td><td><span class="badge badge-sm badge-warning">config</span></td><td>D</td></tr>
-          <tr><td class="sticky-col bg-base-100 font-medium">The full ~580MB CSVs</td><td><span class="badge badge-sm badge-warning">⏳ pending</span></td><td>Upload to S3, or authorize me to push from local <code class="inline">data/</code></td><td><span class="badge badge-sm badge-ghost">access</span></td><td>C</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">Add the CloudFront URL as an authorized JS origin <span class="text-xs text-base-content/60">(redirect URI not needed — GIS ID-token flow)</span></td><td><span class="badge badge-sm badge-success">✅ added</span></td><td>Google Cloud Console <span class="text-xs text-base-content/60">(same client as s11)</span></td><td><span class="badge badge-sm badge-warning">config</span></td><td>D</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">The full ~580MB CSVs</td><td><span class="badge badge-sm badge-success">✅ in S3</span></td><td><code class="inline">s3://data-qa-source-data-089783391188/</code></td><td><span class="badge badge-sm badge-ghost">access</span></td><td>C</td></tr>
         </tbody>
       </table>
     </div>

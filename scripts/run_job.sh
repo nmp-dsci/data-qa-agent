@@ -27,7 +27,13 @@ TASK_ARN=$(aws ecs run-task \
 echo "    task: $TASK_ARN"
 
 echo "==> waiting for the task to stop (pipeline can take a while on ~3M rows)"
-aws ecs wait tasks-stopped --cluster data-qa --tasks "$TASK_ARN"
+# The waiter caps at ~10 min per call — loop it until the task actually stops.
+until aws ecs wait tasks-stopped --cluster data-qa --tasks "$TASK_ARN" 2>/dev/null; do
+  STATUS=$(aws ecs describe-tasks --cluster data-qa --tasks "$TASK_ARN" \
+    --query 'tasks[0].lastStatus' --output text)
+  echo "    still ${STATUS} ($(date +%H:%M:%S)) — waiting..."
+  [ "$STATUS" = "STOPPED" ] && break
+done
 
 EXIT_CODE=$(aws ecs describe-tasks --cluster data-qa --tasks "$TASK_ARN" \
   --query 'tasks[0].containers[0].exitCode' --output text)

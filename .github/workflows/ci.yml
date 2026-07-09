@@ -21,8 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Pytest
+      - name: Pytest (repo root)
         run: uv run pytest -q
+      - name: Pytest (data-agent service)
+        working-directory: services/data-agent
+        # --extra llm: pandas/pydantic-ai/fastembed live in the llm extra and
+        # the pages/skills/sandbox tests import them.
+        run: uv run --extra llm pytest -q
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -43,6 +48,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and start stack
         run: docker compose up -d --build
+      # `up -d` returns once containers are started, not once uvicorn is
+      # accepting connections — hitting the API immediately gets a connection
+      # reset. Poll both services' /health before running the test.
+      - name: Wait for services
+        run: |
+          for url in http://localhost:8000/health http://localhost:8100/health; do
+            ready=""
+            for i in $(seq 1 60); do
+              if curl -fsS "$url" >/dev/null 2>&1; then echo "$url ready"; ready=1; break; fi
+              sleep 3
+            done
+            if [ -z "$ready" ]; then
+              echo "$url never became ready"
+              docker compose ps
+              exit 1
+            fi
+          done
       - name: Run smoke test
         run: python3 scripts/smoke_test.py
       - name: Show logs on failure

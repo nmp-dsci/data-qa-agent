@@ -1,4 +1,11 @@
-"""Tests for InsightReport assembly + structural checks (K2/K5)."""
+"""Tests for the report helpers that remain after the sandbox restructure.
+
+The draft/assembly layer (HeadlineDraft/assemble_report) is gone — the sandbox
+agent builds the report dict directly via the ``build_report`` skill (covered
+by services/data-agent/tests/test_skills.py). What lives here is the surviving
+architecture-independent surface: the structural lint the eval suite uses (K5)
+and the legacy primary-query picker.
+"""
 
 from __future__ import annotations
 
@@ -8,96 +15,76 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services" / "data-agent"))
 
-from agent.report import (  # noqa: E402
-    HeadlineDraft,
-    InsightDraft,
-    ReportDraft,
-    assemble_report,
-    report_structural_issues,
-    select_primary_query,
-)
-
-_QUERIES = {
-    "Q1": {
-        "sql": "select 1",
-        "columns": ["suburb"],
-        "rows": [["HORNSBY"]],
-        "row_count": 1,
-        "purpose": "series",
-    },
-}
-_CHARTS = {"C1": {"mark": "line", "encoding": {}, "data": {"values": []}}}
+from agent.report import report_structural_issues, select_primary_query  # noqa: E402
 
 
-def _good_draft() -> ReportDraft:
-    return ReportDraft(
-        summary="Normanhurst has out-grown Hornsby.",
-        headlines=[HeadlineDraft(label="Hornsby latest", value="$1.6M", query_ref="Q1")],
-        insights=[InsightDraft(heading="Gap widening", body="Because...", query_refs=["Q1"])],
-        main_chart_ref="C1",
-    )
-
-
-def test_assemble_resolves_refs_and_assigns_ids() -> None:
-    report = assemble_report(
-        _good_draft(),
-        queries=_QUERIES,
-        charts=_CHARTS,
-        knowledge_pages=["trend-charts"],
-        knowledge_version="abc123",
-    )
-    assert report["insights"][0]["element_id"] == "insight:0"
-    assert report["main_chart"] == _CHARTS["C1"]
-    assert report["queries"][0]["ref"] == "Q1"
-    assert report["knowledge_version"] == "abc123"
+def _good_report() -> dict:
+    return {
+        "element_id": "report",
+        "summary": "Normanhurst has out-grown Hornsby.",
+        "headlines": [
+            {
+                "element_id": "headline:0",
+                "label": "Hornsby latest",
+                "value": "$1.6M",
+                "basis": "6-mo rolling",
+                "related": False,
+                "query_ref": "Q1",
+            }
+        ],
+        "insights": [
+            {
+                "element_id": "insight:0",
+                "heading": "Gap widening",
+                "body": "Because...",
+                "query_refs": ["Q1"],
+                "chart": None,
+            }
+        ],
+        "profiles": [],
+        "main_chart": {"mark": "line", "encoding": {}, "data": {"values": []}},
+        "queries": [
+            {
+                "element_id": "query:Q1",
+                "ref": "Q1",
+                "purpose": "series",
+                "sql": "select 1",
+                "columns": ["suburb"],
+                "rows": [["HORNSBY"]],
+                "row_count": 1,
+            }
+        ],
+        "knowledge_pages_used": ["trend-charts"],
+        "knowledge_version": "abc123",
+    }
 
 
 def test_good_report_has_no_structural_issues() -> None:
-    report = assemble_report(
-        _good_draft(),
-        queries=_QUERIES,
-        charts=_CHARTS,
-        knowledge_pages=["trend-charts"],
-        knowledge_version="abc123",
-    )
-    assert report_structural_issues(report) == []
+    assert report_structural_issues(_good_report()) == []
 
 
 def test_dangling_query_ref_is_flagged() -> None:
-    draft = _good_draft()
-    draft.insights[0].query_refs = ["Q9"]  # does not exist
-    report = assemble_report(
-        draft,
-        queries=_QUERIES,
-        charts=_CHARTS,
-        knowledge_pages=[],
-        knowledge_version="abc123",
-    )
+    report = _good_report()
+    report["insights"][0]["query_refs"] = ["Q9"]  # does not exist
     issues = report_structural_issues(report)
     assert any("unknown query Q9" in i for i in issues)
 
 
 def test_empty_summary_is_flagged() -> None:
-    draft = _good_draft()
-    draft.summary = "  "
-    report = assemble_report(
-        draft,
-        queries=_QUERIES,
-        charts=_CHARTS,
-        knowledge_pages=[],
-        knowledge_version="abc123",
-    )
+    report = _good_report()
+    report["summary"] = "  "
     assert any("summary is empty" in i for i in report_structural_issues(report))
 
 
+def test_headline_without_value_is_flagged() -> None:
+    report = _good_report()
+    report["headlines"][0]["value"] = ""
+    assert any("has no value" in i for i in report_structural_issues(report))
+
+
 def test_missing_knowledge_version_is_flagged() -> None:
-    report = assemble_report(
-        _good_draft(),
-        queries=_QUERIES,
-        charts=_CHARTS,
-        knowledge_pages=[],
-        knowledge_version="",
-    )
+    report = _good_report()
+    report["knowledge_version"] = ""
     assert any("knowledge_version" in i for i in report_structural_issues(report))
 
 

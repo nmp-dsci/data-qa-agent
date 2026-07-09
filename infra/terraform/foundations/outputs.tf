@@ -38,6 +38,21 @@ output "data_bucket" {
   value       = aws_s3_bucket.source_data.id
 }
 
+output "frontend_bucket" {
+  description = "S3 bucket the built frontend is uploaded to."
+  value       = aws_s3_bucket.frontend.id
+}
+
+output "cloudfront_domain" {
+  description = "Public HTTPS URL of the app (default CloudFront domain)."
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution id (for cache invalidations on deploy)."
+  value       = aws_cloudfront_distribution.frontend.id
+}
+
 output "ecr_repository_urls" {
   description = "ECR repository URLs, keyed by service."
   value       = { for k, r in aws_ecr_repository.service : k => r.repository_url }

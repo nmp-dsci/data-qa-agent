@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from .config import settings
 
-_connect_args = {"ssl": True} if settings.db_ssl else {}
+# Pass the sslmode string through (e.g. "require"): asyncpg treats ssl=True as
+# verify-full, which fails against Aurora's RDS-CA-signed cert (not in the
+# container trust store). "require" = encrypt without verification — libpq
+# semantics, and what every other client in this stack does. Upgrade to
+# verify-full + the RDS CA bundle in the harden phase.
+_connect_args = {"ssl": settings.db_ssl} if settings.db_ssl else {}
 engine = create_async_engine(
     settings.database_url, pool_pre_ping=True, future=True, connect_args=_connect_args
 )

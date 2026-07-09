@@ -13,7 +13,7 @@
   :where(.grid, .flex) > * { min-width: 0; }
   :where(p, h1, h2, h3, h4, h5, h6, li, dd, td, th, .badge) { overflow-wrap: anywhere; }
   :where(img) { max-width: 100%; height: auto; }
-  .mermaid { background: transparent; }
+  .mermaid { background: transparent; overflow-x: auto; }
   code.inline { background: var(--color-base-300); padding: .05rem .35rem; border-radius: .3rem; font-size: .85em; }
   .table tbody td { color: #f1f1f1; }
   .table td strong, .table th strong { color: #fff; }
@@ -123,17 +123,18 @@
       <div class="mermaid">
 sequenceDiagram
   autonumber
-  participant U as User (browser)
+  participant U as User browser
   participant G as Google Identity Services
-  participant A as backend-api (local)
-  participant P as Postgres (RLS)
-  U->>G: Click "Sign in with Google"
-  G-->>U: ID token (RS256, JWKS-signed)
-  U->>A: GET /me (Bearer ID token)
-  A->>A: Verify vs Google JWKS + audience(client_id) + issuer
-  A->>P: JIT upsert user by sub; return app.users row
-  A-->>U: profile — now logged in
-  Note over U,P: dev-stub login still works when AUTH_MODE=dev
+  participant A as backend-api local
+  participant P as Postgres RLS
+  U->>G: Click Sign in with Google
+  G-->>U: ID token, RS256, JWKS-signed
+  U->>A: GET /me with Bearer ID token
+  A->>A: Verify vs Google JWKS, audience, issuer
+  A->>P: JIT upsert user by sub
+  P-->>A: return app.users row
+  A-->>U: profile, now logged in
+  Note over U,P: dev-stub login still works in dev mode
       </div>
     </div></div>
   </section>
@@ -151,6 +152,7 @@ sequenceDiagram
               <li>Add <code class="inline">auth_mode == "google"</code> to the dispatch in <code class="inline">_user_from_authorization</code>.</li>
               <li>Add <code class="inline">GoogleVerifier</code> (mirror <code class="inline">EntraVerifier</code>): issuer <code class="inline">https://accounts.google.com</code>, Google JWKS, <code class="inline">audience = google_client_id</code>, RS256, require <code class="inline">exp/iss/aud</code>.</li>
               <li>Provision by <code class="inline">sub</code>; take <code class="inline">email</code> (assert <code class="inline">email_verified</code>), <code class="inline">name</code>. Map to admin via an allowlist or a claim (see §config).</li>
+              <li><strong>Decommission the Entra path:</strong> Google replaces it, so remove <code class="inline">EntraVerifier</code>, <code class="inline">_provision_entra_user</code>, the <code class="inline">entra</code> dispatch branch, and the <code class="inline">entra_*</code> settings. (Dev stub stays.)</li>
             </ul>
           </div>
         </div>
@@ -190,10 +192,10 @@ sequenceDiagram
           <div>
             <div class="font-semibold">Frontend — Google branch <span class="badge badge-sm badge-ghost align-middle">lib/auth.ts</span></div>
             <ul class="text-sm text-base-content/75 list-disc pl-5 mt-1 space-y-0.5">
-              <li>Add a <code class="inline">google</code> branch behind the same interface as <code class="inline">loginDev</code>/<code class="inline">loginEntra</code>, using Google Identity Services (<code class="inline">@react-oauth/google</code> or the GIS script).</li>
+              <li>Add a <code class="inline">google</code> branch behind the existing auth interface (alongside <code class="inline">loginDev</code>), using Google Identity Services (<code class="inline">@react-oauth/google</code> or the GIS script).</li>
               <li>Render the official "Sign in with Google" button on the login screen when <code class="inline">auth_mode === "google"</code>.</li>
-              <li>On credential, set the token and call <code class="inline">getMe()</code> — same as the existing MSAL path. Keep the dev-stub picker for <code class="inline">dev</code> mode.</li>
-              <li>MSAL/Entra code can stay (dormant) or be removed — your call.</li>
+              <li>On credential, set the token and call <code class="inline">getMe()</code>. Keep the dev-stub picker for <code class="inline">dev</code> mode.</li>
+              <li><strong>Decommission <code class="inline">loginEntra</code>:</strong> remove it plus <code class="inline">getMsal</code>, <code class="inline">hydrateFromResult</code>, the <code class="inline">entra</code> branch of <code class="inline">bootstrap</code>, and drop the <code class="inline">@azure/msal-browser</code> dependency.</li>
             </ul>
           </div>
         </div>
@@ -259,6 +261,76 @@ sequenceDiagram
         </tbody>
       </table>
     </div>
+  </section>
+
+  <!-- SETUP TRACKER -->
+  <section class="mb-9">
+    <h2 class="text-xl font-bold mb-2">Where each value goes — setup tracker</h2>
+    <p class="text-base-content/70 text-sm mb-3 max-w-3xl">
+      Locally, every value lives in <strong><code class="inline">.env</code> at the repo root</strong> (gitignored — see
+      <code class="inline">.env.example</code>) and is read by pydantic-settings. <strong>No client secret is needed</strong> — Google's
+      signing keys are public (JWKS), so there's nothing sensitive to store for verification. In the cloud (s12) these same
+      values move to <strong>Secrets Manager</strong>. I'll flip each status to ✅ as you provide it, so this stays a live checklist.
+    </p>
+    <div class="flex flex-wrap gap-3 mb-3 text-xs">
+      <span><span class="badge badge-sm badge-success">✅ provided</span> = set &amp; verified</span>
+      <span><span class="badge badge-sm badge-warning">⏳ pending</span> = waiting on you</span>
+      <span><span class="badge badge-sm badge-ghost">➖ n/a</span> = nothing to do</span>
+    </div>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm text-sm">
+        <thead><tr class="text-xs uppercase"><th class="sticky-col bg-base-100">Value</th><th>Where it goes</th><th>Env key (example)</th><th>Sensitive?</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="sticky-col bg-base-100 font-medium">Google OAuth <strong>Client ID (Web)</strong></td>
+            <td>Local <code class="inline">.env</code> → read by <code class="inline">config.py</code>; served to the frontend via <code class="inline">/auth/config</code></td>
+            <td><code class="inline">GOOGLE_CLIENT_ID=…apps.googleusercontent.com</code></td>
+            <td>Public — safe to share</td>
+            <td><span class="badge badge-sm badge-success">✅ wired</span><br><span class="text-xs text-base-content/60">dedicated Web client → .env + config</span></td>
+          </tr>
+          <tr>
+            <td class="sticky-col bg-base-100 font-medium">Turn Google login on</td>
+            <td>Local <code class="inline">.env</code></td>
+            <td><code class="inline">AUTH_MODE=google</code></td>
+            <td>—</td>
+            <td><span class="badge badge-sm badge-success">✅ set in .env</span></td>
+          </tr>
+          <tr>
+            <td class="sticky-col bg-base-100 font-medium">Admin allowlist</td>
+            <td>Local <code class="inline">.env</code> → <code class="inline">config.py</code> <code class="inline">admin_emails</code></td>
+            <td><code class="inline">ADMIN_EMAILS=nathanphillips369@gmail.com</code></td>
+            <td>—</td>
+            <td><span class="badge badge-sm badge-success">✅ decided</span></td>
+          </tr>
+          <tr>
+            <td class="sticky-col bg-base-100 font-medium">Client <em>secret</em></td>
+            <td>Not used — verification is JWKS-only <span class="text-xs text-base-content/60">(one exists in ~/.env; we ignore it)</span></td>
+            <td>—</td>
+            <td>—</td>
+            <td><span class="badge badge-sm badge-ghost">➖ n/a</span></td>
+          </tr>
+          <tr>
+            <td class="sticky-col bg-base-100 font-medium">Authorized JS origin</td>
+            <td>Google Cloud Console (not in the app)</td>
+            <td><code class="inline">http://localhost:5230</code></td>
+            <td>—</td>
+            <td><span class="badge badge-sm badge-success">✅ added (Option B)</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-3 grid gap-3 sm:grid-cols-2">
+      <div class="card card-border bg-base-100 border-primary/30"><div class="card-body p-3">
+        <div class="flex items-center gap-2"><span class="badge badge-sm badge-primary">admin</span><code class="inline">nathanphillips369@gmail.com</code></div>
+        <p class="text-xs text-base-content/60 mt-1">In <code class="inline">ADMIN_EMAILS</code> → sees all data + admin dashboard.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-3">
+        <div class="flex items-center gap-2"><span class="badge badge-sm badge-ghost">user</span><code class="inline">nmpdsci@gmail.com</code></div>
+        <p class="text-xs text-base-content/60 mt-1">Not in the allowlist → regular user. Use to verify RLS isolation (like <code class="inline">user2</code>).</p>
+      </div></div>
+    </div>
+    <p class="mt-3 text-xs text-base-content/60">Both must be added as <strong>Test users</strong> on the Google consent screen (Testing mode) so they can sign in without app verification.</p>
+    <p class="mt-2 text-xs text-base-content/60">✅ Client ID found in <code class="inline">~/.env</code> — I'll wire it into the project's <code class="inline">.env</code> + config. <strong>Before sign-in works, confirm it's a <em>Web</em> OAuth client with <code class="inline">http://localhost:5230</code> as an authorized JS origin</strong> (else Google rejects the login on origin mismatch). The <code class="inline">.env.example</code> gets a placeholder; the real value stays in your uncommitted <code class="inline">.env</code>.</p>
   </section>
 
   <!-- RISKS -->

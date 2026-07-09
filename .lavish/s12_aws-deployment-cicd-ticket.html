@@ -1,0 +1,287 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket · AWS deployment + CI/CD — data-qa-agent</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "loose", flowchart: { useMaxWidth: true }, sequence: { useMaxWidth: true } });
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, td, th, .badge) { overflow-wrap: anywhere; }
+  :where(img) { max-width: 100%; height: auto; }
+  .mermaid { background: transparent; }
+  code.inline { background: var(--color-base-300); padding: .05rem .35rem; border-radius: .3rem; font-size: .85em; }
+  th.sticky-col, td.sticky-col { position: sticky; left: 0; z-index: 1; }
+  .table tbody td { color: #f1f1f1; }
+  .table td strong, .table th strong { color: #fff; }
+  .table tbody td [class*="text-base-content/5"], .table tbody td [class*="text-base-content/6"] { color: rgba(241,241,241,.72) !important; }
+</style>
+
+<div data-theme="luxury" class="min-h-screen bg-base-200 text-base-content">
+<main class="mx-auto max-w-7xl px-5 py-8 lg:px-10 lg:py-12">
+
+  <!-- HERO -->
+  <header class="mb-9">
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <span class="badge badge-primary badge-sm">Ticket · s12</span>
+      <span class="badge badge-soft badge-sm">data-qa-agent</span>
+      <span class="badge badge-warning badge-sm">DO SECOND</span>
+      <span class="badge badge-soft badge-info badge-sm">depends on s11 (Google auth)</span>
+    </div>
+    <h1 class="text-3xl lg:text-4xl font-bold tracking-tight leading-[1.15] pb-1">Deploy to AWS with CI/CD</h1>
+    <p class="mt-3 text-base text-base-content/80 max-w-4xl">
+      Take the working local stack (3 services + Postgres + 2 jobs, all in <code class="inline">docker compose</code>) and stand
+      it up on <strong>AWS App Runner + RDS + S3/CloudFront</strong>, with a push-button GitHub Actions pipeline. Auth is
+      already done in <strong>s11</strong> — here we only add the cloud OAuth client + redirect URI.
+    </p>
+    <div class="mt-5 alert alert-success alert-soft">
+      <span class="text-lg">🎯</span>
+      <div>
+        <div class="font-semibold">Definition of done</div>
+        <div class="text-sm text-base-content/80">
+          Open a <strong>public CloudFront URL</strong>, <strong>sign in with Google</strong> (from s11), and use the app
+          <strong>exactly as locally</strong> — ask a question, get a governed answer + chart, admin dashboard works. A merge to
+          <code class="inline">main</code> deploys with no manual steps and the cloud <code class="inline">smoke_test.py</code> passes against the live URL.
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- DECISIONS LOCKED -->
+  <section class="mb-10">
+    <h2 class="text-xl font-bold mb-3">Decisions already locked</h2>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="card card-border bg-base-100 border-success/40"><div class="card-body p-4">
+        <div class="text-xs uppercase tracking-wide text-success mb-1">Compute</div>
+        <div class="font-semibold text-sm">AWS App Runner</div>
+        <div class="text-xs text-base-content/60 mt-1">cheapest v1; harden to ECS Fargate later, no code change</div>
+      </div></div>
+      <div class="card card-border bg-base-100 border-success/40"><div class="card-body p-4">
+        <div class="text-xs uppercase tracking-wide text-success mb-1">URL</div>
+        <div class="font-semibold text-sm">Default CloudFront URL</div>
+        <div class="text-xs text-base-content/60 mt-1">custom domain deferred to Phase F</div>
+      </div></div>
+      <div class="card card-border bg-base-100 border-success/40"><div class="card-body p-4">
+        <div class="text-xs uppercase tracking-wide text-success mb-1">Data</div>
+        <div class="font-semibold text-sm">Full ~580MB datasets</div>
+        <div class="text-xs text-base-content/60 mt-1">CSVs → S3; pipeline reads from S3</div>
+      </div></div>
+      <div class="card card-border bg-base-100 border-success/40"><div class="card-body p-4">
+        <div class="text-xs uppercase tracking-wide text-success mb-1">IaC</div>
+        <div class="font-semibold text-sm">Terraform</div>
+        <div class="text-xs text-base-content/60 mt-1">cloud-neutral; Bicep stays as Azure reference</div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- SERVICES TABLE -->
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-1">1 · Every moving part, and where it lives</h2>
+    <p class="text-base-content/70 mb-5 max-w-4xl text-sm">
+      Each row is one component. <span class="text-success font-medium">Local</span> = today; <span class="text-warning font-medium">AWS</span> = this ticket;
+      <span class="text-info font-medium">Azure</span>/<span class="text-base-content/60 font-medium">GCP</span> shown for transparency. We deploy to <strong>one</strong> cloud (AWS).
+    </p>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm">
+        <thead><tr class="text-xs uppercase tracking-wide">
+          <th class="sticky-col bg-base-100">Component</th>
+          <th class="text-success">🖥️ Local</th><th class="text-warning">☁️ AWS (this ticket)</th>
+          <th class="text-info">🔷 Azure</th><th class="text-base-content/60">🟡 GCP</th>
+        </tr></thead>
+        <tbody class="text-sm">
+          <tr><td class="sticky-col bg-base-100 font-semibold">Frontend <span class="text-xs font-normal text-base-content/50">(React+Vite)</span></td><td>vite dev server</td><td><strong>S3 + CloudFront</strong></td><td>Container App / SWA</td><td>Cloud Storage + CDN</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Backend API <span class="text-xs font-normal text-base-content/50">(FastAPI)</span></td><td>uvicorn <code class="inline">:8000</code></td><td><strong>App Runner</strong> service</td><td>Container App</td><td>Cloud Run</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Data agent <span class="text-xs font-normal text-base-content/50">(Pydantic AI)</span></td><td>uvicorn <code class="inline">:8100</code></td><td><strong>App Runner</strong> service</td><td>Container App</td><td>Cloud Run</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Migrate job <span class="text-xs font-normal text-base-content/50">(Alembic)</span></td><td>compose one-shot</td><td><strong>ECS run-task</strong></td><td>Container Apps Job</td><td>Cloud Run Job</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Pipeline job <span class="text-xs font-normal text-base-content/50">(dlt+dbt)</span></td><td>compose one-shot</td><td><strong>ECS run-task</strong></td><td>Container Apps Job</td><td>Cloud Run Job</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Database <span class="text-xs font-normal text-base-content/50">(PG16+pgvector)</span></td><td>pgvector container</td><td><strong>RDS PostgreSQL 16</strong></td><td>Flexible Server</td><td>Cloud SQL</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Source data <span class="text-xs font-normal text-base-content/50">(~580MB CSVs)</span></td><td><code class="inline">./data</code> mount</td><td><strong>S3 bucket</strong></td><td>Blob Storage</td><td>Cloud Storage</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Image registry</td><td>local build</td><td><strong>ECR</strong></td><td>ACR</td><td>Artifact Registry</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Secrets</td><td><code class="inline">.env</code></td><td><strong>Secrets Manager</strong> + SSM</td><td>Key Vault</td><td>Secret Manager</td></tr>
+          <tr class="bg-warning/5"><td class="sticky-col bg-warning/5 font-semibold">Identity / login</td><td>dev stub</td><td><strong>Google OIDC</strong> <span class="text-xs text-base-content/60">(s11)</span></td><td>Entra External ID</td><td>Google / Identity Platform</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">CI deploy identity</td><td>n/a</td><td><strong>IAM role</strong> via GitHub OIDC</td><td>Managed Identity</td><td>Workload Identity Fed.</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Observability</td><td>Logfire local / DB audit</td><td><strong>DB audit</strong> + CloudWatch <span class="text-xs text-base-content/60">(Logfire opt.)</span></td><td>Logfire + Log Analytics</td><td>Logfire + Cloud Logging</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">Infra-as-code</td><td><code class="inline">docker-compose</code></td><td><strong>Terraform</strong></td><td>Bicep (exists)</td><td>Terraform</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-semibold">CI/CD</td><td><code class="inline">make up</code></td><td><strong>GitHub Actions</strong> + AWS OIDC</td><td>GH Actions + Azure OIDC</td><td>GH Actions + GCP WIF</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TOPOLOGY -->
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-1">2 · Local → AWS topology</h2>
+    <p class="text-base-content/70 mb-5 max-w-4xl text-sm">Same shape — compose services become App Runner services, the two jobs become ECS run-tasks, Postgres becomes RDS, <code class="inline">.env</code> becomes Secrets Manager.</p>
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="card card-border bg-base-100"><div class="card-body p-5">
+        <h3 class="card-title text-sm uppercase tracking-wide text-success">🖥️ Local — docker compose</h3>
+        <div class="mermaid">
+flowchart TB
+  U1["Browser :5230"] --> FE1["frontend<br/>vite"]
+  FE1 -->|Bearer JWT| BE1["backend-api :8000"]
+  BE1 -->|SET LOCAL user_id| DB1[("Postgres + pgvector")]
+  BE1 --> AG1["data-agent :8100"]
+  AG1 -->|read-only, RLS| DB1
+  J1["migrate"] -.one-shot.-> DB1
+  J2["pipeline"] -.one-shot.-> DB1
+        </div>
+      </div></div>
+      <div class="card card-border bg-base-100 border-warning/40"><div class="card-body p-5">
+        <h3 class="card-title text-sm uppercase tracking-wide text-warning">☁️ AWS — App Runner v1</h3>
+        <div class="mermaid">
+flowchart TB
+  U2["Browser<br/>CloudFront URL"] --> CF["CloudFront + S3<br/>frontend"]
+  CF -->|Bearer JWT| BE2["backend-api<br/>App Runner"]
+  BE2 -->|SET LOCAL user_id| DB2[("RDS Postgres 16<br/>+ pgvector")]
+  BE2 -->|service URL| AG2["data-agent<br/>App Runner"]
+  AG2 -->|read-only, RLS| DB2
+  T1["migrate<br/>ECS task"] -.one-off.-> DB2
+  T2["pipeline<br/>ECS task"] -.reads.-> S3D["S3: full CSVs"]
+  T2 -.-> DB2
+  SM["Secrets Manager"] -.inject.-> BE2
+  SM -.inject.-> AG2
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- COST -->
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-1">3 · Cost &amp; how it scales</h2>
+    <p class="text-base-content/70 mb-5 max-w-4xl text-sm">Rough <em>us-east-1</em> monthly figures. Infra is small and mostly flat; the <strong>LLM is the variable that scales with usage</strong>.</p>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100 mb-4">
+      <table class="table table-sm text-sm">
+        <thead><tr class="text-xs uppercase">
+          <th class="sticky-col bg-base-100">Scenario (0.25 vCPU / 0.5 GB each)</th>
+          <th>Traffic band <span class="normal-case text-base-content/60">(questions/day · peak concurrent)</span></th>
+          <th>Warm baseline</th><th>+ Active vCPU</th><th>≈ Total/mo</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="sticky-col bg-base-100 font-medium">2 services · idle</td><td><span class="badge badge-sm badge-ghost">0/day</span> nights/dev</td><td>~$5</td><td>$0</td><td class="font-semibold">~$5</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">2 services · light</td><td><span class="badge badge-sm badge-success">~50–500/day</span> 1–5 concurrent</td><td>~$5</td><td>~$3–10</td><td class="font-semibold text-success">~$8–15</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">2 services · busier</td><td><span class="badge badge-sm badge-warning">~1k–5k/day</span> 10–25 concurrent</td><td>~$5</td><td>~$15–30</td><td class="font-semibold">~$20–35</td></tr>
+          <tr class="border-t-2 border-base-content/20"><td class="sticky-col bg-base-100 font-bold">+ RDS · S3 · CloudFront · Secrets · ECR</td><td class="text-base-content/60">mostly flat</td><td colspan="2" class="text-center">~$20</td><td class="font-bold">+ ~$20</td></tr>
+          <tr class="bg-error/5"><td class="sticky-col bg-error/5 font-bold">LLM API (the real agent)</td><td class="text-base-content/60"># questions × tokens</td><td colspan="3" class="text-center font-bold text-error">Usage-based — dwarfs infra once people ask questions</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-xs text-base-content/60">App Runner keeps ≥1 instance warm per service (no scale-to-$0), so ~$5 (both) is the true floor. Cold starts accepted → smallest tier. Full breakdown lived in s09 §6.</p>
+  </section>
+
+  <!-- OPTIONAL LEVERS (Aurora + tracing) -->
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-1">4 · Two optional cost/ops levers</h2>
+    <p class="text-base-content/70 mb-5 max-w-4xl text-sm">Both raised as questions — captured here as options, not defaults.</p>
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="card card-border bg-base-100"><div class="card-body p-5">
+        <h3 class="card-title text-base">🗄️ Aurora Serverless v2 instead of RDS?</h3>
+        <p class="text-sm text-base-content/75">Aurora Serverless v2 now <strong>scales to zero / auto-pauses</strong> — ~$0 compute when idle, and <strong>data persists through the pause</strong>. pgvector supported.</p>
+        <ul class="text-sm text-base-content/75 list-disc pl-5 mt-2 space-y-1">
+          <li><strong>Cheaper only if idle most of the time</strong> vs flat ~$15/mo RDS <code class="inline">t4g.micro</code>.</li>
+          <li>~10–15s resume latency <strong>stacks on the App Runner cold start</strong> → slow first hit after quiet spells.</li>
+          <li>Not run locally — local stays on the Postgres container; both rebuild from the same Alembic migrations, so it's fully reproducible / destroyable (<code class="inline">terraform destroy</code>).</li>
+        </ul>
+        <p class="text-xs text-base-content/60 mt-2"><strong>Default:</strong> RDS <code class="inline">t4g.micro</code> (predictable). Switchable to Serverless v2 if "pay nothing when idle" &gt; first-hit latency.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-5">
+        <h3 class="card-title text-base">📊 Tracing without Logfire Cloud</h3>
+        <p class="text-sm text-base-content/75">You already trace into the DB: every <code class="inline">/ask</code> writes <code class="inline">app.query_runs</code> (trace + SQL + tokens/latency) and <code class="inline">app.events</code> — that's what the admin dashboard reads.</p>
+        <ul class="text-sm text-base-content/75 list-disc pl-5 mt-2 space-y-1">
+          <li>Logfire is <strong>optional</strong> and OpenTelemetry-based → export can point at <strong>CloudWatch / X-Ray</strong> (serverless) or dump spans to <strong>S3</strong> (cheap, query with Athena).</li>
+          <li><strong>Default for v1:</strong> keep the DB audit trail (already built, $0) + CloudWatch for container logs; skip Logfire Cloud.</li>
+        </ul>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- PHASES -->
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-1">5 · The build plan</h2>
+    <div class="alert alert-info alert-soft text-sm mb-5">
+      <span>🔗</span><div><strong>Prerequisite:</strong> ticket <strong>s11 (Google auth)</strong> is done and verified locally. The auth code deploys here unchanged — this ticket only adds the cloud client ID + redirect URI.</div>
+    </div>
+    <ul class="steps steps-vertical w-full">
+      <li class="step step-primary" data-content="A"><div class="text-left pb-6 pl-2">
+        <div class="font-semibold text-lg">A · AWS foundations (Terraform)</div>
+        <p class="text-sm text-base-content/70 mt-1">TF state (S3 + DynamoDB lock), <strong>ECR</strong> repos, <strong>RDS Postgres 16</strong> (enable pgvector), <strong>Secrets Manager</strong> entries, the <strong>GitHub-OIDC IAM role</strong>, and the <strong>S3 data bucket</strong>. No app yet.</p>
+        <p class="text-xs text-success mt-1">✔ Verify: <code class="inline">terraform apply</code> clean; connect to RDS and <code class="inline">CREATE EXTENSION vector;</code>.</p>
+      </div></li>
+      <li class="step step-primary" data-content="C"><div class="text-left pb-6 pl-2">
+        <div class="font-semibold text-lg">C · Build &amp; ship images + static frontend</div>
+        <p class="text-sm text-base-content/70 mt-1">Production frontend build → S3 + CloudFront (replaces the dev-server). Confirm the 4 Dockerfiles build for <code class="inline">linux/amd64</code>; push backend-api / data-agent / db-migrate / pipeline to ECR. Point the pipeline at <strong>S3 for the full CSVs</strong> instead of the bind mount.</p>
+        <p class="text-xs text-success mt-1">✔ Verify: images in ECR; static frontend loads from CloudFront.</p>
+      </div></li>
+      <li class="step step-primary" data-content="D"><div class="text-left pb-6 pl-2">
+        <div class="font-semibold text-lg">D · Deploy services + run jobs</div>
+        <p class="text-sm text-base-content/70 mt-1">Terraform the two <strong>App Runner</strong> services (backend-api public, data-agent downstream), secrets from Secrets Manager, <code class="inline">DB_SSL=require</code>, CORS + <strong>Google redirect URI</strong> set to the CloudFront URL. Run the <strong>migrate</strong> then <strong>pipeline</strong> ECS tasks — loading the full datasets from S3.</p>
+        <p class="text-xs text-success mt-1">✔ Verify: API health + <code class="inline">/auth/config</code> in the cloud; full marts populated in RDS; Google login works on the live URL.</p>
+      </div></li>
+      <li class="step step-primary" data-content="E"><div class="text-left pb-6 pl-2">
+        <div class="font-semibold text-lg">E · CI/CD — one push-button workflow</div>
+        <p class="text-sm text-base-content/70 mt-1">New <code class="inline">deploy-aws.yml</code>: OIDC into the IAM role → build/push all images → <code class="inline">terraform apply</code> → run the migrate task → trigger App Runner new deployment → <strong>run the smoke test against the live URL</strong>. Keep <code class="inline">ci.yml</code> as the PR gate.</p>
+        <p class="text-xs text-success mt-1">✔ Verify: a merge to <code class="inline">main</code> deploys with no manual steps; cloud smoke green.</p>
+      </div></li>
+      <li class="step" data-content="F"><div class="text-left pb-2 pl-2">
+        <div class="font-semibold text-lg">F · Domain, TLS &amp; harden <span class="badge badge-sm badge-ghost align-middle">later</span></div>
+        <p class="text-sm text-base-content/70 mt-1">Route 53 + ACM cert → custom domain (HTTPS) on CloudFront. WAF, statement timeouts, per-user LLM cost caps, CloudWatch alarms. Optional: graduate App Runner → ECS Fargate for a private agent. Finalise Google redirect URIs for the real domain.</p>
+      </div></li>
+    </ul>
+  </section>
+
+  <!-- HUMAN IN THE LOOP -->
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-2">6 · Where I need you (human-in-the-loop)</h2>
+    <p class="text-base-content/70 text-sm mb-3 max-w-4xl">I write all Terraform, Dockerfiles, and workflows. These need your identity/accounts/secrets.</p>
+    <div class="alert alert-warning alert-soft text-sm mb-4"><span>🔐</span><div><strong>Golden rule:</strong> never paste a raw key/password into chat or a commit — put them straight into <strong>GitHub Secrets</strong> / <strong>AWS Secrets Manager</strong>; my code references them by name.</div></div>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm text-sm">
+        <thead><tr class="text-xs uppercase"><th class="sticky-col bg-base-100">What you provide</th><th>Where</th><th>Type</th><th>Phase</th></tr></thead>
+        <tbody>
+          <tr><td colspan="4" class="bg-base-200 font-semibold text-xs uppercase">☁️ AWS account &amp; access</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">AWS account + admin login</td><td><code class="inline">aws sso login</code> locally</td><td><span class="badge badge-sm badge-ghost">access</span></td><td>A</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">Region choice</td><td>Tell me here</td><td><span class="badge badge-sm badge-info">decision</span></td><td>A</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">Run the one-time bootstrap (TF state + OIDC role)</td><td>You <code class="inline">terraform apply</code> once w/ admin creds</td><td><span class="badge badge-sm badge-ghost">access</span></td><td>A</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">Accept cost (~$25–50/mo infra + LLM)</td><td>AWS billing</td><td><span class="badge badge-sm badge-info">approval</span></td><td>A/D</td></tr>
+          <tr><td colspan="4" class="bg-base-200 font-semibold text-xs uppercase">🔑 Secrets (you generate → store)</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">DB passwords + <code class="inline">JWT_SECRET</code></td><td>GitHub Secrets / Secrets Manager</td><td><span class="badge badge-sm badge-error">secret</span></td><td>A/E</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">LLM API key (DeepSeek or Anthropic)</td><td>Secrets Manager</td><td><span class="badge badge-sm badge-error">secret</span></td><td>D</td></tr>
+          <tr><td colspan="4" class="bg-base-200 font-semibold text-xs uppercase">🔓 Google (cloud) + data</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">Add the CloudFront URL as an authorized origin + redirect URI</td><td>Google Cloud Console <span class="text-xs text-base-content/60">(same client as s11)</span></td><td><span class="badge badge-sm badge-warning">config</span></td><td>D</td></tr>
+          <tr><td class="sticky-col bg-base-100 font-medium">The full ~580MB CSVs</td><td>Upload to S3, or authorize me to push from local <code class="inline">data/</code></td><td><span class="badge badge-sm badge-ghost">access</span></td><td>C</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs text-base-content/60">Chicken-and-egg: the Google redirect URI + CORS need the CloudFront URL, which only exists after the first deploy — a quick second pass in Phase D.</p>
+  </section>
+
+  <!-- RISKS -->
+  <section class="mb-6">
+    <h2 class="text-2xl font-bold mb-3">7 · Risks &amp; open questions</h2>
+    <div class="grid gap-3 md:grid-cols-2 mb-4">
+      <div class="card card-border bg-base-100 border-info/40"><div class="card-body p-4"><h4 class="font-semibold flex items-center gap-2"><span class="badge badge-info badge-sm">Q</span> Region?</h4><p class="text-sm text-base-content/70">Which AWS region (e.g. <code class="inline">us-east-1</code> vs <code class="inline">ap-southeast-2</code> for AU latency)? Needed to start Phase A.</p></div></div>
+      <div class="card card-border bg-base-100 border-info/40"><div class="card-body p-4"><h4 class="font-semibold flex items-center gap-2"><span class="badge badge-info badge-sm">Q</span> RDS or Aurora Serverless v2?</h4><p class="text-sm text-base-content/70">Default RDS <code class="inline">t4g.micro</code>; §4 has the Serverless v2 trade-off if idle-cost matters more than first-hit latency.</p></div></div>
+    </div>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm text-sm">
+        <thead><tr class="text-xs uppercase"><th>Risk</th><th>Note / mitigation</th></tr></thead>
+        <tbody>
+          <tr><td class="font-medium">pgvector on RDS</td><td>Supported on RDS/Aurora PostgreSQL via <code class="inline">CREATE EXTENSION vector</code> — confirm in Phase A before relying on memory recall.</td></tr>
+          <tr><td class="font-medium">Source-data migration</td><td>Full CSVs (~580MB, gitignored) must land in S3 and the pipeline task read from S3, not a bind mount — a real code touch (Phase C). Size the pipeline task's memory + timeout (~3M rows).</td></tr>
+          <tr><td class="font-medium">Agent egress to LLM</td><td>App Runner has managed egress, so no NAT gateway needed (a win vs the Fargate path).</td></tr>
+          <tr><td class="font-medium">Frontend static build</td><td>The API URL is baked at build time (<code class="inline">VITE_API_URL</code>) — CI builds per-environment against the CloudFront/API URL.</td></tr>
+          <tr><td class="font-medium">Terraform vs Bicep</td><td>New Terraform is authored; existing Bicep stays as the Azure reference (don't delete).</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="mt-8 pt-5 border-t border-base-content/10 text-sm text-base-content/60">
+    <p><strong>Depends on</strong> <span class="badge badge-sm badge-soft">s11 · Google auth</span>. Confirm the <strong>region</strong> (and RDS-vs-Aurora) and I can start Phase A once s11 is done. Annotate anything to adjust.</p>
+  </footer>
+
+</main>
+</div>

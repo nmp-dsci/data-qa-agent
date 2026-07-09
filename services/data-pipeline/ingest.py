@@ -77,8 +77,7 @@ def main() -> None:
     )
 
     print(
-        f"==> dlt ingest ({SOURCE}): "
-        f"{files['property_sales'].name}, {files['property_rent'].name}"
+        f"==> dlt ingest ({SOURCE}): {files['property_sales'].name}, {files['property_rent'].name}"
     )
     info = pipeline.run([sales, rent])
     print(info)

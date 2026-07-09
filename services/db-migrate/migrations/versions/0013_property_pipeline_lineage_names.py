@@ -46,6 +46,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "DELETE FROM app.schema_migrations "
-        "WHERE version = '0013_property_pipeline_lineage_names'"
+        "DELETE FROM app.schema_migrations WHERE version = '0013_property_pipeline_lineage_names'"
     )

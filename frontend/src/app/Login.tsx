@@ -1,5 +1,7 @@
-// Login gate: dev-auth stub (seeded test users) or Entra External ID.
+// Login gate: dev-auth stub (seeded test users) or Google Sign-in.
+import { useEffect, useRef } from "react";
 import { User } from "../lib/api";
+import { renderGoogleButton } from "../lib/auth";
 
 const TEST_USERS = [
   { username: "admin", label: "Admin", hint: "sees all data" },
@@ -11,28 +13,35 @@ export function Login({
   authMode,
   error,
   onDevLogin,
-  onEntraLogin,
+  onUser,
+  onError,
 }: {
-  authMode: "dev" | "entra";
+  authMode: "dev" | "google";
   error: string | null;
   onDevLogin: (username: string) => void;
-  onEntraLogin: () => void;
+  onUser: (user: User) => void;
+  onError: (message: string) => void;
 }) {
+  const btnRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (authMode !== "google" || !btnRef.current) return;
+    renderGoogleButton(btnRef.current, onUser, (e) => onError(e.message)).catch((e) =>
+      onError((e as Error).message),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authMode]);
+
   return (
     <div className="login">
       <div className="login-card">
         <h1>data-qa-agent</h1>
-        {authMode === "entra" ? (
+        {authMode === "google" ? (
           <>
             <p className="sub">Sign in to ask questions about your data.</p>
-            <div className="users">
-              <button onClick={onEntraLogin}>
-                <strong>Sign in with Microsoft</strong>
-                <span>Entra External ID</span>
-              </button>
-            </div>
+            <div className="users" ref={btnRef} />
             {error && <p className="error">{error}</p>}
-            <p className="foot">Secured by Microsoft Entra External ID</p>
+            <p className="foot">Secured by Google Sign-in</p>
           </>
         ) : (
           <>
@@ -46,7 +55,7 @@ export function Login({
               ))}
             </div>
             {error && <p className="error">{error}</p>}
-            <p className="foot">Dev-auth stub · production uses Microsoft Entra External ID</p>
+            <p className="foot">Dev-auth stub · production uses Google Sign-in</p>
           </>
         )}
       </div>

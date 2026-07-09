@@ -100,7 +100,7 @@ def _backend_section() -> ConfigSection:
     s = settings
     items = [
         ConfigItem(key="APP_ENV", value=s.app_env),
-        ConfigItem(key="AUTH_MODE", value=s.auth_mode, note="dev = local stub | entra = OIDC"),
+        ConfigItem(key="AUTH_MODE", value=s.auth_mode, note="dev = local stub | google = OIDC"),
         ConfigItem(key="AGENT_URL", value=s.agent_url, note="data-agent service base URL"),
         ConfigItem(
             key="DATABASE_URL", value=_redact_db_url(s.database_url), note="app role; RLS enforced"
@@ -109,10 +109,8 @@ def _backend_section() -> ConfigSection:
         _secret_item("JWT_SECRET", s.jwt_secret, note="dev-auth signing key"),
         ConfigItem(key="JWT_ALG", value=s.jwt_alg),
         ConfigItem(key="JWT_TTL_SECONDS", value=str(s.jwt_ttl_seconds), note="dev token lifetime"),
-        ConfigItem(key="ENTRA_AUTHORITY", value=s.entra_authority or "(none)"),
-        ConfigItem(key="ENTRA_CLIENT_ID", value=s.entra_client_id or "(none)"),
-        ConfigItem(key="ENTRA_AUDIENCE", value=s.expected_audience or "(none)"),
-        ConfigItem(key="ENTRA_ADMIN_ROLE", value=s.entra_admin_role),
+        ConfigItem(key="GOOGLE_CLIENT_ID", value=s.google_client_id or "(none)"),
+        ConfigItem(key="ADMIN_EMAILS", value=s.admin_emails or "(none)", note="→ admin role"),
         ConfigItem(key="CORS_ORIGINS", value=", ".join(s.all_cors_origins)),
     ]
     return ConfigSection(title="Backend API", service="backend-api", items=items)

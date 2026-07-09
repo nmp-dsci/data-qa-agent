@@ -58,8 +58,10 @@ resource "aws_route_table_association" "app" {
 # no-NAT decision: App Runner egress IPs aren't stable/publishable, so the DB
 # relies on rds.force_ssl=1 + 32-char random passwords. Tighten in Phase F.
 resource "aws_security_group" "aurora" {
-  name        = "${local.name}-aurora"
-  description = "Postgres access to Aurora."
+  name = "${local.name}-aurora"
+  # NOTE: description is force-new on SGs, and this SG can't be replaced while
+  # the RDS ENI holds it — keep the original wording forever.
+  description = "Postgres access to Aurora from within the VPC."
   vpc_id      = aws_vpc.main.id
 
   ingress {

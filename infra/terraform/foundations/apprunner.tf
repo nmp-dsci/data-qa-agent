@@ -83,6 +83,16 @@ resource "aws_apprunner_service" "data_agent" {
   service_name                   = "${local.name}-data-agent"
   auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.single.arn
 
+  # The service reads its secrets at instance launch — the *values* must exist,
+  # not just the secret containers (referencing only the ARNs let Terraform
+  # create the service before the versions were written → CREATE_FAILED).
+  depends_on = [
+    aws_secretsmanager_secret_version.agent_db_url,
+    aws_secretsmanager_secret_version.admin_ro_db_url,
+    aws_secretsmanager_secret_version.agent_shared_token,
+    aws_secretsmanager_secret_version.llm_api_key,
+  ]
+
   source_configuration {
     auto_deployments_enabled = true
     authentication_configuration {
@@ -131,6 +141,12 @@ resource "aws_apprunner_service" "data_agent" {
 resource "aws_apprunner_service" "backend_api" {
   service_name                   = "${local.name}-backend-api"
   auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.single.arn
+
+  depends_on = [
+    aws_secretsmanager_secret_version.backend_db_url,
+    aws_secretsmanager_secret_version.jwt,
+    aws_secretsmanager_secret_version.agent_shared_token,
+  ]
 
   source_configuration {
     auto_deployments_enabled = true

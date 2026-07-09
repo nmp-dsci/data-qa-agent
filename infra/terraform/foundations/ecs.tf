@@ -141,6 +141,7 @@ resource "aws_ecs_task_definition" "pipeline" {
     environment = [
       { name = "PIPELINE_SOURCE", value = "full" },
       { name = "DATA_S3_BUCKET", value = aws_s3_bucket.source_data.id },
+      { name = "PGSSLMODE", value = "require" }, # dbt: never fall back to plaintext
     ]
     secrets = [
       { name = "ADMIN_DATABASE_URL", valueFrom = aws_secretsmanager_secret.admin_db_url.arn },

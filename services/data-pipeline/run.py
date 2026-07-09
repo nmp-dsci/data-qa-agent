@@ -12,7 +12,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 HERE = Path(__file__).resolve().parent
 
@@ -29,11 +29,14 @@ def _configure_connection() -> None:
     # dlt destination (reads DESTINATION__POSTGRES__CREDENTIALS).
     os.environ["DESTINATION__POSTGRES__CREDENTIALS"] = url
 
-    # dbt profile (profiles.yml reads these env vars).
+    # dbt profile (profiles.yml reads these env vars). urlparse returns the
+    # userinfo verbatim, so percent-decode it — cloud passwords (s12) carry
+    # URL-special characters and arrive encoded. libpq-based consumers (dlt)
+    # decode the full URL themselves; dbt gets the parts, so we decode here.
     os.environ.setdefault("DBT_HOST", parts.hostname or "db")
     os.environ.setdefault("DBT_PORT", str(parts.port or 5432))
-    os.environ.setdefault("DBT_USER", parts.username or "postgres")
-    os.environ.setdefault("DBT_PASSWORD", parts.password or "postgres")
+    os.environ.setdefault("DBT_USER", unquote(parts.username or "postgres"))
+    os.environ.setdefault("DBT_PASSWORD", unquote(parts.password or "postgres"))
     os.environ.setdefault("DBT_DBNAME", parts.path.lstrip("/") or "dataqa")
 
 

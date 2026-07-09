@@ -63,7 +63,7 @@
       <div class="card card-border bg-base-100 border-success/40"><div class="card-body p-4">
         <div class="text-xs uppercase tracking-wide text-success mb-1">URL</div>
         <div class="font-semibold text-sm">Default CloudFront URL</div>
-        <div class="text-xs text-base-content/60 mt-1">custom domain deferred to Phase F</div>
+        <div class="text-xs text-base-content/60 mt-1">custom domain lands in Phase E (harden)</div>
       </div></div>
       <div class="card card-border bg-base-100 border-success/40"><div class="card-body p-4">
         <div class="text-xs uppercase tracking-wide text-success mb-1">Data</div>
@@ -240,13 +240,14 @@ flowchart TB
         <p class="text-xs text-success mt-1">✔ Verify: API health + <code class="inline">/auth/config</code> in the cloud; full marts populated in Aurora; Google login works on the live URL.</p>
       </div></li>
       <li class="step step-primary" data-content="E"><div class="text-left pb-6 pl-2">
-        <div class="font-semibold text-lg">E · CI/CD — one push-button workflow</div>
-        <p class="text-sm text-base-content/70 mt-1">New <code class="inline">deploy-aws.yml</code>: OIDC into the IAM role → build/push all images → <code class="inline">terraform apply</code> → run the migrate task → trigger App Runner new deployment → <strong>run the smoke test against the live URL</strong>. Keep <code class="inline">ci.yml</code> as the PR gate.</p>
-        <p class="text-xs text-success mt-1">✔ Verify: a merge to <code class="inline">main</code> deploys with no manual steps; cloud smoke green.</p>
+        <div class="font-semibold text-lg">E · CI/CD + hardening — do now</div>
+        <p class="text-sm text-base-content/70 mt-1"><strong>CI/CD:</strong> new <code class="inline">deploy-aws.yml</code>: OIDC into the IAM role → build/push all images → <code class="inline">terraform apply</code> → run the migrate task → trigger App Runner new deployment → <strong>run the smoke test against the live URL</strong>. Keep <code class="inline">ci.yml</code> as the PR gate.</p>
+        <p class="text-sm text-base-content/70 mt-1"><strong>Cheap hardening (~+$2/mo):</strong> Route 53 + ACM cert → <strong>custom domain (HTTPS)</strong> on CloudFront + finalise Google origins for the real domain · <strong>DB statement timeouts</strong> ($0) · <strong>per-user LLM cost caps</strong> ($0 — trims the dominant cost) · <strong>CloudWatch alarms</strong> (~$0.10/alarm).</p>
+        <p class="text-xs text-success mt-1">✔ Verify: a merge to <code class="inline">main</code> deploys with no manual steps; cloud smoke green on the custom domain; Google login works there; a long-running query is killed by the timeout; a forced error trips an alarm.</p>
       </div></li>
       <li class="step" data-content="F"><div class="text-left pb-2 pl-2">
-        <div class="font-semibold text-lg">F · Domain, TLS &amp; harden <span class="badge badge-sm badge-ghost align-middle">later</span></div>
-        <p class="text-sm text-base-content/70 mt-1">Route 53 + ACM cert → custom domain (HTTPS) on CloudFront. WAF, statement timeouts, per-user LLM cost caps, CloudWatch alarms. Optional: graduate App Runner → ECS Fargate for a private agent. Finalise Google redirect URIs for the real domain.</p>
+        <div class="font-semibold text-lg">F · Future enhancements <span class="badge badge-sm badge-ghost align-middle">deferred — cost-gated</span></div>
+        <p class="text-sm text-base-content/70 mt-1">The big-ticket items, deferred until traffic or privacy needs justify them: <strong>WAF</strong> on CloudFront (~$6–12/mo: $5/web ACL + $1/rule + $0.60/1M req) · graduate App Runner → <strong>ECS Fargate for a private agent + private Aurora</strong> — closes the public-DB-endpoint trade-off from Phase D (SG tightening), but private subnets need a <strong>NAT gateway for LLM egress (~+$45/mo)</strong>, which App Runner's managed egress avoids today.</p>
       </div></li>
     </ul>
   </section>

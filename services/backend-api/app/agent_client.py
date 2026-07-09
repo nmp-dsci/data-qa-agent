@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import httpx
@@ -7,11 +9,57 @@ import httpx
 from .config import settings
 
 
-async def ask_agent(*, question: str, user_id: str, role: str, dataset_slug: str) -> dict[str, Any]:
+async def ask_agent_stream(
+    *, question: str, user_id: str, role: str, plan: str, dataset_slug: str
+) -> AsyncIterator[dict[str, Any]]:
+    """Stream a question to the data-agent's SSE endpoint.
+
+    Yields ``{"event": <name>, "data": <parsed>}`` for each frame — ``progress``
+    and ``status`` for live agent steps/heartbeats, ``plan``/``page`` for the s10
+    page stream, then one ``result`` (the full AgentAnswer dict) or ``error``.
+    The read timeout is generous: the agent's own 2s heartbeats keep bytes
+    flowing, so a stalled step is what this guards.
+    """
+    payload = {
+        "question": question,
+        "user": {"id": user_id, "role": role, "plan": plan},
+        "dataset_slug": dataset_slug,
+    }
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream(
+            "POST", f"{settings.agent_url}/agent/ask/stream", json=payload
+        ) as resp:
+            resp.raise_for_status()
+            buffer = ""
+            async for chunk in resp.aiter_text():
+                buffer += chunk
+                # SSE frames are separated by a blank line.
+                while "\n\n" in buffer:
+                    frame, buffer = buffer.split("\n\n", 1)
+                    event: str | None = None
+                    data = ""
+                    for line in frame.split("\n"):
+                        if line.startswith("event: "):
+                            event = line[7:].strip()
+                        elif line.startswith("data: "):
+                            data = line[6:]
+                    if event is None:
+                        continue
+                    try:
+                        parsed: Any = json.loads(data) if data else {}
+                    except json.JSONDecodeError:
+                        parsed = data
+                    yield {"event": event, "data": parsed}
+
+
+async def ask_agent(
+    *, question: str, user_id: str, role: str, plan: str, dataset_slug: str
+) -> dict[str, Any]:
     """Delegate a question to the data-agent service."""
     payload = {
         "question": question,
-        "user": {"id": user_id, "role": role},
+        "user": {"id": user_id, "role": role, "plan": plan},
         "dataset_slug": dataset_slug,
     }
     # A full insight report legitimately runs many tool round-trips (knowledge

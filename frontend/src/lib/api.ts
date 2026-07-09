@@ -106,6 +106,29 @@ export interface InsightReport {
   knowledge_version: string;
 }
 
+// Pages contract (s08 column model): the agent's answer as an ordered list of
+// pages, each naming a frontend-owned template and carrying ordered columns of
+// typed objects with data + intent (never chart specs or CSS). Placement is
+// positional (columns[i][j]); `role` is the semantic label (headline / chart /
+// insight — feedback + evals key off it) and never affects placement. Objects
+// may carry data.height (px or "sm"|"md"|"lg"|"fill").
+export type PageObjectType = "kpi" | "trend" | "breakdown" | "compare" | "insight" | "text";
+
+export interface PageObject {
+  type: PageObjectType;
+  element_id: string;
+  role?: string | null;
+  data: Record<string, unknown>;
+  explains?: string | null;
+}
+
+export type TemplateId = "summary" | "insights" | "one-col" | "two-col" | "three-col";
+
+export interface Page {
+  template: TemplateId;
+  columns: PageObject[][];
+}
+
 export interface AskResult {
   conversation_id: string;
   message_id: string;
@@ -122,6 +145,7 @@ export interface AskResult {
   latency_ms: number | null;
   steps: AgentStep[];
   report: InsightReport | null;
+  pages: Page[] | null;
 }
 
 export interface FeedbackInput {
@@ -332,6 +356,121 @@ export async function ask(question: string, conversationId: string | null): Prom
   return resp.json();
 }
 
+export interface AskStatus {
+  state: string;
+  elapsed_s?: number;
+}
+
+/** A live agent step while the answer is being built (running step list). */
+export interface AskProgress {
+  n: number;
+  action: string;
+  detail?: string;
+}
+
+// s10 streaming pages: the `plan` frame declares up front how many pages this
+// answer will complete for this user (locked = paywall teaser for pages above
+// their plan); one `page` frame then arrives per finished page carrying the
+// exact Template Studio Page JSON. `result` stays authoritative — the UI
+// reconciles streamed pages against result.pages when it lands.
+export type PageSlotStatus = "planned" | "building" | "complete" | "skipped" | "locked";
+
+export interface PagePlanSlot {
+  index: number;
+  kind: string; // summary | insights | opportunities
+  template?: TemplateId;
+  status: PageSlotStatus;
+}
+
+export interface PageFrame {
+  index: number;
+  kind?: string;
+  status: string; // complete | skipped
+  page?: Page;
+}
+
+/** SSE variant of ask(): live status + step progress while the agent works,
+ *  the page plan + each finished page as it streams, then the result. Falls
+ *  back to plain ask() if the stream can't be established. */
+export async function askStream(
+  question: string,
+  conversationId: string | null,
+  onStatus: (s: AskStatus) => void,
+  onProgress?: (p: AskProgress) => void,
+  onPlan?: (slots: PagePlanSlot[]) => void,
+  onPage?: (frame: PageFrame) => void,
+): Promise<AskResult> {
+  let resp: Response;
+  try {
+    resp = await fetch(`${API}/ask/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ question, conversation_id: conversationId }),
+    });
+  } catch {
+    return ask(question, conversationId);
+  }
+  if (!resp.ok || !resp.body) return ask(question, conversationId);
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // SSE frames are separated by a blank line.
+    for (;;) {
+      const sep = buffer.indexOf("\n\n");
+      if (sep === -1) break;
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const eventLine = frame.split("\n").find((l) => l.startsWith("event: "));
+      const dataLine = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!eventLine || !dataLine) continue;
+      const event = eventLine.slice(7).trim();
+      const data = dataLine.slice(6);
+      if (event === "status") {
+        try {
+          onStatus(JSON.parse(data) as AskStatus);
+        } catch {
+          /* ignore malformed status frames */
+        }
+      } else if (event === "progress") {
+        try {
+          onProgress?.(JSON.parse(data) as AskProgress);
+        } catch {
+          /* ignore malformed progress frames */
+        }
+      } else if (event === "plan") {
+        try {
+          const parsed = JSON.parse(data) as { pages?: PagePlanSlot[] };
+          if (Array.isArray(parsed.pages)) onPlan?.(parsed.pages);
+        } catch {
+          /* ignore malformed plan frames */
+        }
+      } else if (event === "page") {
+        try {
+          onPage?.(JSON.parse(data) as PageFrame);
+        } catch {
+          /* ignore malformed page frames */
+        }
+      } else if (event === "result") {
+        return JSON.parse(data) as AskResult;
+      } else if (event === "error") {
+        let detail = data;
+        try {
+          detail = (JSON.parse(data) as { detail?: string }).detail ?? data;
+        } catch {
+          /* keep raw */
+        }
+        throw new Error(`Ask failed: ${detail}`);
+      }
+    }
+  }
+  throw new Error("Ask stream ended without a result");
+}
+
 export async function runSql(sql: string): Promise<SqlRunResult> {
   const resp = await fetch(`${API}/sql`, {
     method: "POST",
@@ -398,6 +537,101 @@ export function getAdminQueryRuns(): Promise<AdminQueryRun[]> {
 
 export function getAdminConfig(): Promise<AdminConfig> {
   return adminGet<AdminConfig>("/admin/config");
+}
+
+export interface AgentConfigEntry {
+  kind: string;
+  name: string;
+  title: string;
+  description: string;
+  spec: Record<string, unknown>;
+  demo: Record<string, unknown>;
+}
+
+export interface AgentConfigResponse {
+  templates: AgentConfigEntry[];
+  charts: AgentConfigEntry[];
+}
+
+export function getAdminAgentConfig(): Promise<AgentConfigResponse> {
+  return adminGet<AgentConfigResponse>("/admin/agent-config");
+}
+
+// --- Conversations (Chat history sidebar) ---
+
+export interface ConversationSummary {
+  id: string;
+  title: string | null;
+  created_at: string;
+  last_at: string | null;
+  message_count: number;
+}
+
+export interface ConversationMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sql_generated: string | null;
+  report: (InsightReport & { pages?: Page[] }) | null;
+  created_at: string;
+  // Joined from the message's latest query_run so a reopened thread restores
+  // the same result meta an in-session answer shows. `steps` is admin-only
+  // (empty otherwise); the rest may be null for pre-audit / legacy messages.
+  run_id: string | null;
+  engine: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  latency_ms: number | null;
+  steps: AgentStep[];
+}
+
+export async function getConversations(): Promise<ConversationSummary[]> {
+  const resp = await fetch(`${API}/conversations`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load conversations (${resp.status})`);
+  return resp.json();
+}
+
+export async function getConversationMessages(id: string): Promise<ConversationMessage[]> {
+  const resp = await fetch(`${API}/conversations/${id}/messages`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load conversation (${resp.status})`);
+  return resp.json();
+}
+
+// --- Profile / Settings ---
+
+export interface UserMemory {
+  id: string;
+  kind: string | null;
+  content: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface MyAccess {
+  role: string;
+  rls_note: string;
+  datasets: { slug: string; name: string; status: string; access: string }[];
+}
+
+export async function getMyMemories(): Promise<UserMemory[]> {
+  const resp = await fetch(`${API}/me/memories`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load memories (${resp.status})`);
+  return resp.json();
+}
+
+export async function deleteMyMemory(id: string): Promise<{ deleted: boolean }> {
+  const resp = await fetch(`${API}/me/memories/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Could not delete memory (${resp.status})`);
+  return resp.json();
+}
+
+export async function getMyAccess(): Promise<MyAccess> {
+  const resp = await fetch(`${API}/me/access`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load access (${resp.status})`);
+  return resp.json();
 }
 
 export async function submitFeedback(input: FeedbackInput): Promise<{ id: string }> {

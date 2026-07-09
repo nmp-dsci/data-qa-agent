@@ -1,0 +1,292 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket · Google Sign-in (auth) — data-qa-agent</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "loose", sequence: { useMaxWidth: true } });
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, td, th, .badge) { overflow-wrap: anywhere; }
+  :where(img) { max-width: 100%; height: auto; }
+  .mermaid { background: transparent; }
+  code.inline { background: var(--color-base-300); padding: .05rem .35rem; border-radius: .3rem; font-size: .85em; }
+  .table tbody td { color: #f1f1f1; }
+  .table td strong, .table th strong { color: #fff; }
+  .table tbody td [class*="text-base-content/5"], .table tbody td [class*="text-base-content/6"] { color: rgba(241,241,241,.72) !important; }
+</style>
+
+<div data-theme="luxury" class="min-h-screen bg-base-200 text-base-content">
+<main class="mx-auto max-w-5xl px-5 py-8 lg:px-10 lg:py-12">
+
+  <!-- HERO -->
+  <header class="mb-9">
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <span class="badge badge-primary badge-sm">Ticket · s11</span>
+      <span class="badge badge-soft badge-sm">data-qa-agent</span>
+      <span class="badge badge-success badge-sm">DO FIRST</span>
+      <span class="badge badge-soft badge-info badge-sm">local · zero cloud spend</span>
+    </div>
+    <h1 class="text-3xl lg:text-4xl font-bold tracking-tight leading-[1.15] pb-1">Add Google Sign-in (replace Entra/MSAL)</h1>
+    <p class="mt-3 text-base text-base-content/80 max-w-3xl">
+      Add a <strong>Google email login</strong> path to the app, done and verified <strong>entirely locally</strong>.
+      It reuses the OIDC-verification + just-in-time-provisioning pattern the backend already has for Entra, so it's a
+      near-drop-in — not a rewrite. This ships unchanged to the cloud later (ticket <strong>s12</strong>).
+    </p>
+
+    <div class="mt-5 grid gap-3 sm:grid-cols-3">
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="text-xs uppercase tracking-wide text-base-content/50 mb-1">Effort</div>
+        <div class="font-semibold">~2–3 dev days</div>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="text-xs uppercase tracking-wide text-base-content/50 mb-1">Depends on</div>
+        <div class="font-semibold">Nothing — start now</div>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="text-xs uppercase tracking-wide text-base-content/50 mb-1">Unblocks</div>
+        <div class="font-semibold">s12 (AWS deploy)</div>
+      </div></div>
+    </div>
+  </header>
+
+  <!-- SUCCESS -->
+  <section class="mb-9">
+    <div class="alert alert-success alert-soft">
+      <span class="text-lg">🎯</span>
+      <div>
+        <div class="font-semibold">Definition of done</div>
+        <div class="text-sm text-base-content/80">
+          Locally, set <code class="inline">AUTH_MODE=google</code>, click <strong>Sign in with Google</strong>, authenticate with a
+          real Google account, and land in the app as a <strong>just-in-time-provisioned user</strong>. <code class="inline">/me</code>
+          returns that profile, <strong>RLS still isolates</strong> per user, the admin role still works, and the
+          <strong>dev-stub login still works</strong> as the offline default. <code class="inline">make smoke</code> passes with the
+          Google path exercised.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHY FIRST -->
+  <section class="mb-9">
+    <h2 class="text-xl font-bold mb-3">Why this is safe to do first (and alone)</h2>
+    <div class="grid gap-4 md:grid-cols-3">
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <h3 class="font-semibold text-sm mb-1">🔌 Auth is already pluggable</h3>
+        <p class="text-sm text-base-content/70">The frontend reads <code class="inline">GET /auth/config</code> and adapts at runtime — flipping modes needs <strong>no rebuild</strong>. Google slots into the same switch as <code class="inline">dev</code> and <code class="inline">entra</code>.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <h3 class="font-semibold text-sm mb-1">💸 No cloud, no cost</h3>
+        <p class="text-sm text-base-content/70">Everything runs on <code class="inline">make up</code>. The only external dependency is a free Google OAuth client. De-risks the login rework before a cent is spent on AWS.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <h3 class="font-semibold text-sm mb-1">♻️ Ships as-is to cloud</h3>
+        <p class="text-sm text-base-content/70">The same code deploys in s12 — only the <em>client ID</em> and <em>redirect URIs</em> differ per environment. Auth logic is written once, here.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- KEY INSIGHT / CURRENT STATE -->
+  <section class="mb-9">
+    <h2 class="text-xl font-bold mb-1">The key insight: it's the Entra path, re-pointed</h2>
+    <p class="text-base-content/70 mb-4 max-w-3xl text-sm">
+      <code class="inline">services/backend-api/app/auth.py</code> already does exactly what Google needs — just for Microsoft:
+      an <code class="inline">EntraVerifier</code> that loads OIDC metadata, validates the token against the provider's
+      <strong>JWKS</strong> with <code class="inline">audience</code> + <code class="inline">issuer</code>, then
+      <code class="inline">_provision_entra_user()</code> JIT-upserts the identity into <code class="inline">app.users</code>. Google is a
+      standard OIDC provider, so this becomes a <code class="inline">GoogleVerifier</code> pointed at Google's endpoints.
+    </p>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm text-sm">
+        <thead><tr class="text-xs uppercase"><th>OIDC parameter</th><th>Entra (exists today)</th><th>Google (this ticket)</th></tr></thead>
+        <tbody>
+          <tr><td class="font-medium">Issuer</td><td><code class="inline">&lt;tenant&gt;.ciamlogin.com/…</code></td><td><code class="inline">https://accounts.google.com</code></td></tr>
+          <tr><td class="font-medium">JWKS source</td><td>tenant <code class="inline">.well-known</code></td><td><code class="inline">googleapis.com/oauth2/v3/certs</code> (via <code class="inline">.well-known</code>)</td></tr>
+          <tr><td class="font-medium">Audience</td><td>API app-registration ID</td><td>OAuth 2.0 <strong>Web Client ID</strong></td></tr>
+          <tr><td class="font-medium">Signing alg</td><td>RS256</td><td>RS256</td></tr>
+          <tr><td class="font-medium">Stable subject</td><td><code class="inline">oid</code></td><td><code class="inline">sub</code></td></tr>
+          <tr><td class="font-medium">Email / name claims</td><td><code class="inline">email</code>, <code class="inline">name</code></td><td><code class="inline">email</code> (+ <code class="inline">email_verified</code>), <code class="inline">name</code>, <code class="inline">picture</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-2 text-xs text-base-content/60">Optional cleanup: since the two verifiers differ only by config, they can be collapsed into one generic <code class="inline">OidcVerifier(provider_config)</code>. Nice-to-have, not required to close this ticket.</p>
+  </section>
+
+  <!-- LOGIN FLOW DIAGRAM -->
+  <section class="mb-9">
+    <h2 class="text-xl font-bold mb-3">Login flow (local)</h2>
+    <div class="card card-border bg-base-100"><div class="card-body p-5">
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as User (browser)
+  participant G as Google Identity Services
+  participant A as backend-api (local)
+  participant P as Postgres (RLS)
+  U->>G: Click "Sign in with Google"
+  G-->>U: ID token (RS256, JWKS-signed)
+  U->>A: GET /me (Bearer ID token)
+  A->>A: Verify vs Google JWKS + audience(client_id) + issuer
+  A->>P: JIT upsert user by sub; return app.users row
+  A-->>U: profile — now logged in
+  Note over U,P: dev-stub login still works when AUTH_MODE=dev
+      </div>
+    </div></div>
+  </section>
+
+  <!-- TASK CHECKLIST -->
+  <section class="mb-9">
+    <h2 class="text-xl font-bold mb-3">Task breakdown</h2>
+    <div class="space-y-3">
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="flex items-start gap-3">
+          <span class="badge badge-primary">1</span>
+          <div>
+            <div class="font-semibold">Backend — <code class="inline">GoogleVerifier</code> + provisioning <span class="badge badge-sm badge-ghost align-middle">app/auth.py</span></div>
+            <ul class="text-sm text-base-content/75 list-disc pl-5 mt-1 space-y-0.5">
+              <li>Add <code class="inline">auth_mode == "google"</code> to the dispatch in <code class="inline">_user_from_authorization</code>.</li>
+              <li>Add <code class="inline">GoogleVerifier</code> (mirror <code class="inline">EntraVerifier</code>): issuer <code class="inline">https://accounts.google.com</code>, Google JWKS, <code class="inline">audience = google_client_id</code>, RS256, require <code class="inline">exp/iss/aud</code>.</li>
+              <li>Provision by <code class="inline">sub</code>; take <code class="inline">email</code> (assert <code class="inline">email_verified</code>), <code class="inline">name</code>. Map to admin via an allowlist or a claim (see §config).</li>
+            </ul>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="flex items-start gap-3">
+          <span class="badge badge-primary">2</span>
+          <div>
+            <div class="font-semibold">Backend — config + <code class="inline">/auth/config</code> <span class="badge badge-sm badge-ghost align-middle">config.py</span></div>
+            <ul class="text-sm text-base-content/75 list-disc pl-5 mt-1 space-y-0.5">
+              <li>Add <code class="inline">google_client_id</code> setting.</li>
+              <li>Have <code class="inline">GET /auth/config</code> return <code class="inline">auth_mode: "google"</code> + the client ID so the frontend can render the button.</li>
+              <li>Decide admin mapping: simplest is an <code class="inline">admin_emails</code> allowlist in settings (Google has no app-roles like Entra).</li>
+            </ul>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="flex items-start gap-3">
+          <span class="badge badge-primary">3</span>
+          <div>
+            <div class="font-semibold">DB — generalise the external identity <span class="badge badge-sm badge-warning align-middle">Alembic revision</span></div>
+            <ul class="text-sm text-base-content/75 list-disc pl-5 mt-1 space-y-0.5">
+              <li>Rename <code class="inline">app.users.entra_oid</code> → <code class="inline">external_id</code> and add <code class="inline">auth_provider</code> (<code class="inline">'entra'|'google'|'dev'</code>); or add a nullable <code class="inline">google_sub</code> column.</li>
+              <li>Backfill existing rows to <code class="inline">provider='entra'</code>. (Entra was never used in prod — dev stub is the default — so back-compat is trivial.)</li>
+              <li>Keep the unique constraint on <code class="inline">(auth_provider, external_id)</code>.</li>
+            </ul>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="flex items-start gap-3">
+          <span class="badge badge-primary">4</span>
+          <div>
+            <div class="font-semibold">Frontend — Google branch <span class="badge badge-sm badge-ghost align-middle">lib/auth.ts</span></div>
+            <ul class="text-sm text-base-content/75 list-disc pl-5 mt-1 space-y-0.5">
+              <li>Add a <code class="inline">google</code> branch behind the same interface as <code class="inline">loginDev</code>/<code class="inline">loginEntra</code>, using Google Identity Services (<code class="inline">@react-oauth/google</code> or the GIS script).</li>
+              <li>Render the official "Sign in with Google" button on the login screen when <code class="inline">auth_mode === "google"</code>.</li>
+              <li>On credential, set the token and call <code class="inline">getMe()</code> — same as the existing MSAL path. Keep the dev-stub picker for <code class="inline">dev</code> mode.</li>
+              <li>MSAL/Entra code can stay (dormant) or be removed — your call.</li>
+            </ul>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="flex items-start gap-3">
+          <span class="badge badge-warning">5</span>
+          <div>
+            <div class="font-semibold">Google Cloud Console (your part — see §human-in-the-loop)</div>
+            <ul class="text-sm text-base-content/75 list-disc pl-5 mt-1 space-y-0.5">
+              <li>Create a project + <strong>OAuth 2.0 Client ID (Web)</strong>.</li>
+              <li>Configure the consent screen; add <code class="inline">http://localhost:5230</code> as an authorized JS origin.</li>
+            </ul>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <div class="flex items-start gap-3">
+          <span class="badge badge-success">6</span>
+          <div>
+            <div class="font-semibold">Verify <span class="badge badge-sm badge-ghost align-middle">evals + smoke</span></div>
+            <ul class="text-sm text-base-content/75 list-disc pl-5 mt-1 space-y-0.5">
+              <li>Extend the journey/smoke coverage so <code class="inline">AUTH_MODE=google</code> is exercised (or at least that <code class="inline">/me</code> validates a Google token and provisions).</li>
+              <li>Confirm RLS isolation still holds and the dev stub still logs in.</li>
+            </ul>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ACCEPTANCE -->
+  <section class="mb-9">
+    <h2 class="text-xl font-bold mb-3">Acceptance criteria</h2>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm text-sm">
+        <tbody>
+          <tr><td class="w-8">✅</td><td><code class="inline">AUTH_MODE=google</code> locally → "Sign in with Google" works with a real account; user is JIT-provisioned into <code class="inline">app.users</code>.</td></tr>
+          <tr><td>✅</td><td><code class="inline">/me</code> returns the correct profile; admin allowlist promotes the right account.</td></tr>
+          <tr><td>✅</td><td>RLS still isolates — a second Google user cannot see the first's rows.</td></tr>
+          <tr><td>✅</td><td><code class="inline">AUTH_MODE=dev</code> still works (offline default unchanged).</td></tr>
+          <tr><td>✅</td><td>Invalid / expired / wrong-audience tokens are rejected with 401.</td></tr>
+          <tr><td>✅</td><td><code class="inline">make smoke</code> + journey evals green.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- HUMAN IN THE LOOP -->
+  <section class="mb-9">
+    <h2 class="text-xl font-bold mb-2">Where I need you (human-in-the-loop)</h2>
+    <p class="text-base-content/70 text-sm mb-3 max-w-3xl">Small for this ticket — just the Google side. No secrets are needed to <em>verify</em> a Google token (JWKS is public), so there's no client secret to handle.</p>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm text-sm">
+        <thead><tr class="text-xs uppercase"><th>What you provide</th><th>Where</th><th>Type</th></tr></thead>
+        <tbody>
+          <tr><td class="font-medium">Create the Google Cloud project + <strong>OAuth 2.0 Client ID (Web)</strong></td><td>Google Cloud Console → Credentials</td><td><span class="badge badge-sm badge-warning">config</span><br><span class="text-xs text-base-content/60">Client ID is public — safe to share</span></td></tr>
+          <tr><td class="font-medium">Configure the consent screen + who can sign in (test allowlist vs published)</td><td>Console → OAuth consent</td><td><span class="badge badge-sm badge-info">decision</span></td></tr>
+          <tr><td class="font-medium">Add <code class="inline">http://localhost:5230</code> as an authorized JS origin</td><td>Console → the OAuth client</td><td><span class="badge badge-sm badge-warning">config</span></td></tr>
+          <tr><td class="font-medium">Tell me which email(s) should be <strong>admin</strong></td><td>Here</td><td><span class="badge badge-sm badge-info">decision</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- RISKS -->
+  <section class="mb-6">
+    <h2 class="text-xl font-bold mb-3">Risks &amp; notes</h2>
+    <div class="grid gap-3 md:grid-cols-2">
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <h4 class="font-semibold text-sm">Consent screen: testing vs published</h4>
+        <p class="text-sm text-base-content/70">In "testing" mode only allowlisted Google accounts can sign in (fine for a demo). Publishing to all external users needs Google's verification. Decide who logs in.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <h4 class="font-semibold text-sm">Trust the <code class="inline">email_verified</code> claim</h4>
+        <p class="text-sm text-base-content/70">Provision on <code class="inline">sub</code> (immutable), not email; only treat email as trusted when <code class="inline">email_verified</code> is true. Prevents email-spoof edge cases.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <h4 class="font-semibold text-sm">Admin mapping differs from Entra</h4>
+        <p class="text-sm text-base-content/70">Entra used app-roles in the token; Google won't. Use a settings <code class="inline">admin_emails</code> allowlist (simple, env-configurable) instead.</p>
+      </div></div>
+      <div class="card card-border bg-base-100"><div class="card-body p-4">
+        <h4 class="font-semibold text-sm">Redirect URIs are per-environment</h4>
+        <p class="text-sm text-base-content/70">Localhost now; the cloud CloudFront URL is added in <strong>s12</strong> once it exists. Same client ID can carry multiple origins.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <footer class="mt-8 pt-5 border-t border-base-content/10 text-sm text-base-content/60">
+    <p><strong>Sequenced before</strong> <span class="badge badge-sm badge-soft">s12 · AWS deployment</span> — which reuses this auth code unchanged and only adds the cloud client ID + redirect URI. Annotate anything to adjust; give the go-ahead and I start on task 1.</p>
+  </footer>
+
+</main>
+</div>

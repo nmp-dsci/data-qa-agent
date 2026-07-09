@@ -50,6 +50,15 @@ def test_growth_rate_none_without_enough_history():
     assert skills.growth_rate(df, month_col="month", value_col="avg_price", years=3) is None
 
 
+def test_growth_rate_clamps_near_full_history():
+    # ~2.9y of data for years=3 (>=80% coverage): clamp to the full available
+    # span instead of None — the "all time" boundary case that crashed reports.
+    df = _linear_monthly(n=35)
+    g = skills.growth_rate(df, month_col="month", value_col="avg_price", years=3)
+    assert isinstance(g, float)
+    assert g > 0
+
+
 def test_growth_rate_grouped_returns_dict():
     df = _linear_monthly()
     df_a = df.assign(suburb="A")
@@ -283,6 +292,23 @@ def test_distribution_chart_is_histogram_spec() -> None:
     assert spec["encoding"]["color"]["field"] == "type"
 
 
+def test_build_insights_shapes_a_mergeable_patch():
+    # Pass 2 (s10): build_insights returns an insights_patch the run_analysis
+    # tool merges into the pass-1 report — anchored element_ids, never a report.
+    patch = skills.build_insights(
+        insights=[
+            skills.make_insight("3-bed units drove the rise", "+7.3% YoY", query_refs=["Q1"]),
+            {"heading": "plain dict works too", "body": "…"},
+        ],
+        profiles=[{"heading": "mix", "body": "…"}],
+    )
+    assert patch["element_id"] == "insights_patch"
+    assert [i["element_id"] for i in patch["insights"]] == ["insight:0", "insight:1"]
+    assert patch["insights"][0]["query_refs"] == ["Q1"]
+    assert patch["profiles"][0]["element_id"] == "profile:0"
+    assert "build_insights" in skills.used()
+
+
 def test_skill_calls_are_recorded():
     df = _linear_monthly()
     skills.growth_rate(df, month_col="month", value_col="avg_price", years=3)
@@ -295,3 +321,13 @@ def test_skill_calls_are_recorded():
 def test_skill_gap_recorded():
     skills.skill_gap("seasonality_adjust", "no skill for it")
     assert skills.gaps() == [{"need": "seasonality_adjust", "why": "no skill for it"}]
+
+
+def test_lookup_values_sql_alternation():
+    # `a|b` resolves several values in one call — each alternative escaped + OR-ed.
+    from agent.agent_common import _lookup_values_sql
+
+    sql = _lookup_values_sql("marts.property_sales", "suburb", "Normanhurst|Hornsby")
+    assert sql is not None
+    assert "ILIKE '%Normanhurst%'" in sql
+    assert "OR" in sql and "ILIKE '%Hornsby%'" in sql

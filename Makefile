@@ -1,4 +1,4 @@
-.PHONY: help up down reset logs ps samples migrate pipeline pipeline-full pipeline-docs smoke
+.PHONY: help up down reset logs ps samples migrate pipeline pipeline-full pipeline-docs smoke e2e e2e-chat
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
@@ -47,3 +47,11 @@ ps:
 
 smoke:
 	python3 scripts/smoke_test.py
+
+# Playwright E2E against a running stack: Template Studio + playground matrix.
+e2e:
+	cd frontend && npm run e2e:studio
+
+# The slow live-LLM chat answer E2E (agent answers a real question).
+e2e-chat:
+	cd frontend && npm run e2e:chat

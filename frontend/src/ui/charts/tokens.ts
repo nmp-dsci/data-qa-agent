@@ -1,0 +1,44 @@
+// Chart tokens — every visx chart reads its colors from the design tokens in
+// styles.css, so charts follow the active theme (dark/light) automatically.
+
+export function cssVar(name: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+/** The categorical palette (--chart-1..5), in series order. */
+export function chartPalette(): string[] {
+  return [
+    cssVar("--chart-1", "#b48a3f"),
+    cssVar("--chart-2", "#6ea8fe"),
+    cssVar("--chart-3", "#9ece6a"),
+    cssVar("--chart-4", "#c58fff"),
+    cssVar("--chart-5", "#e0af68"),
+  ];
+}
+
+export function chartTheme() {
+  return {
+    grid: cssVar("--chart-grid", "#20242e"),
+    axis: cssVar("--chart-axis", "#2a2f3a"),
+    label: cssVar("--chart-label", "#9aa3b2"),
+    text: cssVar("--text", "#e7e9ee"),
+    good: cssVar("--good", "#9ece6a"),
+    bad: cssVar("--bad", "#f2777a"),
+  };
+}
+
+export function formatValue(v: number, field: string): string {
+  const currency = /price|value|rent|cost|amount|\$/i.test(field);
+  const abs = Math.abs(v);
+  const compact =
+    abs >= 1_000_000
+      ? `${(v / 1_000_000).toFixed(1)}M`
+      : abs >= 10_000
+        ? `${Math.round(v / 1000)}k`
+        : abs >= 1000
+          ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
+          : `${Math.round(v * 100) / 100}`;
+  return currency ? `$${compact}` : compact;
+}

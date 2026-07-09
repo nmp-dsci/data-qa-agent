@@ -1,16 +1,66 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from ..agent_client import fetch_agent_config
 from ..auth import CurrentUser, require_admin
 from ..config import settings
+from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["admin"])
 log = logging.getLogger(__name__)
+
+
+class AgentConfigEntry(BaseModel):
+    """One published composition building block (template or chart)."""
+
+    kind: str  # template | chart
+    name: str
+    title: str
+    description: str
+    spec: dict[str, Any]
+    demo: dict[str, Any]
+
+
+class AgentConfigResponse(BaseModel):
+    templates: list[AgentConfigEntry]
+    charts: list[AgentConfigEntry]
+
+
+@router.get("/admin/agent-config", response_model=AgentConfigResponse)
+async def admin_agent_config(
+    admin: CurrentUser = Depends(require_admin),
+) -> AgentConfigResponse:
+    """The published composition registry: page layouts + charts the agent can use.
+
+    Backed by app.agent_config (migration 0014), demo-seeded from the Hornsby
+    worked example so admins can see what the agent composes with at a glance.
+    """
+    async with rls_connection(admin.id) as conn:
+        rows = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT kind, name, title, description, spec, demo "
+                        "FROM app.agent_config ORDER BY kind, sort, name"
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+    entries = [
+        AgentConfigEntry.model_validate({k: jsonable(v) for k, v in r.items()}) for r in rows
+    ]
+    return AgentConfigResponse(
+        templates=[e for e in entries if e.kind == "template"],
+        charts=[e for e in entries if e.kind == "chart"],
+    )
 
 
 class ConfigItem(BaseModel):

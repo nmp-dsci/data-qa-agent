@@ -111,15 +111,22 @@ def growth_rate(
 
     Compares the 6-month-smoothed value at the latest month against the smoothed
     value ``years*12`` months earlier. A 6-month base stabilises the noisy
-    monthly buckets while staying responsive. Returns None when there isn't
-    enough history or the base is zero.
+    monthly buckets while staying responsive.
+
+    When the series *nearly* covers the asked window (≥80% — e.g. 14.9y of data
+    for years=15, the "all time" boundary case), the window clamps to the full
+    available span instead of failing: a whole-report crash on a boundary miss
+    costs far more than the 0-20% window shortfall. Returns None when the
+    history falls genuinely short (<80%) or the base value is zero.
     """
     end = latest_reliable_index(series, min_count)
     if end is None:
         return None
     start = end - years * 12
     if start < 0:
-        return None
+        if end < years * 12 * 0.8:
+            return None
+        start = 0
     smoothed = rolling_average(series, base_window)
     start_val, end_val = smoothed[start], smoothed[end]
     if start_val is None or start_val == 0 or end_val is None:

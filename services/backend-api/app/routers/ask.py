@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import json
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..agent_client import ask_agent
+from ..agent_client import ask_agent, ask_agent_stream
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
-from ..db import rls_connection
+from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["ask"])
 
@@ -45,6 +48,10 @@ class AskResponse(BaseModel):
     steps: list[dict[str, Any]] = []
     # Structured InsightReport (K2) — present on the LLM path; None for the stub.
     report: dict[str, Any] | None = None
+    # Pages contract (s07): Summary → Insights pages of governed objects the
+    # frontend's template registry renders with visx. Also embedded in the
+    # stored report (messages.report.pages) so history reopen restores them.
+    pages: list[dict[str, Any]] | None = None
 
 
 async def _log_event(conn: Any, user_id: str, event_type: str, payload: dict | None = None) -> None:
@@ -58,24 +65,103 @@ async def _log_event(conn: Any, user_id: str, event_type: str, payload: dict | N
 
 
 def _json(obj: Any) -> str:
-    import json
-
     return json.dumps(obj)
 
 
-@router.post("/ask", response_model=AskResponse)
-async def ask(
-    body: AskRequest,
+@router.get("/conversations")
+async def list_conversations(
     user: CurrentUser = Depends(get_current_user),
-    channel: str = Depends(get_channel),
-) -> AskResponse:
-    question = body.question.strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="Question must not be empty")
+) -> list[dict[str, Any]]:
+    """The current user's conversations for the Chat history sidebar.
 
-    # tx1: ensure conversation, record the user's message, mark agent as started.
+    RLS already scopes rows; the explicit user_id filter keeps an admin's
+    sidebar to their own threads even where admin read policies are broader.
+    """
     async with rls_connection(user.id) as conn:
-        conversation_id = body.conversation_id
+        rows = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT c.id, c.title, c.created_at, "
+                        "  coalesce(max(m.created_at), c.created_at) AS last_at, "
+                        "  count(m.id) AS message_count "
+                        "FROM app.conversations c "
+                        "LEFT JOIN app.messages m ON m.conversation_id = c.id "
+                        "WHERE c.user_id = current_setting('app.current_user_id', true)::uuid "
+                        "GROUP BY c.id, c.title, c.created_at "
+                        "ORDER BY coalesce(max(m.created_at), c.created_at) DESC "
+                        "LIMIT 100"
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return [{k: jsonable(v) for k, v in r.items()} for r in rows]
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def conversation_messages(
+    conversation_id: str,
+    user: CurrentUser = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """A conversation's messages for reopen.
+
+    Each assistant message is joined to its latest app.query_runs row so the
+    reopened thread can restore the same result meta an in-session answer shows:
+    engine/token/latency and — for admins — the step-by-step agent trace (the
+    trace is persisted per run, not in messages.report, so it must be joined
+    back here). The trace is gated to admins, matching /ask.
+    """
+    async with rls_connection(user.id) as conn:
+        rows = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT m.id, m.role, m.content, m.sql_generated, m.report, "
+                        "  m.created_at, qr.id AS run_id, qr.engine, qr.input_tokens, "
+                        "  qr.output_tokens, qr.latency_ms, qr.trace "
+                        "FROM app.messages m "
+                        "JOIN app.conversations c ON c.id = m.conversation_id "
+                        "LEFT JOIN LATERAL ("
+                        "  SELECT id, engine, input_tokens, output_tokens, latency_ms, trace "
+                        "  FROM app.query_runs qr WHERE qr.message_id = m.id "
+                        "  ORDER BY qr.created_at DESC LIMIT 1"
+                        ") qr ON true "
+                        "WHERE m.conversation_id = :cid "
+                        "  AND c.user_id = current_setting('app.current_user_id', true)::uuid "
+                        "ORDER BY m.created_at ASC"
+                    ),
+                    {"cid": conversation_id},
+                )
+            )
+            .mappings()
+            .all()
+        )
+    is_admin = user.role == "admin"
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        d = {k: jsonable(v) for k, v in r.items()}
+        # Only admins get the step-by-step trace, mirroring /ask.
+        d["steps"] = d.pop("trace") or [] if is_admin else []
+        out.append(d)
+    return out
+
+
+async def _open_conversation(
+    user: CurrentUser, conversation_id: str | None, question: str
+) -> tuple[str, str]:
+    """tx1: ensure the conversation, record the user's message, mark agent started.
+
+    Also returns the user's current app plan (free|plus|pro) — read fresh per
+    question inside the same transaction, so a plan change applies to the very
+    next answer without a re-login. The data-agent's page_plan(plan) gates how
+    many answer pages this user gets (s10).
+    """
+    async with rls_connection(user.id) as conn:
+        plan = (
+            await conn.execute(text("SELECT plan FROM app.users WHERE id = :uid"), {"uid": user.id})
+        ).scalar() or "free"
         if conversation_id is None:
             conversation_id = str(
                 (
@@ -97,29 +183,20 @@ async def ask(
             {"cid": conversation_id, "uid": user.id, "content": question},
         )
         await _log_event(conn, user.id, "agent_started", {"question": question})
+    return conversation_id, str(plan)
 
-    # Delegate to the agent (its own connection enforces the same RLS).
-    started = time.perf_counter()
-    try:
-        result = await ask_agent(
-            question=question, user_id=user.id, role=user.role, dataset_slug=DATASET_SLUG
-        )
-    except httpx.HTTPError as exc:  # noqa: BLE001
-        async with rls_connection(user.id) as conn:
-            await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
-        raise HTTPException(status_code=502, detail=f"Agent unavailable: {exc}") from exc
-    latency_ms = int((time.perf_counter() - started) * 1000)
 
-    answer = result.get("answer", "")
-    sql = result.get("sql")
+async def _persist_answer(
+    user: CurrentUser,
+    channel: str,
+    conversation_id: str,
+    question: str,
+    result: dict[str, Any],
+    latency_ms: int,
+) -> tuple[str, str]:
+    """tx2: record the assistant's answer + audit run; return (message_id, run_id)."""
     engine = result.get("engine", "stub")
-    row_count = int(result.get("row_count", 0))
-    input_tokens = result.get("input_tokens")
-    output_tokens = result.get("output_tokens")
-    steps = result.get("steps") or []
     report = result.get("report")
-
-    # tx2: record the assistant's answer and mark agent as finished.
     async with rls_connection(user.id) as conn:
         message_id = str(
             (
@@ -134,8 +211,8 @@ async def ask(
                     {
                         "cid": conversation_id,
                         "uid": user.id,
-                        "content": answer,
-                        "sql": sql,
+                        "content": result.get("answer", ""),
+                        "sql": result.get("sql"),
                         "lat": latency_ms,
                         "report": _json(report) if report is not None else None,
                     },
@@ -161,13 +238,13 @@ async def ask(
                         "uid": user.id,
                         "slug": DATASET_SLUG,
                         "question": question,
-                        "sql": sql,
+                        "sql": result.get("sql"),
                         "engine": engine,
-                        "row_count": row_count,
+                        "row_count": int(result.get("row_count", 0)),
                         "lat": latency_ms,
-                        "in_tok": input_tokens,
-                        "out_tok": output_tokens,
-                        "trace": _json(steps),
+                        "in_tok": result.get("input_tokens"),
+                        "out_tok": result.get("output_tokens"),
+                        "trace": _json(result.get("steps") or []),
                         "channel": channel,
                     },
                 )
@@ -176,22 +253,148 @@ async def ask(
         await _log_event(
             conn, user.id, "agent_answered", {"latency_ms": latency_ms, "engine": engine}
         )
+    return message_id, run_id
 
+
+def _build_response(
+    conversation_id: str,
+    message_id: str,
+    run_id: str,
+    result: dict[str, Any],
+    latency_ms: int,
+    is_admin: bool,
+) -> AskResponse:
     return AskResponse(
         conversation_id=conversation_id,
         message_id=message_id,
         run_id=run_id,
-        answer=answer,
-        sql=sql,
+        answer=result.get("answer", ""),
+        sql=result.get("sql"),
         columns=result.get("columns", []),
         rows=result.get("rows", []),
-        row_count=row_count,
+        row_count=int(result.get("row_count", 0)),
         chart=result.get("chart"),
-        engine=engine,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
+        engine=result.get("engine", "stub"),
+        input_tokens=result.get("input_tokens"),
+        output_tokens=result.get("output_tokens"),
         latency_ms=latency_ms,
         # Only admins get the step-by-step trace in chat; it's still persisted for all runs.
-        steps=steps if user.role == "admin" else [],
-        report=report,
+        steps=(result.get("steps") or []) if is_admin else [],
+        report=result.get("report"),
+        pages=result.get("pages"),
+    )
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask(
+    body: AskRequest,
+    user: CurrentUser = Depends(get_current_user),
+    channel: str = Depends(get_channel),
+) -> AskResponse:
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question must not be empty")
+
+    conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
+    # Delegate to the agent (its own connection enforces the same RLS).
+    started = time.perf_counter()
+    try:
+        result = await ask_agent(
+            question=question,
+            user_id=user.id,
+            role=user.role,
+            plan=plan,
+            dataset_slug=DATASET_SLUG,
+        )
+    except httpx.HTTPError as exc:  # noqa: BLE001
+        async with rls_connection(user.id) as conn:
+            await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
+        raise HTTPException(status_code=502, detail=f"Agent unavailable: {exc}") from exc
+    latency_ms = int((time.perf_counter() - started) * 1000)
+
+    message_id, run_id = await _persist_answer(
+        user, channel, conversation_id, question, result, latency_ms
+    )
+    return _build_response(
+        conversation_id, message_id, run_id, result, latency_ms, user.role == "admin"
+    )
+
+
+def _sse(event: str, data: dict[str, Any] | str) -> str:
+    payload = data if isinstance(data, str) else json.dumps(data)
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+@router.post("/ask/stream")
+async def ask_stream(
+    body: AskRequest,
+    user: CurrentUser = Depends(get_current_user),
+    channel: str = Depends(get_channel),
+) -> StreamingResponse:
+    """SSE variant of /ask: relays the agent's live step events (``progress``
+    frames) as it works, then persists the answer and emits one ``result`` frame.
+    Same auth, persistence and payload as /ask — the frontend shows a running
+    step list instead of a silent spinner. ``status`` frames are heartbeats.
+    """
+
+    async def gen() -> AsyncIterator[str]:
+        question = body.question.strip()
+        if not question:
+            yield _sse("error", {"detail": "Question must not be empty", "status": 400})
+            return
+        conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
+        started = time.perf_counter()
+        yield _sse("status", {"state": "started"})
+
+        result: dict[str, Any] | None = None
+        try:
+            async for ev in ask_agent_stream(
+                question=question,
+                user_id=user.id,
+                role=user.role,
+                plan=plan,
+                dataset_slug=DATASET_SLUG,
+            ):
+                name = ev["event"]
+                if name == "progress":
+                    yield _sse("progress", ev["data"])
+                elif name in ("plan", "page"):
+                    # s10 streaming pages: relay the page plan + each finished
+                    # page (Template Studio Page JSON) verbatim to the client.
+                    yield _sse(name, ev["data"])
+                elif name == "status":
+                    yield _sse(
+                        "status",
+                        {"state": "working", "elapsed_s": int(time.perf_counter() - started)},
+                    )
+                elif name == "result":
+                    result = ev["data"]
+                elif name == "error":
+                    async with rls_connection(user.id) as conn:
+                        await _log_event(conn, user.id, "agent_error", ev["data"])
+                    yield _sse("error", ev["data"])
+                    return
+        except httpx.HTTPError as exc:  # noqa: BLE001
+            async with rls_connection(user.id) as conn:
+                await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
+            yield _sse("error", {"detail": f"Agent unavailable: {exc}"})
+            return
+
+        if result is None:
+            yield _sse("error", {"detail": "Agent stream ended without a result"})
+            return
+
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        message_id, run_id = await _persist_answer(
+            user, channel, conversation_id, question, result, latency_ms
+        )
+        response = _build_response(
+            conversation_id, message_id, run_id, result, latency_ms, user.role == "admin"
+        )
+        yield _sse("result", response.model_dump_json())
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

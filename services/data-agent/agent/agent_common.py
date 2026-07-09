@@ -157,10 +157,15 @@ def _lookup_values_sql(table: str, column: str, pattern: str) -> str | None:
     cols = _catalog_columns().get(table)
     if cols is None or column not in cols:
         return None
-    needle = pattern.replace("'", "''")
-    if "%" not in needle and "_" not in needle:
-        needle = f"%{needle}%"
-    return (
-        f"SELECT DISTINCT {column} FROM {table} "
-        f"WHERE {column} ILIKE '{needle}' ORDER BY {column} LIMIT 50"
-    )
+
+    def _ilike(raw: str) -> str:
+        needle = raw.strip().replace("'", "''")
+        if "%" not in needle and "_" not in needle:
+            needle = f"%{needle}%"
+        return f"{column} ILIKE '{needle}'"
+
+    # `a|b` resolves several values in ONE call (models naturally write it) —
+    # each alternative is escaped separately and OR-ed.
+    alternatives = [p for p in pattern.split("|") if p.strip()] or [pattern]
+    where = " OR ".join(_ilike(p) for p in alternatives)
+    return f"SELECT DISTINCT {column} FROM {table} WHERE {where} ORDER BY {column} LIMIT 50"

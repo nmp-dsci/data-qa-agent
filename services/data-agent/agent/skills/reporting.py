@@ -66,6 +66,46 @@ def _headline(tile: dict[str, Any], i: int) -> dict[str, Any]:
 
 
 @skill
+def build_insights(
+    *,
+    insights: list[dict[str, Any]],
+    profiles: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Pass-2 patch: insight cards (and optional profiles) that EXPLAIN the
+    Page-1 numbers — slice the same frame by its attribute columns
+    (driver_analysis + comparison_chart), never re-extract.
+
+    Assign to ``result`` in the second run_analysis pass; it merges into the
+    report already built by ``build_report`` (pass 1) — it never replaces it.
+    """
+    insight_cards = [
+        {
+            "element_id": f"insight:{i}",
+            "heading": ins.get("heading", ""),
+            "body": ins.get("body", ""),
+            "query_refs": ins.get("query_refs", []),
+            "chart": ins.get("chart"),
+        }
+        for i, ins in enumerate(insights or [])
+    ]
+    profile_cards = [
+        {
+            "element_id": f"profile:{i}",
+            "heading": p.get("heading", ""),
+            "body": p.get("body", ""),
+            "query_refs": p.get("query_refs", []),
+            "chart": p.get("chart"),
+        }
+        for i, p in enumerate(profiles or [])
+    ]
+    return {
+        "element_id": "insights_patch",
+        "insights": insight_cards,
+        "profiles": profile_cards,
+    }
+
+
+@skill
 def build_report(
     *,
     summary: str,

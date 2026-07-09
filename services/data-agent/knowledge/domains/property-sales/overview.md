@@ -10,7 +10,9 @@ applies_to: [sales, "sale price", house price, "sold", nsw_sales, property_sales
 One row per **postcode + suburb + property_type + area_band + zoning + month**.
 No precomputed growth.
 - `postcode` (text) — join key to rent (with property_type, month)
-- `suburb` (text) — real dimension; filter for one locality (UPPERCASE values)
+- `suburb` (text) — real dimension; filter for one locality. Values are Title
+  Case (e.g. 'Hornsby', 'Anabranch South') — resolve exact spellings with ONE
+  lookup_values call (`pattern="A|B"` resolves several at once)
 - `property_type` (text) — 'house' or 'unit'; no synthetic 'ALL' rows —
   [[domains/property-sales/property-types]]
 - `area_band` (text) — cleaned lot-size band; part of the grain

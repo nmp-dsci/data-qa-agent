@@ -1,0 +1,930 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Streaming Pages — plan</title>
+
+<script type="module">
+  import mermaid from "https://esm.sh/mermaid@11?bundle";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    themeVariables: {
+      background: "#171a21",
+      primaryColor: "#1e222b",
+      primaryTextColor: "#e7e9ee",
+      primaryBorderColor: "#363d4a",
+      lineColor: "#6b7688",
+      actorBkg: "#1e222b",
+      actorBorder: "#363d4a",
+      actorTextColor: "#e7e9ee",
+      signalColor: "#9aa3b2",
+      signalTextColor: "#c9cfda",
+      labelBoxBkgColor: "#232833",
+      labelBoxBorderColor: "#363d4a",
+      labelTextColor: "#e7e9ee",
+      noteBkgColor: "#2a2415",
+      noteBorderColor: "#6b5a2a",
+      noteTextColor: "#f0c674",
+      fontSize: "13px",
+      fontFamily: "ui-sans-serif, system-ui, sans-serif",
+    },
+  });
+</script>
+
+<script type="module">
+  // Code surfaces use @pierre/diffs per the code playbook.
+  import { File, FileDiff } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const theme = { light: "github-light", dark: "github-dark" };
+  const options = { theme, themeType: "dark", overflow: "wrap" };
+
+  const sseContract = {
+    name: "SSE wire contract  ·  /ask/stream (frames added in bold-new events; result unchanged)",
+    contents: `event: status            ← unchanged heartbeat
+data: {"state":"working","elapsed_s":4}
+
+event: progress          ← unchanged running step list
+data: {"n":3,"action":"Querying data","detail":"monthly price trend"}
+
+event: plan              ← NEW · once, early: how many pages this answer will complete,
+data: {"pages":[         plus locked teasers for pages above the asking user's plan
+  {"index":1,"kind":"summary","template":"summary","status":"building"},
+  {"index":2,"kind":"insights","template":"insights","status":"planned"},
+  {"index":3,"kind":"opportunities","status":"locked"}
+]}
+
+event: page              ← NEW · one frame per finished page, in order
+data: {"index":1,"status":"complete","page":{
+  "template":"summary",
+  "columns":[
+    [{"type":"kpi","element_id":"headline:0","role":"headline",
+      "data":{"label":"Hornsby","value":"$1,412,000","basis":"6-mo rolling, 2026-05"}},
+     {"type":"text","element_id":"report:summary","role":"note",
+      "data":{"text":"Prices grew 31.8% over five years…"}}],
+    [{"type":"trend","element_id":"report:chart","role":"chart",
+      "data":{"intent":"line","x":"month","y":"value","series":"series",
+              "height":"fill","rows":[/* … */]}}]
+  ]}}
+
+event: page              ← a planned page that ends up empty is skipped explicitly
+data: {"index":2,"status":"skipped","reason":"no insights produced"}
+
+event: result            ← unchanged: full AskResponse. result.pages is authoritative;
+data: {…}                  the frontend reconciles (streamed pages == result.pages).`,
+  };
+
+  const composeOld = {
+    name: "agent/pages.py  ·  today — single-shot composer",
+    contents: `def compose_pages(report, *, question=""):
+    """Derive validated pages from an InsightReport.
+
+    One shot, end of run: builds the summary page
+    AND the insights page from the finished report,
+    returns (pages, trace_steps)."""
+    steps = []
+    pages = _compose(report, steps)   # both pages at once
+    validated = PagesEnvelope(pages=pages)
+    return [p.model_dump(exclude_none=True)
+            for p in validated.pages], steps
+
+
+def _compose(report, steps):
+    # --- Page 1 · Summary ---
+    # headlines → kpi tiles, summary → text,
+    # main_chart → trend (height: fill)
+    ...
+    # --- Page 2 · Insights ---
+    # insight cards + first breakdown chart
+    ...
+    return pages`,
+  };
+  const composeNew = {
+    name: "agent/pages.py  ·  target — per-page composers + a page plan",
+    contents: `PAGE_KINDS = ("summary", "insights", "opportunities")
+
+def page_plan(*, plan: str) -> list[dict]:
+    """Deterministic: how many pages this answer will
+    complete for THIS user. summary always; insights /
+    opportunities gated by the asking user's plan
+    (free|plus|pro from app.users); pages above the
+    plan appear as status:"locked" teaser entries."""
+    ...
+
+def compose_summary_page(report, steps) -> Page | None:
+    """Page 1 only — needs summary + headlines +
+    main_chart. Callable the moment those exist."""
+    ...
+
+def compose_insights_page(report, steps) -> Page | None:
+    """Page 2 only — insight cards + breakdown chart."""
+    ...
+
+def compose_pages(report, *, question=""):
+    """Kept: concat of the per-page composers, so the
+    stub path, persistence and every existing test
+    keep the exact same output."""
+    ...`,
+  };
+
+  new File(options).render({
+    containerWrapper: document.querySelector("#code-sse"),
+    file: sseContract,
+  });
+  new FileDiff({ ...options, diffStyle: "split" }).render({
+    containerWrapper: document.querySelector("#code-compose-diff"),
+    oldFile: composeOld,
+    newFile: composeNew,
+  });
+
+  const emitFile = {
+    name: "agent/sandbox_agent.py  ·  emit pages the moment their inputs exist (M1 → M2)",
+    contents: `# _SbDeps gains a page channel next to emit():
+def emit_frame(self, event: str, payload: dict) -> None:
+    """plan/page frames ride the SAME progress queue the
+    streaming endpoint already drains — items carry an
+    'event' discriminator so main.py can route them to
+    their own SSE event name instead of 'progress'."""
+    if self.progress is not None:
+        self.progress.put_nowait({"event": event, **payload})
+
+# answer_with_sandbox(), right after choose_provider():
+# UserCtx now carries the user's plan (free|plus|pro) from app.users,
+# passed through backend-api -> AskRequest.user.plan.
+deps.emit_frame("plan", {"pages": page_plan(plan=deps.user_plan)})
+
+# run_analysis tool, the moment a pass succeeds:
+if result.report is not None and ctx.deps.report is None:
+    ctx.deps.report = result.report
+    page, steps = compose_summary_page(ctx.deps.report)   # M1: also emit
+    if page: ctx.deps.emit_frame("page", {"index": 1,     # insights here;
+        "status": "complete", "page": page})              # M2: pass 2 owns it
+
+# M2 · pass 2 — a new merge branch in the same tool. Pass 2 slices the
+# SAME deps.frames (they persist across run_analysis calls): one wide
+# extract up front, zero SQL between pages.
+elif result.insights_patch is not None:                   # skills.build_insights(...)
+    ctx.deps.report.update(insights=..., profiles=...)
+    page, steps = compose_insights_page(ctx.deps.report)
+    ctx.deps.emit_frame("page", {"index": 2, "status": "complete", "page": page}
+                        if page else {"index": 2, "status": "skipped"})`,
+  };
+  new File(options).render({
+    containerWrapper: document.querySelector("#code-emit"),
+    file: emitFile,
+  });
+
+  const feFile = {
+    name: "frontend/src/lib/api.ts + ChatPage.tsx  ·  streamed pages render through the SAME PageLayout",
+    contents: `// api.ts — two new frame handlers on askStream (fallback to ask() unchanged)
+export interface PagePlanSlot { index: number; kind: string; template: TemplateId;
+                                status: "planned" | "building" | "complete" | "skipped" | "locked"; }
+export interface PageFrame    { index: number; status: string; page?: Page; reason?: string; }
+
+askStream(question, conversationId, onStatus, onProgress,
+          onPlan?: (p: PagePlanSlot[]) => void,
+          onPage?: (f: PageFrame) => void): Promise<AskResult>
+
+// ChatPage.tsx — WorkingBubble grows into a StreamingAnswer:
+//  · plan frame  → Page 1 renders IMMEDIATELY as template-shaped ghost objects
+//                  (blacked-out kpi / note / chart placeholders derived from the
+//                  registry's template definition — summary ⇒ kpi + note + chart)
+//  · page frame  → the ghosts fill in via <PageLayout page={f.page} …/>
+//                  (the exact component Template Studio + PagesView use,
+//                  so a streamed page can never render differently)
+//  · progressive disclosure → the Page N+1 ghost slot appears only AFTER
+//                  page N's frame lands, so more insights visibly "arrive";
+//                  status:"locked" plan entries render as 🔒 paywall teasers
+//  · result      → swap to <ResultView/>; identical pages ⇒ no visual jump.
+// Feedback stays disabled until result (no message_id exists before it).`,
+  };
+  new File(options).render({
+    containerWrapper: document.querySelector("#code-fe"),
+    file: feFile,
+  });
+</script>
+
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --panel-3: #232833;
+    --border: #2a2f3a;
+    --border-2: #363d4a;
+    --text: #e7e9ee;
+    --muted: #9aa3b2;
+    --accent: #b48a3f;
+    --accent-soft: #f0c674;
+    --blue: #6ea8fe;
+    --green: #9ece6a;
+    --red: #f2777a;
+    --amber: #e0af68;
+    --purple: #a882e8;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; min-width: 0; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5; font-size: 15px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 22px 120px; }
+
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent-soft);
+       margin: 0 0 14px; font-weight: 700; }
+  h3 { font-size: 17px; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--panel-3);
+         padding: 1px 5px; border-radius: 4px; color: var(--accent-soft); }
+  .lead { color: var(--muted); font-size: 16px; max-width: 78ch; }
+  .muted { color: var(--muted); }
+
+  section { margin: 40px 0; }
+  .divider { height: 1px; background: var(--border); margin: 6px 0 0; }
+  .kicker { display: inline-block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid var(--border-2); border-radius: 999px; padding: 3px 11px; margin-bottom: 16px; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .card + .card { margin-top: 12px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 780px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+  .callout { border-left: 3px solid var(--accent); background: var(--panel-2); border-radius: 0 10px 10px 0;
+    padding: 14px 18px; margin: 0 0 12px; }
+  .callout.warn { border-color: var(--red); }
+  .callout.good { border-color: var(--green); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel-2); color: var(--muted); font-weight: 600; font-size: 11.5px;
+       text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.file { font-family: var(--mono); font-size: 12px; color: var(--blue); white-space: nowrap; }
+
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+    border: 1px solid var(--border-2); white-space: nowrap; }
+  .pill.feat { color: var(--green); border-color: #33502f; background: #1c2a1a; }
+  .pill.refactor { color: var(--amber); border-color: #6b5a2a; background: #2a2415; }
+  .pill.test { color: var(--blue); border-color: #2a4a6b; background: #172230; }
+  .pill.pro { color: var(--purple); border-color: #4a3a6b; background: #221a30; }
+
+  .phase { display: grid; grid-template-columns: 44px 1fr; gap: 14px; margin: 0 0 10px; }
+  .phase .num { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center;
+    font-weight: 700; font-size: 16px; background: var(--panel-3); border: 1px solid var(--border-2); color: var(--accent-soft); }
+  .phase-body { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; }
+  .phase-body h3 { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .phase-body ul { margin: 8px 0 0; padding-left: 18px; }
+  .phase-body li { margin: 4px 0; }
+  .tag-est { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px;
+    overflow-x: auto; }
+
+  #code-sse, #code-compose-diff, #code-emit, #code-fe {
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .code-cap { font-size: 12.5px; color: var(--muted); margin: 14px 0 8px; }
+
+  /* ---------- product mock: streaming chat ---------- */
+  .mock { border: 1px solid var(--border-2); border-radius: 14px; overflow: hidden; background: var(--bg);
+    box-shadow: 0 18px 50px rgba(0,0,0,.4); }
+  .mock-top { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border);
+    background: var(--panel); }
+  .mock-top .brand { font-weight: 800; letter-spacing: -0.01em; }
+  .mock-top .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid #6b5a2a;
+    color: var(--accent-soft); background: #2a2415; font-weight: 600; }
+  .mock-body { padding: 16px; }
+  .bubble-user { background: var(--panel-3); border: 1px solid var(--border-2); border-radius: 12px 12px 4px 12px;
+    padding: 10px 14px; max-width: 70%; margin: 0 0 14px auto; font-size: 14px; }
+  .bubble-agent { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; }
+  .working-line { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  .spin { width: 12px; height: 12px; border: 2px solid var(--border-2); border-top-color: var(--accent-soft);
+    border-radius: 50%; animation: rot 1s linear infinite; flex: none; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .wsteps { margin: 0 0 14px; padding: 0; list-style: none; font-size: 12.5px; color: var(--muted); }
+  .wsteps li { display: flex; gap: 8px; padding: 2px 0; }
+  .wsteps .n { color: var(--accent-soft); font-family: var(--mono); font-size: 11px; width: 14px; flex: none; }
+
+  .page-sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--accent-soft);
+    font-weight: 700; margin: 14px 0 8px; display: flex; align-items: center; gap: 8px; }
+  .page-status { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-2);
+    text-transform: none; letter-spacing: 0; }
+  .page-status.done { color: var(--green); border-color: #33502f; background: #1c2a1a; }
+  .page-status.working { color: var(--amber); border-color: #6b5a2a; background: #2a2415; }
+  .page-status.locked { color: var(--purple); border-color: #4a3a6b; background: #221a30; }
+
+  .pgrid { display: grid; grid-template-columns: minmax(0,.9fr) minmax(0,1.1fr); gap: 10px; }
+  @media (max-width: 640px) { .pgrid { grid-template-columns: 1fr; } }
+  .pcol { display: flex; flex-direction: column; gap: 10px; }
+  .obj { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .kpi-value { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .kpi-basis { font-size: 11.5px; color: var(--muted); }
+  .note-text { font-size: 13px; color: var(--text); }
+  .chart-box { flex: 1; display: flex; flex-direction: column; }
+  .chart-title { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  .chart-svg { width: 100%; height: auto; display: block; }
+
+  /* ghost placeholders — blacked-out object shapes that fill in when the page frame lands */
+  .ghost { background: #10131a; border: 1px dashed #2a3040; border-radius: 10px; padding: 12px;
+    display: flex; flex-direction: column; gap: 8px; animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
+  .gbar { height: 10px; border-radius: 5px; background: #232937; }
+  .gbar.w40 { width: 40%; } .gbar.w60 { width: 60%; } .gbar.w80 { width: 80%; }
+  .gbar.big { height: 22px; width: 65%; }
+  .gchart { height: 120px; border-left: 1px solid #232937; border-bottom: 1px solid #232937;
+    margin: 4px 2px 2px; position: relative; overflow: hidden; }
+  .gchart svg { width: 100%; height: 100%; display: block; }
+  .ghost-cap { font-size: 10.5px; color: #4d5568; text-transform: uppercase; letter-spacing: .06em; }
+  .skel.tall { min-height: 140px; }
+
+  .locked-card { border: 1px dashed var(--border-2); border-radius: 10px; padding: 12px 14px; color: var(--muted);
+    font-size: 13px; display: flex; gap: 10px; align-items: center; background: rgba(168,130,232,.04); }
+
+  /* admin trace mock */
+  .meta-row { display: flex; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted);
+    margin-bottom: 10px; flex-wrap: wrap; }
+  .badge-engine { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid #2a4a6b;
+    background: #172230; color: var(--blue); font-weight: 600; }
+  .linkish { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; cursor: default; }
+  details.cj { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 0; }
+  details.cj summary { cursor: pointer; padding: 10px 14px; font-size: 13px; color: var(--accent-soft);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  details.cj .chip { font-size: 11px; border: 1px solid var(--border-2); background: var(--panel-3);
+    border-radius: 6px; padding: 2px 8px; color: var(--muted); }
+  details.cj pre { margin: 0; padding: 12px 14px; border-top: 1px solid var(--border); overflow-x: auto;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: #c9cfda; }
+
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+
+  /* decision forms */
+  form.decision { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  form.decision + form.decision { margin-top: 12px; }
+  form.decision legend, form.decision .q { font-weight: 700; font-size: 14.5px; margin-bottom: 4px; }
+  form.decision .why { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+  form.decision label { display: flex; gap: 9px; align-items: flex-start; padding: 7px 10px; border-radius: 8px;
+    border: 1px solid transparent; font-size: 13.5px; cursor: pointer; }
+  form.decision label:hover { background: var(--panel-2); border-color: var(--border); }
+  form.decision input { margin-top: 3px; accent-color: var(--accent); }
+  form.decision .opt-note { color: var(--muted); font-size: 12px; display: block; }
+  form.decision button { margin-top: 10px; background: var(--accent); color: #1a1206; font-weight: 700;
+    border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  form.decision button:hover { background: var(--accent-soft); }
+  .rec { color: var(--green); font-size: 11px; font-weight: 700; margin-left: 6px; }
+</style>
+
+<div class="wrap">
+  <span class="kicker">s10 · plan for review — nothing implemented yet</span>
+  <h1>Streaming Pages</h1>
+  <p class="lead">
+    Make the data-agent stream its answer <strong>page by page</strong> over the existing SSE channel —
+    Page&nbsp;1 (Summary) lands and renders while the agent is still working on Pages&nbsp;2+ — and give
+    admins the exact <strong>render JSON</strong> (the Template Studio contract) inside the chat
+    “agent run” expander. The wire shape of a page is byte-for-byte the same <code>Page</code> JSON
+    Template Studio already teaches.
+  </p>
+
+  <!-- ================= CURRENT STATE ================= -->
+  <section>
+    <h2>Where we are today <span class="muted">(verified in the code)</span></h2>
+    <div class="divider"></div>
+
+    <div class="grid2" style="margin-top:16px">
+      <div class="card">
+        <h3>Streaming exists — but only for steps</h3>
+        <p class="muted" style="font-size:13.5px">
+          Chat already calls <code>POST /ask/stream</code> (<span style="font-family:var(--mono);font-size:12px;color:var(--blue)">api.ts:373</span>) →
+          backend-api relays the data-agent’s SSE (<span style="font-family:var(--mono);font-size:12px;color:var(--blue)">routers/ask.py:313</span>).
+          Frames today: <code>status</code> heartbeats, <code>progress</code>
+          (<code>{n, action, detail}</code> from <code>deps.emit()</code>), then <em>one</em>
+          <code>result</code> with the entire answer. The user watches a step list until everything lands at once.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Pages are composed at the very end</h3>
+        <p class="muted" style="font-size:13.5px">
+          <code>compose_pages()</code> (<span style="font-family:var(--mono);font-size:12px;color:var(--blue)">agent/pages.py:231</span>)
+          derives the Summary + Insights pages from the <em>finished</em> InsightReport — called after
+          <code>agent.run()</code> completes (<span style="font-family:var(--mono);font-size:12px;color:var(--blue)">sandbox_agent.py:301</span>)
+          and on the stub path (<span style="font-family:var(--mono);font-size:12px;color:var(--blue)">main.py:423</span>).
+          The model itself builds the whole report in one <code>run_analysis</code> pass.
+        </p>
+      </div>
+      <div class="card">
+        <h3>The contract JSON is admin-visible only in Template Studio</h3>
+        <p class="muted" style="font-size:13.5px">
+          <code>ContractJson</code> (<span style="font-family:var(--mono);font-size:12px;color:var(--blue)">features/admin/ContractJson.tsx</span>)
+          shows “what Data-Agent sends the frontend to render this page” — elided rows + copy-full — but only
+          under the Template Studio tab. The chat “agent run” expander (<code>AgentTrace</code>) shows steps
+          and decisions, never the render JSON.
+        </p>
+      </div>
+      <div class="card">
+        <h3>One shared renderer already guarantees parity</h3>
+        <p class="muted" style="font-size:13.5px">
+          <code>PagesView</code> and Template Studio both render through <code>PageLayout</code> +
+          the template registry, so any page we stream mid-run can reuse the exact same component —
+          streamed pages can’t drift from the final answer or from Studio previews.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:16px">
+      <strong>The gap is composition timing, not plumbing.</strong> The SSE pipe, the queue
+      (<code>_SbDeps.progress</code>), the relay, and the page renderer all exist. What’s missing:
+      (1)&nbsp;per-page composers that can run before the whole report exists, (2)&nbsp;two
+      new frame types on the wire, (3)&nbsp;a page plan so the frontend knows how many pages are coming,
+      and (4)&nbsp;the render-JSON surface in chat for admins.
+    </div>
+  </section>
+
+  <!-- ================= TARGET FLOW ================= -->
+  <section>
+    <h2>Target flow — plan first, then pages in order, result last</h2>
+    <div class="divider"></div>
+    <p class="lead" style="margin-top:14px">
+      One question, four kinds of frames. The <code>plan</code> frame declares up front how many pages the
+      answer will complete; each <code>page</code> frame carries a fully validated Template-Studio
+      <code>Page</code>; <code>result</code> stays the single authoritative, persisted answer.
+    </p>
+
+    <div class="mermaid">
+sequenceDiagram
+    participant UI as Chat UI
+    participant API as backend-api
+    participant DA as data-agent
+    participant LLM as LLM and sandbox
+    UI->>API: POST /ask/stream
+    API->>DA: relay to /agent/ask/stream
+    DA-->>UI: plan frame (pages 1..N, locked teasers)
+    Note over UI: Page 1 ghost placeholders appear
+    DA->>LLM: search_knowledge, then ONE wide extract
+    Note over DA,LLM: pull metric plus explanatory dims once
+    DA-->>UI: progress frames (unchanged step list)
+    DA->>LLM: run_analysis pass 1, aggregate to headline level
+    DA-->>UI: page 1 frame, ghosts fill in
+    Note over UI: Page 2 ghost slot appears only now
+    DA->>LLM: run_analysis pass 2, slice the SAME frames
+    DA-->>UI: page 2 frame (or skipped)
+    DA-->>API: result frame (full answer)
+    API->>API: persist messages and query_runs
+    API-->>UI: result, authoritative, UI reconciles
+    </div>
+
+    <p class="code-cap">The exact frames on the wire — <code>plan</code> and <code>page</code> are the only additions; everything else is untouched:</p>
+    <div id="code-sse"></div>
+  </section>
+
+  <!-- ================= ANSWER STRATEGY ================= -->
+  <section>
+    <h2>The answer strategy — one pull of data, layered pages</h2>
+    <div class="divider"></div>
+    <p class="lead" style="margin-top:14px">
+      Every answer follows the same shape: the agent pulls <strong>all the data it needs once</strong>,
+      then each page is a deeper analysis pass over those same frames. No new SQL between pages.
+    </p>
+    <div class="callout good">
+      <strong>Extract once, wide.</strong> The extract pulls the metric at the grain the question needs
+      <em>plus the explanatory attributes the mart offers</em> (e.g. <code>bedrooms</code>,
+      <code>property_type</code> for rents) — aggregated in SQL to month × entity × attribute so it stays
+      well under the row cap. <code>deps.frames</code> already persists across <code>run_analysis</code>
+      calls, so pass 2 slices the same DataFrame for free.
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <h3>Page 1 · Build trust</h3>
+        <p class="muted" style="font-size:13px">Aggregate the frame to headline level: <strong>set the values</strong> — latest value, growth, the trend chart. Answers the question directly and fast; this is what the agent provides today.</p>
+      </div>
+      <div class="card">
+        <h3>Page 2 · Explain the values</h3>
+        <p class="muted" style="font-size:13px">Slice the <em>same data</em> by the extra factors — <code>driver_analysis</code> / <code>comparison_chart</code> over bedrooms, property type, price band… — naming <strong>what moves the Page-1 numbers</strong>, when it’s relevant to the question. No relevant attributes → page 2 is skipped explicitly.</p>
+      </div>
+      <div class="card">
+        <h3>Page 3 · Act on it <span class="pill pro">M4</span></h3>
+        <p class="muted" style="font-size:13px">Opportunities derived from the same frames — where the growth/yield story says to look next. Same rule: no new extract, deeper analysis.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PRODUCT MOCK ================= -->
+  <section>
+    <h2>What the user sees — streaming answer, mid-run</h2>
+    <div class="divider"></div>
+    <p class="lead" style="margin-top:14px">
+      Two moments in one answer. <strong>Moment 1</strong> — the instant the <code>plan</code> frame
+      arrives, Page 1 renders as <strong>blacked-out ghost objects</strong> (KPI, note, chart shapes
+      derived from the template registry) so the user sees the shape of what the agent will populate.
+      Page 2’s slot is deliberately absent — it only appears after Page 1 fills, so more insights
+      visibly “arrive”. The step list stays throughout.
+    </p>
+
+    <div class="mock">
+      <div class="mock-top">
+        <span class="brand">data-qa-agent</span>
+        <span class="badge">Chat</span>
+        <span class="muted" style="font-size:12px;margin-left:auto">moment 1 · plan received · 1.2s</span>
+      </div>
+      <div class="mock-body">
+        <div class="bubble-user">How have house prices in Hornsby moved over the last five years?</div>
+        <div class="bubble-agent">
+          <div class="working-line"><span class="spin"></span> Agent is working…</div>
+          <ol class="wsteps">
+            <li><span class="n">1</span> Searching knowledge <span class="muted">· property sales</span></li>
+            <li><span class="n">2</span> Querying data <span class="muted">· monthly price trend</span></li>
+          </ol>
+
+          <div class="page-sec-label">Page 1 · Summary <span class="page-status working">populating…</span></div>
+          <div class="pgrid">
+            <div class="pcol">
+              <div class="ghost">
+                <span class="ghost-cap">kpi</span>
+                <div class="gbar w40"></div>
+                <div class="gbar big"></div>
+                <div class="gbar w60"></div>
+              </div>
+              <div class="ghost">
+                <span class="ghost-cap">summary</span>
+                <div class="gbar w80"></div>
+                <div class="gbar w60"></div>
+              </div>
+            </div>
+            <div class="pcol">
+              <div class="ghost" style="flex:1">
+                <span class="ghost-cap">chart</span>
+                <div class="gchart">
+                  <svg viewBox="0 0 320 120" preserveAspectRatio="none" aria-hidden="true">
+                    <polyline points="0,100 45,92 90,96 135,80 180,72 225,60 270,42 320,30"
+                      fill="none" stroke="#232937" stroke-width="3" stroke-linecap="round"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="muted" style="font-size:12px;margin:10px 0 0">Page 2’s slot is intentionally not shown yet — it appears once Page 1 lands.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="lead" style="margin-top:22px">
+      <strong>Moment 2</strong> — Page 1 has filled in and is readable; Page 2’s ghost slot has now
+      appeared and pulses while the agent works; locked pages above the user’s plan render as the
+      🔒 paywall teaser (from the plan frame’s <code>status:"locked"</code> entries):
+    </p>
+
+    <div class="mock">
+      <div class="mock-top">
+        <span class="brand">data-qa-agent</span>
+        <span class="badge">Chat</span>
+        <span class="muted" style="font-size:12px;margin-left:auto">moment 2 · Page 1 streamed · 6.2s</span>
+      </div>
+      <div class="mock-body">
+        <div class="bubble-user">How have house prices in Hornsby moved over the last five years?</div>
+        <div class="bubble-agent">
+          <div class="working-line"><span class="spin"></span> Agent is working… <span class="muted">(Page 2 of 2)</span></div>
+          <ol class="wsteps">
+            <li><span class="n">1</span> Searching knowledge <span class="muted">· property sales</span></li>
+            <li><span class="n">2</span> Querying data <span class="muted">· monthly price trend</span></li>
+            <li><span class="n">3</span> Building the report <span class="muted">· summary page</span></li>
+            <li><span class="n">4</span> Building the report <span class="muted">· insights…</span></li>
+          </ol>
+
+          <div class="page-sec-label">Page 1 · Summary <span class="page-status done">✓ streamed 4.1s</span></div>
+          <div class="pgrid">
+            <div class="pcol">
+              <div class="obj">
+                <div class="kpi-label">Hornsby</div>
+                <div class="kpi-value">$1,412,000</div>
+                <div class="kpi-basis">latest 6-month average, 2026-05</div>
+              </div>
+              <div class="obj">
+                <div class="note-text">House prices in Hornsby grew <strong>+31.8%</strong> over five years,
+                with the strongest run since 2024. The bold line is the 6-month average used for the headline figures.</div>
+              </div>
+            </div>
+            <div class="pcol">
+              <div class="obj chart-box">
+                <div class="chart-title">House sale-price trend</div>
+                <svg class="chart-svg" viewBox="0 0 320 150" role="img" aria-label="trend chart">
+                  <line x1="30" y1="10" x2="30" y2="130" stroke="#2a2f3a"/>
+                  <line x1="30" y1="130" x2="310" y2="130" stroke="#2a2f3a"/>
+                  <polyline points="30,112 65,108 100,110 135,98 170,92 205,84 240,70 275,52 310,40"
+                    fill="none" stroke="#6ea8fe" stroke-width="2.5" stroke-linecap="round"/>
+                  <polyline points="30,116 65,104 100,114 135,94 170,98 205,78 240,76 275,44 310,46"
+                    fill="none" stroke="#6ea8fe" stroke-width="1" opacity="0.35"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-sec-label">Page 2 · Insights <span class="page-status working">building…</span></div>
+          <div class="pgrid">
+            <div class="pcol">
+              <div class="ghost">
+                <span class="ghost-cap">insight</span>
+                <div class="gbar w60"></div>
+                <div class="gbar w80"></div>
+              </div>
+              <div class="ghost">
+                <span class="ghost-cap">insight</span>
+                <div class="gbar w40"></div>
+                <div class="gbar w80"></div>
+              </div>
+            </div>
+            <div class="pcol">
+              <div class="ghost" style="flex:1">
+                <span class="ghost-cap">breakdown chart</span>
+                <div class="gchart">
+                  <svg viewBox="0 0 320 120" preserveAspectRatio="none" aria-hidden="true">
+                    <rect x="20" y="60" width="40" height="60" fill="#232937"/>
+                    <rect x="90" y="40" width="40" height="80" fill="#232937"/>
+                    <rect x="160" y="75" width="40" height="45" fill="#232937"/>
+                    <rect x="230" y="55" width="40" height="65" fill="#232937"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-sec-label">Page 3 · Opportunities <span class="page-status locked">Pro</span></div>
+          <div class="locked-card">🔒 Opportunity analysis is available on the Pro plan — upgrade to unlock. <span class="muted">(rendered from the plan frame’s locked entry; decided in D3)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <p class="lead" style="margin-top:26px">
+      And for an <strong>admin</strong>, after the result lands: the “agent run” expander gains a
+      <strong>render JSON</strong> section — one collapsible per page, the same elide-rows + copy-full
+      behaviour as Template Studio’s <code>ContractJson</code> (the component is shared, not copied):
+    </p>
+
+    <div class="mock">
+      <div class="mock-top">
+        <span class="brand">data-qa-agent</span>
+        <span class="badge">Chat · admin</span>
+      </div>
+      <div class="mock-body">
+        <div class="meta-row">
+          <span class="badge-engine">deepseek</span>
+          <span>96 rows</span>
+          <span class="muted">knowledge @ 3f2a91c</span>
+          <span class="linkish">run 8c41d02f</span>
+          <span class="linkish">hide agent run</span>
+          <span class="linkish" style="color:var(--accent-soft)">render JSON (2 pages)</span>
+        </div>
+        <details class="cj" open>
+          <summary>Page 1 · summary — what data-agent sent the frontend to render this page
+            <span class="chip">copy full JSON</span>
+            <span class="chip">streamed at 4.1s</span>
+          </summary>
+          <pre>{
+  "template": "summary",
+  "columns": [
+    [
+      { "type": "kpi", "element_id": "headline:0", "role": "headline",
+        "data": { "label": "Hornsby", "value": "$1,412,000",
+                  "basis": "latest 6-month average, 2026-05" } },
+      { "type": "text", "element_id": "report:summary", "role": "note",
+        "data": { "text": "House prices in Hornsby grew +31.8% over five years…" } }
+    ],
+    [
+      { "type": "trend", "element_id": "report:chart", "role": "chart",
+        "data": { "intent": "line", "x": "month", "y": "value", "series": "series",
+                  "height": "fill",
+                  "rows": [ { "month": "2021-06-01", "value": 1071000, "series": "Hornsby" },
+                            { "month": "2021-07-01", "value": 1078500, "series": "Hornsby" },
+                            "… 58 more" ] } }
+    ]
+  ]
+}</pre>
+        </details>
+        <div style="height:8px"></div>
+        <details class="cj">
+          <summary>Page 2 · insights — what data-agent sent the frontend to render this page
+            <span class="chip">copy full JSON</span>
+            <span class="chip">streamed at 9.8s</span>
+          </summary>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PAGE PLAN POLICY ================= -->
+  <section>
+    <h2>Page plan policy — who decides how many pages</h2>
+    <div class="divider"></div>
+    <p class="lead" style="margin-top:14px">
+      The plan is <strong>deterministic policy in the data-agent, not a model choice</strong> — the model
+      can’t promise pages it might not deliver, and the count must be known before the run starts so the
+      frontend can draw the ghost slots. Gating is <strong>per user</strong> (decided in D2): a
+      <code>plan</code> column on <code>app.users</code> (<code>free | plus | pro</code>, migration 0016),
+      seeded <code>admin → pro</code>, <code>user1 → free</code>, <code>user2 → plus</code>. backend-api
+      loads it with the current user and passes it through <code>AskRequest.user.plan</code>; the
+      data-agent’s <code>page_plan(plan)</code> does the rest. Pages above the user’s plan appear in the
+      plan frame as <code>status:"locked"</code> teaser entries (decided in D3).
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>User plan</th><th>Planned pages</th><th>Locked teasers</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="pill">free</span> <span class="muted">(user1)</span></td>
+            <td>1 · Summary</td>
+            <td>🔒 2 · Insights, 🔒 3 · Opportunities</td>
+            <td>The answer-at-a-glance page — what the agent provides today, condensed. The model runs pass 1 only (no insights pass), so free questions also cost fewer turns.</td>
+          </tr>
+          <tr>
+            <td><span class="pill feat">plus</span> <span class="muted">(user2, paid)</span></td>
+            <td>1 · Summary → 2 · Insights</td>
+            <td>🔒 3 · Opportunities</td>
+            <td>Today’s full behaviour, streamed.</td>
+          </tr>
+          <tr>
+            <td><span class="pill pro">pro</span> <span class="muted">(admin, max)</span></td>
+            <td>1 → 2 <span class="muted">(→ 3 when M4 ships)</span></td>
+            <td>none</td>
+            <td>Page 3 needs real analysis skills (yield gaps, momentum ranking) — M4. Its template reuses <code>insights</code>/<code>two-col</code> until a dedicated one earns its place (adding one touches the 3-way registry sync: <code>registry.ts</code> + <code>pages.py</code> + migration seed).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout good" style="margin-top:12px">
+      A planned page that produces nothing is <em>skipped explicitly</em>
+      (<code>page {status:"skipped"}</code>) rather than left hanging — the frontend removes the skeleton.
+      <code>result.pages</code> only ever contains completed pages, exactly as today.
+    </div>
+  </section>
+
+  <!-- ================= MILESTONES ================= -->
+  <section>
+    <h2>Milestones — one PR (M1 + M2 + M3), M4 later</h2>
+    <div class="divider"></div>
+    <div style="margin-top:16px">
+
+      <div class="phase">
+        <div class="num">M1</div>
+        <div class="phase-body">
+          <h3>Streaming infrastructure — plan + page frames, end to end
+            <span class="pill refactor">refactor</span><span class="pill feat">feature</span>
+            <span class="tag-est">~1 day</span></h3>
+          <ul>
+            <li><strong>pages.py</strong>: split <code>_compose</code> into <code>compose_summary_page()</code> / <code>compose_insights_page()</code>; add <code>page_plan(edition)</code>. <code>compose_pages()</code> stays as their concat — identical output, existing tests hold.</li>
+            <li><strong>sandbox_agent.py</strong>: <code>deps.emit_frame(event, payload)</code> rides the existing progress queue with an <code>event</code> discriminator; emit <code>plan</code> at run start, both <code>page</code> frames the moment <code>run_analysis</code> sets <code>deps.report</code> (still one model pass in M1 — pages arrive seconds early, sequentially, proving the pipe).</li>
+            <li><strong>main.py</strong>: route queue items with an <code>event</code> key to their own SSE event; stub/salvage path emits plan + pages too, so streaming works offline.</li>
+            <li><strong>backend-api ask.py</strong>: relay <code>plan</code>/<code>page</code> frames verbatim (client already parses any event name).</li>
+            <li><strong>frontend</strong>: <code>askStream</code> gains <code>onPlan</code>/<code>onPage</code>; on the plan frame Page 1 renders immediately as <strong>template-shaped ghost objects</strong> (blacked-out kpi/note/chart placeholders derived from the registry); the page frame fills them via the shared <code>PageLayout</code>; <strong>progressive disclosure</strong> — the Page N+1 ghost slot appears only after page N lands; <code>locked</code> plan entries render the 🔒 paywall teaser; swap to <code>ResultView</code> on result (identical pages ⇒ no jump). Feedback stays disabled until <code>result</code> (no <code>message_id</code> before it).</li>
+            <li><strong>per-user plans</strong>: migration 0016 adds <code>app.users.plan</code> (<code>free|plus|pro</code>; seeds admin→pro, user1→free, user2→plus); backend-api passes it in <code>AskRequest.user.plan</code>; data-agent <code>UserCtx</code> gains <code>plan</code>; <code>page_plan(plan)</code> gates pages + emits locked teasers.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="num">M2</div>
+        <div class="phase-body">
+          <h3>Two-pass analysis — Page 1 genuinely early
+            <span class="pill feat">feature</span>
+            <span class="tag-est">~1 day</span></h3>
+          <ul>
+            <li><strong>Extract guidance in the prompt changes first</strong>: pull ALL the data in ONE wide extract — the metric at the needed grain <em>plus</em> the mart’s explanatory attributes (bedrooms, property_type, …), aggregated in SQL to month × entity × attribute so the row cap holds. Both passes work off these same frames; <strong>no SQL between pages</strong>.</li>
+            <li>System prompt then directs two <code>run_analysis</code> passes: pass 1 <em>aggregates the frame to headline level</em> and assigns <code>result = skills.build_report(summary, headlines, main_chart)</code> → <strong>Page 1 streams immediately</strong> (build trust: values + growth + trend); pass 2 <em>slices the same frames by the extra factors</em> (<code>driver_analysis</code>, <code>comparison_chart</code>) and assigns <code>result = skills.build_insights(insights, profiles)</code> (new skill in <code>skills/reporting.py</code>) which the tool merges into <code>deps.report</code> → Page 2 streams, explaining the Page-1 numbers. Pass 2 <strong>only runs when the user’s plan includes the Insights page</strong> — free-plan questions stop after pass 1 and cost fewer turns.</li>
+            <li>Budgets: <code>SANDBOX_RUN_ATTEMPTS</code> 3 → 4 (one retry per pass). Guard: a model that builds everything in pass 1 still works — M1’s emit-on-complete covers it; a model that never does pass 2 yields <code>page 2 skipped</code> + whatever insights the report already holds at result time.</li>
+            <li><strong>Cost note</strong> (accepted in D1): +1–2 model turns per plus/pro question. Token spend is cache-dominated here (billed ≈ ⅙ nominal); the free-plan single pass partially offsets it.</li>
+            <li>Trace: new <code>page_emit</code> step kind (<code>{index, template, object_count, ms_from_start}</code> — no page payload duplicated into <code>query_runs</code>) + decision-log entries; <code>AgentTrace</code> label map extended.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="num">M3</div>
+        <div class="phase-body">
+          <h3>Admin render-JSON in chat
+            <span class="pill feat">feature</span>
+            <span class="tag-est">~½ day</span></h3>
+          <ul>
+            <li>Move <code>ContractJson</code> from <code>features/admin/</code> to <code>src/ui/</code>; Template Studio imports the shared one (behaviour unchanged).</li>
+            <li><code>ResultView</code>: admin-only “render JSON (<em>N</em> pages)” toggle beside “agent run” — one <code>ContractJson</code> per <code>result.pages</code> entry, labelled <code>Page i · template</code>, showing the streamed timestamp from the <code>page_emit</code> trace step when present.</li>
+            <li>Works on reopened conversations too: history messages carry <code>report.pages</code> and admin-gated <code>steps</code> already.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="num">M4</div>
+        <div class="phase-body">
+          <h3>Opportunities page (Pro) <span class="pill pro">later</span>
+            <span class="tag-est">not in these PRs</span></h3>
+          <ul>
+            <li>Third pass + <code>compose_opportunities_page()</code>; needs real analysis skills (yield gap, momentum ranking) — scoped separately once Plus streaming is proven. The plan/edition machinery from M1 already carries it.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="num">✓</div>
+        <div class="phase-body">
+          <h3>Tests <span class="pill test">every PR</span></h3>
+          <ul>
+            <li><code>test_pages.py</code>: per-page composers’ concat ≡ old <code>compose_pages</code> output (golden parity).</li>
+            <li>New <code>test_stream_pages.py</code>: frame order <code>plan → page(1) → page(2) → result</code>; every <code>page</code> frame validates against <code>PagesEnvelope</code>; streamed pages == <code>result.pages</code>; skipped-page and salvage-fallback orderings.</li>
+            <li><code>test_skills.py</code>: <code>build_insights</code> merge semantics (M2). <code>test_registry_sync.py</code>: unchanged until M4 adds a template id.</li>
+            <li>Playwright e2e: slots appear on <code>plan</code>, Page 1 renders before result, skeleton clears on skip. <code>smoke_test.py</code>: assert page frames on the live path.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CODE SURFACES ================= -->
+  <section>
+    <h2>Key changes in code</h2>
+    <div class="divider"></div>
+
+    <p class="code-cap">1 · <code>agent/pages.py</code> — the composer split (pure refactor; <code>compose_pages</code> output is unchanged):</p>
+    <div id="code-compose-diff"></div>
+
+    <p class="code-cap">2 · <code>agent/sandbox_agent.py</code> — frames ride the existing queue; pages emit the moment their inputs exist:</p>
+    <div id="code-emit"></div>
+
+    <p class="code-cap">3 · Frontend — two callbacks and one shared renderer; no new chart or layout code:</p>
+    <div id="code-fe"></div>
+  </section>
+
+  <!-- ================= FILES ================= -->
+  <section>
+    <h2>Files touched</h2>
+    <div class="divider"></div>
+    <div class="table-wrap" style="margin-top:16px">
+      <table>
+        <thead><tr><th>File</th><th>Change</th><th>Milestone</th></tr></thead>
+        <tbody>
+          <tr><td class="file">services/data-agent/agent/pages.py</td><td>Split composers; <code>page_plan()</code>; <code>PAGE_KINDS</code></td><td>M1</td></tr>
+          <tr><td class="file">services/data-agent/agent/sandbox_agent.py</td><td><code>emit_frame</code>; plan at start; page emit in <code>run_analysis</code>; pass-2 merge; two-pass prompt</td><td>M1 / M2</td></tr>
+          <tr><td class="file">services/data-agent/agent/main.py</td><td>Route <code>event</code>-keyed queue items to own SSE events; stub-path plan+pages; <code>UserCtx.plan</code></td><td>M1</td></tr>
+          <tr><td class="file">services/db-migrate/migrations/versions/0016_user_plans.py</td><td><code>app.users.plan</code> (<code>free|plus|pro</code>) + seeds: admin→pro, user1→free, user2→plus</td><td>M1</td></tr>
+          <tr><td class="file">services/backend-api/app/auth.py</td><td>Load <code>plan</code> with the current user; include in <code>UserCtx</code> payload to the agent</td><td>M1</td></tr>
+          <tr><td class="file">services/data-agent/agent/skills/reporting.py</td><td><code>build_insights()</code> skill + catalog entry</td><td>M2</td></tr>
+          <tr><td class="file">services/backend-api/app/routers/ask.py</td><td>Relay <code>plan</code>/<code>page</code> frames (persistence untouched)</td><td>M1</td></tr>
+          <tr><td class="file">frontend/src/lib/api.ts</td><td><code>PagePlanSlot</code>/<code>PageFrame</code> types; <code>onPlan</code>/<code>onPage</code> in <code>askStream</code></td><td>M1</td></tr>
+          <tr><td class="file">frontend/src/features/chat/ChatPage.tsx</td><td>Working bubble → streaming answer: ghost objects, progressive page disclosure, 🔒 teasers</td><td>M1</td></tr>
+          <tr><td class="file">frontend/src/features/chat/ResultView.tsx</td><td>Admin “render JSON (N pages)” toggle</td><td>M3</td></tr>
+          <tr><td class="file">frontend/src/ui/ContractJson.tsx</td><td>Moved from <code>features/admin/</code>; Studio import updated</td><td>M3</td></tr>
+          <tr><td class="file">frontend/src/ui/AgentTrace.tsx</td><td><code>page_emit</code> step label</td><td>M2</td></tr>
+          <tr><td class="file">frontend/src/styles.css</td><td>Page-slot header, ghost-object placeholders, locked teaser card</td><td>M1</td></tr>
+          <tr><td class="file">services/data-agent/tests/*, frontend/e2e/*, scripts/smoke_test.py</td><td>Parity, frame-order, e2e + smoke coverage (see Tests)</td><td>all</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= RISKS ================= -->
+  <section>
+    <h2>Failure modes &amp; compatibility</h2>
+    <div class="divider"></div>
+    <div class="table-wrap" style="margin-top:16px">
+      <table>
+        <thead><tr><th>Scenario</th><th>Behaviour</th></tr></thead>
+        <tbody>
+          <tr><td>LLM fails <em>after</em> <code>plan</code>/<code>page 1</code> streamed</td>
+              <td>Salvage/stub path emits its own plan + pages (replacing by index); <code>result</code> is authoritative — the frontend always reconciles streamed slots against <code>result.pages</code>, so a divergent stream can never leave a stale page on screen.</td></tr>
+          <tr><td><code>no_answer</code> run</td>
+              <td>Plan collapses to a single summary slot; page 1 is the honest-reason text object (or classic report view on reconcile). No skeletons left behind.</td></tr>
+          <tr><td>Model ignores the two-pass instruction (M2)</td>
+              <td>Pass 1 that builds a full report just triggers both page emits back-to-back (M1 behaviour). No pass 2 → <code>page 2 skipped</code>; whatever insights exist at result time still persist in the report.</td></tr>
+          <tr><td>Non-streaming clients (<code>POST /ask</code>, API channel, smoke fallback)</td>
+              <td>Untouched — plan/page frames exist only on the stream endpoints; <code>AgentAnswer</code>/<code>AskResponse</code> schema is unchanged.</td></tr>
+          <tr><td>Persistence / history reopen</td>
+              <td>Unchanged: pages stored in <code>messages.report.pages</code>, trace in <code>query_runs</code>. Reopen renders final pages exactly as today (no replay of streaming).</td></tr>
+          <tr><td>Feedback / evals</td>
+              <td>Element ids and <code>role</code> semantics unchanged; feedback is only enabled once <code>result</code> supplies <code>message_id</code>, same as now.</td></tr>
+          <tr><td>backend-api read timeout (30s)</td>
+              <td>Page frames are extra bytes on the wire between the existing 2s heartbeats — strictly safer, no timeout change needed.</td></tr>
+          <tr><td>Old frontend against new agent</td>
+              <td>Unknown SSE events are ignored by the existing parser loop — forward-compatible by construction.</td></tr>
+          <tr><td>Wide extract would blow the row cap (too many attribute combinations)</td>
+              <td>The prompt tells the model to aggregate in SQL to month × entity × attribute (small by construction) and to drop attribute dims rather than truncate the series; a metric-only extract means pass 2 has nothing to slice → <code>page 2 skipped</code> honestly.</td></tr>
+          <tr><td>User with no <code>plan</code> value (legacy rows, API channel)</td>
+              <td><code>plan</code> defaults to <code>free</code> in the column; backend always sends a value, and the data-agent falls back to <code>free</code> if it’s missing — the safest (cheapest, least-revealing) behaviour.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= DECISIONS (RESOLVED) ================= -->
+  <section>
+    <h2>Decisions — locked in review (2026-07-09)</h2>
+    <div class="divider"></div>
+    <p class="lead" style="margin-top:14px">All three open questions were answered in review; the plan above already reflects them.</p>
+    <div class="grid3">
+      <div class="card">
+        <h3>D1 · One PR</h3>
+        <p class="muted" style="font-size:13px">M1 + M2 + M3 ship together — streaming infra, two-pass analysis, and the admin render-JSON land as one change. M4 (Opportunities) stays out.</p>
+      </div>
+      <div class="card">
+        <h3>D2 · Per-user plans</h3>
+        <p class="muted" style="font-size:13px"><code>app.users.plan</code> (<code>free|plus|pro</code>) via migration 0016, seeded <code>admin → pro</code> (max), <code>user1 → free</code>, <code>user2 → plus</code> (paid); passed to the agent per question.</p>
+      </div>
+      <div class="card">
+        <h3>D3 · Show the 🔒 teaser</h3>
+        <p class="muted" style="font-size:13px">Locked pages above the user’s plan render as paywall teaser cards from M1 — “a great way of showing the paywall”.</p>
+      </div>
+    </div>
+  </section>
+</div>

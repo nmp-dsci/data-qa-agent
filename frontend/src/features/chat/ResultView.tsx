@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { AskResult } from "../../lib/api";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
+import { ContractJson } from "../../ui/ContractJson";
 import { SpecChart } from "../../ui/SpecChart";
 import { ReportView } from "./ReportView";
 import { PagesView } from "../../report-engine/PagesView";
@@ -18,7 +19,11 @@ export function ResultView({
   onOpenSql: (sql: string) => void;
 }) {
   const [showTrace, setShowTrace] = useState(false);
+  const [showRenderJson, setShowRenderJson] = useState(false);
   const hasTrace = isAdmin && result.steps.length > 0;
+  // The render contract (s10): the exact Page JSON the data-agent sent the
+  // frontend — the same inspector Template Studio uses. Admin-only, like the trace.
+  const renderPages = isAdmin && result.pages != null ? result.pages : [];
   const hasReport = result.report != null;
   if (!hasReport && result.row_count === 0 && !result.sql) return null;
   return (
@@ -37,6 +42,13 @@ export function ResultView({
             {showTrace ? "hide agent run" : `agent run (${result.steps.length} steps)`}
           </button>
         )}
+        {renderPages.length > 0 && (
+          <button className="link" onClick={() => setShowRenderJson((s) => !s)}>
+            {showRenderJson
+              ? "hide render JSON"
+              : `render JSON (${renderPages.length} page${renderPages.length === 1 ? "" : "s"})`}
+          </button>
+        )}
       </div>
       {showTrace && hasTrace && (
         <AgentTrace
@@ -49,6 +61,18 @@ export function ResultView({
             output_tokens: result.output_tokens,
           })}
         />
+      )}
+      {showRenderJson && renderPages.length > 0 && (
+        <div className="render-json">
+          {renderPages.map((page, i) => (
+            <ContractJson
+              key={i}
+              page={page}
+              testId={`render-json-${i}`}
+              label={`Page ${i + 1} · ${page.template} — what data-agent sent the frontend to render this page`}
+            />
+          ))}
+        </div>
       )}
       {result.report && result.pages && result.pages.length > 0 ? (
         <PagesView

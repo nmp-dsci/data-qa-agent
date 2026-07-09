@@ -43,10 +43,11 @@ class Settings(BaseSettings):
     max_sql_attempts: int = 8
     sql_statement_timeout_ms: int = 6000
 
-    # Total run_analysis attempts per question. Confirmed retry budget is 2, i.e.
-    # 1 initial run + 2 self-corrections = 3. Skills do the risky maths (tested
-    # once), so a run rarely needs all three.
-    sandbox_run_attempts: int = 3
+    # Total run_analysis attempts per question, shared across the two report
+    # passes (s10: pass 1 summary, pass 2 insights) — 4 leaves each pass one
+    # self-correction. Skills do the risky maths (tested once), so a pass
+    # rarely needs its retry.
+    sandbox_run_attempts: int = 4
 
     # Which executor runs run_analysis code (restructure Phase A vs B):
     #   "subprocess" — the quick restricted-builtins spawned process (Phase A).

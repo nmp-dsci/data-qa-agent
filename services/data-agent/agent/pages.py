@@ -89,7 +89,7 @@ class Page(BaseModel):
     columns: list[list[PageObject]] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _columns_fit_template(self) -> "Page":
+    def _columns_fit_template(self) -> Page:
         limit = TEMPLATE_COLUMNS[self.template]
         if len(self.columns) > limit:
             raise ValueError(
@@ -224,7 +224,69 @@ def chart_object_from_spec(
 
 
 # ---------------------------------------------------------------------------
+# The page plan — how many pages one answer will complete for one user.
+#
+# Deterministic policy, never a model choice: the count must be known before
+# the run starts (the frontend draws ghost slots from it) and the model can't
+# promise pages it might not deliver. Pages a user is entitled to but that
+# aren't buildable yet (pro's opportunities before M4) are omitted; pages
+# above the user's plan stream as status:"locked" paywall teasers.
+# ---------------------------------------------------------------------------
+
+PAGE_KINDS = ("summary", "insights", "opportunities")
+
+# What each app plan tier is entitled to see. Unknown/missing plan → free
+# (the cheapest, least-revealing behaviour).
+PLAN_ENTITLEMENTS: dict[str, tuple[str, ...]] = {
+    "free": ("summary",),
+    "plus": ("summary", "insights"),
+    "pro": ("summary", "insights", "opportunities"),
+}
+
+# What the agent can actually compose today (opportunities lands with M4).
+BUILDABLE_KINDS = ("summary", "insights")
+
+
+def page_plan(*, plan: str) -> list[dict[str, Any]]:
+    """The plan-frame payload: one slot per page kind, in order.
+
+    ``status`` is ``building`` for page 1, ``planned`` for later pages the user
+    will get, ``locked`` for pages above their plan (the paywall teaser).
+    Entitled-but-unbuildable kinds are omitted entirely.
+    """
+    entitled = PLAN_ENTITLEMENTS.get(plan, PLAN_ENTITLEMENTS["free"])
+    slots: list[dict[str, Any]] = []
+    index = 0
+    for kind in PAGE_KINDS:
+        if kind in entitled and kind not in BUILDABLE_KINDS:
+            continue
+        index += 1
+        if kind not in entitled:
+            slots.append({"index": index, "kind": kind, "status": "locked"})
+            continue
+        template = kind if kind in TEMPLATE_IDS else "two-col"
+        slots.append(
+            {
+                "index": index,
+                "kind": kind,
+                "template": template,
+                "status": "building" if index == 1 else "planned",
+            }
+        )
+    return slots
+
+
+def planned_kinds(plan: str) -> list[str]:
+    """The page kinds this user's answer will actually complete, in order."""
+    return [s["kind"] for s in page_plan(plan=plan) if s["status"] != "locked"]
+
+
+# ---------------------------------------------------------------------------
 # Deterministic composition: InsightReport → pages (column model)
+#
+# Split per page so the streaming path can compose + emit each page the
+# moment its inputs exist; compose_pages stays as their concatenation so the
+# non-streaming path, persistence and the existing tests are unchanged.
 # ---------------------------------------------------------------------------
 
 
@@ -239,23 +301,25 @@ def compose_pages(
     object-build → template-pick → page-compose for app.query_runs.
     """
     steps: list[dict[str, Any]] = []
-    try:
-        pages = _compose(report, steps)
-        validated = PagesEnvelope(pages=pages)
-        out = [p.model_dump(exclude_none=True) for p in validated.pages]
-        steps.append(
-            {
-                "kind": "page_compose",
-                "status": "success",
-                "templates": [p["template"] for p in out],
-                "object_count": sum(len(col) for p in out for col in p["columns"]),
-                "why": f"composed from report for: {question[:80]}" if question else "",
-            }
-        )
-        return out, steps
-    except (ValidationError, Exception) as exc:  # noqa: BLE001 — pages must never break an answer
-        steps.append({"kind": "page_compose", "status": "error", "error": str(exc)})
+    summary_page, summary_steps = compose_summary_page(report)
+    insights_page, insight_steps = compose_insights_page(report)
+    steps.extend(summary_steps)
+    steps.extend(insight_steps)
+    out = [p for p in (summary_page, insights_page) if p is not None]
+    errors = [s.get("error") for s in steps if s.get("status") == "error"]
+    if errors and not out:
+        steps.append({"kind": "page_compose", "status": "error", "error": str(errors[0])})
         return [], steps
+    steps.append(
+        {
+            "kind": "page_compose",
+            "status": "success",
+            "templates": [p["template"] for p in out],
+            "object_count": sum(len(col) for p in out for col in p["columns"]),
+            "why": f"composed from report for: {question[:80]}" if question else "",
+        }
+    )
+    return out, steps
 
 
 def _page(template: TemplateId, columns: list[list[PageObject]]) -> Page:
@@ -263,54 +327,75 @@ def _page(template: TemplateId, columns: list[list[PageObject]]) -> Page:
     return Page(template=template, columns=[c for c in columns if c])
 
 
-def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
+def _validated(page: Page) -> dict[str, Any]:
+    """Re-validate through the envelope and dump the wire shape."""
+    envelope = PagesEnvelope(pages=[page])
+    return envelope.pages[0].model_dump(exclude_none=True)
+
+
+def _primary_headlines(report: dict[str, Any]) -> list[dict[str, Any]]:
     headlines = [h for h in report.get("headlines", []) if isinstance(h, dict)]
-    insights = [i for i in report.get("insights", []) if isinstance(i, dict)]
-    profiles = [p for p in report.get("profiles", []) if isinstance(p, dict)]
-    summary_text = (report.get("summary") or "").strip()
+    return [h for h in headlines if not h.get("related")] or headlines
 
-    # --- Page 1 · Summary: the answer at a glance -------------------------
-    # Column 1: headline KPI tiles + the summary note. Column 2: the main
-    # trend chart, height:fill so it stretches to the stacked left column.
-    left: list[PageObject] = []
-    primary_headlines = [h for h in headlines if not h.get("related")] or headlines
-    for h in primary_headlines[:4]:
-        left.append(
-            PageObject(
-                type="kpi",
-                element_id=str(h.get("element_id") or f"headline:{len(left)}"),
-                role="headline",
-                data={
-                    "label": h.get("label", ""),
-                    "value": h.get("value", ""),
-                    "basis": h.get("basis", ""),
-                },
-            )
-        )
-    if summary_text:
-        left.append(
-            PageObject(
-                type="text",
-                element_id="report:summary",
-                role="note",
-                data={"text": summary_text},
-            )
-        )
-    main_chart_obj = chart_object_from_spec(
-        report.get("main_chart"), element_id="report:chart", role="chart"
-    )
-    summary_cols: list[list[PageObject]] = [left, [main_chart_obj] if main_chart_obj else []]
-    steps.append(
-        {
-            "kind": "object_build",
-            "status": "success",
-            "page": "summary",
-            "objects": [o.type for col in summary_cols for o in col],
-        }
-    )
 
-    pages: list[Page] = []
-    if any(summary_cols):
+def _first_kpi_id(report: dict[str, Any]) -> str | None:
+    """element_id of the first summary KPI — insights objects point at it."""
+    primary = _primary_headlines(report)
+    if not primary:
+        return None
+    return str(primary[0].get("element_id") or "headline:0")
+
+
+def compose_summary_page(
+    report: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Page 1 · Summary: the answer at a glance (build trust — values + trend).
+
+    Column 1: headline KPI tiles + the summary note. Column 2: the main trend
+    chart, height:fill so it stretches to the stacked left column. Needs only
+    summary/headlines/main_chart, so it can run the moment pass 1 lands.
+    Never raises; returns ``(None, error_step)`` instead.
+    """
+    steps: list[dict[str, Any]] = []
+    try:
+        summary_text = (report.get("summary") or "").strip()
+        left: list[PageObject] = []
+        for h in _primary_headlines(report)[:4]:
+            left.append(
+                PageObject(
+                    type="kpi",
+                    element_id=str(h.get("element_id") or f"headline:{len(left)}"),
+                    role="headline",
+                    data={
+                        "label": h.get("label", ""),
+                        "value": h.get("value", ""),
+                        "basis": h.get("basis", ""),
+                    },
+                )
+            )
+        if summary_text:
+            left.append(
+                PageObject(
+                    type="text",
+                    element_id="report:summary",
+                    role="note",
+                    data={"text": summary_text},
+                )
+            )
+        main_chart_obj = chart_object_from_spec(
+            report.get("main_chart"), element_id="report:chart", role="chart"
+        )
+        columns: list[list[PageObject]] = [left, [main_chart_obj] if main_chart_obj else []]
+        steps.append(
+            {
+                "kind": "object_build",
+                "status": "success",
+                "page": "summary",
+                "objects": [o.type for col in columns for o in col],
+            }
+        )
+        if not any(columns):
+            return None, steps
         steps.append(
             {
                 "kind": "template_pick",
@@ -319,49 +404,66 @@ def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
                 "why": "answers lead with the latest number + trend",
             }
         )
-        pages.append(_page("summary", summary_cols))
-
-    # --- Page 2 · Insights: what explains the top line --------------------
-    # Column 1: insight cards. Column 2: the breakdown/comparison chart that
-    # explains the headline (from the first insight/profile carrying a chart).
-    first_kpi = next((o.element_id for o in left if o.type == "kpi"), None)
-
-    note_col: list[PageObject] = []
-    chart_col: list[PageObject] = []
-    for source in [*insights, *profiles]:
-        chart_obj = chart_object_from_spec(
-            source.get("chart"),
-            element_id=f"{source.get('element_id', 'insight')}:chart",
-            role="chart",
-            explains=first_kpi,
+        return _validated(_page("summary", columns)), steps
+    except (ValidationError, Exception) as exc:  # noqa: BLE001 — pages must never break an answer
+        steps.append(
+            {"kind": "object_build", "status": "error", "page": "summary", "error": str(exc)}
         )
-        if chart_obj is not None:
-            chart_col.append(chart_obj)
-            break
+        return None, steps
 
-    for ins in insights[:4]:
-        note_col.append(
-            PageObject(
-                type="insight",
-                element_id=str(ins.get("element_id") or f"insight:{len(note_col)}"),
-                role="insight",
+
+def compose_insights_page(
+    report: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Page 2 · Insights: what explains the Page-1 numbers.
+
+    Column 1: insight cards. Column 2: the breakdown/comparison chart that
+    explains the headline (from the first insight/profile carrying a chart).
+    Never raises; returns ``(None, error_step)`` instead.
+    """
+    steps: list[dict[str, Any]] = []
+    try:
+        insights = [i for i in report.get("insights", []) if isinstance(i, dict)]
+        profiles = [p for p in report.get("profiles", []) if isinstance(p, dict)]
+        first_kpi = _first_kpi_id(report)
+
+        note_col: list[PageObject] = []
+        chart_col: list[PageObject] = []
+        for source in [*insights, *profiles]:
+            chart_obj = chart_object_from_spec(
+                source.get("chart"),
+                element_id=f"{source.get('element_id', 'insight')}:chart",
+                role="chart",
                 explains=first_kpi,
-                data={
-                    "heading": ins.get("heading", ""),
-                    "text": ins.get("body", ""),
-                    "refs": list(ins.get("query_refs") or []),
-                },
             )
+            if chart_obj is not None:
+                chart_col.append(chart_obj)
+                break
+
+        for ins in insights[:4]:
+            note_col.append(
+                PageObject(
+                    type="insight",
+                    element_id=str(ins.get("element_id") or f"insight:{len(note_col)}"),
+                    role="insight",
+                    explains=first_kpi,
+                    data={
+                        "heading": ins.get("heading", ""),
+                        "text": ins.get("body", ""),
+                        "refs": list(ins.get("query_refs") or []),
+                    },
+                )
+            )
+        steps.append(
+            {
+                "kind": "object_build",
+                "status": "success",
+                "page": "insights",
+                "objects": [o.type for col in (note_col, chart_col) for o in col],
+            }
         )
-    steps.append(
-        {
-            "kind": "object_build",
-            "status": "success",
-            "page": "insights",
-            "objects": [o.type for col in (note_col, chart_col) for o in col],
-        }
-    )
-    if note_col or chart_col:
+        if not (note_col or chart_col):
+            return None, steps
         steps.append(
             {
                 "kind": "template_pick",
@@ -370,6 +472,9 @@ def _compose(report: dict[str, Any], steps: list[dict[str, Any]]) -> list[Page]:
                 "why": "insight cards / breakdown present — explain the headline",
             }
         )
-        pages.append(_page("insights", [note_col, chart_col]))
-
-    return pages
+        return _validated(_page("insights", [note_col, chart_col])), steps
+    except (ValidationError, Exception) as exc:  # noqa: BLE001 — pages must never break an answer
+        steps.append(
+            {"kind": "object_build", "status": "error", "page": "insights", "error": str(exc)}
+        )
+        return None, steps

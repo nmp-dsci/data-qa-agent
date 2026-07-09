@@ -10,18 +10,19 @@ from .config import settings
 
 
 async def ask_agent_stream(
-    *, question: str, user_id: str, role: str, dataset_slug: str
+    *, question: str, user_id: str, role: str, plan: str, dataset_slug: str
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream a question to the data-agent's SSE endpoint.
 
     Yields ``{"event": <name>, "data": <parsed>}`` for each frame — ``progress``
-    and ``status`` for live agent steps/heartbeats, then one ``result`` (the full
-    AgentAnswer dict) or ``error``. The read timeout is generous: the agent's own
-    2s heartbeats keep bytes flowing, so a stalled step is what this guards.
+    and ``status`` for live agent steps/heartbeats, ``plan``/``page`` for the s10
+    page stream, then one ``result`` (the full AgentAnswer dict) or ``error``.
+    The read timeout is generous: the agent's own 2s heartbeats keep bytes
+    flowing, so a stalled step is what this guards.
     """
     payload = {
         "question": question,
-        "user": {"id": user_id, "role": role},
+        "user": {"id": user_id, "role": role, "plan": plan},
         "dataset_slug": dataset_slug,
     }
     timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
@@ -52,11 +53,13 @@ async def ask_agent_stream(
                     yield {"event": event, "data": parsed}
 
 
-async def ask_agent(*, question: str, user_id: str, role: str, dataset_slug: str) -> dict[str, Any]:
+async def ask_agent(
+    *, question: str, user_id: str, role: str, plan: str, dataset_slug: str
+) -> dict[str, Any]:
     """Delegate a question to the data-agent service."""
     payload = {
         "question": question,
-        "user": {"id": user_id, "role": role},
+        "user": {"id": user_id, "role": role, "plan": plan},
         "dataset_slug": dataset_slug,
     }
     # A full insight report legitimately runs many tool round-trips (knowledge

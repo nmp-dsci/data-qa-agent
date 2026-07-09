@@ -148,9 +148,20 @@ async def conversation_messages(
     return out
 
 
-async def _open_conversation(user: CurrentUser, conversation_id: str | None, question: str) -> str:
-    """tx1: ensure the conversation, record the user's message, mark agent started."""
+async def _open_conversation(
+    user: CurrentUser, conversation_id: str | None, question: str
+) -> tuple[str, str]:
+    """tx1: ensure the conversation, record the user's message, mark agent started.
+
+    Also returns the user's current app plan (free|plus|pro) — read fresh per
+    question inside the same transaction, so a plan change applies to the very
+    next answer without a re-login. The data-agent's page_plan(plan) gates how
+    many answer pages this user gets (s10).
+    """
     async with rls_connection(user.id) as conn:
+        plan = (
+            await conn.execute(text("SELECT plan FROM app.users WHERE id = :uid"), {"uid": user.id})
+        ).scalar() or "free"
         if conversation_id is None:
             conversation_id = str(
                 (
@@ -172,7 +183,7 @@ async def _open_conversation(user: CurrentUser, conversation_id: str | None, que
             {"cid": conversation_id, "uid": user.id, "content": question},
         )
         await _log_event(conn, user.id, "agent_started", {"question": question})
-    return conversation_id
+    return conversation_id, str(plan)
 
 
 async def _persist_answer(
@@ -284,12 +295,16 @@ async def ask(
     if not question:
         raise HTTPException(status_code=400, detail="Question must not be empty")
 
-    conversation_id = await _open_conversation(user, body.conversation_id, question)
+    conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
     # Delegate to the agent (its own connection enforces the same RLS).
     started = time.perf_counter()
     try:
         result = await ask_agent(
-            question=question, user_id=user.id, role=user.role, dataset_slug=DATASET_SLUG
+            question=question,
+            user_id=user.id,
+            role=user.role,
+            plan=plan,
+            dataset_slug=DATASET_SLUG,
         )
     except httpx.HTTPError as exc:  # noqa: BLE001
         async with rls_connection(user.id) as conn:
@@ -327,18 +342,26 @@ async def ask_stream(
         if not question:
             yield _sse("error", {"detail": "Question must not be empty", "status": 400})
             return
-        conversation_id = await _open_conversation(user, body.conversation_id, question)
+        conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
         started = time.perf_counter()
         yield _sse("status", {"state": "started"})
 
         result: dict[str, Any] | None = None
         try:
             async for ev in ask_agent_stream(
-                question=question, user_id=user.id, role=user.role, dataset_slug=DATASET_SLUG
+                question=question,
+                user_id=user.id,
+                role=user.role,
+                plan=plan,
+                dataset_slug=DATASET_SLUG,
             ):
                 name = ev["event"]
                 if name == "progress":
                     yield _sse("progress", ev["data"])
+                elif name in ("plan", "page"):
+                    # s10 streaming pages: relay the page plan + each finished
+                    # page (Template Studio Page JSON) verbatim to the client.
+                    yield _sse(name, ev["data"])
                 elif name == "status":
                     yield _sse(
                         "status",

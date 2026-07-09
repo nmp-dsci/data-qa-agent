@@ -368,13 +368,37 @@ export interface AskProgress {
   detail?: string;
 }
 
-/** SSE variant of ask(): live status + step progress while the agent works, then
- *  the result. Falls back to plain ask() if the stream can't be established. */
+// s10 streaming pages: the `plan` frame declares up front how many pages this
+// answer will complete for this user (locked = paywall teaser for pages above
+// their plan); one `page` frame then arrives per finished page carrying the
+// exact Template Studio Page JSON. `result` stays authoritative — the UI
+// reconciles streamed pages against result.pages when it lands.
+export type PageSlotStatus = "planned" | "building" | "complete" | "skipped" | "locked";
+
+export interface PagePlanSlot {
+  index: number;
+  kind: string; // summary | insights | opportunities
+  template?: TemplateId;
+  status: PageSlotStatus;
+}
+
+export interface PageFrame {
+  index: number;
+  kind?: string;
+  status: string; // complete | skipped
+  page?: Page;
+}
+
+/** SSE variant of ask(): live status + step progress while the agent works,
+ *  the page plan + each finished page as it streams, then the result. Falls
+ *  back to plain ask() if the stream can't be established. */
 export async function askStream(
   question: string,
   conversationId: string | null,
   onStatus: (s: AskStatus) => void,
   onProgress?: (p: AskProgress) => void,
+  onPlan?: (slots: PagePlanSlot[]) => void,
+  onPage?: (frame: PageFrame) => void,
 ): Promise<AskResult> {
   let resp: Response;
   try {
@@ -417,6 +441,19 @@ export async function askStream(
           onProgress?.(JSON.parse(data) as AskProgress);
         } catch {
           /* ignore malformed progress frames */
+        }
+      } else if (event === "plan") {
+        try {
+          const parsed = JSON.parse(data) as { pages?: PagePlanSlot[] };
+          if (Array.isArray(parsed.pages)) onPlan?.(parsed.pages);
+        } catch {
+          /* ignore malformed plan frames */
+        }
+      } else if (event === "page") {
+        try {
+          onPage?.(JSON.parse(data) as PageFrame);
+        } catch {
+          /* ignore malformed page frames */
         }
       } else if (event === "result") {
         return JSON.parse(data) as AskResult;

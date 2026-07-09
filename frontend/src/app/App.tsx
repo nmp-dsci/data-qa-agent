@@ -10,6 +10,8 @@ import {
   askStream,
   ConversationMessage,
   getConversationMessages,
+  PageFrame,
+  PagePlanSlot,
   track,
   User,
 } from "../lib/api";
@@ -70,6 +72,10 @@ export default function App() {
   const [sqlSeed, setSqlSeed] = useState<{ sql: string; nonce: number } | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [progress, setProgress] = useState<AskProgress[]>([]);
+  // s10 streaming pages: the answer's page plan (ghost slots + locked teasers)
+  // and each page frame as it streams, keyed by page index.
+  const [pagePlan, setPagePlan] = useState<PagePlanSlot[]>([]);
+  const [streamedPages, setStreamedPages] = useState<Record<number, PageFrame>>({});
   const [paletteOpen, setPaletteOpen] = useState(false);
   const queryClient = useQueryClient();
 
@@ -179,6 +185,8 @@ export default function App() {
     const isNewConversation = conversationId === null;
     setWorking("Agent is working…");
     setProgress([]);
+    setPagePlan([]);
+    setStreamedPages({});
     try {
       const result = await askStream(
         q,
@@ -189,6 +197,11 @@ export default function App() {
           }
         },
         (p) => setProgress((prev) => [...prev, p]),
+        // A re-plan (salvage/stub path) replaces the slots wholesale.
+        (slots) => {
+          setPagePlan(slots);
+        },
+        (frame) => setStreamedPages((prev) => ({ ...prev, [frame.index]: frame })),
       );
       setConversationId(result.conversation_id);
       setMessages((m) => [...m, { role: "assistant", content: result.answer, result }]);
@@ -204,6 +217,8 @@ export default function App() {
     } finally {
       setLoading(false);
       setWorking(null);
+      setPagePlan([]);
+      setStreamedPages({});
     }
   }
 
@@ -338,6 +353,8 @@ export default function App() {
           loading={loading}
           working={working}
           progress={progress}
+          pagePlan={pagePlan}
+          streamedPages={streamedPages}
           error={error}
           input={input}
           setInput={setInput}

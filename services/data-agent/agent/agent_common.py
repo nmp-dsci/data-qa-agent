@@ -168,7 +168,4 @@ def _lookup_values_sql(table: str, column: str, pattern: str) -> str | None:
     # each alternative is escaped separately and OR-ed.
     alternatives = [p for p in pattern.split("|") if p.strip()] or [pattern]
     where = " OR ".join(_ilike(p) for p in alternatives)
-    return (
-        f"SELECT DISTINCT {column} FROM {table} "
-        f"WHERE {where} ORDER BY {column} LIMIT 50"
-    )
+    return f"SELECT DISTINCT {column} FROM {table} WHERE {where} ORDER BY {column} LIMIT 50"

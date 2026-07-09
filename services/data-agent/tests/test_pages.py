@@ -12,7 +12,15 @@ from typing import Any
 
 import pandas as pd
 
-from agent.pages import PagesEnvelope, chart_object_from_spec, compose_pages
+from agent.pages import (
+    PagesEnvelope,
+    chart_object_from_spec,
+    compose_insights_page,
+    compose_pages,
+    compose_summary_page,
+    page_plan,
+    planned_kinds,
+)
 from agent.skills import driver_analysis, reset
 
 
@@ -228,6 +236,64 @@ def test_template_ids_cover_column_limits() -> None:
     assert set(TEMPLATE_IDS) == set(TEMPLATE_COLUMNS)
     assert "three-col" in TEMPLATE_IDS
     assert TEMPLATE_COLUMNS["three-col"] == 3
+
+
+def test_per_page_composers_concat_equals_compose_pages() -> None:
+    """Golden parity: the streaming path's per-page composers produce exactly
+    the pages the (persisted) compose_pages output contains."""
+    report = _report()
+    pages, _ = compose_pages(report)
+    summary, _ = compose_summary_page(report)
+    insights, _ = compose_insights_page(report)
+    assert [p for p in (summary, insights) if p is not None] == pages
+
+
+def test_compose_summary_page_needs_only_pass1_fields() -> None:
+    """Page 1 composes from summary/headlines/main_chart alone — the streaming
+    path calls it the moment pass 1 lands, before any insights exist."""
+    report = _report()
+    report["insights"] = []
+    page, steps = compose_summary_page(report)
+    assert page is not None and page["template"] == "summary"
+    assert [s["kind"] for s in steps] == ["object_build", "template_pick"]
+    # And the insights page is honestly absent at that point (chart-less notes).
+    ins, _ = compose_insights_page(report)
+    assert ins is None
+
+
+def test_page_plan_gates_by_user_plan() -> None:
+    free = page_plan(plan="free")
+    assert [(s["kind"], s["status"]) for s in free] == [
+        ("summary", "building"),
+        ("insights", "locked"),
+        ("opportunities", "locked"),
+    ]
+    assert planned_kinds("free") == ["summary"]
+
+    plus = page_plan(plan="plus")
+    assert [(s["kind"], s["status"]) for s in plus] == [
+        ("summary", "building"),
+        ("insights", "planned"),
+        ("opportunities", "locked"),
+    ]
+    assert [s["index"] for s in plus] == [1, 2, 3]
+    assert planned_kinds("plus") == ["summary", "insights"]
+
+    # pro is entitled to opportunities but it isn't buildable yet (M4): the
+    # slot is omitted entirely — never a dangling "planned" that can't arrive.
+    pro = page_plan(plan="pro")
+    assert [(s["kind"], s["status"]) for s in pro] == [
+        ("summary", "building"),
+        ("insights", "planned"),
+    ]
+    assert planned_kinds("pro") == ["summary", "insights"]
+
+    # Unknown/missing plans degrade to free — cheapest, least-revealing.
+    assert planned_kinds("enterprise-typo") == ["summary"]
+    # Every non-locked slot names a real template the frontend registry has.
+    for slot in [*free, *plus, *pro]:
+        if slot["status"] != "locked":
+            assert slot["template"] in ("summary", "insights", "two-col")
 
 
 def test_driver_analysis_ranks_percent_contribution() -> None:

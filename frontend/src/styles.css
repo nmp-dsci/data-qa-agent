@@ -420,6 +420,47 @@ th.sortable:hover { color: var(--text); }
 .working-step:last-child .working-step-action { color: var(--accent); }
 @keyframes working-step-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 
+/* Streaming pages (s10): page slots inside the working bubble — a header per
+   planned page, ghost placeholders until its frame lands, locked teasers. */
+.stream-page { margin-top: 12px; animation: working-step-in .18s ease-out; }
+.stream-page-head { display: flex; align-items: center; gap: 8px; font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: 700;
+  margin: 0 0 8px; }
+.page-status { font-size: 10px; font-weight: 600; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border-2); text-transform: none; letter-spacing: 0; }
+.page-status.done { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+.page-status.building { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.page-status.locked { color: var(--muted); }
+
+/* Blacked-out object-shaped ghosts (kpi / note / chart) the page fills in. */
+.ghost-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 10px; }
+@media (max-width: 720px) { .ghost-grid { grid-template-columns: 1fr; } }
+.ghost-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ghost-obj { background: var(--panel-2); border: 1px dashed var(--border-2);
+  border-radius: var(--radius-lg); padding: 12px; display: flex; flex-direction: column; gap: 8px;
+  animation: ghost-pulse 1.8s ease-in-out infinite; }
+.ghost-chart-box { flex: 1; }
+.ghost-cap { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.ghost-bar { height: 10px; border-radius: 5px; background: var(--panel-3); }
+.ghost-bar.w40 { width: 40%; }
+.ghost-bar.w60 { width: 60%; }
+.ghost-bar.w80 { width: 80%; }
+.ghost-bar.big { height: 22px; width: 65%; }
+.ghost-chart { flex: 1; min-height: 120px; border-left: 1px solid var(--panel-3);
+  border-bottom: 1px solid var(--panel-3); margin: 4px 2px 2px;
+  background: linear-gradient(180deg, var(--panel-3), transparent 60%); opacity: .5;
+  border-radius: 0 0 0 4px; }
+@keyframes ghost-pulse { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
+
+/* Paywall teaser for pages above the user's plan (plan-frame locked entries). */
+.locked-teaser { border: 1px dashed var(--border-2); border-radius: var(--radius-lg);
+  padding: 12px 14px; color: var(--muted); font-size: 12.5px; }
+
+/* Admin render-JSON expander (chat): one ContractJson per answer page. */
+.render-json { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.render-json .contract-json { border: 1px solid var(--border); border-radius: var(--radius-lg);
+  overflow: hidden; }
+
 /* Insight report (K3) */
 .report { margin-top: 6px; display: flex; flex-direction: column; gap: 10px; position: relative; overflow: visible; }
 .report-sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent);

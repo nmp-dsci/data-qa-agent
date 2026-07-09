@@ -25,7 +25,9 @@ import pytest
 from agent.pages import TEMPLATE_COLUMNS, TEMPLATE_IDS
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = REPO_ROOT / "services" / "db-migrate" / "migrations" / "versions" / "0015_template_studio.py"
+MIGRATION = (
+    REPO_ROOT / "services" / "db-migrate" / "migrations" / "versions" / "0015_template_studio.py"
+)
 REGISTRY_TS = REPO_ROOT / "frontend" / "src" / "report-engine" / "registry.ts"
 
 
@@ -58,6 +60,5 @@ def test_frontend_registry_matches_template_ids() -> None:
     for name, tracks in defs:
         track_count = tracks.count("minmax(")
         assert track_count == TEMPLATE_COLUMNS[name], (
-            f"registry.ts {name!r} has {track_count} tracks, pages.py says "
-            f"{TEMPLATE_COLUMNS[name]}"
+            f"registry.ts {name!r} has {track_count} tracks, pages.py says {TEMPLATE_COLUMNS[name]}"
         )

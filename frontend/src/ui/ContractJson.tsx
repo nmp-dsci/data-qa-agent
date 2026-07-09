@@ -1,9 +1,11 @@
-// ContractJson — the Template Studio inspector: the exact Page JSON the
+// ContractJson — the render-contract inspector: the exact Page JSON the
 // data-agent sends the frontend to render the page above it. Bulky row arrays
 // are elided in the display (structure is the point); Copy grabs the full
-// contract. This is how the Studio teaches "Data-Agent informs the frontend".
+// contract. Shared by Template Studio (where it teaches "Data-Agent informs
+// the frontend") and the chat "render JSON" admin expander (s10), so the two
+// can never disagree about what the contract looks like.
 import { useMemo, useState } from "react";
-import type { Page } from "../../lib/api";
+import type { Page } from "../lib/api";
 
 /** Elide long rows/series arrays for display; keep everything else verbatim. */
 function displayPage(page: Page): unknown {
@@ -28,10 +30,13 @@ export function ContractJson({
   page,
   testId,
   defaultOpen = false,
+  label,
 }: {
   page: Page;
   testId?: string;
   defaultOpen?: boolean;
+  /** Summary-line override (e.g. "Page 1 · summary — …" in the chat expander). */
+  label?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const display = useMemo(() => JSON.stringify(displayPage(page), null, 2), [page]);
@@ -47,7 +52,7 @@ export function ContractJson({
   return (
     <details className="contract-json" data-testid={testId} open={defaultOpen}>
       <summary>
-        Contract JSON — what Data-Agent sends the frontend to render this page
+        {label ?? "Contract JSON — what Data-Agent sends the frontend to render this page"}
         <button className="chip contract-copy" onClick={copy}>
           {copied ? "copied ✓" : "copy full JSON"}
         </button>

@@ -38,6 +38,7 @@ const STEP_LABELS: Record<string, string> = {
   object_build: "Page objects",
   template_pick: "Template pick",
   page_compose: "Page compose",
+  page_emit: "Page streamed",
   analysis: "Analysis telemetry",
 };
 

@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AgentConfigEntry, getAdminAgentConfig } from "../../lib/api";
 import { AgentConfigDemoPreview, demoPageFor } from "./AgentConfigDemo";
-import { ContractJson } from "./ContractJson";
+import { ContractJson } from "../../ui/ContractJson";
 import { TemplatePlayground } from "./TemplatePlayground";
 
 type Selection = { kind: "template" | "chart"; name: string };

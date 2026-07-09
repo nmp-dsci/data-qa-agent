@@ -3,7 +3,16 @@
 // past conversations (new conversation = fresh thread, follow-ups in the same
 // thread stay multi-turn).
 import { useQuery } from "@tanstack/react-query";
-import { AskProgress, AskResult, ConversationSummary, getConversations, User } from "../../lib/api";
+import {
+  AskProgress,
+  AskResult,
+  ConversationSummary,
+  getConversations,
+  PageFrame,
+  PagePlanSlot,
+  User,
+} from "../../lib/api";
+import { PageLayout } from "../../report-engine/PageLayout";
 import { ResultView } from "./ResultView";
 
 export interface ChatMsg {
@@ -58,13 +67,85 @@ function ConversationList({
   );
 }
 
+const PAGE_KIND_LABELS: Record<string, string> = {
+  summary: "Summary",
+  insights: "Insights",
+  opportunities: "Opportunities",
+};
+
+function pageKindLabel(kind: string): string {
+  return PAGE_KIND_LABELS[kind] ?? kind;
+}
+
+/** Blacked-out object-shaped placeholders the agent will fill in — derived
+ *  from the page kind (summary ⇒ kpi + note | chart; insights ⇒ notes | bars),
+ *  mirroring the summary/insights template columns from the registry. */
+function GhostPage({ kind }: { kind: string }) {
+  const chart = (
+    <div className="ghost-obj ghost-chart-box">
+      <span className="ghost-cap">chart</span>
+      <div className="ghost-chart" />
+    </div>
+  );
+  const left =
+    kind === "summary" ? (
+      <>
+        <div className="ghost-obj">
+          <span className="ghost-cap">kpi</span>
+          <div className="ghost-bar w40" />
+          <div className="ghost-bar big" />
+          <div className="ghost-bar w60" />
+        </div>
+        <div className="ghost-obj">
+          <span className="ghost-cap">summary</span>
+          <div className="ghost-bar w80" />
+          <div className="ghost-bar w60" />
+        </div>
+      </>
+    ) : (
+      <>
+        <div className="ghost-obj">
+          <span className="ghost-cap">insight</span>
+          <div className="ghost-bar w60" />
+          <div className="ghost-bar w80" />
+        </div>
+        <div className="ghost-obj">
+          <span className="ghost-cap">insight</span>
+          <div className="ghost-bar w40" />
+          <div className="ghost-bar w80" />
+        </div>
+      </>
+    );
+  return (
+    <div className="ghost-grid">
+      <div className="ghost-col">{left}</div>
+      <div className="ghost-col">{chart}</div>
+    </div>
+  );
+}
+
+/** The streamed answer while the agent works: the running step list, then one
+ *  section per planned page. Pages render through the SAME PageLayout the
+ *  final answer uses the moment their frame lands; not-yet-started pages show
+ *  ghost placeholders with progressive disclosure (the Page N+1 slot appears
+ *  only after page N lands); locked plan entries render the paywall teaser. */
 function WorkingBubble({
   working,
   progress,
+  pagePlan,
+  streamedPages,
 }: {
   working?: string | null;
   progress: AskProgress[];
+  pagePlan: PagePlanSlot[];
+  streamedPages: Record<number, PageFrame>;
 }) {
+  const slots = [...pagePlan].sort((a, b) => a.index - b.index);
+  const open = slots.filter((s) => s.status !== "locked");
+  // Progressive disclosure: a slot is visible once every earlier open slot
+  // has resolved (complete or skipped). The first slot shows immediately.
+  const visibleUpTo = (index: number) =>
+    open.filter((s) => s.index < index).every((s) => streamedPages[s.index] != null);
   return (
     <div className="msg assistant">
       <div className="bubble">
@@ -80,6 +161,48 @@ function WorkingBubble({
             ))}
           </ol>
         )}
+        {slots.map((slot) => {
+          const label = pageKindLabel(slot.kind);
+          if (slot.status === "locked") {
+            return (
+              <div className="stream-page" key={slot.index}>
+                <div className="stream-page-head">
+                  Page {slot.index} · {label}
+                  <span className="page-status locked">🔒 upgrade</span>
+                </div>
+                <div className="locked-teaser">
+                  {label} pages are available on a higher plan.
+                </div>
+              </div>
+            );
+          }
+          const frame = streamedPages[slot.index];
+          if (frame?.status === "complete" && frame.page) {
+            return (
+              <div className="stream-page" key={slot.index}>
+                <div className="stream-page-head">
+                  Page {slot.index} · {label}
+                  <span className="page-status done">✓ streamed</span>
+                </div>
+                <div className="report">
+                  <PageLayout page={frame.page} />
+                </div>
+              </div>
+            );
+          }
+          if (frame != null || !visibleUpTo(slot.index)) return null; // skipped / not yet disclosed
+          return (
+            <div className="stream-page" key={slot.index}>
+              <div className="stream-page-head">
+                Page {slot.index} · {label}
+                <span className="page-status building">
+                  {slot.index === 1 ? "populating…" : "working…"}
+                </span>
+              </div>
+              <GhostPage kind={slot.kind} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -91,6 +214,8 @@ export function ChatPage({
   loading,
   working,
   progress,
+  pagePlan,
+  streamedPages,
   error,
   input,
   setInput,
@@ -105,6 +230,8 @@ export function ChatPage({
   loading: boolean;
   working?: string | null;
   progress: AskProgress[];
+  pagePlan: PagePlanSlot[];
+  streamedPages: Record<number, PageFrame>;
   error: string | null;
   input: string;
   setInput: (v: string) => void;
@@ -156,7 +283,14 @@ export function ChatPage({
               </div>
             </div>
           ))}
-          {loading && <WorkingBubble working={working} progress={progress} />}
+          {loading && (
+            <WorkingBubble
+              working={working}
+              progress={progress}
+              pagePlan={pagePlan}
+              streamedPages={streamedPages}
+            />
+          )}
           {error && <p className="error">{error}</p>}
         </main>
 

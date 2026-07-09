@@ -90,7 +90,7 @@ from .charts import (  # noqa: E402
     profile_chart,
     trend_chart,
 )
-from .reporting import build_report, make_insight, related_metrics  # noqa: E402
+from .reporting import build_insights, build_report, make_insight, related_metrics  # noqa: E402
 
 __all__ = [
     # analysis
@@ -109,6 +109,7 @@ __all__ = [
     "profile_chart",
     # reporting
     "build_report",
+    "build_insights",
     "make_insight",
     "related_metrics",
     # mechanics

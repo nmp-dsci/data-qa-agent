@@ -22,7 +22,7 @@ from .config import settings  # noqa: E402
 from .db import admin_engine, engine, load_database_catalog, run_select  # noqa: E402
 from .knowledge import knowledge_version  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
-from .pages import compose_pages  # noqa: E402
+from .pages import compose_pages, page_plan, planned_kinds  # noqa: E402
 from .provider import choose_provider  # noqa: E402
 from .sandbox_agent import answer_with_sandbox  # noqa: E402
 from .schema import get_catalog, merge_catalogs  # noqa: E402
@@ -44,6 +44,10 @@ logfire.instrument_fastapi(app)
 class UserCtx(BaseModel):
     id: str
     role: str = "user"
+    # App plan (s10): gates how many answer pages this user gets (free|plus|pro).
+    # Missing/unknown values fall back to "free" — the cheapest, least-revealing
+    # behaviour (page_plan treats any unrecognised value as free).
+    plan: str = "free"
 
 
 class AskRequest(BaseModel):
@@ -378,7 +382,9 @@ async def _answer(
     # None (→ deterministic offline stub below) when no provider key is set; a
     # salvage dict (fallback=True) when the LLM ran but never completed a report
     # — its trace (model turns, tool calls, tokens) stays with the stub answer.
-    llm = await answer_with_sandbox(body.question, user_id=user_id, progress=progress)
+    llm = await answer_with_sandbox(
+        body.question, user_id=user_id, plan=body.user.plan, progress=progress
+    )
     salvage: dict[str, Any] | None = None
     if llm is not None:
         if not llm.get("fallback"):
@@ -387,10 +393,43 @@ async def _answer(
 
     salvaged_steps: list[dict[str, Any]] = list(salvage["steps"]) if salvage else []
 
+    # Streaming pages on the stub path (s10): the offline stub never emitted a
+    # plan frame (no provider), so emit one now; the salvage path already did.
+    plan_slots = page_plan(plan=body.user.plan)
+    page_index = {s["kind"]: s["index"] for s in plan_slots if s["status"] != "locked"}
+    if progress is not None and llm is None:
+        progress.put_nowait({"event": "plan", "pages": plan_slots})
+
+    def _emit_stub_pages(pages: list[dict[str, Any]]) -> None:
+        """Emit page frames for the stub's pages, then skip the rest (clears ghosts)."""
+        if progress is None:
+            return
+        emitted: set[str] = set()
+        for p in pages:
+            index = page_index.get(p["template"])
+            if index is None:
+                continue
+            emitted.add(p["template"])
+            progress.put_nowait(
+                {
+                    "event": "page",
+                    "index": index,
+                    "kind": p["template"],
+                    "status": "complete",
+                    "page": p,
+                }
+            )
+        for kind, index in page_index.items():
+            if kind not in emitted:
+                progress.put_nowait(
+                    {"event": "page", "index": index, "kind": kind, "status": "skipped"}
+                )
+
     sql, intent = build_sql(body.question)
     try:
         result = await run_select(sql, user_id=user_id)
     except UnsafeSQLError as exc:
+        _emit_stub_pages([])
         return AgentAnswer(
             answer=f"I couldn't run that safely: {exc}",
             sql=sql,
@@ -421,9 +460,13 @@ async def _answer(
     report = fallback_report["report"] if fallback_report else None
     if report is not None:
         pages, page_steps = compose_pages(report, question=body.question)
+        # The stub honours the user's plan too (s10).
+        allowed = set(planned_kinds(body.user.plan))
+        pages = [p for p in pages if p["template"] in allowed]
         steps.extend(page_steps)
         if pages:
             report["pages"] = pages
+    _emit_stub_pages(pages or [])
     return AgentAnswer(
         answer=answer,
         sql=result["sql"],
@@ -453,9 +496,11 @@ def _sse(event: str, data: dict[str, Any] | str) -> str:
 @app.post("/agent/ask/stream")
 async def agent_ask_stream(body: AskRequest) -> StreamingResponse:
     """SSE variant of /agent/ask: forwards the sandbox agent's live step events
-    (``progress`` frames) as they happen, then one ``result`` frame with the full
-    AgentAnswer. A ``status`` heartbeat every 2s keeps the connection warm while a
-    single step runs. Same answer/persistence contract as /agent/ask."""
+    (``progress`` frames) and the s10 page stream (one ``plan`` frame, then a
+    ``page`` frame per finished page) as they happen, then one ``result`` frame
+    with the full AgentAnswer. A ``status`` heartbeat every 2s keeps the
+    connection warm while a single step runs. Same answer/persistence contract
+    as /agent/ask."""
 
     async def gen() -> AsyncIterator[str]:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
@@ -466,7 +511,10 @@ async def agent_ask_stream(body: AskRequest) -> StreamingResponse:
             except TimeoutError:
                 yield _sse("status", {"state": "working"})
                 continue
-            yield _sse("progress", event)
+            # Queue items carrying an "event" key are typed frames (plan/page);
+            # everything else is a legacy {n, action, detail} progress step.
+            name = event.pop("event", None)
+            yield _sse(name if name in ("plan", "page") else "progress", event)
         try:
             result = task.result()
             yield _sse("result", result.model_dump_json())

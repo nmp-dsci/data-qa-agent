@@ -31,7 +31,13 @@ from .agent_common import (
 from .config import settings
 from .knowledge import knowledge_version, read_knowledge, search_knowledge_result
 from .memory import recall_memories, remember_memory
-from .pages import compose_pages
+from .pages import (
+    compose_insights_page,
+    compose_pages,
+    compose_summary_page,
+    page_plan,
+    planned_kinds,
+)
 from .provider import choose_provider
 from .report import select_primary_query
 from .sandbox import run_code
@@ -82,14 +88,54 @@ Available inside run_analysis (import-free; call as skills.<name>):
   make_insight(heading, body, *, query_refs=None, chart=None) -> insight
   related_metrics([{label,value,basis}, ...]) -> related headline tiles
   build_report(*, summary, headlines=None, insights=None, profiles=None, main_chart=None) -> report
+  build_insights(*, insights, profiles=None) -> pass-2 patch that merges insight
+      cards into the report already built by build_report (never replaces it)
   # bootstrap: we start from ZERO skills — flag anything missing
   skill_gap(need, why="")   # record maths no skill covers (does not answer)
   note_inline_math()        # you did risky maths by hand — a skill should exist
 """
 
 
-def _sandbox_system_prompt(recalled: list[str], max_extracts: int, max_runs: int) -> str:
+def _sandbox_system_prompt(
+    recalled: list[str], max_extracts: int, max_runs: int, include_insights: bool = True
+) -> str:
     memories_block = "\n".join(f"- {m}" for m in recalled) if recalled else "(none stored yet)"
+    if include_insights:
+        pass_plan = f"""\
+   The app STREAMS each page to the user the moment you finish it, so work in
+   TWO SHORT PASSES over the frame(s) you already extracted (never re-extract):
+   PASS 1 — the summary page (always FIRST, keep it FAST — no attribute
+   slicing here): aggregate to headline level and assign
+       result = skills.build_report(
+           summary="...",
+           headlines=[{{"label": "...", "value": ..., "basis": ...}}],
+           main_chart=skills.trend_chart(s, title="..."),
+       )
+       Always include a latest_value + growth headline and the trend/comparison
+       chart — this page captures the answer and renders IMMEDIATELY.
+   PASS 2 — the insights page (a SECOND run_analysis call, right after pass 1
+   succeeds): slice the SAME frame by its attribute columns (e.g. a type or
+   band; call driver_analysis when the question asks WHY or attributes exist)
+   and assign
+       result = skills.build_insights(insights=[
+           skills.make_insight("...", "...", chart=skills.comparison_chart(...)),
+       ])
+       naming the strongest driver of the Page-1 numbers with a
+       comparison_chart of its levels. It merges into the pass-1 report.
+   You get up to {max_runs} run_analysis attempts TOTAL across both passes; if
+   a pass returns an error, fix the code and retry."""
+    else:
+        pass_plan = f"""\
+   Write SHORT pandas that aggregates to headline level and assigns the report:
+       result = skills.build_report(
+           summary="...",
+           headlines=[{{"label": "...", "value": ..., "basis": ...}}],
+           main_chart=skills.trend_chart(s, title="..."),
+       )
+       Always include a latest_value + growth headline and the trend/comparison
+       chart — one summary page IS the answer; do not add insights.
+   You get up to {max_runs} run_analysis attempts; if it returns an error, fix
+   the code and retry."""
     return f"""\
 You are a data-insight agent. You answer questions over whatever datasets the
 marts schema exposes — do NOT assume a particular domain; discover what the data
@@ -106,43 +152,31 @@ Work in this order:
 2. describe_table('<schema.table>', why="..."): the prompt lists only table names + a
    one-line purpose, so read a table's exact columns here before you write SQL.
    You may need MORE THAN ONE table (e.g. a ratio across two marts) — pull each.
-3. extract(sql, name, purpose, why="..."): write a read-only SELECT that pulls the series you
-   need — SELECT month + the metric columns, filtered to the entity. KEEP EVERY
-   MONTH (never add a `WHERE <count> >= N` filter). The result is loaded as a
-   pandas DataFrame named `name` (default `df`); call extract again with a
-   different `name` for a second table, then join in SQL or in pandas. You get up
-   to {max_extracts} extracts. Use lookup_values first (FREE) to resolve a text
-   value's exact spelling/casing. Do NOT spend an extract (or a turn) probing
-   min/max month or row counts first — pull the series directly and read its
-   span in pandas (`df[month_col].min()/.max()`) inside run_analysis.
+3. extract(sql, name, purpose, why="..."): pull ALL the data you need in ONE
+   WIDE extract — SELECT month + the metric columns, filtered to the entity,
+   PLUS the mart's explanatory attribute columns (e.g. a type or band) when
+   they could explain the metric, AGGREGATED IN SQL to month x entity x
+   attribute grain so it stays small. Later analysis passes slice this same
+   frame — never extract again between report passes. KEEP EVERY MONTH (never
+   add a `WHERE <count> >= N` filter). The result is loaded as a pandas
+   DataFrame named `name` (default `df`); call extract again with a different
+   `name` only when a SECOND TABLE is genuinely needed (e.g. a ratio across two
+   marts), then join in SQL or in pandas. You get up to {max_extracts}
+   extracts. Use lookup_values first (FREE) to resolve a text value's exact
+   spelling/casing. Do NOT spend an extract (or a turn) probing min/max month
+   or row counts first — pull the series directly and read its span in pandas
+   (`df[month_col].min()/.max()`) inside run_analysis.
 4. run_analysis(code): write SHORT pandas that calls skills.* over the frame(s)
-   and assigns the finished report to `result`, e.g.:
-       s = skills.trend_series(df, month_col="month",
-                               value_col="<total_col>", den_col="<count_col>")
-       g = skills.growth_rate(df, month_col="month", value_col="<total_col>",
-                              den_col="<count_col>", years=5)
-       latest = skills.latest_value(df, month_col="month",
-                                    value_col="<total_col>", den_col="<count_col>")
-       result = skills.build_report(
-           summary="...",
-           headlines=[{{"label": "...", "value": f"{{latest['value']}}",
-                        "basis": "6-mo rolling, " + latest['month']}}],
-           insights=[skills.make_insight("...", f"Grew {{g}}% over 5y.")],
-           main_chart=skills.trend_chart(s, title="..."),
-       )
+   and assigns the result to `result` (helpers: trend_series/growth_rate/
+   latest_value as before, e.g. `s = skills.trend_series(df, month_col="month",
+   value_col="<total_col>", den_col="<count_col>")`).
+{pass_plan}
    NEVER do growth/yield/rolling maths yourself — call the skill. If NO skill fits,
    you MAY use pandas but you MUST call skills.skill_gap(need, why) naming what a
-   future skill should do. You get up to {max_runs} run_analysis attempts; if it
-   returns an error, fix the code and retry.
+   future skill should do.
    Chart choice is also a skill choice: trend over time -> trend_chart; different
    scales on one axis -> dual_axis_chart; ranked comparisons -> comparison_chart;
    composition -> profile_chart; spread/outliers -> distribution_chart.
-   ANSWER SHAPE: the app renders your report as pages — a SUMMARY (latest value +
-   growth + trend) that captures the answer, then INSIGHTS that explain it. So:
-   always include a latest_value + growth headline and a trend/comparison chart;
-   when the question asks WHY or the extract has attribute columns (e.g. a type or
-   band), call driver_analysis and add an insight naming the strongest driver with
-   a comparison_chart of its levels.
 5. If the available marts genuinely cannot answer the question, call
    no_answer("<short reason>") instead of forcing a report — an honest "this data
    doesn't cover that" beats a misleading answer.
@@ -211,6 +245,11 @@ class _SbDeps:
     # Chat UI can show a running step list. None on the plain /agent/ask path.
     progress: asyncio.Queue[dict[str, Any]] | None = None
     progress_n: int = 0
+    # s10 streaming pages: the asking user's app plan and the stream indexes of
+    # the page kinds this run will complete (from page_plan; locked kinds absent).
+    user_plan: str = "free"
+    page_indexes: dict[str, int] = field(default_factory=dict)
+    pages_emitted: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def next_id(self, prefix: str, store: dict[str, Any]) -> str:
         return f"{prefix}{len(store) + 1}"
@@ -222,11 +261,45 @@ class _SbDeps:
         self.progress_n += 1
         self.progress.put_nowait({"n": self.progress_n, "action": action, "detail": detail})
 
+    def emit_frame(self, event: str, payload: dict[str, Any]) -> None:
+        """plan/page frames ride the SAME progress queue; the SSE endpoint
+        routes items carrying an ``event`` key to their own SSE event name.
+        A no-op off the streaming path."""
+        if self.progress is None:
+            return
+        self.progress.put_nowait({"event": event, **payload})
+
+    def emit_page(self, kind: str, page: dict[str, Any]) -> None:
+        """Stream one finished page (validated Template Studio Page JSON).
+
+        A full no-op off the streaming path — pages_emitted and the page_emit
+        trace step only ever record what was actually streamed.
+        """
+        if self.progress is None:
+            return
+        index = self.page_indexes.get(kind)
+        if index is None:  # not in this user's plan
+            return
+        first_emit = kind not in self.pages_emitted
+        self.pages_emitted[kind] = page
+        self.emit_frame("page", {"index": index, "kind": kind, "status": "complete", "page": page})
+        if first_emit:  # record streaming in the trace (a retry re-emit isn't a new step)
+            self.steps.append(
+                {"kind": "page_emit", "status": "success", "page": kind, "index": index}
+            )
+
+    def emit_skipped_pages(self) -> None:
+        """Tell the client planned-but-unproduced pages won't arrive (clears ghosts)."""
+        for kind, index in self.page_indexes.items():
+            if kind not in self.pages_emitted:
+                self.emit_frame("page", {"index": index, "kind": kind, "status": "skipped"})
+
 
 async def answer_with_sandbox(
     question: str,
     *,
     user_id: str,
+    plan: str = "free",
     progress: asyncio.Queue[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Run the sandbox agent path; None to fall back to the offline stub.
@@ -252,6 +325,13 @@ async def answer_with_sandbox(
     captured: list[Any] = []
     try:
         os.environ.setdefault(_ENV_VAR[provider], api_key)
+        # The page plan is deterministic policy per user (s10): declare it first
+        # so the frontend can draw the ghost slots before any model work starts.
+        deps = _SbDeps(user_id=user_id, progress=progress, user_plan=plan)
+        plan_slots = page_plan(plan=plan)
+        deps.page_indexes = {s["kind"]: s["index"] for s in plan_slots if s["status"] != "locked"}
+        deps.emit_frame("plan", {"pages": plan_slots})
+
         recalled = await recall_memories(user_id, question)
         model_name = settings.deepseek_model if provider == "deepseek" else settings.model
         max_extracts = settings.max_sql_attempts
@@ -260,12 +340,15 @@ async def answer_with_sandbox(
             f"{provider}:{model_name}",
             deps_type=_SbDeps,
             output_type=str,
-            system_prompt=_sandbox_system_prompt(recalled, max_extracts, max_runs),
+            system_prompt=_sandbox_system_prompt(
+                recalled,
+                max_extracts,
+                max_runs,
+                include_insights="insights" in deps.page_indexes,
+            ),
             retries=3,
         )
         _register_sandbox_tools(agent, max_extracts, max_runs)
-
-        deps = _SbDeps(user_id=user_id, progress=progress)
         usage_limits = UsageLimits(
             request_limit=settings.agent_request_limit,
             total_tokens_limit=settings.agent_total_tokens_limit,
@@ -299,9 +382,20 @@ async def answer_with_sandbox(
         # log is built, so admins see object-build → template-pick → page-compose
         # both as raw steps and as decisions in app.query_runs.
         pages, page_steps = compose_pages(report, question=question)
+        # s10: the result honours the user's plan too — pages above it are
+        # locked teasers on the wire, never delivered content.
+        allowed_kinds = set(planned_kinds(plan))
+        pages = [p for p in pages if p["template"] in allowed_kinds]
         if pages:
             report["pages"] = pages
         deps.steps.extend(page_steps)
+        # Stream any page the tool path didn't already emit (e.g. a model that
+        # built everything in one pass before the emit hooks fired), then tell
+        # the client which planned pages won't arrive so its ghosts clear.
+        for p in pages:
+            if p["template"] not in deps.pages_emitted:
+                deps.emit_page(p["template"], p)
+        deps.emit_skipped_pages()
 
         trace = _merge_decision_log(_build_trace(messages), deps.steps)
         trace.extend(page_steps)
@@ -342,9 +436,7 @@ async def answer_with_sandbox(
         return None
 
 
-def _salvage_fallback(
-    messages: list[Any], deps: _SbDeps, why: str
-) -> dict[str, Any]:
+def _salvage_fallback(messages: list[Any], deps: _SbDeps, why: str) -> dict[str, Any]:
     """Package a failed sandbox run's trace so the stub fallback can keep it.
 
     The caller (main._answer) still answers with the deterministic stub; this
@@ -370,6 +462,7 @@ def _no_answer_result(deps: _SbDeps, messages: list[Any], provider: str) -> dict
     a ``no_answer`` flag), so the UI can render the reason instead of the app
     silently falling back to a domain-specific stub.
     """
+    deps.emit_skipped_pages()  # no pages will arrive — clear any ghost slots
     trace = _merge_decision_log(_build_trace(messages), deps.steps)
     report = {
         "element_id": "report",
@@ -694,15 +787,18 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         ctx.deps.run_calls += 1
         ctx.deps.emit("Building the report", "")
         result = run_code(code, frames=ctx.deps.frames)
-        ctx.deps.skills_used = result.skills_used
-        ctx.deps.skill_gaps = [g.model_dump() for g in result.skill_gaps]
-        ctx.deps.used_inline_math = result.used_inline_math
+        # Accumulate across passes — pass 2's telemetry must not erase pass 1's.
+        for name in result.skills_used:
+            if name not in ctx.deps.skills_used:
+                ctx.deps.skills_used.append(name)
+        ctx.deps.skill_gaps.extend(g.model_dump() for g in result.skill_gaps)
+        ctx.deps.used_inline_math = ctx.deps.used_inline_math or result.used_inline_math
         ctx.deps.steps.append(
             {
                 "kind": "analysis",
                 "status": "error" if result.error else "ok",
                 "skills_used": result.skills_used,
-                "skill_gaps": ctx.deps.skill_gaps,
+                "skill_gaps": [g.model_dump() for g in result.skill_gaps],
                 "error": result.error,
                 "why": why,
             }
@@ -717,8 +813,48 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
             ctx.deps.steps[-1]["status"] = "error"
             ctx.deps.steps[-1]["error"] = missing_report
             return f"run_analysis error (fix and retry): {missing_report}"
-        ctx.deps.report = result.report
         gap_note = f" Skill gaps recorded: {ctx.deps.skill_gaps}." if ctx.deps.skill_gaps else ""
+
+        # --- PASS 2: an insights patch merges into the pass-1 report ---------
+        if result.report.get("element_id") == "insights_patch":
+            if ctx.deps.report is None:
+                missing_pass1 = (
+                    "build_insights ran before build_report: run PASS 1 first "
+                    "(result = skills.build_report(...)), then add insights."
+                )
+                ctx.deps.steps[-1]["status"] = "error"
+                ctx.deps.steps[-1]["error"] = missing_pass1
+                return f"run_analysis error (fix and retry): {missing_pass1}"
+            ctx.deps.report["insights"] = result.report.get("insights") or []
+            if result.report.get("profiles"):
+                ctx.deps.report["profiles"] = result.report["profiles"]
+            page, _ = compose_insights_page(ctx.deps.report)
+            if page is not None:
+                ctx.deps.emit("Streaming page 2", "insights")
+                ctx.deps.emit_page("insights", page)
+            return (
+                f"insights merged into the report. Skills used: {result.skills_used}."
+                f"{gap_note} Now return a one-line confirmation."
+            )
+
+        # --- PASS 1 (or a single-pass full report) ---------------------------
+        ctx.deps.report = result.report
+        page, _ = compose_summary_page(ctx.deps.report)
+        if page is not None:
+            ctx.deps.emit("Streaming page 1", "summary")
+            ctx.deps.emit_page("summary", page)
+        # A single-pass model may have included insights already — stream them.
+        if ctx.deps.report.get("insights") or ctx.deps.report.get("profiles"):
+            page2, _ = compose_insights_page(ctx.deps.report)
+            if page2 is not None:
+                ctx.deps.emit_page("insights", page2)
+        elif "insights" in ctx.deps.page_indexes:
+            return (
+                f"report built — Page 1 is streaming. Skills used: {result.skills_used}."
+                f"{gap_note} Now run PASS 2: slice the same frame by its attribute "
+                "columns and assign result = skills.build_insights(insights=[...]) "
+                "to explain the headline. Do NOT extract again."
+            )
         return (
             f"report built. Skills used: {result.skills_used}.{gap_note} "
             "Now return a one-line confirmation."

@@ -153,9 +153,9 @@ async def promote_feedback(
                 (
                     await conn.execute(
                         text(
-                        "SELECT f.comment, f.rating, f.accurate, f.issue_flag, "
-                        "  f.target_kind, f.target_snapshot, f.user_id, "
-                        "  f.knowledge_version, m.conversation_id, m.created_at AS m_at "
+                            "SELECT f.comment, f.rating, f.accurate, f.issue_flag, "
+                            "  f.target_kind, f.target_snapshot, f.user_id, "
+                            "  f.knowledge_version, m.conversation_id, m.created_at AS m_at "
                             "FROM app.answer_feedback f JOIN app.messages m ON m.id = f.message_id "
                             "WHERE f.id = :fid"
                         ),
@@ -319,6 +319,9 @@ async def run_staleness(admin: CurrentUser = Depends(require_admin)) -> dict[str
                 question=case["question"],
                 user_id=admin.id,
                 role=admin.role,
+                # Staleness replays need the full report (insights included) to
+                # compare stored elements, regardless of the admin's own plan.
+                plan="pro",
                 dataset_slug="nsw_sales",
             )
         except Exception:  # noqa: BLE001 — a run failure just skips this case this cycle

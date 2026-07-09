@@ -9,7 +9,7 @@ import type { Page, PageObjectType, TemplateId } from "../../lib/api";
 import { PageLayout } from "../../report-engine/PageLayout";
 import { CHART_OPTIONS, TEMPLATES } from "../../report-engine/registry";
 import { demoObjectOfType } from "./AgentConfigDemo";
-import { ContractJson } from "./ContractJson";
+import { ContractJson } from "../../ui/ContractJson";
 
 const LAYOUTS: TemplateId[] = ["one-col", "two-col", "three-col"];
 const HEIGHT_CHOICES = ["sm", "md", "lg", "fill"] as const;

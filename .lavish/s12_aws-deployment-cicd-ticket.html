@@ -233,11 +233,12 @@ flowchart TB
         <p class="text-xs text-base-content/60 mt-1">Frontend content deploy waits for the backend URL (Phase D). The CloudFront URL now exists → it's the value to add as the Google authorized origin + redirect URI.</p>
       </div></li>
       <li class="step step-primary" data-content="D"><div class="text-left pb-6 pl-2">
-        <div class="font-semibold text-lg">D · Deploy services + run jobs <span class="badge badge-sm badge-warning align-middle">◐ in progress</span></div>
+        <div class="font-semibold text-lg">D · Deploy services + run jobs <span class="badge badge-sm badge-success align-middle">✅ shipped</span></div>
         <p class="text-sm text-base-content/70 mt-1">Terraform the two <strong>App Runner</strong> services (backend-api public, data-agent token-guarded), secrets from Secrets Manager, <code class="inline">DB_SSL=require</code>, CORS = CloudFront URL. Run the <strong>migrate</strong> then <strong>pipeline</strong> ECS tasks — loading the full datasets from S3.</p>
-        <p class="text-xs text-success mt-1">✅ Authored + committed (<code class="inline">5879ff8</code>): App Runner ×2 (ECR auto-deploy), ECS Fargate migrate/pipeline task defs, <code class="inline">run_job.sh</code>. Hardening added: <strong>X-Agent-Token</strong> guard on the public agent URL, <strong>admin_ro password rotation</strong>, all role passwords random via Secrets Manager.</p>
-        <p class="text-xs text-warning mt-1">⚠️ No-NAT consequence (accepted v1): App Runner keeps managed egress (LLM/JWKS need internet), so <strong>Aurora is on a public endpoint</strong> — TLS forced + 32-char random passwords; SG tightening + private agent land in Phase F.</p>
-        <p class="text-xs text-success mt-1">✔ Verify: API health + <code class="inline">/auth/config</code> in the cloud; full marts populated in Aurora; Google login works on the live URL.</p>
+        <p class="text-xs text-success mt-1">✅ Live: backend <code class="inline">hzxtrasvdp…awsapprunner.com</code> + agent <code class="inline">saan27pyxp…</code> (both /health OK; agent 401s without <strong>X-Agent-Token</strong>). Migrate ✅ (pgvector confirmed, role passwords rotated). Pipeline ✅ — <strong>raw 3.3M rent + 3.09M sales; marts 367K + 816K; dbt 37/37 PASS</strong>. Frontend live on CloudFront against the cloud API.</p>
+        <p class="text-xs text-warning mt-1">⚠️ No-NAT consequence (accepted v1): App Runner keeps managed egress (LLM/JWKS need internet), so <strong>Aurora is on a public endpoint</strong> — TLS forced + 32-char random passwords; SG tightening + private agent land in the harden phase.</p>
+        <p class="text-xs text-base-content/60 mt-1">Battle scars fixed en route: App Runner racing secret versions (depends_on), dbt getting the percent-encoded password (unquote), Aurora auto-pausing mid-pipeline (1h window + wake-retry), ECS waiter 10-min cap (loop).</p>
+        <p class="text-xs text-warning mt-1">⏳ Last verify (human): open the CloudFront URL, Google sign-in, ask a question → governed answer + chart; admin dashboard.</p>
       </div></li>
       <li class="step step-primary" data-content="E"><div class="text-left pb-6 pl-2">
         <div class="font-semibold text-lg">E · CI/CD + hardening — do now</div>

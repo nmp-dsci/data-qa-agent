@@ -58,5 +58,10 @@ resource "aws_rds_cluster_instance" "writer" {
   engine             = aws_rds_cluster.main.engine
   engine_version     = aws_rds_cluster.main.engine_version
 
+  # Public endpoint — the consequence of the no-NAT decision (see network.tf).
+  # App Runner (managed egress) and local tooling reach the DB here; TLS is
+  # forced at the cluster parameter group and all passwords are random 32-char.
+  publicly_accessible = true
+
   tags = { Name = "${local.name}-aurora-writer" }
 }

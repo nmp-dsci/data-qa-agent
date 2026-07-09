@@ -59,3 +59,50 @@ variable "ecr_repositories" {
   type        = list(string)
   default     = ["backend-api", "data-agent", "data-pipeline", "db-migrate"]
 }
+
+variable "image_tag" {
+  description = "Image tag the App Runner services + ECS jobs run. `latest` + App Runner auto-deploy = every push goes live; CI can pin a sha."
+  type        = string
+  default     = "latest"
+}
+
+# ---- App (Phase D) ---------------------------------------------------------
+variable "google_client_id" {
+  description = "Google OAuth Web client id (public; the ID-token audience). Same client as s11."
+  type        = string
+  default     = ""
+}
+
+variable "admin_emails" {
+  description = "Comma-separated emails mapped to the admin role."
+  type        = string
+  default     = ""
+}
+
+variable "llm_provider" {
+  description = "LLM provider the agent uses (deepseek | anthropic). The data-qa/llm-api-key secret feeds the matching *_API_KEY."
+  type        = string
+  default     = "deepseek"
+}
+
+# 0.25 vCPU / 0.5 GB is App Runner's smallest tier — fine for the thin API.
+variable "backend_cpu" {
+  type    = string
+  default = "256"
+}
+variable "backend_memory" {
+  type    = string
+  default = "512"
+}
+
+# The agent loads a ~130MB ONNX embedding model and runs the Node/Pyodide
+# sandbox — 0.5 GB would OOM. 1 vCPU / 2 GB is the safe start (~+$9/mo idle
+# memory vs the smallest tier); downsize to 1 GB later if it proves roomy.
+variable "agent_cpu" {
+  type    = string
+  default = "1024"
+}
+variable "agent_memory" {
+  type    = string
+  default = "2048"
+}

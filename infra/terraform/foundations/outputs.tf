@@ -57,3 +57,13 @@ output "ecr_repository_urls" {
   description = "ECR repository URLs, keyed by service."
   value       = { for k, r in aws_ecr_repository.service : k => r.repository_url }
 }
+
+output "backend_api_url" {
+  description = "Public HTTPS URL of backend-api (App Runner) — the frontend's VITE_API_URL."
+  value       = "https://${aws_apprunner_service.backend_api.service_url}"
+}
+
+output "data_agent_url" {
+  description = "URL of the data-agent (App Runner; requires X-Agent-Token except /health)."
+  value       = "https://${aws_apprunner_service.data_agent.service_url}"
+}

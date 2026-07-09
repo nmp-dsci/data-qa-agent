@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 import logfire
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 # Configured before importing sandbox_agent: agent_common (pulled in by that
@@ -39,6 +40,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="data-qa-agent :: data-agent", version="0.1.0", lifespan=lifespan)
 logfire.instrument_fastapi(app)
+
+
+@app.middleware("http")
+async def _require_shared_token(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """Reject callers without the shared token when one is configured (s12).
+
+    The cloud agent sits on a public App Runner URL with the backend as its only
+    intended caller. /health stays open for the platform health checker.
+    """
+    token = settings.agent_shared_token
+    if token and request.url.path != "/health":
+        supplied = request.headers.get("x-agent-token", "")
+        if not secrets.compare_digest(supplied, token):
+            return JSONResponse(status_code=401, content={"detail": "invalid X-Agent-Token"})
+    return await call_next(request)
 
 
 class UserCtx(BaseModel):

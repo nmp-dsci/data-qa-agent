@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://app_user:app_pw@db:5432/dataqa"
     db_ssl: str = ""  # set to e.g. "require" in Azure (managed Postgres needs TLS)
     agent_url: str = "http://data-agent:8100"
+    # Shared token sent as X-Agent-Token on every agent call. Required by the
+    # cloud agent (s12), whose App Runner URL is public. Empty = not sent (local).
+    agent_shared_token: str = ""
 
     # Dev-auth stub (auth_mode=dev): a locally signed HS256 token.
     jwt_secret: str = "dev-secret-change-me"

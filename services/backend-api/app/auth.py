@@ -21,7 +21,7 @@ class CurrentUser:
     username: str
     email: str
     role: str
-    entra_oid: str | None = None
+    external_id: str | None = None
 
     @property
     def is_admin(self) -> bool:
@@ -64,11 +64,14 @@ def _dev_user(token: str) -> CurrentUser:
 
 
 # ---------------------------------------------------------------------------
-# Entra External ID (auth_mode=entra): validate RS256 tokens against the
-# tenant's published JWKS. No client secret is needed to verify a token.
+# Google Sign-in (auth_mode=google): validate RS256 ID tokens against Google's
+# published JWKS. No client secret is needed to verify a token.
 # ---------------------------------------------------------------------------
-class EntraVerifier:
-    """Lazily loads OIDC metadata + signing keys and verifies access tokens."""
+GOOGLE_OPENID_CONFIG_URL = "https://accounts.google.com/.well-known/openid-configuration"
+
+
+class GoogleVerifier:
+    """Lazily loads Google's OIDC metadata + signing keys and verifies ID tokens."""
 
     def __init__(self) -> None:
         self._issuer: str | None = None
@@ -77,13 +80,13 @@ class EntraVerifier:
     async def _ensure_loaded(self) -> None:
         if self._jwks_client is not None:
             return
-        if not settings.entra_authority or not settings.expected_audience:
+        if not settings.google_client_id:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Entra auth is not configured (entra_authority / entra_client_id)",
+                detail="Google auth is not configured (google_client_id)",
             )
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(settings.openid_config_url)
+            resp = await client.get(GOOGLE_OPENID_CONFIG_URL)
             resp.raise_for_status()
             meta = resp.json()
         self._issuer = meta["issuer"]
@@ -96,7 +99,7 @@ class EntraVerifier:
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience=settings.expected_audience,
+            audience=settings.google_client_id,
             issuer=self._issuer,
             options={"require": ["exp", "iss", "aud"]},
         )
@@ -112,42 +115,46 @@ class EntraVerifier:
             ) from exc
 
 
-_entra_verifier = EntraVerifier()
+_google_verifier = GoogleVerifier()
 
 
-async def _provision_entra_user(claims: dict[str, Any]) -> CurrentUser:
-    """Just-in-time upsert an Entra identity into app.users, keyed by oid.
+async def _provision_google_user(claims: dict[str, Any]) -> CurrentUser:
+    """Just-in-time upsert a Google identity into app.users, keyed by sub.
 
     Returns the app-local row so RLS (which compares app.users.id) and the
-    admin role stay driven by our own database, refreshed from the token.
+    admin role stay driven by our own database, refreshed from the token. The
+    admin role comes from the ADMIN_EMAILS allowlist, not from the token.
     """
-    oid = claims.get("oid") or claims.get("sub")
-    if not oid:
+    sub = claims.get("sub")
+    if not sub:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject (oid/sub)"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject (sub)"
         )
-    email = claims.get("email") or claims.get("preferred_username") or f"{oid}@entra.local"
+    email = claims.get("email")
+    if not email or not claims.get("email_verified"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing a verified email"
+        )
     display_name = claims.get("name") or email
-    username = claims.get("preferred_username") or email
-    roles = claims.get("roles") or []
-    role = "admin" if settings.entra_admin_role in roles else "user"
+    role = "admin" if email.lower() in settings.admin_email_set else "user"
 
     async with rls_connection(None) as conn:
         row = (
             (
                 await conn.execute(
                     text(
-                        "INSERT INTO app.users (entra_oid, username, email, display_name, role) "
-                        "VALUES (:oid, :username, :email, :name, :role) "
-                        "ON CONFLICT (entra_oid) DO UPDATE SET "
+                        "INSERT INTO app.users "
+                        "  (auth_provider, external_id, username, email, display_name, role) "
+                        "VALUES ('google', :sub, :username, :email, :name, :role) "
+                        "ON CONFLICT (auth_provider, external_id) DO UPDATE SET "
                         "  email = EXCLUDED.email, "
                         "  display_name = EXCLUDED.display_name, "
                         "  role = EXCLUDED.role "
                         "RETURNING id, username, email, role"
                     ),
                     {
-                        "oid": oid,
-                        "username": username,
+                        "sub": sub,
+                        "username": email,
                         "email": email,
                         "name": display_name,
                         "role": role,
@@ -163,7 +170,7 @@ async def _provision_entra_user(claims: dict[str, Any]) -> CurrentUser:
         username=row["username"],
         email=row["email"],
         role=row["role"],
-        entra_oid=oid,
+        external_id=sub,
     )
 
 
@@ -180,9 +187,9 @@ async def _user_from_authorization(authorization: str | None) -> CurrentUser | N
     token = _bearer_token(authorization)
     if token is None:
         return None
-    if settings.auth_mode == "entra":
-        claims = await _entra_verifier.verify(token)
-        return await _provision_entra_user(claims)
+    if settings.auth_mode == "google":
+        claims = await _google_verifier.verify(token)
+        return await _provision_google_user(claims)
     return _dev_user(token)
 
 

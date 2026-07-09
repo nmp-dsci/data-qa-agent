@@ -9,8 +9,7 @@ export interface User {
 }
 
 export interface AuthConfig {
-  auth_mode: "dev" | "entra";
-  authority?: string | null;
+  auth_mode: "dev" | "google";
   client_id?: string | null;
   scopes: string[];
 }

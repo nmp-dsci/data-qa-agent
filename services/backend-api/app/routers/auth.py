@@ -40,22 +40,21 @@ class AuthConfig(BaseModel):
 async def auth_config() -> AuthConfig:
     """Lets the frontend configure its login flow at runtime (no rebuild to flip).
 
-    Dev mode returns just the mode; Entra mode returns the MSAL parameters.
+    Dev mode returns just the mode; Google mode returns the OAuth client id the
+    Google Identity Services button needs.
     """
-    if settings.auth_mode == "entra":
-        scope = f"api://{settings.entra_client_id}/access_as_user"
+    if settings.auth_mode == "google":
         return AuthConfig(
-            auth_mode="entra",
-            authority=settings.entra_authority,
-            client_id=settings.entra_client_id,
-            scopes=[scope],
+            auth_mode="google",
+            client_id=settings.google_client_id,
+            scopes=["openid", "email", "profile"],
         )
     return AuthConfig(auth_mode="dev")
 
 
 @router.post("/auth/dev-login", response_model=TokenResponse)
 async def dev_login(body: DevLoginRequest) -> TokenResponse:
-    """Local dev-auth stub. In production this is replaced by Entra OIDC."""
+    """Local dev-auth stub. In production this is replaced by Google OIDC."""
     if settings.auth_mode != "dev":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dev login disabled")
 

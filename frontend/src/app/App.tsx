@@ -15,7 +15,7 @@ import {
   track,
   User,
 } from "../lib/api";
-import { bootstrap, loadAuthConfig, loginDev, loginEntra, logout as authLogout } from "../lib/auth";
+import { loadAuthConfig, loginDev, logout as authLogout } from "../lib/auth";
 import { getTheme, setTheme } from "../lib/theme";
 import { ChatMsg, ChatPage } from "../features/chat/ChatPage";
 import { AdminPage } from "../features/admin/AdminPage";
@@ -63,7 +63,7 @@ function messageToChat(m: ConversationMessage): ChatMsg {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [authMode, setAuthMode] = useState<"dev" | "entra">("dev");
+  const [authMode, setAuthMode] = useState<"dev" | "google">("dev");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -120,15 +120,9 @@ export default function App() {
 
   useEffect(() => {
     track("login_screen_view");
-    // Discover the auth backend and, for Entra, restore an existing session.
+    // Discover which auth backend is active (dev stub or Google Sign-in).
     loadAuthConfig()
-      .then(async (cfg) => {
-        setAuthMode(cfg.auth_mode);
-        if (cfg.auth_mode === "entra") {
-          const existing = await bootstrap();
-          if (existing) enterApp(existing);
-        }
-      })
+      .then((cfg) => setAuthMode(cfg.auth_mode))
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -153,16 +147,17 @@ export default function App() {
     }
   }
 
-  async function handleEntraLogin() {
+  // Google Sign-in: the GIS button (rendered in Login) calls back with our
+  // provisioned profile once the ID token is verified by the backend.
+  function handleGoogleUser(u: User) {
     setError(null);
-    try {
-      const u = await loginEntra();
-      track("login_success", { username: u.username });
-      enterApp(u);
-    } catch (e) {
-      track("login_failure", { reason: (e as Error).message });
-      setError((e as Error).message);
-    }
+    track("login_success", { username: u.username });
+    enterApp(u);
+  }
+
+  function handleGoogleError(message: string) {
+    track("login_failure", { reason: message });
+    setError(message);
   }
 
   async function logout() {
@@ -274,7 +269,8 @@ export default function App() {
         authMode={authMode}
         error={error}
         onDevLogin={handleDevLogin}
-        onEntraLogin={handleEntraLogin}
+        onUser={handleGoogleUser}
+        onError={handleGoogleError}
       />
     );
   }

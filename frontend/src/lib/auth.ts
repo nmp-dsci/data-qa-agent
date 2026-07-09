@@ -1,66 +1,82 @@
 // Auth abstraction: one interface, two backends chosen at runtime by /auth/config.
-//   dev   -> the local dev-auth stub (pick a seeded test user)
-//   entra -> Microsoft Entra External ID via MSAL (real OIDC sign-in)
-// The MSAL library is imported lazily so dev never pays for it.
-import type {
-  AuthenticationResult,
-  IPublicClientApplication,
-} from "@azure/msal-browser";
+//   dev    -> the local dev-auth stub (pick a seeded test user)
+//   google -> Google Sign-in via Google Identity Services (real OIDC sign-in)
+// The GIS script is loaded lazily so dev never pays for it.
 import { AuthConfig, devLogin, getAuthConfig, getMe, setToken, User } from "./api";
 
+// Minimal typing for the slice of Google Identity Services we use.
+interface GoogleIdApi {
+  initialize(config: {
+    client_id: string;
+    callback: (resp: { credential?: string }) => void;
+  }): void;
+  renderButton(el: HTMLElement, options: Record<string, unknown>): void;
+  disableAutoSelect?(): void;
+}
+
+declare global {
+  interface Window {
+    google?: { accounts: { id: GoogleIdApi } };
+  }
+}
+
 let cachedConfig: AuthConfig | null = null;
-let msal: IPublicClientApplication | null = null;
-let entraScopes: string[] = [];
+let gisLoading: Promise<void> | null = null;
 
 export async function loadAuthConfig(): Promise<AuthConfig> {
   if (!cachedConfig) cachedConfig = await getAuthConfig();
   return cachedConfig;
 }
 
-async function getMsal(config: AuthConfig): Promise<IPublicClientApplication> {
-  if (msal) return msal;
-  const { PublicClientApplication } = await import("@azure/msal-browser");
-  entraScopes = config.scopes;
-  msal = new PublicClientApplication({
-    auth: {
-      clientId: config.client_id ?? "",
-      authority: config.authority ?? "",
-      knownAuthorities: config.authority ? [new URL(config.authority).host] : [],
-      redirectUri: window.location.origin,
-    },
-    cache: { cacheLocation: "sessionStorage" },
+/** Load the Google Identity Services client script once. */
+function loadGis(): Promise<void> {
+  if (gisLoading) return gisLoading;
+  gisLoading = new Promise<void>((resolve, reject) => {
+    if (window.google?.accounts?.id) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load Google Sign-in"));
+    document.head.appendChild(script);
   });
-  await msal.initialize();
-  return msal;
+  return gisLoading;
 }
 
-async function hydrateFromResult(result: AuthenticationResult): Promise<User> {
-  setToken(result.accessToken);
-  return getMe();
-}
-
-/** Restore an existing session on page load. Returns the user, or null if none. */
-export async function bootstrap(): Promise<User | null> {
+/**
+ * Render the official Google button into `el`. On sign-in, GIS hands back an
+ * ID token (the credential); we set it as the bearer token and exchange it for
+ * our app profile via /me (which validates it and JIT-provisions the user).
+ */
+export async function renderGoogleButton(
+  el: HTMLElement,
+  onUser: (user: User) => void,
+  onError: (error: Error) => void,
+): Promise<void> {
   const config = await loadAuthConfig();
-  if (config.auth_mode !== "entra") return null;
-  const client = await getMsal(config);
-  const account = client.getAllAccounts()[0];
-  if (!account) return null;
-  try {
-    const result = await client.acquireTokenSilent({ scopes: entraScopes, account });
-    return await hydrateFromResult(result);
-  } catch {
-    return null; // silent renewal failed -> user must sign in again
-  }
-}
-
-/** Interactive Entra sign-in (popup). */
-export async function loginEntra(): Promise<User> {
-  const config = await loadAuthConfig();
-  const client = await getMsal(config);
-  const result = await client.loginPopup({ scopes: entraScopes });
-  client.setActiveAccount(result.account);
-  return hydrateFromResult(result);
+  if (config.auth_mode !== "google" || !config.client_id) return;
+  await loadGis();
+  const id = window.google?.accounts.id;
+  if (!id) throw new Error("Google Sign-in unavailable");
+  id.initialize({
+    client_id: config.client_id,
+    callback: (resp) => {
+      void (async () => {
+        try {
+          if (!resp.credential) throw new Error("No credential returned by Google");
+          setToken(resp.credential);
+          onUser(await getMe());
+        } catch (e) {
+          onError(e as Error);
+        }
+      })();
+    },
+  });
+  id.renderButton(el, { theme: "filled_blue", size: "large", type: "standard", width: 260 });
 }
 
 /** Dev-auth stub sign-in as a seeded test user. */
@@ -72,8 +88,5 @@ export async function loginDev(username: string): Promise<User> {
 
 export async function logout(): Promise<void> {
   setToken(null);
-  if (msal) {
-    const account = msal.getAllAccounts()[0];
-    await msal.logoutPopup({ account }).catch(() => {});
-  }
+  window.google?.accounts.id.disableAutoSelect?.();
 }

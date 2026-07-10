@@ -34,10 +34,12 @@ class Settings(BaseSettings):
     def admin_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
 
-    # Per-user LLM cost cap (s12 cheap hardening): max agent questions per user
-    # per UTC day. The LLM is the dominant cost, so capping questions caps
-    # spend. 0 disables; admins are exempt (the owner shouldn't self-lock).
-    ask_daily_limit: int = 40
+    # Per-user LLM cost caps by tier (s12 cheap hardening): max agent questions
+    # per user per UTC day. The LLM is the dominant cost, so capping questions
+    # caps spend. Paid = plan plus/pro (admins count as paid); free = the rest.
+    # 0 disables that tier's cap.
+    ask_daily_limit_free: int = 1
+    ask_daily_limit_paid: int = 3
 
     cors_origins: list[str] = ["http://localhost:5230", "http://127.0.0.1:5230"]
     # Comma-separated extra origins injected per-deployment (e.g. the cloud frontend URL).

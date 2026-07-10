@@ -287,16 +287,28 @@ def _build_response(
 
 
 async def _check_daily_cap(user: CurrentUser) -> None:
-    """Per-user LLM cost cap (s12): reject beyond N agent questions per UTC day.
+    """Tiered per-user LLM cost cap (s12): reject beyond the tier's questions/day.
 
-    Counts the user's own persisted runs (RLS scopes the query to them). The
-    LLM is the dominant cost, so capping questions caps spend. Admins are
-    exempt; ASK_DAILY_LIMIT=0 disables.
+    Paid tier = plan plus/pro (admins count as paid); free tier = everyone
+    else. Counts the user's own persisted runs (RLS scopes the query to them).
+    The LLM is the dominant cost, so capping questions caps spend. A tier's
+    limit of 0 disables its cap. Resets at midnight UTC.
     """
-    limit = settings.ask_daily_limit
-    if limit <= 0 or user.role == "admin":
-        return
     async with rls_connection(user.id) as conn:
+        plan = (
+            await conn.execute(text("SELECT plan FROM app.users WHERE id = :uid"), {"uid": user.id})
+        ).scalar() or "free"
+        paid = user.role == "admin" or plan in ("plus", "pro")
+        tier, limit = (
+            ("paid", settings.ask_daily_limit_paid)
+            if paid
+            else (
+                "free",
+                settings.ask_daily_limit_free,
+            )
+        )
+        if limit <= 0:
+            return
         result = await conn.execute(
             text(
                 "SELECT count(*) FROM app.query_runs "
@@ -309,7 +321,10 @@ async def _check_daily_cap(user: CurrentUser) -> None:
     if used >= limit:
         raise HTTPException(
             status_code=429,
-            detail=f"Daily question limit reached ({limit}/day). It resets at midnight UTC.",
+            detail=(
+                f"Daily question limit reached for the {tier} tier ({limit}/day). "
+                "It resets at midnight UTC."
+            ),
         )
 
 

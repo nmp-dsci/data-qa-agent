@@ -4,9 +4,10 @@
 # API, Google JWKS, backend→agent over its public URL), so they keep MANAGED
 # egress and reach Aurora over its *public* endpoint instead of a VPC
 # connector. The subnets therefore route to an IGW, Aurora is publicly
-# resolvable (TLS forced + long random passwords), and the one-shot ECS jobs
-# run here with public IPs (pull ECR / reach S3 without NAT or VPC endpoints).
-# Phase F hardening: private agent + restricted DB ingress.
+# resolvable (TLS forced + long random passwords; 5432 ingress restricted to
+# the jobs SG + regional EC2 ranges + operator CIDRs — see the aurora SGs
+# below), and the one-shot ECS jobs run here with public IPs (pull ECR / reach
+# S3 without NAT or VPC endpoints). Phase F hardening: private agent.
 # --------------------------------------------------------------------------
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
@@ -54,9 +55,14 @@ resource "aws_route_table_association" "app" {
   route_table_id = aws_route_table.app.id
 }
 
-# Security group for Aurora. Public 5432 is the accepted v1 trade-off of the
-# no-NAT decision: App Runner egress IPs aren't stable/publishable, so the DB
-# relies on rds.force_ssl=1 + 32-char random passwords. Tighten in Phase F.
+# Security group for Aurora. The endpoint stays public (the no-NAT decision:
+# App Runner keeps MANAGED egress for the LLM API, so it reaches the DB from
+# AWS public IP space — a VPC connector would force ALL egress into the VPC and
+# need a NAT gateway for the internet), but 5432 is no longer open to
+# 0.0.0.0/0: in-VPC clients (the one-shot ECS jobs) get an SG-to-SG rule, App
+# Runner is admitted via the region's published EC2 ranges (its managed-egress
+# source pool — see aurora_apprunner below), and any operator IPs come from
+# var.db_extra_ingress_cidrs. TLS stays forced + 32-char random passwords.
 resource "aws_security_group" "aurora" {
   name = "${local.name}-aurora"
   # NOTE: description is force-new on SGs, and this SG can't be replaced while
@@ -65,11 +71,22 @@ resource "aws_security_group" "aurora" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "PostgreSQL (TLS forced; strong creds; Phase F restricts)"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description     = "PostgreSQL from the one-shot ECS jobs (migrate/pipeline)"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.jobs.id]
+  }
+
+  dynamic "ingress" {
+    for_each = length(var.db_extra_ingress_cidrs) > 0 ? [1] : []
+    content {
+      description = "PostgreSQL from operator CIDRs (local tooling)"
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = var.db_extra_ingress_cidrs
+    }
   }
 
   egress {
@@ -81,6 +98,39 @@ resource "aws_security_group" "aurora" {
   }
 
   tags = { Name = "${local.name}-aurora" }
+}
+
+# App Runner managed egress comes from AWS-owned public IPs in this region's
+# EC2 ranges (not stable per-service, but bounded by ip-ranges.json). Admitting
+# those ranges is the tightest NAT-free ingress for the two services. The list
+# (~61 CIDRs for ap-southeast-2) exceeds the 60-rules-per-SG default quota, so
+# it is chunked across extra SGs attached to the cluster alongside the main
+# one. Rule contents drift as AWS republishes ip-ranges.json — expect benign
+# in-place diffs on later plans.
+data "aws_ip_ranges" "regional_ec2" {
+  regions  = [var.aws_region]
+  services = ["ec2"]
+}
+
+locals {
+  apprunner_egress_chunks = chunklist(sort(data.aws_ip_ranges.regional_ec2.cidr_blocks), 50)
+}
+
+resource "aws_security_group" "aurora_apprunner" {
+  count       = length(local.apprunner_egress_chunks)
+  name        = "${local.name}-aurora-apprunner-${count.index}"
+  description = "Postgres from regional AWS EC2 ranges (App Runner managed egress)."
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "PostgreSQL from AWS ${var.aws_region} EC2 ranges (App Runner egress)"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = local.apprunner_egress_chunks[count.index]
+  }
+
+  tags = { Name = "${local.name}-aurora-apprunner-${count.index}" }
 }
 
 # One-shot ECS jobs (migrate / pipeline): egress only.

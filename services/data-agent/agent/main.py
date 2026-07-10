@@ -52,7 +52,7 @@ async def _require_shared_token(request: Request, call_next):  # type: ignore[no
     token = settings.agent_shared_token
     if token and request.url.path != "/health":
         supplied = request.headers.get("x-agent-token", "")
-        if not secrets.compare_digest(supplied, token):
+        if not secrets.compare_digest(supplied.encode(), token.encode()):
             return JSONResponse(status_code=401, content={"detail": "invalid X-Agent-Token"})
     return await call_next(request)
 

@@ -53,6 +53,12 @@ variable "db_max_acu" {
   default     = 2
 }
 
+variable "db_extra_ingress_cidrs" {
+  description = "Extra CIDRs allowed to reach Aurora on 5432 (e.g. your workstation for psql/inspect_run.py). In-VPC jobs and App Runner egress are already admitted."
+  type        = list(string)
+  default     = []
+}
+
 # ---- Container images -----------------------------------------------------
 variable "ecr_repositories" {
   description = "Service images pushed to ECR. Frontend is static (S3/CloudFront), so it is not here."

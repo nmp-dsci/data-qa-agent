@@ -32,8 +32,11 @@ resource "aws_rds_cluster" "main" {
   master_password = random_password.db_master.result
   port            = 5432
 
-  db_subnet_group_name            = aws_db_subnet_group.aurora.name
-  vpc_security_group_ids          = [aws_security_group.aurora.id]
+  db_subnet_group_name = aws_db_subnet_group.aurora.name
+  vpc_security_group_ids = concat(
+    [aws_security_group.aurora.id],
+    aws_security_group.aurora_apprunner[*].id,
+  )
   db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.aurora.name
 
   storage_encrypted = true
@@ -64,8 +67,10 @@ resource "aws_rds_cluster_instance" "writer" {
   engine_version     = aws_rds_cluster.main.engine_version
 
   # Public endpoint — the consequence of the no-NAT decision (see network.tf).
-  # App Runner (managed egress) and local tooling reach the DB here; TLS is
-  # forced at the cluster parameter group and all passwords are random 32-char.
+  # App Runner (managed egress) and local tooling reach the DB here; ingress is
+  # restricted at the security groups (jobs SG, regional EC2 ranges, operator
+  # CIDRs — no longer 0.0.0.0/0), TLS is forced at the cluster parameter group
+  # and all passwords are random 32-char.
   publicly_accessible = true
 
   tags = { Name = "${local.name}-aurora-writer" }

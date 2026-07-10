@@ -47,8 +47,11 @@ class S3Csv:
         try:
             _s3_client().head_object(Bucket=self.bucket, Key=self.key)
             return True
-        except botocore.exceptions.ClientError:
-            return False
+        except botocore.exceptions.ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in ("404", "NoSuchKey", "NotFound"):
+                return False
+            raise
 
     def __str__(self) -> str:
         return f"s3://{self.bucket}/{self.key}"

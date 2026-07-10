@@ -80,6 +80,11 @@ services:
       JWT_SECRET: dev-secret-change-me
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # Local dev only: disable the per-user daily ask caps (0 = off) so repeated
+      # same-day `make smoke` / journey pytest runs against the persistent dev DB
+      # never 429. Cloud deployments keep the config.py defaults (free 5, paid 10).
+      ASK_DAILY_LIMIT_FREE: "0"
+      ASK_DAILY_LIMIT_PAID: "0"
     ports:
       - "8000:8000"
     depends_on:

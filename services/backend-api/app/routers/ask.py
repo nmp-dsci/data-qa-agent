@@ -289,16 +289,19 @@ def _build_response(
 async def _check_daily_cap(user: CurrentUser) -> None:
     """Tiered per-user LLM cost cap (s12): reject beyond the tier's questions/day.
 
-    Paid tier = plan plus/pro (admins count as paid); free tier = everyone
-    else. Counts the user's own persisted runs (RLS scopes the query to them).
-    The LLM is the dominant cost, so capping questions caps spend. A tier's
-    limit of 0 disables its cap. Resets at midnight UTC.
+    Admins are uncapped (the owner runs the bill anyway). Paid tier = plan
+    plus/pro; free tier = everyone else. Counts the user's own persisted runs
+    (RLS scopes the query to them). The LLM is the dominant cost, so capping
+    questions caps spend. A tier's limit of 0 disables its cap. Resets at
+    midnight UTC.
     """
+    if user.role == "admin":
+        return
     async with rls_connection(user.id) as conn:
         plan = (
             await conn.execute(text("SELECT plan FROM app.users WHERE id = :uid"), {"uid": user.id})
         ).scalar() or "free"
-        paid = user.role == "admin" or plan in ("plus", "pro")
+        paid = plan in ("plus", "pro")
         tier, limit = (
             ("paid", settings.ask_daily_limit_paid)
             if paid

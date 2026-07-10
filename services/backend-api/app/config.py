@@ -36,10 +36,10 @@ class Settings(BaseSettings):
 
     # Per-user LLM cost caps by tier (s12 cheap hardening): max agent questions
     # per user per UTC day. The LLM is the dominant cost, so capping questions
-    # caps spend. Paid = plan plus/pro (admins count as paid); free = the rest.
+    # caps spend. Paid = plan plus/pro; free = the rest; admins are uncapped.
     # 0 disables that tier's cap.
-    ask_daily_limit_free: int = 1
-    ask_daily_limit_paid: int = 3
+    ask_daily_limit_free: int = 5
+    ask_daily_limit_paid: int = 10
 
     cors_origins: list[str] = ["http://localhost:5230", "http://127.0.0.1:5230"]
     # Comma-separated extra origins injected per-deployment (e.g. the cloud frontend URL).

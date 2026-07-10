@@ -64,6 +64,9 @@ jobs:
         # Pushing :latest auto-deploys both services; wait until they settle so
         # the smoke test hits the new code, not the old instances.
         run: |
+          # The workflow-level AWS_PROFILE="" means "use OIDC creds" to our
+          # scripts, but the raw aws CLI treats it as a profile named "".
+          unset AWS_PROFILE
           for i in $(seq 1 60); do
             B=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='data-qa-backend-api'].Status" --output text)
             A=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='data-qa-data-agent'].Status" --output text)

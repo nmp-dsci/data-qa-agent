@@ -66,7 +66,7 @@ def _s3_client():
     return _S3
 
 
-def _full_inputs() -> dict[str, "Path | S3Csv"]:
+def _full_inputs() -> dict[str, Path | S3Csv]:
     names = {"property_sales": "nswgov_df.csv", "property_rent": "rentboard_df.csv"}
     if DATA_S3_BUCKET:
         prefix = f"{DATA_S3_PREFIX}/" if DATA_S3_PREFIX else ""
@@ -74,7 +74,7 @@ def _full_inputs() -> dict[str, "Path | S3Csv"]:
     return {k: DATA_DIR / v for k, v in names.items()}
 
 
-FILES: dict[str, dict[str, "Path | S3Csv"]] = {
+FILES: dict[str, dict[str, Path | S3Csv]] = {
     "sample": {
         "property_sales": DATA_DIR / "samples" / "nsw_sales_sample.csv",
         "property_rent": DATA_DIR / "samples" / "nsw_rent_sample.csv",
@@ -87,7 +87,7 @@ SALES_TEXT = ["contract_dt", "settle_dt", "sale_price", "postcode", "area_sqm"]
 RENT_TEXT = ["lodgement_dt", "postcode", "weekly_rent", "bedrooms"]
 
 
-def _rows(src: "Path | S3Csv") -> Iterator[dict]:
+def _rows(src: Path | S3Csv) -> Iterator[dict]:
     if isinstance(src, S3Csv):
         import codecs
 

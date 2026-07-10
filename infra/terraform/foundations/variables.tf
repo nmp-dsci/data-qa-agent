@@ -82,6 +82,18 @@ variable "admin_emails" {
   default     = "nathanphillips369@gmail.com"
 }
 
+variable "alert_email" {
+  description = "Email for CloudWatch alarm notifications (SNS; requires one-time confirmation click)."
+  type        = string
+  default     = "nathanphillips369@gmail.com"
+}
+
+variable "billing_alarm_usd" {
+  description = "Alarm when the estimated month-to-date AWS bill crosses this many USD."
+  type        = number
+  default     = 50
+}
+
 variable "llm_provider" {
   description = "LLM provider the agent uses (deepseek | anthropic). The data-qa/llm-api-key secret feeds the matching *_API_KEY."
   type        = string

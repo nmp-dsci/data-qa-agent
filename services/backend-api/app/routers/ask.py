@@ -14,6 +14,7 @@ from sqlalchemy import text
 from ..agent_client import ask_agent, ask_agent_stream
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
+from ..config import settings
 from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["ask"])
@@ -285,6 +286,33 @@ def _build_response(
     )
 
 
+async def _check_daily_cap(user: CurrentUser) -> None:
+    """Per-user LLM cost cap (s12): reject beyond N agent questions per UTC day.
+
+    Counts the user's own persisted runs (RLS scopes the query to them). The
+    LLM is the dominant cost, so capping questions caps spend. Admins are
+    exempt; ASK_DAILY_LIMIT=0 disables.
+    """
+    limit = settings.ask_daily_limit
+    if limit <= 0 or user.role == "admin":
+        return
+    async with rls_connection(user.id) as conn:
+        result = await conn.execute(
+            text(
+                "SELECT count(*) FROM app.query_runs "
+                "WHERE user_id = CAST(:uid AS uuid) AND source = 'agent' "
+                "AND created_at >= date_trunc('day', now() AT TIME ZONE 'utc')"
+            ),
+            {"uid": user.id},
+        )
+        used = result.scalar_one()
+    if used >= limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily question limit reached ({limit}/day). It resets at midnight UTC.",
+        )
+
+
 @router.post("/ask", response_model=AskResponse)
 async def ask(
     body: AskRequest,
@@ -294,6 +322,7 @@ async def ask(
     question = body.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Question must not be empty")
+    await _check_daily_cap(user)
 
     conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
     # Delegate to the agent (its own connection enforces the same RLS).
@@ -336,6 +365,8 @@ async def ask_stream(
     Same auth, persistence and payload as /ask — the frontend shows a running
     step list instead of a silent spinner. ``status`` frames are heartbeats.
     """
+    # Enforce the cap before the stream opens so the client gets a clean 429.
+    await _check_daily_cap(user)
 
     async def gen() -> AsyncIterator[str]:
         question = body.question.strip()

@@ -12,6 +12,22 @@ provider "aws" {
   }
 }
 
+# Billing metrics only exist in us-east-1 (see alarms.tf).
+provider "aws" {
+  alias   = "use1"
+  region  = "us-east-1"
+  profile = var.aws_profile != "" ? var.aws_profile : null
+
+  default_tags {
+    tags = {
+      Project   = var.project
+      ManagedBy = "terraform"
+      Ticket    = "s12"
+      Module    = "foundations"
+    }
+  }
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_availability_zones" "available" {
   state = "available"

@@ -12,9 +12,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-AWS_PROFILE="${AWS_PROFILE:-data-qa}"
+# Local runs default to the data-qa SSO profile; CI sets AWS_PROFILE="".
+AWS_PROFILE="${AWS_PROFILE-data-qa}"
 AWS_REGION="${AWS_REGION:-ap-southeast-2}"
-export AWS_PROFILE AWS_REGION
+export AWS_REGION
+if [ -n "$AWS_PROFILE" ]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
 : "${VITE_API_URL:?Set VITE_API_URL to the backend-api URL (baked into the bundle)}"
 

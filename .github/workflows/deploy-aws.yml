@@ -1,0 +1,90 @@
+name: Deploy (AWS)
+
+# The s12 push-button deploy: merge to main → build/push images → terraform
+# apply → run the migrate task → deploy the frontend → smoke-test the live URL.
+# Auth is GitHub OIDC into the data-qa-github-deploy IAM role (no stored keys —
+# the role + provider were created by infra/terraform/bootstrap). ci.yml stays
+# the PR gate; this only runs post-merge (or manually via workflow_dispatch).
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - ".lavish/**"
+      - "**.md"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # OIDC token for AWS
+  contents: read
+
+# Never run two deploys at once (terraform state lock would block anyway).
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  AWS_ROLE: arn:aws:iam::089783391188:role/data-qa-github-deploy
+  # Scripts default to the local data-qa SSO profile; empty = use OIDC creds.
+  AWS_PROFILE: ""
+  TF_VAR_aws_profile: ""
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build & push service images (linux/amd64)
+        run: ./scripts/aws_build_push.sh
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false # plain stdout so -raw outputs work in scripts
+
+      - name: Terraform apply (foundations)
+        working-directory: infra/terraform/foundations
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve
+
+      - name: Run database migrations (ECS one-shot)
+        run: ./scripts/run_job.sh migrate
+
+      - name: Wait for App Runner deployments
+        # Pushing :latest auto-deploys both services; wait until they settle so
+        # the smoke test hits the new code, not the old instances.
+        run: |
+          for i in $(seq 1 60); do
+            B=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='data-qa-backend-api'].Status" --output text)
+            A=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='data-qa-data-agent'].Status" --output text)
+            echo "backend=$B agent=$A"
+            if [ "$B" = "RUNNING" ] && [ "$A" = "RUNNING" ] && [ "$i" -gt 3 ]; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "services did not settle in time" >&2
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build & deploy frontend (S3 + CloudFront)
+        run: |
+          VITE_API_URL=$(terraform -chdir=infra/terraform/foundations output -raw backend_api_url)
+          export VITE_API_URL
+          ./scripts/deploy_frontend.sh
+
+      - name: Cloud smoke test (live URL)
+        run: ./scripts/cloud_smoke.sh

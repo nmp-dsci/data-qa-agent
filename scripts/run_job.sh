@@ -9,9 +9,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 JOB="${1:?usage: run_job.sh <migrate|pipeline>}"
-AWS_PROFILE="${AWS_PROFILE:-data-qa}"
+# Local runs default to the data-qa SSO profile; CI sets AWS_PROFILE="".
+AWS_PROFILE="${AWS_PROFILE-data-qa}"
 AWS_REGION="${AWS_REGION:-ap-southeast-2}"
-export AWS_PROFILE AWS_REGION
+export AWS_REGION
+if [ -n "$AWS_PROFILE" ]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
 TF_DIR="infra/terraform/foundations"
 SUBNETS=$(terraform -chdir="$TF_DIR" output -json private_subnet_ids | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)))')

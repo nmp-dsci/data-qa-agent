@@ -19,7 +19,9 @@ remote backend (chicken-and-egg). Everything else stores state in that bucket.
 
 ## First-time run order
 
-Make sure your SSO session is live: `aws sso login --profile data-qa`.
+Make sure your SSO session is live and exported (the S3 backend reads the env
+var, not the provider block): `aws sso login --profile data-qa && export AWS_PROFILE=data-qa`.
+CI needs neither — GitHub-OIDC credentials are picked up automatically.
 
 ### 1. Bootstrap (once)
 

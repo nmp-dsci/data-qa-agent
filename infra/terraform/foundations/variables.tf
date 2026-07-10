@@ -5,7 +5,7 @@ variable "aws_region" {
 }
 
 variable "aws_profile" {
-  description = "Local AWS CLI profile. In CI this is unset (OIDC provides creds) — pass -var aws_profile=\"\" or set it null via TF_VAR_aws_profile."
+  description = "Local AWS CLI profile. In CI this is empty (OIDC provides creds) — set TF_VAR_aws_profile=\"\"."
   type        = string
   default     = "data-qa"
 }
@@ -67,16 +67,19 @@ variable "image_tag" {
 }
 
 # ---- App (Phase D) ---------------------------------------------------------
+# Defaults are committed so CI can apply with no tfvars: the client id is
+# public by design (it's the token audience, not a secret) and the admin email
+# already appears in committed docs. Override via terraform.tfvars if needed.
 variable "google_client_id" {
   description = "Google OAuth Web client id (public; the ID-token audience). Same client as s11."
   type        = string
-  default     = ""
+  default     = "1028270535716-hdif1n3n5gmeb50h9r7ad4vm9m50p6qq.apps.googleusercontent.com"
 }
 
 variable "admin_emails" {
   description = "Comma-separated emails mapped to the admin role."
   type        = string
-  default     = ""
+  default     = "nathanphillips369@gmail.com"
 }
 
 variable "llm_provider" {

@@ -10,15 +10,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-AWS_PROFILE="${AWS_PROFILE:-data-qa}"
+# Local runs default to the data-qa SSO profile; CI (OIDC env creds) sets
+# AWS_PROFILE="" and the CLI falls back to the ambient credentials.
+AWS_PROFILE="${AWS_PROFILE-data-qa}"
 AWS_REGION="${AWS_REGION:-ap-southeast-2}"
 ACCOUNT_ID="${ACCOUNT_ID:-089783391188}"
 TAG="${TAG:-$(git rev-parse --short HEAD)}"
 REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-export AWS_PROFILE AWS_REGION
+export AWS_REGION
+if [ -n "$AWS_PROFILE" ]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
 echo "==> ECR login ($REGISTRY)"
-aws ecr get-login-password --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+aws ecr get-login-password --region "$AWS_REGION" \
   | docker login --username AWS --password-stdin "$REGISTRY"
 
 build_push() {

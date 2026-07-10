@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored). Client id is public; emails are yours.
+google_client_id = "<your-web-client-id>.apps.googleusercontent.com"
+admin_emails     = "you@example.com"
+llm_provider     = "deepseek"
+
+# Aurora 5432 is no longer open to the world. Add your workstation IP here if
+# you psql / run scripts against the cloud DB directly (e.g. "203.0.113.7/32").
+# db_extra_ingress_cidrs = []

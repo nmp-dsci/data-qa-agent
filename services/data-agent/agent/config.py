@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     admin_ro_database_url: str = "postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa"
     db_ssl: str = ""  # set to "require" in Azure (managed Postgres needs TLS)
 
+    # When set, every request except /health must carry a matching X-Agent-Token
+    # header. Protects the public App Runner URL (s12) where the backend is the
+    # only intended caller. Empty = open (local compose, same-network trust).
+    agent_shared_token: str = ""
+
     # Provider is abstracted (Decision G): pluggable LLM, stub when no key.
     # LLM_PROVIDER picks which key is used; no cross-provider fallback (see provider.py).
     llm_provider: str = "deepseek"

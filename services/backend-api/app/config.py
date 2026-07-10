@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://app_user:app_pw@db:5432/dataqa"
     db_ssl: str = ""  # set to e.g. "require" in Azure (managed Postgres needs TLS)
     agent_url: str = "http://data-agent:8100"
+    # Shared token sent as X-Agent-Token on every agent call. Required by the
+    # cloud agent (s12), whose App Runner URL is public. Empty = not sent (local).
+    agent_shared_token: str = ""
 
     # Dev-auth stub (auth_mode=dev): a locally signed HS256 token.
     jwt_secret: str = "dev-secret-change-me"
@@ -30,6 +33,13 @@ class Settings(BaseSettings):
     @property
     def admin_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
+
+    # Per-user LLM cost caps by tier (s12 cheap hardening): max agent questions
+    # per user per UTC day. The LLM is the dominant cost, so capping questions
+    # caps spend. Paid = plan plus/pro; free = the rest; admins are uncapped.
+    # 0 disables that tier's cap.
+    ask_daily_limit_free: int = 5
+    ask_daily_limit_paid: int = 10
 
     cors_origins: list[str] = ["http://localhost:5230", "http://127.0.0.1:5230"]
     # Comma-separated extra origins injected per-deployment (e.g. the cloud frontend URL).

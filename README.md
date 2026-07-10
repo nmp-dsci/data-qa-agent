@@ -106,7 +106,9 @@ db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembi
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
 data/                   full NSW CSVs (gitignored) + data/samples/ (small committed samples)
 evals/                  journeys.yaml — user-journey evals (grows every phase)
-scripts/                make_samples.py, smoke_test.py
+scripts/                make_samples.py, smoke_test.py + AWS deploy scripts (aws_build_push, run_job,
+                        deploy_frontend, cloud_smoke)
+infra/terraform/        AWS deployment (live) — see infra/terraform/README.md; infra/ Bicep = Azure reference
 docker-compose.yml      the local dev stack;  Makefile has the shortcuts
 ```
 
@@ -188,15 +190,28 @@ empty to trace locally with no extra configuration.
 - **Frontend can't reach the API** — CORS allows `http://localhost:5230`; if you change the frontend port,
   update `cors_origins` in `services/backend-api/app/config.py` and rebuild backend-api.
 
-## Deploy to Azure (dev)
+## Deploy to AWS (live)
 
-Infra-as-code (Bicep) + a GitHub Actions deploy are scaffolded under [`infra/`](./infra/README.md).
-`dev` is the same logical environment whether it runs locally or in Azure — only *where config comes from*
-changes (`.env` locally vs Key Vault in the cloud). `staging`/`prod` are the same template with a different
-`env`. See `infra/README.md` for prerequisites (OIDC, GitHub vars/secrets) and the two-phase deploy. The
-`db-migrate` Container Apps job runs the same Alembic migrations as local (`alembic upgrade head`).
+The app is deployed to AWS (s12) with Terraform under [`infra/terraform/`](./infra/terraform/README.md):
+App Runner runs backend-api + data-agent, ECS Fargate one-shot jobs run the same `migrate`/`pipeline`
+images as local (the pipeline streams the full CSVs from S3), Aurora Serverless v2 (scale-to-zero) is the
+database, and the frontend is a static Vite build in S3 behind CloudFront. Merging to `main` is the
+push-button deploy — `.github/workflows/deploy-aws.yml` builds/pushes images, applies Terraform, runs
+migrations, deploys the frontend, and smoke-tests the live URL (`scripts/cloud_smoke.sh`); auth is GitHub
+OIDC, no stored keys. Cheap hardening ships with it: role-level statement timeouts (migration 0018), tiered
+per-user daily AI caps (see below), and CloudWatch billing/5xx alarms → SNS email. See
+`infra/terraform/README.md` for the runbook. The earlier Azure Bicep scaffold under
+[`infra/`](./infra/README.md) stays as a reference and is not deployed.
+
+### Daily AI usage caps
+
+In the cloud, each user gets a daily budget of LLM-backed calls — `/ask`, `/ask/stream`, and the SQL
+editor's AI assist share one counter (resets midnight UTC; exceeding it returns **429**): free **5/day**,
+paid (plan `plus`/`pro`) **10/day**, admins uncapped. `ASK_DAILY_LIMIT_FREE` / `ASK_DAILY_LIMIT_PAID`
+tune the limits (0 = off); the local compose stack sets both to 0 so repeated `make smoke` runs never 429.
 
 ## Tooling & conventions
 
 - **Package manager:** `uv` · **Lint/format:** Ruff · **Types:** mypy (strict) · **Tests:** pytest + smoke
-- **Secrets:** `.env` (never committed) locally; Key Vault in Azure. See `AGENTS.md` for the full conventions.
+- **Secrets:** `.env` (never committed) locally; AWS Secrets Manager in the cloud. See `AGENTS.md` for the
+  full conventions.

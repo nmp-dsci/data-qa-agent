@@ -13,6 +13,7 @@ from ..agent_client import assist_sql_on_agent, fetch_catalog, run_sql_on_agent
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
 from ..db import jsonable, rls_connection
+from ..limits import check_daily_llm_cap
 
 router = APIRouter(tags=["sql"])
 
@@ -163,6 +164,8 @@ async def sql_ai(
     generate: natural language -> SQL (dropped into the editor and auto-run
     client-side). explain/fix/optimize: transform the selected SQL. Same governed
     executor still runs whatever SQL comes back, so this never bypasses RLS.
+    Counts against the same per-user daily LLM cap as /ask (s12) — the
+    sql_ai_requested event logged below is what the cap tallies.
     """
     action = body.action.strip().lower()
     if action not in {"generate", "explain", "fix", "optimize"}:
@@ -171,6 +174,7 @@ async def sql_ai(
         raise HTTPException(status_code=400, detail="A prompt is required to generate SQL")
     if action != "generate" and not (body.sql and body.sql.strip()):
         raise HTTPException(status_code=400, detail="SQL is required for this action")
+    await check_daily_llm_cap(user)
 
     async with rls_connection(user.id) as conn:
         await _log_event(conn, user.id, "sql_ai_requested", {"action": action})

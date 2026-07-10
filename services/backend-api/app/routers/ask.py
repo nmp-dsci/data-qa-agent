@@ -15,6 +15,7 @@ from ..agent_client import ask_agent, ask_agent_stream
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
 from ..db import jsonable, rls_connection
+from ..limits import check_daily_llm_cap
 
 router = APIRouter(tags=["ask"])
 
@@ -294,6 +295,7 @@ async def ask(
     question = body.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Question must not be empty")
+    await check_daily_llm_cap(user)
 
     conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
     # Delegate to the agent (its own connection enforces the same RLS).
@@ -336,6 +338,8 @@ async def ask_stream(
     Same auth, persistence and payload as /ask — the frontend shows a running
     step list instead of a silent spinner. ``status`` frames are heartbeats.
     """
+    # Enforce the cap before the stream opens so the client gets a clean 429.
+    await check_daily_llm_cap(user)
 
     async def gen() -> AsyncIterator[str]:
         question = body.question.strip()

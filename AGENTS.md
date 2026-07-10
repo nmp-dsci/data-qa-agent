@@ -27,7 +27,7 @@ Confirmed via the Lavish architecture review — these drive the build:
 | # | Decision | Choice |
 |---|----------|--------|
 | A | RLS visibility | **Isolation by default**; `admin` role sees across users |
-| B | Compute | **Azure Container Apps** (serverless, scale-to-zero) |
+| B | Compute | **Azure Container Apps** (serverless, scale-to-zero) — superseded in s12: shipped on **AWS App Runner** (see Phase 4 + Environments) |
 | C | Service granularity | **3 services**: frontend, backend-api, data-agent |
 | D | Identity | **Microsoft Entra External ID** (OIDC) |
 | E | Starting point | **Phase 0 local scaffold** first |
@@ -39,7 +39,8 @@ Confirmed via the Lavish architecture review — these drive the build:
 ## Target architecture (v1)
 
 Microservices on **Azure Container Apps**, private-by-default behind one ingress. Secrets and identity never
-live in code.
+live in code. *(As deployed in s12 the same shape runs on AWS — App Runner, ECS jobs, Aurora Serverless v2,
+Secrets Manager, S3+CloudFront — via `infra/terraform/`; this table remains the cloud-neutral design.)*
 
 | Service | Tech | Azure resource | Owns |
 |---------|------|----------------|------|
@@ -135,9 +136,12 @@ servers later; schemas stay identical within each. CI deploys `dev` on merge; pr
 later. Note: the dbt `staging` *schema* is a data-modeling layer, unrelated to a `staging` *deployment env*.
 
 **dev local vs dev cloud** are the *same* environment (`APP_ENV=dev`), not different env values — the
-difference is the **deployment target** and where config is sourced: `.env`/compose locally vs Container Apps
-env + Key Vault in Azure (`DB_SSL=require`, secrets by reference, `AUTH_MODE=dev`→`entra` later). Infra-as-code
-and the deploy workflow live in [`infra/`](./infra/README.md); see its README for the local↔cloud config map.
+difference is the **deployment target** and where config is sourced: `.env`/compose locally vs service env
+vars + a secrets store in the cloud (`DB_SSL=require`, secrets by reference). The **live deployment is AWS**
+(s12): Terraform in [`infra/terraform/`](./infra/terraform/README.md) provisions App Runner services, ECS
+one-shot jobs (migrate/pipeline), Aurora Serverless v2, Secrets Manager, and the S3+CloudFront frontend;
+`.github/workflows/deploy-aws.yml` is the push-button deploy on merge to `main`. The Azure Bicep scaffold
+in [`infra/`](./infra/README.md) stays as a reference.
 
 ### Platform notes (portability)
 
@@ -172,6 +176,11 @@ CREATE POLICY tenant_isolation ON insights
   leak context between users.
 - The **agent connects as a read-only DB role** and stays under the same RLS — it can never see or write rows
   the user couldn't.
+- In the cloud (s12) the agent's App Runner URL is public with the backend as its only intended caller: when
+  `AGENT_SHARED_TOKEN` is set, agent middleware rejects any request (except `/health`) without a matching
+  `X-Agent-Token` header; the backend sends it on every agent call. Empty = open (local compose).
+- Role-level `statement_timeout`s (migration 0018: `app_user`/`agent_ro` 15s, `admin_ro` 30s) are a
+  database-side backstop against runaway queries on every code path, independent of app-level guards.
 
 ---
 
@@ -284,9 +293,9 @@ see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failur
 | **2b · Pipeline** | dlt CSV→raw; dbt raw→staging→marts with tests/docs; suburb-keyed growth marts; `datasets`/`dataset_access` populated | ✅ done |
 | **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ✅ done (DeepSeek default, Claude via `LLM_PROVIDER=anthropic`, pgvector memory, Logfire; streaming `/ask` deferred — HTTP contract stays request/response, Logfire gives step tracing instead) |
 | **3b · Tracking + admin** | Event taxonomy + `POST /events`, `events` table, admin-only dashboard (feed, users, datasets, metrics) | ✅ done |
-| **4 · Azure** | Bicep: Container Apps env + job, ACR, PostgreSQL Flexible (+pgvector), Key Vault, managed identity | ⬜ scaffolded |
-| **5 · CI/CD** | GitHub Actions: build/push, Ruff/mypy/pytest + **journey evals** (pydantic_evals), deploy on merge to `main` | ⏳ partial |
-| **6 · Harden** | Front Door + WAF, rate limits, statement timeouts, LLM cost guards, dashboards | ⬜ todo |
+| **4 · Cloud** | Bicep: Container Apps env + job, ACR, PostgreSQL Flexible (+pgvector), Key Vault, managed identity | ✅ done — shipped on **AWS** instead (s12, `infra/terraform/`): App Runner + ECS jobs, Aurora Serverless v2, ECR, Secrets Manager, S3+CloudFront frontend; the Azure Bicep stays a reference |
+| **5 · CI/CD** | GitHub Actions: build/push, Ruff/mypy/pytest + **journey evals** (pydantic_evals), deploy on merge to `main` | ✅ done (`ci.yml` PR gate; `deploy-aws.yml` push-button deploy on merge via OIDC + cloud smoke test) |
+| **6 · Harden** | Front Door + WAF, rate limits, statement timeouts, LLM cost guards, dashboards | ⏳ partial (s12 cheap hardening: role-level statement timeouts, tiered daily ask caps, agent shared token, CloudWatch billing/5xx alarms; WAF + custom domain deferred) |
 
 Evaluation (`evals/journeys.yaml`) is introduced in Phase 1 and grows every phase. Each phase ships something
 runnable. Pause after each so the changes can be learned before extending.
@@ -297,7 +306,9 @@ runnable. Pause after each so the changes can be learned before extending.
 
 - **NL→SQL safety** — mitigated by read-only role + RLS + `SELECT`-only allowlist + timeouts + row caps;
   worth a dedicated test pass.
-- **LLM cost drift** — enforce per-user/day token caps and a cheap-model fallback.
+- **LLM cost drift** — mitigated (s12): tiered per-user daily caps on LLM-backed calls (`/ask`, `/ask/stream`
+  and the SQL editor's AI assist share one counter — `app/limits.py`): free 5/day, paid 10/day, admins
+  uncapped, 0 = off; disabled in local compose. A cheap-model fallback remains available via Decision G.
 - **RLS + pooling** — always `SET LOCAL` per transaction (see security model).
 
 ---

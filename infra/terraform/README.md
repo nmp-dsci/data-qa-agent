@@ -5,14 +5,15 @@ the Azure Bicep in `../` stays as a reference and is **not** touched by this.
 
 - **Account:** `089783391188`  ·  **Region:** `ap-southeast-2` (Sydney)  ·  **Profile:** `data-qa`
 - **Database:** Aurora Serverless v2 (PostgreSQL 16, scale-to-zero)
-- **Compute (later phases):** App Runner  ·  **Images:** ECR  ·  **Secrets:** Secrets Manager
+- **Compute:** App Runner (backend-api + data-agent) + ECS Fargate one-shot jobs (migrate, pipeline)
+- **Frontend:** static Vite build in S3 behind CloudFront  ·  **Images:** ECR  ·  **Secrets:** Secrets Manager
 
 ## Layout
 
 | Module | State | Run by | What it creates |
 |--------|-------|--------|-----------------|
 | `bootstrap/` | **local** | you, once, with admin creds | S3 state bucket (S3-native locking), GitHub-OIDC provider + CI deploy role |
-| `foundations/` | remote (S3) | you now; CI later | VPC + subnets, Aurora Serverless v2, ECR repos, Secrets Manager entries, S3 data bucket |
+| `foundations/` | remote (S3) | you, or CI on merge (`deploy-aws.yml`) | VPC + subnets, Aurora Serverless v2, ECR repos, Secrets Manager entries, S3 data bucket, App Runner services, ECS one-shot jobs, S3+CloudFront frontend, CloudWatch alarms + SNS |
 
 `bootstrap` uses local state because it creates the very bucket the others use as a
 remote backend (chicken-and-egg). Everything else stores state in that bucket.
@@ -61,6 +62,27 @@ the VPC in Phase D. That is where pgvector is confirmed. Aurora PostgreSQL 16
 allow-lists `vector`, and the job connects as the master role, so the
 `CREATE EXTENSION` succeeds there.
 
+## Deploying the app (Phases C–E)
+
+Merging to `main` is the push-button deploy: `.github/workflows/deploy-aws.yml`
+(also runnable via *workflow_dispatch*) assumes the OIDC role, then runs
+build/push → `terraform apply` → the migrate job → the frontend deploy → the
+cloud smoke test. The same steps run manually via the scripts (each defaults to
+the `data-qa` SSO profile and the Terraform outputs):
+
+```bash
+./scripts/aws_build_push.sh     # build the 4 service images (linux/amd64) → ECR
+./scripts/run_job.sh migrate    # one-shot ECS job: alembic upgrade head
+./scripts/run_job.sh pipeline   # one-shot ECS job: dlt + dbt (full CSVs from S3)
+VITE_API_URL=$(terraform -chdir=infra/terraform/foundations output -raw backend_api_url) \
+  ./scripts/deploy_frontend.sh  # Vite build → S3 + CloudFront invalidation
+./scripts/cloud_smoke.sh        # health, auth, token guard, governed SQL, frontend
+```
+
+Pushing `:latest` auto-deploys both App Runner services. The pipeline job reads
+the full CSVs from the `data-qa-source-data-*` S3 bucket (`DATA_S3_BUCKET`)
+instead of local disk.
+
 ## Notes / knobs
 
 - **Scale-to-zero:** `db_min_acu = 0` (near-$0 when idle). If an apply rejects `0`
@@ -73,6 +95,10 @@ allow-lists `vector`, and the job connects as the master role, so the
     --profile data-qa --region ap-southeast-2
   ```
   DB password + `JWT_SECRET` are Terraform-generated into Secrets Manager.
+- **Alarms (Phase E):** CloudWatch alarms (billing > `billing_alarm_usd` USD in
+  us-east-1; backend/agent ≥ 5 5xx per 5 min) notify `alert_email` via SNS. The
+  email subscription needs a one-time confirmation click, and the billing metric
+  needs "Receive Billing Alerts" enabled once in Billing → Preferences.
 - **Tear down:** `terraform destroy` in `foundations/` removes everything here and
   rebuilds cleanly from Alembic migrations. The state bucket is `prevent_destroy`.
-- **CI (Phase E):** GitHub Actions assumes `data-qa-github-deploy` via OIDC — no keys.
+- **CI (Phase E):** `deploy-aws.yml` assumes `data-qa-github-deploy` via OIDC — no keys.

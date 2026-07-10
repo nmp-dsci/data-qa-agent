@@ -1,4 +1,8 @@
-# Infrastructure (Azure, `dev`)
+# Infrastructure (Azure, `dev`) — reference only
+
+> **The live deployment is AWS** (s12): Terraform under [`terraform/`](./terraform/README.md), deployed by
+> `.github/workflows/deploy-aws.yml`. The Bicep below is kept as a cloud-portability reference and is not
+> deployed.
 
 Bicep templates that deploy the app to **Azure Container Apps**, env-parameterized so `staging`/`prod` are the
 same template with a different `env`. Nothing here is deployed automatically — review it, then run the

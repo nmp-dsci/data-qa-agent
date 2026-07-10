@@ -43,5 +43,5 @@ STOP_REASON=$(aws ecs describe-tasks --cluster data-qa --tasks "$TASK_ARN" \
   --query 'tasks[0].stoppedReason' --output text)
 
 echo "==> exit code: $EXIT_CODE (reason: $STOP_REASON)"
-echo "    logs: aws logs tail /ecs/data-qa-${JOB} --since 1h --profile $AWS_PROFILE"
+echo "    logs: aws logs tail /ecs/data-qa-${JOB} --since 1h${AWS_PROFILE:+ --profile $AWS_PROFILE}"
 [ "$EXIT_CODE" = "0" ]

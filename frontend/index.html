@@ -3,7 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>data-qa-agent</title>
+    <title>Datapilot</title>
+    <meta name="description" content="Datapilot — ask your data anything. Governed answers in seconds." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d12" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f5f8" />
+    <!-- Resolve the theme before first paint (stored override, else system) so
+         there is no flash of the wrong background while the bundle loads. -->
+    <script>
+      try {
+        var t = localStorage.getItem("app.theme");
+        if (t !== "light" && t !== "dark") {
+          t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+    <style>
+      html { background: #0b0d12; }
+      html[data-theme="light"] { background: #f4f5f8; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

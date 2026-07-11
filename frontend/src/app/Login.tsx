@@ -35,7 +35,7 @@ export function Login({
   return (
     <div className="login">
       <div className="login-card">
-        <h1>data-qa-agent</h1>
+        <h1>Datapilot</h1>
         {authMode === "google" ? (
           <>
             <p className="sub">Sign in to ask questions about your data.</p>

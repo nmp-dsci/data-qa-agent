@@ -280,7 +280,7 @@ export default function App() {
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
       <header>
         <div>
-          <strong>data-qa-agent</strong>
+          <strong>Datapilot</strong>
           <span className="pill">{user.display_name}</span>
           <span className={`pill role-${user.role}`}>{user.role}</span>
         </div>

@@ -7,15 +7,16 @@
    dark is the default and matches the app's existing look exactly.
 --------------------------------------------------------------------------- */
 :root {
-  /* -- primitives (dark) -- */
-  --gray-950: #0f1115;
-  --gray-900: #171a21;
-  --gray-850: #1e222b;
-  --gray-800: #232833;
-  --gray-700: #2a2f3a;
-  --gray-600: #363d4a;
+  /* -- primitives (dark) — tokens v2: deeper canvas, more layer contrast,
+        hairline borders (s13 Phase B) -- */
+  --gray-950: #0b0d12;
+  --gray-900: #12151c;
+  --gray-850: #181c25;
+  --gray-800: #1f2430;
+  --gray-700: #232834;
+  --gray-600: #333a48;
   --gray-100: #e7e9ee;
-  --gray-300: #9aa3b2;
+  --gray-300: #98a2b6;
   --gray-400: #6b7280;
   --ink-code: #0b0d11;
   --gold-500: #b48a3f;
@@ -77,7 +78,24 @@
   --radius: 8px;
   --radius-lg: 10px;
   --radius-xl: 14px;
+  --sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* -- motion: one duration/easing family for every transition -- */
+  --dur-1: 120ms; /* hover, micro */
+  --dur-2: 180ms; /* fades, panels */
+  --dur-3: 260ms; /* drawers, sheets */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* -- elevation: card / popover / modal -- */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 8px 24px rgba(0, 0, 0, 0.32);
   --shadow-pop: 0 12px 36px rgba(0, 0, 0, 0.28);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; }
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
 
 :root[data-theme="light"] {
@@ -118,9 +136,20 @@
 * { box-sizing: border-box; }
 /* Height chain: the shell owns the viewport; panes scroll, the page never does. */
 html, body, #root { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
+  font-size: 14.5px; -webkit-font-smoothing: antialiased; }
 button { cursor: pointer; font: inherit; }
+/* One motion voice: interactive surfaces ease, never cut. */
+button, .tab, .chip, a, input, select, textarea {
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease),
+    box-shadow var(--dur-1) var(--ease);
+}
+/* Numbers line up everywhere they are compared. */
+table, .h-value, .metric strong, .meta, .kpi-growth, .conv-meta, .history-meta {
+  font-variant-numeric: tabular-nums;
+}
+code, pre, kbd { font-family: var(--mono); }
 
 /* Login */
 .login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
@@ -331,7 +360,7 @@ section > .agent-demo-canvas { border: 1px solid var(--border); border-radius: v
 .history-row { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--border);
   cursor: pointer; font-size: 12px; }
 .history-row:hover { background: var(--panel-2); }
-.history-sql { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text);
+.history-sql { flex: 1; font-family: var(--mono); color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .history-meta { color: var(--muted); white-space: nowrap; }
 .badge.status-error { color: var(--bad); border-color: var(--bad-border); }
@@ -380,12 +409,12 @@ th.sortable:hover { color: var(--text); }
 .trace-badge.error, .trace-badge.rejected { color: var(--bad); border-color: var(--bad-border); }
 .trace-meta { color: var(--muted); font-size: 11px; }
 .trace-sql { margin: 6px 0 0; padding: 8px 10px; background: var(--code-bg); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+  border-radius: var(--radius-sm); font-family: var(--mono); font-size: 11.5px;
   white-space: pre-wrap; overflow-x: auto; color: var(--text); }
 .trace-err { margin-top: 6px; color: var(--bad); font-size: 11.5px; }
 .trace-fact { margin-top: 6px; color: var(--purple); font-size: 12px; font-style: italic; }
 .trace-row > td { background: var(--bg); padding: 8px 12px; }
-.run-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px;
+.run-id { font-family: var(--mono); font-size: 10.5px;
   color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 1px 6px; cursor: pointer; white-space: nowrap; vertical-align: middle; }
 .run-id:hover { color: var(--accent-2); border-color: var(--accent-2); }
@@ -395,18 +424,18 @@ th.sortable:hover { color: var(--text); }
 .trace-tokens { margin-left: auto; color: var(--muted); font-size: 10.5px; font-variant-numeric: tabular-nums;
   border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1px 6px; }
 .trace-pre { margin: 6px 0 0; padding: 8px 10px; background: var(--code-bg); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+  border-radius: var(--radius-sm); font-family: var(--mono); font-size: 11.5px;
   white-space: pre-wrap; overflow-x: auto; color: var(--text); max-height: 340px; overflow-y: auto; }
 .trace-collapse { margin-top: 6px; }
 .trace-collapse > summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
-.trace-collapse .trace-preview { color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.trace-collapse .trace-preview { color: var(--text); font-family: var(--mono); }
 .trace-toolcall { margin-top: 6px; }
 .trace-sub { color: var(--muted); font-size: 11.5px; }
 .trace-sub strong { color: var(--accent-2); }
 .decision-list { list-style: decimal; margin: 8px 0 0 18px; padding: 0; display: grid; gap: 7px; }
 .decision-item { font-size: 12px; color: var(--text); }
 .decision-type { display: inline-block; min-width: 72px; color: var(--accent-2); font-weight: 700; }
-.decision-choice { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.decision-choice { font-family: var(--mono); }
 .decision-why { margin-top: 3px; color: var(--muted); }
 
 /* Live "agent is working" step list (SSE progress) */

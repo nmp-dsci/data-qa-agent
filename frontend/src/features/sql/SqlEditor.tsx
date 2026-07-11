@@ -769,6 +769,12 @@ export function SqlEditor({
 
         <div className="sqled-editor" ref={editorRef} />
 
+        {!active.error && !active.result && (
+          <div className="sqled-idle">
+            <span className="sqled-idle-kbd">⌘⏎</span>
+            Run the query to see results here — read-only, RLS-scoped, audited.
+          </div>
+        )}
         {active.error && <div className="error sqled-error">{active.error}</div>}
         {active.result && !active.result.error && (
           <SqlResults

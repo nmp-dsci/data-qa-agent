@@ -3,6 +3,7 @@
 // (raw SQL + chart + rows) for pre-report answers.
 import { useState } from "react";
 import { AskResult } from "../../lib/api";
+import { downloadCsv } from "../../lib/csv";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
 import { ContractJson } from "../../ui/ContractJson";
 import { SpecChart } from "../../ui/SpecChart";
@@ -20,11 +21,26 @@ export function ResultView({
 }) {
   const [showTrace, setShowTrace] = useState(false);
   const [showRenderJson, setShowRenderJson] = useState(false);
+  const [copied, setCopied] = useState(false);
   const hasTrace = isAdmin && result.steps.length > 0;
   // The render contract (s10): the exact Page JSON the data-agent sent the
   // frontend — the same inspector Template Studio uses. Admin-only, like the trace.
   const renderPages = isAdmin && result.pages != null ? result.pages : [];
   const hasReport = result.report != null;
+  // CSV source: legacy rows if present, else the report's first query with rows.
+  const csvSource =
+    result.rows.length > 0
+      ? { columns: result.columns, rows: result.rows }
+      : (() => {
+          const q = result.report?.queries.find((qr) => qr.rows.length > 0);
+          return q ? { columns: q.columns, rows: q.rows } : null;
+        })();
+  function copyAnswer() {
+    void navigator.clipboard?.writeText(result.answer).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    });
+  }
   if (!hasReport && result.row_count === 0 && !result.sql) return null;
   return (
     <div className="result">
@@ -49,6 +65,26 @@ export function ResultView({
               : `render JSON (${renderPages.length} page${renderPages.length === 1 ? "" : "s"})`}
           </button>
         )}
+        <span className="results-actions">
+          <button className="chip" onClick={copyAnswer} title="Copy the answer text">
+            {copied ? "copied ✓" : "copy"}
+          </button>
+          {csvSource && (
+            <button
+              className="chip"
+              title="Download the result rows as CSV"
+              onClick={() =>
+                downloadCsv(
+                  csvSource.columns,
+                  csvSource.rows,
+                  `datapilot-${result.run_id || "answer"}.csv`,
+                )
+              }
+            >
+              csv
+            </button>
+          )}
+        </span>
       </div>
       {showTrace && hasTrace && (
         <AgentTrace

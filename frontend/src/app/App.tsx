@@ -1,7 +1,7 @@
 // App shell: auth gate, header, routed tab nav. Conversation state lives here
 // (not in ChatPage) so switching tabs never loses the thread; sqlSeed carries
 // "Open in SQL editor" from a chat report into the editor.
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -17,9 +17,14 @@ import {
 } from "../lib/api";
 import { loadAuthConfig, loginDev, logout as authLogout } from "../lib/auth";
 import { getTheme, setTheme } from "../lib/theme";
-import { ChatMsg, ChatPage } from "../features/chat/ChatPage";
+import { MOBILE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
+import { ChatMsg, ChatPage, ConversationList } from "../features/chat/ChatPage";
 import { AdminPage } from "../features/admin/AdminPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
+import { NavRail, View } from "./NavRail";
+import { BottomNav, MobileTopBar } from "./MobileNav";
+import { Sheet } from "../ui/Sheet";
+import { IconHistory } from "../ui/icons";
 
 // Code-split the SQL editor: CodeMirror only loads when the tab is opened.
 const SqlEditor = lazy(() =>
@@ -27,8 +32,6 @@ const SqlEditor = lazy(() =>
 );
 import { Command, CommandPalette } from "../ui/CommandPalette";
 import { Login } from "./Login";
-
-type View = "chat" | "sql" | "admin" | "settings";
 
 /** Rebuild a renderable result from a stored assistant message (history reopen).
  *  Result meta (engine/tokens/latency) and the admin agent trace are joined
@@ -77,6 +80,9 @@ export default function App() {
   const [pagePlan, setPagePlan] = useState<PagePlanSlot[]>([]);
   const [streamedPages, setStreamedPages] = useState<Record<number, PageFrame>>({});
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Mobile tier renders BottomNav + sheets instead of the icon rail.
+  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const [convSheetOpen, setConvSheetOpen] = useState(false);
   const queryClient = useQueryClient();
 
   // ⌘K / Ctrl+K opens the command palette anywhere in the app.
@@ -169,6 +175,10 @@ export default function App() {
     queryClient.clear();
   }
 
+  // Stop button aborts the in-flight SSE fetch; the run may finish server-side
+  // but the UI returns to the composer immediately.
+  const abortRef = useRef<AbortController | null>(null);
+
   async function send(question: string) {
     const q = question.trim();
     if (!q || loading) return;
@@ -182,6 +192,8 @@ export default function App() {
     setProgress([]);
     setPagePlan([]);
     setStreamedPages({});
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
       const result = await askStream(
         q,
@@ -197,6 +209,7 @@ export default function App() {
           setPagePlan(slots);
         },
         (frame) => setStreamedPages((prev) => ({ ...prev, [frame.index]: frame })),
+        ctrl.signal,
       );
       setConversationId(result.conversation_id);
       setMessages((m) => [...m, { role: "assistant", content: result.answer, result }]);
@@ -204,17 +217,30 @@ export default function App() {
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
       }
     } catch (e) {
-      setError((e as Error).message);
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "Sorry — something went wrong answering that." },
-      ]);
+      if (ctrl.signal.aborted) {
+        track("question_stopped", { question: q });
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: "Stopped — ask again whenever you're ready." },
+        ]);
+      } else {
+        setError((e as Error).message);
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: "Sorry — something went wrong answering that." },
+        ]);
+      }
     } finally {
+      abortRef.current = null;
       setLoading(false);
       setWorking(null);
       setPagePlan([]);
       setStreamedPages({});
     }
+  }
+
+  function stopStreaming() {
+    abortRef.current?.abort();
   }
 
   async function openConversation(id: string) {
@@ -278,88 +304,90 @@ export default function App() {
   return (
     <div className="app">
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
-      <header>
-        <div>
-          <strong>data-qa-agent</strong>
-          <span className="pill">{user.display_name}</span>
-          <span className={`pill role-${user.role}`}>{user.role}</span>
-        </div>
-        <div className="header-actions">
-          <button className="ghost" onClick={logout}>
-            Sign out
-          </button>
-        </div>
-      </header>
-
-      <nav className="tabs" role="tablist" aria-label="App sections">
-        <button
-          role="tab"
-          aria-selected={view === "chat"}
-          className={view === "chat" ? "tab active" : "tab"}
-          onClick={() => setView("chat")}
-        >
-          Chat
-        </button>
-        <button
-          role="tab"
-          aria-selected={view === "sql"}
-          className={view === "sql" ? "tab active" : "tab"}
-          onClick={() => setView("sql")}
-        >
-          SQL Editor
-        </button>
-        {user.role === "admin" && (
-          <button
-            role="tab"
-            aria-selected={view === "admin"}
-            className={view === "admin" ? "tab active" : "tab"}
-            onClick={() => setView("admin")}
-          >
-            Admin
-          </button>
-        )}
-        <button
-          role="tab"
-          aria-selected={view === "settings"}
-          className={view === "settings" ? "tab active" : "tab"}
-          onClick={() => setView("settings")}
-        >
-          Settings
-        </button>
-      </nav>
-
-      {view === "admin" && <AdminPage />}
-      {view === "settings" && <SettingsPage user={user} />}
-      {view === "sql" && (
-        <Suspense fallback={<main className="muted">Loading SQL editor…</main>}>
-          <SqlEditor
+      {!isMobile && (
+        <NavRail view={view} setView={setView} user={user} onSignOut={() => void logout()} />
+      )}
+      <div className="app-body">
+        {isMobile && (
+          <MobileTopBar
             user={user}
-            seedSql={sqlSeed}
-            onSendToChat={(text) => {
-              setView("chat");
-              setInput(text);
+            onSignOut={() => void logout()}
+            action={
+              view === "chat" ? (
+                <button
+                  className="rail-item"
+                  aria-label="Conversation history"
+                  title="Conversation history"
+                  onClick={() => setConvSheetOpen(true)}
+                >
+                  <IconHistory />
+                </button>
+              ) : undefined
+            }
+          />
+        )}
+        <div className="view-host" key={view}>
+          {view === "admin" && <AdminPage />}
+          {view === "settings" && <SettingsPage user={user} />}
+          {view === "sql" && (
+            <Suspense
+              fallback={
+                <main aria-busy="true">
+                  <div className="skel" style={{ height: 40, marginBottom: 10 }} />
+                  <div className="skel" style={{ height: 240, marginBottom: 10 }} />
+                  <div className="skel" style={{ height: 18, width: "40%" }} />
+                </main>
+              }
+            >
+              <SqlEditor
+                user={user}
+                seedSql={sqlSeed}
+                onSendToChat={(text) => {
+                  setView("chat");
+                  setInput(text);
+                }}
+              />
+            </Suspense>
+          )}
+          {view === "chat" && (
+            <ChatPage
+              user={user}
+              messages={messages}
+              loading={loading}
+              working={working}
+              progress={progress}
+              pagePlan={pagePlan}
+              streamedPages={streamedPages}
+              error={error}
+              input={input}
+              setInput={setInput}
+              onSend={send}
+              onStop={stopStreaming}
+              onOpenSql={openInSqlEditor}
+              conversationId={conversationId}
+              onOpenConversation={openConversation}
+              onNewConversation={newConversation}
+            />
+          )}
+        </div>
+        {isMobile && (
+          <BottomNav view={view} setView={setView} isAdmin={user.role === "admin"} />
+        )}
+      </div>
+      {isMobile && (
+        <Sheet open={convSheetOpen} onClose={() => setConvSheetOpen(false)} label="Conversations">
+          <ConversationList
+            activeId={conversationId}
+            onOpen={(id) => {
+              void openConversation(id);
+              setConvSheetOpen(false);
+            }}
+            onNew={() => {
+              newConversation();
+              setConvSheetOpen(false);
             }}
           />
-        </Suspense>
-      )}
-      {view === "chat" && (
-        <ChatPage
-          user={user}
-          messages={messages}
-          loading={loading}
-          working={working}
-          progress={progress}
-          pagePlan={pagePlan}
-          streamedPages={streamedPages}
-          error={error}
-          input={input}
-          setInput={setInput}
-          onSend={send}
-          onOpenSql={openInSqlEditor}
-          conversationId={conversationId}
-          onOpenConversation={openConversation}
-          onNewConversation={newConversation}
-        />
+        </Sheet>
       )}
     </div>
   );

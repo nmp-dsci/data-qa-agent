@@ -342,11 +342,16 @@ export async function getMe(): Promise<User> {
   return resp.json();
 }
 
-export async function ask(question: string, conversationId: string | null): Promise<AskResult> {
+export async function ask(
+  question: string,
+  conversationId: string | null,
+  signal?: AbortSignal,
+): Promise<AskResult> {
   const resp = await fetch(`${API}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ question, conversation_id: conversationId }),
+    signal,
   });
   if (!resp.ok) {
     const detail = await resp.text();
@@ -398,6 +403,7 @@ export async function askStream(
   onProgress?: (p: AskProgress) => void,
   onPlan?: (slots: PagePlanSlot[]) => void,
   onPage?: (frame: PageFrame) => void,
+  signal?: AbortSignal,
 ): Promise<AskResult> {
   let resp: Response;
   try {
@@ -405,11 +411,14 @@ export async function askStream(
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ question, conversation_id: conversationId }),
+      signal,
     });
-  } catch {
-    return ask(question, conversationId);
+  } catch (e) {
+    // A user-initiated stop must not fall back to the blocking ask().
+    if (signal?.aborted) throw e;
+    return ask(question, conversationId, signal);
   }
-  if (!resp.ok || !resp.body) return ask(question, conversationId);
+  if (!resp.ok || !resp.body) return ask(question, conversationId, signal);
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();

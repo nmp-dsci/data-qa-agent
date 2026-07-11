@@ -10,23 +10,19 @@ import {
   User,
 } from "../../lib/api";
 import { formatTime } from "../../lib/format";
-import { getTheme, setTheme, Theme } from "../../lib/theme";
+import { setTheme, useTheme } from "../../lib/theme";
 
 function ThemeSection() {
-  const [theme, setThemeState] = useState<Theme>(getTheme());
-  function apply(t: Theme) {
-    setTheme(t);
-    setThemeState(t);
-  }
+  const theme = useTheme();
   return (
     <section>
       <h3>Appearance</h3>
       <div className="settings-row">
         <span className="fb-sent">
-          <button className={theme === "dark" ? "sel" : ""} onClick={() => apply("dark")}>
+          <button className={theme === "dark" ? "sel" : ""} onClick={() => setTheme("dark")}>
             Dark
           </button>
-          <button className={theme === "light" ? "sel" : ""} onClick={() => apply("light")}>
+          <button className={theme === "light" ? "sel" : ""} onClick={() => setTheme("light")}>
             Light
           </button>
         </span>

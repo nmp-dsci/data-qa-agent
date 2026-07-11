@@ -1,12 +1,14 @@
-// Login gate: dev-auth stub (seeded test users) or Google Sign-in.
+// Login gate: branded card — Google Sign-in in production, demo profiles on
+// the dev-auth stub. Same card in both modes; dev just adds the profile list.
 import { useEffect, useRef } from "react";
 import { User } from "../lib/api";
 import { renderGoogleButton } from "../lib/auth";
+import { BrandMark } from "../ui/icons";
 
 const TEST_USERS = [
-  { username: "admin", label: "Admin", hint: "sees all data" },
-  { username: "user1", label: "User One", hint: "has property data access" },
-  { username: "user2", label: "User Two", hint: "no data access (isolated)" },
+  { username: "admin", label: "Admin", hint: "sees all data · full trace", initials: "AD", tint: "#f0c674" },
+  { username: "user1", label: "User One", hint: "property data access", initials: "U1", tint: "#9ece6a" },
+  { username: "user2", label: "User Two", hint: "no data access (isolated)", initials: "U2", tint: "#7dcfff" },
 ];
 
 export function Login({
@@ -35,27 +37,35 @@ export function Login({
   return (
     <div className="login">
       <div className="login-card">
-        <h1>data-qa-agent</h1>
+        <div className="login-mark">
+          <BrandMark size={40} />
+        </div>
+        <h1>Datapilot</h1>
+        <p className="sub">Ask your data anything. Governed answers in seconds.</p>
         {authMode === "google" ? (
           <>
-            <p className="sub">Sign in to ask questions about your data.</p>
-            <div className="users" ref={btnRef} />
+            <div className="users google" ref={btnRef} />
             {error && <p className="error">{error}</p>}
-            <p className="foot">Secured by Google Sign-in</p>
+            <p className="foot">Secured by Google Sign-in · row-level security · every query audited</p>
           </>
         ) : (
           <>
-            <p className="sub">Ask questions about your data. Sign in as a test user:</p>
+            <div className="login-div">sign in as a demo profile</div>
             <div className="users">
               {TEST_USERS.map((u) => (
                 <button key={u.username} onClick={() => onDevLogin(u.username)}>
-                  <strong>{u.label}</strong>
-                  <span>{u.hint}</span>
+                  <span className="login-av" style={{ background: u.tint }}>
+                    {u.initials}
+                  </span>
+                  <span className="login-who">
+                    <strong>{u.label}</strong>
+                    <span>{u.hint}</span>
+                  </span>
                 </button>
               ))}
             </div>
             {error && <p className="error">{error}</p>}
-            <p className="foot">Dev-auth stub · production uses Google Sign-in</p>
+            <p className="foot">Dev-auth stub · production uses Google Sign-in · row-level security</p>
           </>
         )}
       </div>

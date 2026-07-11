@@ -15,6 +15,8 @@ authorized to see, returning insights and charts.
 The goal is a **v1 end-to-end system that is built to evolve** — a learning-oriented, iteratively improved
 reference implementation, not a throwaway prototype.
 
+The product's UI display name is **Datapilot**; the repo and services keep the `data-qa-agent` name.
+
 Current branch: `init-ds-app`. The full architecture proposal lives in
 `.lavish/s00_data-qa-agent-architecture.html` (open with `npx -y lavish-axi .lavish/s00_data-qa-agent-architecture.html`).
 
@@ -270,6 +272,8 @@ see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failur
 
 - ESM modules, TypeScript throughout.
 - Keep auth/token logic in a dedicated module; components stay presentational.
+- Styling is hand-rolled CSS with design tokens in `frontend/src/styles.css` — **no CSS framework or component
+  library** (no Tailwind). Fonts are self-hosted via `@fontsource`.
 
 ### Secrets & config
 

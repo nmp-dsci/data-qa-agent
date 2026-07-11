@@ -1,8 +1,10 @@
-// Chat tab: conversations sidebar + message thread + composer. Conversation
-// state lives in the app shell so it survives tab switches; the sidebar lists
-// past conversations (new conversation = fresh thread, follow-ups in the same
-// thread stay multi-turn).
-import { useEffect, useRef } from "react";
+// Chat tab. Empty state = hero: greeting + centered composer + suggestion
+// cards (the Perplexity ask-moment). Once a thread exists the composer docks
+// to the bottom and answers render on the canvas — only the user's message
+// keeps a bubble; assistant answers get an identity row and the report pages
+// directly on a ~768px reading column (960px when a report is present).
+// Conversation state lives in the app shell so it survives tab switches.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AskProgress,
@@ -15,6 +17,8 @@ import {
 } from "../../lib/api";
 import { useStickToBottom } from "../../lib/useStickToBottom";
 import { PageLayout } from "../../report-engine/PageLayout";
+import { Composer } from "../../ui/Composer";
+import { BrandMark } from "../../ui/icons";
 import { ResultView } from "./ResultView";
 
 export interface ChatMsg {
@@ -23,13 +27,35 @@ export interface ChatMsg {
   result?: AskResult;
 }
 
-const SUGGESTIONS = [
-  "show me trend of sale price for houses for Normanhurst vs Hornsby for all time 2010 to 2026",
-  "What are the top growth suburbs for sale price and rent?",
-  "Which suburbs have the highest rent growth?",
-  "Top suburbs by sale price growth?",
-  "How many suburbs do we have?",
+/** Suggestion cards: short verb-first label + the real question as preview. */
+const SUGGESTIONS: { title: string; q: string }[] = [
+  {
+    title: "📈 Price trend",
+    q: "show me trend of sale price for houses for Normanhurst vs Hornsby for all time 2010 to 2026",
+  },
+  { title: "🏆 Top movers", q: "What are the top growth suburbs for sale price and rent?" },
+  { title: "📊 Rent growth", q: "Which suburbs have the highest rent growth?" },
+  { title: "⚖️ Compare", q: "Top suburbs by sale price growth?" },
 ];
+
+function greeting(name: string): string {
+  const h = new Date().getHours();
+  const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
+  return `Good ${part}, ${name.trim().split(/\s+/)[0]}`;
+}
+
+/** ChatGPT-style date buckets for the sidebar. */
+function groupFor(iso: string): string {
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(new Date(iso))) / 86_400_000);
+  if (Number.isNaN(diff)) return "Older";
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff < 7) return "Previous 7 days";
+  return "Older";
+}
+
+const GROUP_ORDER = ["Today", "Yesterday", "Previous 7 days", "Older"];
 
 export function ConversationList({
   activeId,
@@ -41,26 +67,50 @@ export function ConversationList({
   onNew: () => void;
 }) {
   const q = useQuery({ queryKey: ["conversations"], queryFn: getConversations });
+  const [filter, setFilter] = useState("");
   const conversations: ConversationSummary[] = q.data ?? [];
+  const groups = useMemo(() => {
+    const needle = filter.trim().toLowerCase();
+    const shown = needle
+      ? conversations.filter((c) => (c.title ?? "").toLowerCase().includes(needle))
+      : conversations;
+    const byGroup = new Map<string, ConversationSummary[]>();
+    for (const c of shown) {
+      const g = groupFor(c.created_at);
+      byGroup.set(g, [...(byGroup.get(g) ?? []), c]);
+    }
+    return GROUP_ORDER.filter((g) => byGroup.has(g)).map((g) => ({
+      label: g,
+      items: byGroup.get(g)!,
+    }));
+  }, [conversations, filter]);
+
   return (
     <aside className="conv-panel">
       <button className="conv-new" onClick={onNew}>
         + New conversation
       </button>
-      <div className="schema-title">Conversations</div>
+      <input
+        className="conv-search"
+        placeholder="Search conversations"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+      />
       {q.isLoading && <div className="muted sqled-hint">Loading…</div>}
-      {conversations.map((c) => (
-        <button
-          key={c.id}
-          className={`conv-item${c.id === activeId ? " active" : ""}`}
-          onClick={() => onOpen(c.id)}
-          title={c.title ?? ""}
-        >
-          <span className="conv-title">{c.title || "Untitled"}</span>
-          <span className="conv-meta">
-            {c.message_count} msg{c.message_count === 1 ? "" : "s"}
-          </span>
-        </button>
+      {groups.map((g) => (
+        <div key={g.label} className="conv-group">
+          <div className="schema-title">{g.label}</div>
+          {g.items.map((c) => (
+            <button
+              key={c.id}
+              className={`conv-item${c.id === activeId ? " active" : ""}`}
+              onClick={() => onOpen(c.id)}
+              title={c.title ?? ""}
+            >
+              <span className="conv-title">{c.title || "Untitled"}</span>
+            </button>
+          ))}
+        </div>
       ))}
       {!q.isLoading && conversations.length === 0 && (
         <div className="muted sqled-hint">No conversations yet.</div>
@@ -126,12 +176,21 @@ function GhostPage({ kind }: { kind: string }) {
   );
 }
 
+/** Identity row every assistant turn (streamed or final) opens with. */
+function AnswerHead({ note }: { note?: string | null }) {
+  return (
+    <div className="answer-head">
+      <BrandMark size={20} />
+      <b>Data agent</b>
+      {note && <span className="answer-note">{note}</span>}
+    </div>
+  );
+}
+
 /** The streamed answer while the agent works: the running step list, then one
- *  section per planned page. Pages render through the SAME PageLayout the
- *  final answer uses the moment their frame lands; not-yet-started pages show
- *  ghost placeholders with progressive disclosure (the Page N+1 slot appears
- *  only after page N lands); locked plan entries render the paywall teaser. */
-function WorkingBubble({
+ *  section per planned page — same PageLayout as the final answer, ghosts
+ *  until a frame lands, paywall teasers for locked plan entries. */
+function WorkingAnswer({
   working,
   progress,
   pagePlan,
@@ -149,63 +208,59 @@ function WorkingBubble({
   const visibleUpTo = (index: number) =>
     open.filter((s) => s.index < index).every((s) => streamedPages[s.index] != null);
   return (
-    <div className="msg assistant">
-      <div className="bubble">
-        <div className="working-head">{working ?? "Agent is working…"}</div>
-        {progress.length > 0 && (
-          <ol className="working-steps">
-            {progress.map((p) => (
-              <li key={p.n} className="working-step">
-                <span className="working-step-n">{p.n}</span>
-                <span className="working-step-action">{p.action}</span>
-                {p.detail && <span className="working-step-detail">{p.detail}</span>}
-              </li>
-            ))}
-          </ol>
-        )}
-        {slots.map((slot) => {
-          const label = pageKindLabel(slot.kind);
-          if (slot.status === "locked") {
-            return (
-              <div className="stream-page" key={slot.index}>
-                <div className="stream-page-head">
-                  Page {slot.index} · {label}
-                  <span className="page-status locked">🔒 upgrade</span>
-                </div>
-                <div className="locked-teaser">
-                  {label} pages are available on a higher plan.
-                </div>
-              </div>
-            );
-          }
-          const frame = streamedPages[slot.index];
-          if (frame?.status === "complete" && frame.page) {
-            return (
-              <div className="stream-page" key={slot.index}>
-                <div className="stream-page-head">
-                  Page {slot.index} · {label}
-                  <span className="page-status done">✓ streamed</span>
-                </div>
-                <div className="report">
-                  <PageLayout page={frame.page} />
-                </div>
-              </div>
-            );
-          }
-          if (frame != null || !visibleUpTo(slot.index)) return null; // skipped / not yet disclosed
+    <div className="answer wide">
+      <AnswerHead note={working ?? "working…"} />
+      {progress.length > 0 && (
+        <ol className="working-steps">
+          {progress.map((p) => (
+            <li key={p.n} className="working-step">
+              <span className="working-step-n">{p.n}</span>
+              <span className="working-step-action">{p.action}</span>
+              {p.detail && <span className="working-step-detail">{p.detail}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
+      {slots.map((slot) => {
+        const label = pageKindLabel(slot.kind);
+        if (slot.status === "locked") {
           return (
             <div className="stream-page" key={slot.index}>
               <div className="stream-page-head">
                 Page {slot.index} · {label}
-                <span className="page-status building">
-                  {slot.index === 1 ? "populating…" : "working…"}
-                </span>
+                <span className="page-status locked">🔒 upgrade</span>
               </div>
-              <GhostPage kind={slot.kind} />
+              <div className="locked-teaser">{label} pages are available on a higher plan.</div>
             </div>
           );
-        })}
-      </div>
+        }
+        const frame = streamedPages[slot.index];
+        if (frame?.status === "complete" && frame.page) {
+          return (
+            <div className="stream-page" key={slot.index}>
+              <div className="stream-page-head">
+                Page {slot.index} · {label}
+                <span className="page-status done">✓ streamed</span>
+              </div>
+              <div className="report">
+                <PageLayout page={frame.page} />
+              </div>
+            </div>
+          );
+        }
+        if (frame != null || !visibleUpTo(slot.index)) return null; // skipped / not yet disclosed
+        return (
+          <div className="stream-page" key={slot.index}>
+            <div className="stream-page-head">
+              Page {slot.index} · {label}
+              <span className="page-status building">
+                {slot.index === 1 ? "populating…" : "working…"}
+              </span>
+            </div>
+            <GhostPage kind={slot.kind} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -222,6 +277,7 @@ export function ChatPage({
   input,
   setInput,
   onSend,
+  onStop,
   onOpenSql,
   conversationId,
   onOpenConversation,
@@ -238,6 +294,7 @@ export function ChatPage({
   input: string;
   setInput: (v: string) => void;
   onSend: (question: string) => void;
+  onStop?: () => void;
   onOpenSql: (sql: string) => void;
   conversationId: string | null;
   onOpenConversation: (id: string) => void;
@@ -255,6 +312,8 @@ export function ChatPage({
     if (loading) scrollToBottom("smooth");
   }, [loading, scrollToBottom]);
 
+  const empty = messages.length === 0 && !loading;
+
   return (
     <div className="chat-layout">
       <ConversationList
@@ -263,73 +322,95 @@ export function ChatPage({
         onNew={onNewConversation}
       />
       <div className="chat-main">
-        <main ref={mainRef}>
-          {messages.length === 0 && (
-            <div className="empty">
-              <p>Try asking:</p>
-              <div className="suggestions">
+        {empty ? (
+          <div className="hero-wrap">
+            <div className="hero">
+              <h1>{greeting(user.display_name)}</h1>
+              <p className="hero-sub">
+                Sales &amp; rents across NSW suburbs · 2010 → 2026 · governed SQL over your data
+              </p>
+              <Composer
+                value={input}
+                onChange={setInput}
+                onSend={onSend}
+                busy={loading}
+                placeholder="Ask about your data…"
+                autoFocus
+              />
+              <div className="sugs">
                 {SUGGESTIONS.map((s) => (
-                  <button key={s} onClick={() => onSend(s)}>
-                    {s}
+                  <button key={s.title} className="sug" onClick={() => onSend(s.q)}>
+                    <b>{s.title}</b>
+                    <span>{s.q}</span>
                   </button>
                 ))}
               </div>
               <p className="onboard-hint">
-                Answers open with a <b>Summary</b> (latest number + growth) and an{" "}
-                <b>Insights</b> page explaining it. Click any element to leave feedback ·{" "}
-                <kbd>⌘K</kbd> opens the command palette.
+                Answers open with a <b>Summary</b> and an <b>Insights</b> page. Click any element
+                to leave feedback · <kbd>⌘K</kbd> opens the command palette.
               </p>
             </div>
-          )}
+          </div>
+        ) : (
+          <>
+            <main ref={mainRef}>
+              {messages.map((m, i) =>
+                m.role === "user" ? (
+                  <div key={i} className="msg user">
+                    <div className="bubble">{m.content}</div>
+                  </div>
+                ) : (
+                  <div
+                    key={i}
+                    className={`answer${
+                      m.result?.report || (m.result?.pages?.length ?? 0) > 0 ? " wide" : ""
+                    }`}
+                  >
+                    <AnswerHead />
+                    <div className="content">{m.content}</div>
+                    {m.result && (
+                      <ResultView
+                        result={m.result}
+                        isAdmin={user.role === "admin"}
+                        onOpenSql={onOpenSql}
+                      />
+                    )}
+                  </div>
+                ),
+              )}
+              {loading && (
+                <WorkingAnswer
+                  working={working}
+                  progress={progress}
+                  pagePlan={pagePlan}
+                  streamedPages={streamedPages}
+                />
+              )}
+              {error && <p className="error">{error}</p>}
+            </main>
 
-          {messages.map((m, i) => (
-            <div key={i} className={`msg ${m.role}`}>
-              <div className="bubble">
-                <div className="who">{m.role === "user" ? user.display_name : "Data agent"}</div>
-                <div className="content">{m.content}</div>
-                {m.result && (
-                  <ResultView
-                    result={m.result}
-                    isAdmin={user.role === "admin"}
-                    onOpenSql={onOpenSql}
-                  />
-                )}
-              </div>
+            {!pinned && (
+              <button
+                type="button"
+                className="jump-latest"
+                onClick={() => scrollToBottom("smooth")}
+              >
+                ↓ Jump to latest
+              </button>
+            )}
+
+            <div className="dock">
+              <Composer
+                value={input}
+                onChange={setInput}
+                onSend={onSend}
+                onStop={onStop}
+                busy={loading}
+                placeholder="Ask a follow-up…"
+              />
             </div>
-          ))}
-          {loading && (
-            <WorkingBubble
-              working={working}
-              progress={progress}
-              pagePlan={pagePlan}
-              streamedPages={streamedPages}
-            />
-          )}
-          {error && <p className="error">{error}</p>}
-        </main>
-
-        {!pinned && (
-          <button type="button" className="jump-latest" onClick={() => scrollToBottom("smooth")}>
-            ↓ Jump to latest
-          </button>
+          </>
         )}
-
-        <form
-          className="composer"
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSend(input);
-          }}
-        >
-          <input
-            value={input}
-            placeholder="Ask about NSW property growth by suburb…"
-            onChange={(e) => setInput(e.target.value)}
-          />
-          <button type="submit" disabled={loading}>
-            Ask
-          </button>
-        </form>
       </div>
     </div>
   );

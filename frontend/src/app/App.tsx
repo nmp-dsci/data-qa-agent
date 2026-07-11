@@ -1,7 +1,7 @@
 // App shell: auth gate, header, routed tab nav. Conversation state lives here
 // (not in ChatPage) so switching tabs never loses the thread; sqlSeed carries
 // "Open in SQL editor" from a chat report into the editor.
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -175,6 +175,10 @@ export default function App() {
     queryClient.clear();
   }
 
+  // Stop button aborts the in-flight SSE fetch; the run may finish server-side
+  // but the UI returns to the composer immediately.
+  const abortRef = useRef<AbortController | null>(null);
+
   async function send(question: string) {
     const q = question.trim();
     if (!q || loading) return;
@@ -188,6 +192,8 @@ export default function App() {
     setProgress([]);
     setPagePlan([]);
     setStreamedPages({});
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
       const result = await askStream(
         q,
@@ -203,6 +209,7 @@ export default function App() {
           setPagePlan(slots);
         },
         (frame) => setStreamedPages((prev) => ({ ...prev, [frame.index]: frame })),
+        ctrl.signal,
       );
       setConversationId(result.conversation_id);
       setMessages((m) => [...m, { role: "assistant", content: result.answer, result }]);
@@ -210,17 +217,30 @@ export default function App() {
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
       }
     } catch (e) {
-      setError((e as Error).message);
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "Sorry — something went wrong answering that." },
-      ]);
+      if (ctrl.signal.aborted) {
+        track("question_stopped", { question: q });
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: "Stopped — ask again whenever you're ready." },
+        ]);
+      } else {
+        setError((e as Error).message);
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: "Sorry — something went wrong answering that." },
+        ]);
+      }
     } finally {
+      abortRef.current = null;
       setLoading(false);
       setWorking(null);
       setPagePlan([]);
       setStreamedPages({});
     }
+  }
+
+  function stopStreaming() {
+    abortRef.current?.abort();
   }
 
   async function openConversation(id: string) {
@@ -334,6 +354,7 @@ export default function App() {
               input={input}
               setInput={setInput}
               onSend={send}
+              onStop={stopStreaming}
               onOpenSql={openInSqlEditor}
               conversationId={conversationId}
               onOpenConversation={openConversation}

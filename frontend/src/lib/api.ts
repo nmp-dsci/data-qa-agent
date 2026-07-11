@@ -398,6 +398,7 @@ export async function askStream(
   onProgress?: (p: AskProgress) => void,
   onPlan?: (slots: PagePlanSlot[]) => void,
   onPage?: (frame: PageFrame) => void,
+  signal?: AbortSignal,
 ): Promise<AskResult> {
   let resp: Response;
   try {
@@ -405,8 +406,11 @@ export async function askStream(
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ question, conversation_id: conversationId }),
+      signal,
     });
-  } catch {
+  } catch (e) {
+    // A user-initiated stop must not fall back to the blocking ask().
+    if (signal?.aborted) throw e;
     return ask(question, conversationId);
   }
   if (!resp.ok || !resp.body) return ask(question, conversationId);

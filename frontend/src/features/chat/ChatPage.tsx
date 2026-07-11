@@ -4,7 +4,7 @@
 // keeps a bubble; assistant answers get an identity row and the report pages
 // directly on a ~768px reading column (960px when a report is present).
 // Conversation state lives in the app shell so it survives tab switches.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AskProgress,
@@ -306,8 +306,7 @@ export function ChatPage({
   // The thread follows the stream while the user is at the bottom; scrolling up
   // pauses following and shows the jump pill. Sending or opening a conversation
   // always snaps to the newest content.
-  const mainRef = useRef<HTMLElement | null>(null);
-  const { pinned, scrollToBottom } = useStickToBottom(mainRef);
+  const { ref: mainRef, pinned, scrollToBottom } = useStickToBottom();
   useEffect(() => {
     scrollToBottom();
   }, [conversationId, scrollToBottom]);

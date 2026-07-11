@@ -1,6 +1,6 @@
 // Inline stroke icons — no icon dependency; sized/colored by the parent.
 // All are 20px 24-viewBox stroke-current so rail/nav state colors them.
-import { ReactNode } from "react";
+import { ReactNode, useId } from "react";
 
 function I({ children, title }: { children: ReactNode; title?: string }) {
   return (
@@ -93,19 +93,20 @@ export const IconSend = () => (
 
 /** The Datapilot mark: gold diamond on a dark rounded square (favicon twin). */
 export function BrandMark({ size = 30 }: { size?: number }) {
+  const gid = `dp-mark-g-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
       <rect width="64" height="64" rx="16" fill="#0b0d12" />
       <path
         d="M32 12 L48 32 L32 52 L16 32 Z"
         fill="none"
-        stroke="url(#dp-mark-g)"
+        stroke={`url(#${gid})`}
         strokeWidth="5"
         strokeLinejoin="round"
       />
       <circle cx="32" cy="32" r="4" fill="#f0c674" />
       <defs>
-        <linearGradient id="dp-mark-g" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#f0c674" />
           <stop offset="1" stopColor="#b48a3f" />
         </linearGradient>

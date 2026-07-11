@@ -3,29 +3,35 @@
 // until they return (or hit "jump to latest"). Streamed content growth is
 // tracked two ways: a MutationObserver for added nodes/text, and a
 // ResizeObserver on the last child so charts that grow after render keep the
-// pin honest.
-import { RefObject, useCallback, useEffect, useRef, useState } from "react";
+// pin honest. The container mounts and unmounts with the thread (the hero
+// state renders no <main>), so listeners attach through a callback ref.
+import { useCallback, useRef, useState } from "react";
 
 const THRESHOLD = 80;
 
-export function useStickToBottom(ref: RefObject<HTMLElement | null>) {
+export function useStickToBottom() {
+  const elRef = useRef<HTMLElement | null>(null);
+  const detachRef = useRef<(() => void) | null>(null);
   const pinnedRef = useRef(true);
   const [pinned, setPinned] = useState(true);
 
-  const scrollToBottom = useCallback(
-    (behavior: ScrollBehavior = "auto") => {
-      const el = ref.current;
-      if (!el) return;
-      el.scrollTo({ top: el.scrollHeight, behavior });
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = elRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    pinnedRef.current = true;
+    setPinned(true);
+  }, []);
+
+  const ref = useCallback((el: HTMLElement | null) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    elRef.current = el;
+    if (!el) {
       pinnedRef.current = true;
       setPinned(true);
-    },
-    [ref],
-  );
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+      return;
+    }
     const onScroll = () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < THRESHOLD;
       pinnedRef.current = atBottom;
@@ -46,12 +52,12 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>) {
     el.addEventListener("scroll", onScroll, { passive: true });
     mo.observe(el, { childList: true, subtree: true, characterData: true });
     observeLast();
-    return () => {
+    detachRef.current = () => {
       el.removeEventListener("scroll", onScroll);
       ro.disconnect();
       mo.disconnect();
     };
-  }, [ref]);
+  }, []);
 
-  return { pinned, scrollToBottom };
+  return { ref, pinned, scrollToBottom };
 }

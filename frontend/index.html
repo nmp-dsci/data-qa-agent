@@ -9,7 +9,9 @@
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d12" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f5f8" />
     <!-- Resolve the theme before first paint (stored override, else system) so
-         there is no flash of the wrong background while the bundle loads. -->
+         there is no flash of the wrong background while the bundle loads. The
+         theme-color metas above only track the system scheme, so point them at
+         the resolved theme too (a manual override must recolor the chrome). -->
     <script>
       try {
         var t = localStorage.getItem("app.theme");
@@ -17,6 +19,10 @@
           t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
         }
         document.documentElement.dataset.theme = t;
+        var c = t === "light" ? "#f4f5f8" : "#0b0d12";
+        document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+          m.setAttribute("content", c);
+        });
       } catch (e) {}
     </script>
     <style>

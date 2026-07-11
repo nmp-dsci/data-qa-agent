@@ -1,9 +1,9 @@
 // Desktop shell chrome: a 56px icon rail — brand on top, section tabs in the
 // middle (role=tab + aria-label keeps the e2e getByRole("tab") contract from
 // the old tab bar), theme/user/sign-out at the foot.
-import { ReactElement, useState } from "react";
+import { ReactElement } from "react";
 import { User } from "../lib/api";
-import { getTheme, setTheme, Theme } from "../lib/theme";
+import { setTheme, Theme, useTheme } from "../lib/theme";
 import {
   BrandMark,
   IconAdmin,
@@ -34,18 +34,14 @@ function initials(name: string): string {
 }
 
 export function ThemeToggle({ className }: { className: string }) {
-  const [theme, setLocal] = useState<Theme>(getTheme());
-  function toggle() {
-    const next: Theme = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    setLocal(next);
-  }
+  const theme = useTheme();
+  const next: Theme = theme === "dark" ? "light" : "dark";
   return (
     <button
       className={className}
-      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-      title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-      onClick={toggle}
+      aria-label={`Switch to ${next} theme`}
+      title={`Switch to ${next} theme`}
+      onClick={() => setTheme(next)}
     >
       {theme === "dark" ? <IconSun /> : <IconMoon />}
     </button>

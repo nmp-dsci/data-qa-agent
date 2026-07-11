@@ -17,7 +17,7 @@
   --gray-600: #333a48;
   --gray-100: #e7e9ee;
   --gray-300: #98a2b6;
-  --gray-400: #6b7280;
+  --gray-400: #79839a; /* AA on the v2 canvas for small hint text */
   --ink-code: #0b0d11;
   --gold-500: #b48a3f;
   --gold-ink: #1a1206;
@@ -107,11 +107,11 @@
   --border-2: #c3c9d4;
   --text: #1b202a;
   --muted: #5b6472;
-  --faint: #8a93a2;
+  --faint: #6d7686; /* AA on light panels */
   --accent: #8a6a2f;
   --accent-ink: #fffaf0;
   --accent-soft: #7a5c22;
-  --accent-2: #2f6fed;
+  --accent-2: #2456c9; /* AA for link text on white panels */
   --user: #dce8fb;
   --code-bg: #eef0f4;
   --good: #35803f;
@@ -298,7 +298,7 @@ main > .answer.wide { width: min(960px, 100%); }
   resize: none; color: var(--text); font: inherit; font-size: 14.5px; line-height: 1.5; max-height: 152px; }
 .composer2 textarea::placeholder { color: var(--faint); }
 .composer2-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 7px; }
-.composer2-hint { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+.composer2-hint { font-family: var(--mono); font-size: 10px; color: var(--muted); }
 .composer2-send, .composer2-stop { width: 32px; height: 32px; border-radius: 9px; border: none;
   display: grid; place-items: center; flex: none; }
 .composer2-send { background: linear-gradient(135deg, var(--accent-soft), var(--accent)); color: var(--accent-ink); }
@@ -329,8 +329,8 @@ tbody tr:last-child td { border-bottom: none; }
 .error { color: var(--error-text); font-size: 13px; }
 .muted { color: var(--muted); }
 
-/* Admin */
-.admin { gap: 18px; }
+/* Admin + Settings share a centered reading column. */
+.admin { gap: 18px; align-self: center; width: 100%; max-width: 1080px; }
 .admin h2, .admin h3 { margin: 0; }
 .admin h3 { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
 .admin-band { display: grid; gap: 14px; }
@@ -413,7 +413,13 @@ section > .agent-demo-canvas { border: 1px solid var(--border); border-radius: v
 .btn-run { background: var(--accent); color: var(--accent-ink); border: none; font-weight: 600; padding: 7px 16px;
   border-radius: var(--radius); font-size: 13px; }
 .btn-run:disabled { opacity: .5; }
-.sqled-editor .cm-editor { height: 320px; }
+/* The editor grows with the query (pane scrolls); no dead strip below. */
+.sqled-editor .cm-editor { min-height: 240px; }
+.sqled-idle { display: flex; align-items: center; gap: 10px; margin: 12px 14px;
+  padding: 14px; border: 1px dashed var(--border-2); border-radius: var(--radius-lg);
+  color: var(--muted); font-size: 12.5px; }
+.sqled-idle-kbd { font-family: var(--mono); font-size: 11px; color: var(--accent-soft);
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; }
 .sqled-result, .sqled-error { padding: 12px 14px; }
 .sqled-hint { font-size: 13px; padding: 4px 0; }
 .trunc { color: var(--warn); }
@@ -734,7 +740,7 @@ a:focus-visible, [role="option"]:focus-visible {
   padding: 6px 14px; font-size: 12px; font-weight: 600; box-shadow: var(--shadow-pop); }
 .jump-latest:hover { border-color: var(--accent-2); color: var(--accent-2); }
 .conv-panel { border-right: 1px solid var(--border); padding: 12px; overflow-y: auto; }
-.conv-new { width: 100%; background: var(--panel-2); border: 1px dashed var(--border-2); color: var(--accent);
+.conv-new { width: 100%; background: var(--panel-2); border: 1px dashed var(--border-2); color: var(--accent-soft);
   padding: 8px 10px; border-radius: var(--radius); font-size: 12.5px; margin-bottom: 12px; text-align: left; }
 .conv-new:hover { border-color: var(--accent); }
 .conv-search { width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);

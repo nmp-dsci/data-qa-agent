@@ -330,7 +330,15 @@ export default function App() {
           {view === "admin" && <AdminPage />}
           {view === "settings" && <SettingsPage user={user} />}
           {view === "sql" && (
-            <Suspense fallback={<main className="muted">Loading SQL editor…</main>}>
+            <Suspense
+              fallback={
+                <main aria-busy="true">
+                  <div className="skel" style={{ height: 40, marginBottom: 10 }} />
+                  <div className="skel" style={{ height: 240, marginBottom: 10 }} />
+                  <div className="skel" style={{ height: 18, width: "40%" }} />
+                </main>
+              }
+            >
               <SqlEditor
                 user={user}
                 seedSql={sqlSeed}

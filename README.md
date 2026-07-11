@@ -4,6 +4,8 @@ An app that automates data science through a conversational **data agent**: user
 natural language, and an AI agent turns them into governed SQL over data they're authorized to see — then
 answers with the result.
 
+The product is branded **Datapilot** in the UI; the repository and services keep the `data-qa-agent` name.
+
 - 📐 **Design & architecture:** [`AGENTS.md`](./AGENTS.md) (source of truth) and the visual review at
   `.lavish/s00_data-qa-agent-architecture.html`.
 - 🤖 **For AI assistants:** [`CLAUDE.md`](./CLAUDE.md) → points here and to `AGENTS.md`.
@@ -65,7 +67,8 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
                                                   :5434
 ```
 
-- **frontend** — login + chat UI, fires product-analytics events, includes an admin dashboard.
+- **frontend** — login + chat UI (responsive desktop/mobile layout, system-preference light/dark theme with a
+  persisted manual override), fires product-analytics events, includes an admin dashboard.
 - **backend-api** — validates the JWT, sets the per-request RLS context, orchestrates the agent, records
   conversations/messages/events.
 - **data-pipeline** — dlt ingests the CSVs into `raw`; dbt transforms `raw → staging → marts` (tests + docs),

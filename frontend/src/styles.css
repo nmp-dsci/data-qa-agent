@@ -116,12 +116,14 @@
 }
 
 * { box-sizing: border-box; }
+/* Height chain: the shell owns the viewport; panes scroll, the page never does. */
+html, body, #root { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 button { cursor: pointer; font: inherit; }
 
 /* Login */
-.login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
 .login-card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
   padding: 32px; width: min(460px, 100%); }
 .login-card h1 { margin: 0 0 4px; }
@@ -134,8 +136,10 @@ button { cursor: pointer; font: inherit; }
 .users button span { color: var(--muted); font-size: 13px; }
 .foot { color: var(--muted); font-size: 12px; text-align: center; margin-bottom: 0; }
 
-/* App shell */
-.app { width: min(1440px, 100%); margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+/* App shell — hard-capped to the viewport (dvh tracks mobile URL-bar collapse);
+   inner panes (thread, sidebars, editors) are the only scroll containers. */
+.app { width: min(1440px, 100%); margin: 0 auto; height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column; overflow: hidden; }
 header { display: flex; align-items: center; justify-content: space-between;
   padding: 14px 18px; border-bottom: 1px solid var(--border); }
 header .pill { margin-left: 8px; font-size: 12px; padding: 2px 8px; border-radius: 999px;
@@ -149,7 +153,7 @@ main { flex: 1; padding: 18px; display: flex; flex-direction: column; gap: 12px;
 .empty { color: var(--muted); }
 .suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .suggestions button { background: var(--panel); border: 1px solid var(--border); color: var(--text);
-  padding: 8px 12px; border-radius: 999px; font-size: 13px; }
+  padding: 8px 12px; border-radius: 12px; font-size: 13px; text-align: left; }
 .suggestions button:hover { border-color: var(--accent-2); }
 
 .msg { display: flex; }
@@ -180,7 +184,8 @@ thead th { background: var(--panel-2); color: var(--muted); position: sticky; to
 tbody tr:last-child td { border-bottom: none; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 
-.composer { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }
+.composer { display: flex; gap: 10px; border-top: 1px solid var(--border);
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom)); }
 .composer input { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text);
   padding: 12px 14px; border-radius: var(--radius-lg); outline: none; }
 .composer input:focus { border-color: var(--accent-2); }
@@ -596,7 +601,12 @@ a:focus-visible, [role="option"]:focus-visible {
 
 /* Chat history sidebar */
 .chat-layout { flex: 1; display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 0; }
-.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+/* Shown when the user scrolls up during a stream; snaps back to the newest content. */
+.jump-latest { position: absolute; bottom: 86px; left: 50%; transform: translateX(-50%); z-index: 5;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border-2); border-radius: 999px;
+  padding: 6px 14px; font-size: 12px; font-weight: 600; box-shadow: var(--shadow-pop); }
+.jump-latest:hover { border-color: var(--accent-2); color: var(--accent-2); }
 .conv-panel { border-right: 1px solid var(--border); padding: 12px; overflow-y: auto; }
 .conv-new { width: 100%; background: var(--panel-2); border: 1px dashed var(--border-2); color: var(--accent);
   padding: 8px 10px; border-radius: var(--radius); font-size: 12.5px; margin-bottom: 12px; text-align: left; }
@@ -661,6 +671,12 @@ a:focus-visible, [role="option"]:focus-visible {
 @media (max-width: 720px) {
   /* !important: column tracks are set inline from the registry. */
   .page-cols { grid-template-columns: 1fr !important; }
+  /* Chat: the thread owns the phone; history moves into a sheet in the shell rework. */
+  .chat-layout { grid-template-columns: 1fr; }
+  .conv-panel { display: none; }
+  /* 16px kills iOS focus-zoom; 44px is the minimum comfortable touch target. */
+  .composer input { font-size: 16px; min-height: 44px; }
+  .composer button { min-height: 44px; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .event-row { grid-template-columns: 1fr; gap: 3px; }
   .sqled { grid-template-columns: 1fr; }

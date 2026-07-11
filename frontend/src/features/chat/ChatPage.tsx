@@ -2,6 +2,7 @@
 // state lives in the app shell so it survives tab switches; the sidebar lists
 // past conversations (new conversation = fresh thread, follow-ups in the same
 // thread stay multi-turn).
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AskProgress,
@@ -12,6 +13,7 @@ import {
   PagePlanSlot,
   User,
 } from "../../lib/api";
+import { useStickToBottom } from "../../lib/useStickToBottom";
 import { PageLayout } from "../../report-engine/PageLayout";
 import { ResultView } from "./ResultView";
 
@@ -241,6 +243,18 @@ export function ChatPage({
   onOpenConversation: (id: string) => void;
   onNewConversation: () => void;
 }) {
+  // The thread follows the stream while the user is at the bottom; scrolling up
+  // pauses following and shows the jump pill. Sending or opening a conversation
+  // always snaps to the newest content.
+  const mainRef = useRef<HTMLElement | null>(null);
+  const { pinned, scrollToBottom } = useStickToBottom(mainRef);
+  useEffect(() => {
+    scrollToBottom();
+  }, [conversationId, scrollToBottom]);
+  useEffect(() => {
+    if (loading) scrollToBottom("smooth");
+  }, [loading, scrollToBottom]);
+
   return (
     <div className="chat-layout">
       <ConversationList
@@ -249,7 +263,7 @@ export function ChatPage({
         onNew={onNewConversation}
       />
       <div className="chat-main">
-        <main>
+        <main ref={mainRef}>
           {messages.length === 0 && (
             <div className="empty">
               <p>Try asking:</p>
@@ -293,6 +307,12 @@ export function ChatPage({
           )}
           {error && <p className="error">{error}</p>}
         </main>
+
+        {!pinned && (
+          <button type="button" className="jump-latest" onClick={() => scrollToBottom("smooth")}>
+            ↓ Jump to latest
+          </button>
+        )}
 
         <form
           className="composer"

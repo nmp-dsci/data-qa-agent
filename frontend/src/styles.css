@@ -151,25 +151,58 @@ table, .h-value, .metric strong, .meta, .kpi-growth, .conv-meta, .history-meta {
 }
 code, pre, kbd { font-family: var(--mono); }
 
-/* Login */
-.login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
-.login-card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
-  padding: 32px; width: min(460px, 100%); }
-.login-card h1 { margin: 0 0 4px; }
-.sub { color: var(--muted); margin-top: 0; }
-.users { display: grid; gap: 10px; margin: 18px 0; }
-.users button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
-  padding: 12px 14px; border-radius: var(--radius-lg); text-align: left; }
-.users button:hover { border-color: var(--accent); }
-.users button span { color: var(--muted); font-size: 13px; }
-.foot { color: var(--muted); font-size: 12px; text-align: center; margin-bottom: 0; }
+/* Login — branded card over a faint grid + gold glow (zero image weight). */
+.login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px;
+  position: relative; overflow: hidden;
+  background:
+    radial-gradient(700px 340px at 50% -60px, rgba(180, 138, 63, 0.13), transparent 60%),
+    radial-gradient(520px 300px at 88% 108%, rgba(110, 168, 254, 0.06), transparent 60%),
+    var(--bg); }
+.login::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background-image: linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(560px 320px at 50% 34%, rgba(0, 0, 0, 0.5), transparent 74%);
+  mask-image: radial-gradient(560px 320px at 50% 34%, rgba(0, 0, 0, 0.5), transparent 74%); }
+.login-card { position: relative; background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border: 1px solid var(--border-2); border-radius: 18px; padding: 30px 28px 20px;
+  width: min(400px, 100%); text-align: center; box-shadow: var(--elev-2);
+  animation: card-up var(--dur-3) var(--ease); }
+@keyframes card-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.login-mark { display: grid; place-items: center; margin-bottom: 10px; }
+.login-mark svg { border-radius: 12px; box-shadow: var(--elev-1); }
+.login-card h1 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -.01em; }
+.sub { color: var(--muted); margin: 6px 0 16px; font-size: 13px; }
+.login-div { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .09em; margin: 4px 0 12px; }
+.login-div::before, .login-div::after { content: ""; height: 1px; flex: 1; background: var(--border); }
+.users { display: grid; gap: 8px; margin: 0 0 14px; }
+.users.google { display: flex; justify-content: center; margin: 12px 0 14px; }
+.users button { display: flex; align-items: center; gap: 11px; background: var(--panel-2);
+  border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 12px;
+  text-align: left; }
+.users button:hover { border-color: var(--accent); background: var(--panel-3); }
+.login-av { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  font-size: 11px; font-weight: 750; color: #14100a; }
+.login-who { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.login-who strong { font-size: 13px; font-weight: 650; }
+.login-who span { color: var(--muted); font-size: 11.5px; }
+.foot { color: var(--faint); font-size: 11px; text-align: center; margin: 4px 0 0; }
+
+/* Content-shaped loading shimmer (sidebar, lazy views). */
+.skel { position: relative; overflow: hidden; background: var(--panel-2); border-radius: var(--radius-sm); }
+.skel::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 6%, transparent), transparent);
+  animation: skel-slide 1.4s infinite; }
+@keyframes skel-slide { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.conv-skel { height: 26px; margin-bottom: 6px; }
 
 /* App shell — hard-capped to the viewport (dvh tracks mobile URL-bar collapse);
    inner panes (thread, sidebars, editors) are the only scroll containers.
    Desktop: [icon rail | app-body]; mobile: app-body only (top bar + bottom nav). */
 .app { width: min(1440px, 100%); margin: 0 auto; height: 100vh; height: 100dvh;
-  display: flex; flex-direction: row; overflow: hidden; }
+  display: flex; flex-direction: row; overflow: hidden;
+  animation: view-in var(--dur-2) var(--ease); }
 .app-body { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .view-host { flex: 1; min-height: 0; display: flex; flex-direction: column;
   animation: view-in var(--dur-2) var(--ease); }

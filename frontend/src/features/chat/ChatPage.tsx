@@ -96,7 +96,10 @@ export function ConversationList({
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />
-      {q.isLoading && <div className="muted sqled-hint">Loading…</div>}
+      {q.isLoading &&
+        [78, 64, 84, 58, 70].map((w, i) => (
+          <div key={i} className="skel conv-skel" style={{ width: `${w}%` }} />
+        ))}
       {groups.map((g) => (
         <div key={g.label} className="conv-group">
           <div className="schema-title">{g.label}</div>

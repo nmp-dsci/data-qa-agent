@@ -140,7 +140,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--
   font-size: 14.5px; -webkit-font-smoothing: antialiased; }
 button { cursor: pointer; font: inherit; }
 /* One motion voice: interactive surfaces ease, never cut. */
-button, .tab, .chip, a, input, select, textarea {
+button, .chip, a, input, select, textarea {
   transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease),
     border-color var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease),
     box-shadow var(--dur-1) var(--ease);
@@ -166,17 +166,60 @@ code, pre, kbd { font-family: var(--mono); }
 .foot { color: var(--muted); font-size: 12px; text-align: center; margin-bottom: 0; }
 
 /* App shell — hard-capped to the viewport (dvh tracks mobile URL-bar collapse);
-   inner panes (thread, sidebars, editors) are the only scroll containers. */
+   inner panes (thread, sidebars, editors) are the only scroll containers.
+   Desktop: [icon rail | app-body]; mobile: app-body only (top bar + bottom nav). */
 .app { width: min(1440px, 100%); margin: 0 auto; height: 100vh; height: 100dvh;
-  display: flex; flex-direction: column; overflow: hidden; }
-header { display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px; border-bottom: 1px solid var(--border); }
-header .pill { margin-left: 8px; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+  display: flex; flex-direction: row; overflow: hidden; }
+.app-body { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.view-host { flex: 1; min-height: 0; display: flex; flex-direction: column;
+  animation: view-in var(--dur-2) var(--ease); }
+@keyframes view-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px;
   background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); }
 .pill.role-admin { color: var(--accent-soft); border-color: var(--warn-border); }
-.header-actions { display: flex; align-items: center; gap: 8px; }
 .ghost { background: transparent; color: var(--muted); border: 1px solid var(--border);
   padding: 6px 12px; border-radius: var(--radius); }
+
+/* Icon rail (desktop) */
+.rail { width: 56px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 0 12px; border-right: 1px solid var(--border); background: var(--panel); }
+.rail-brand { margin-bottom: 8px; display: grid; place-items: center; }
+.rail-brand svg { border-radius: 9px; box-shadow: var(--elev-1); }
+.rail-tabs { display: flex; flex-direction: column; gap: 4px; }
+.rail-item { width: 40px; height: 40px; border-radius: var(--radius-lg); display: grid; place-items: center;
+  background: transparent; border: none; color: var(--muted); }
+.rail-item:hover { color: var(--text); background: var(--panel-2); }
+.rail-item.active { color: var(--accent-soft); background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--border-2); }
+.rail-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rail-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--user); color: var(--text);
+  display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+
+/* Mobile chrome: slim top bar + bottom tab bar */
+.mobile-top { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: calc(6px + env(safe-area-inset-top)) 12px 6px; border-bottom: 1px solid var(--border);
+  background: var(--panel); }
+.mobile-brand { display: flex; align-items: center; gap: 8px; }
+.mobile-brand svg { border-radius: 7px; }
+.mobile-top-actions { display: flex; gap: 2px; align-items: center; }
+.bottom-nav { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  border-top: 1px solid var(--border); background: var(--panel);
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom)); }
+.bnav-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 5px;
+  min-height: 48px; background: none; border: none; color: var(--faint);
+  border-radius: var(--radius); font-size: 10px; font-weight: 600; }
+.bnav-item.active { color: var(--accent-soft); }
+.bnav-item:hover { color: var(--text); }
+
+/* Slide-over sheet (mobile conversations / catalog) */
+.sheet-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 70;
+  animation: sheet-fade var(--dur-2) var(--ease); }
+.sheet-panel { position: absolute; top: 0; left: 0; bottom: 0; width: min(320px, 86vw);
+  background: var(--panel); border-right: 1px solid var(--border-2); box-shadow: var(--elev-2);
+  overflow-y: auto; padding-top: env(safe-area-inset-top); animation: sheet-in var(--dur-3) var(--ease); }
+.sheet-panel .conv-panel { border-right: none; }
+@keyframes sheet-in { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
 
 main { flex: 1; padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
 .empty { color: var(--muted); }
@@ -277,14 +320,6 @@ section > .agent-demo-canvas { border: 1px solid var(--border); border-radius: v
   padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
 .event-row:last-child { border-bottom: none; }
 .event-row span { color: var(--muted); }
-
-/* Tab bar */
-.tabs { display: flex; gap: 4px; padding: 8px 18px 0; border-bottom: 1px solid var(--border); }
-.tab { background: transparent; border: 1px solid transparent; border-bottom: none; color: var(--muted);
-  padding: 8px 14px; border-radius: var(--radius) var(--radius) 0 0; font-size: 14px; }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--text); background: var(--panel); border-color: var(--border);
-  position: relative; top: 1px; }
 
 /* SQL editor */
 .sqled { flex: 1; display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 0; }
@@ -468,7 +503,7 @@ th.sortable:hover { color: var(--text); }
 
 /* Blacked-out object-shaped ghosts (kpi / note / chart) the page fills in. */
 .ghost-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 10px; }
-@media (max-width: 720px) { .ghost-grid { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .ghost-grid { grid-template-columns: 1fr; } }
 .ghost-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .ghost-obj { background: var(--panel-2); border: 1px dashed var(--border-2);
   border-radius: var(--radius-lg); padding: 12px; display: flex; flex-direction: column; gap: 8px;
@@ -503,7 +538,7 @@ th.sortable:hover { color: var(--text); }
 .related-hint { font-size: 10.5px; color: var(--muted); font-style: italic; margin: 2px 0 0; }
 
 .headline-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-@media (max-width: 720px) { .headline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 767px) { .headline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .h-tile { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 12px;
   cursor: pointer; position: relative; }
 .h-tile:hover { border-color: var(--accent-2); }
@@ -697,15 +732,18 @@ a:focus-visible, [role="option"]:focus-visible {
 .admin-subtabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .admin-subtabs .chip { font-size: 12.5px; padding: 5px 12px; }
 
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   /* !important: column tracks are set inline from the registry. */
   .page-cols { grid-template-columns: 1fr !important; }
-  /* Chat: the thread owns the phone; history moves into a sheet in the shell rework. */
+  /* Chat: the thread owns the phone; history lives in the ☰ sheet. */
   .chat-layout { grid-template-columns: 1fr; }
-  .conv-panel { display: none; }
+  .chat-layout > .conv-panel { display: none; }
   /* 16px kills iOS focus-zoom; 44px is the minimum comfortable touch target. */
   .composer input { font-size: 16px; min-height: 44px; }
   .composer button { min-height: 44px; }
+  /* The bottom nav carries the safe-area inset; the composer sits above it. */
+  .composer { padding-bottom: 14px; }
+  .jump-latest { bottom: 78px; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .event-row { grid-template-columns: 1fr; gap: 3px; }
   .sqled { grid-template-columns: 1fr; }

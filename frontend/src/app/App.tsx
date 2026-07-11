@@ -17,9 +17,14 @@ import {
 } from "../lib/api";
 import { loadAuthConfig, loginDev, logout as authLogout } from "../lib/auth";
 import { getTheme, setTheme } from "../lib/theme";
-import { ChatMsg, ChatPage } from "../features/chat/ChatPage";
+import { MOBILE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
+import { ChatMsg, ChatPage, ConversationList } from "../features/chat/ChatPage";
 import { AdminPage } from "../features/admin/AdminPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
+import { NavRail, View } from "./NavRail";
+import { BottomNav, MobileTopBar } from "./MobileNav";
+import { Sheet } from "../ui/Sheet";
+import { IconHistory } from "../ui/icons";
 
 // Code-split the SQL editor: CodeMirror only loads when the tab is opened.
 const SqlEditor = lazy(() =>
@@ -27,8 +32,6 @@ const SqlEditor = lazy(() =>
 );
 import { Command, CommandPalette } from "../ui/CommandPalette";
 import { Login } from "./Login";
-
-type View = "chat" | "sql" | "admin" | "settings";
 
 /** Rebuild a renderable result from a stored assistant message (history reopen).
  *  Result meta (engine/tokens/latency) and the admin agent trace are joined
@@ -77,6 +80,9 @@ export default function App() {
   const [pagePlan, setPagePlan] = useState<PagePlanSlot[]>([]);
   const [streamedPages, setStreamedPages] = useState<Record<number, PageFrame>>({});
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Mobile tier renders BottomNav + sheets instead of the icon rail.
+  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const [convSheetOpen, setConvSheetOpen] = useState(false);
   const queryClient = useQueryClient();
 
   // ⌘K / Ctrl+K opens the command palette anywhere in the app.
@@ -278,88 +284,81 @@ export default function App() {
   return (
     <div className="app">
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
-      <header>
-        <div>
-          <strong>Datapilot</strong>
-          <span className="pill">{user.display_name}</span>
-          <span className={`pill role-${user.role}`}>{user.role}</span>
-        </div>
-        <div className="header-actions">
-          <button className="ghost" onClick={logout}>
-            Sign out
-          </button>
-        </div>
-      </header>
-
-      <nav className="tabs" role="tablist" aria-label="App sections">
-        <button
-          role="tab"
-          aria-selected={view === "chat"}
-          className={view === "chat" ? "tab active" : "tab"}
-          onClick={() => setView("chat")}
-        >
-          Chat
-        </button>
-        <button
-          role="tab"
-          aria-selected={view === "sql"}
-          className={view === "sql" ? "tab active" : "tab"}
-          onClick={() => setView("sql")}
-        >
-          SQL Editor
-        </button>
-        {user.role === "admin" && (
-          <button
-            role="tab"
-            aria-selected={view === "admin"}
-            className={view === "admin" ? "tab active" : "tab"}
-            onClick={() => setView("admin")}
-          >
-            Admin
-          </button>
-        )}
-        <button
-          role="tab"
-          aria-selected={view === "settings"}
-          className={view === "settings" ? "tab active" : "tab"}
-          onClick={() => setView("settings")}
-        >
-          Settings
-        </button>
-      </nav>
-
-      {view === "admin" && <AdminPage />}
-      {view === "settings" && <SettingsPage user={user} />}
-      {view === "sql" && (
-        <Suspense fallback={<main className="muted">Loading SQL editor…</main>}>
-          <SqlEditor
+      {!isMobile && (
+        <NavRail view={view} setView={setView} user={user} onSignOut={() => void logout()} />
+      )}
+      <div className="app-body">
+        {isMobile && (
+          <MobileTopBar
             user={user}
-            seedSql={sqlSeed}
-            onSendToChat={(text) => {
-              setView("chat");
-              setInput(text);
+            onSignOut={() => void logout()}
+            action={
+              view === "chat" ? (
+                <button
+                  className="rail-item"
+                  aria-label="Conversation history"
+                  title="Conversation history"
+                  onClick={() => setConvSheetOpen(true)}
+                >
+                  <IconHistory />
+                </button>
+              ) : undefined
+            }
+          />
+        )}
+        <div className="view-host" key={view}>
+          {view === "admin" && <AdminPage />}
+          {view === "settings" && <SettingsPage user={user} />}
+          {view === "sql" && (
+            <Suspense fallback={<main className="muted">Loading SQL editor…</main>}>
+              <SqlEditor
+                user={user}
+                seedSql={sqlSeed}
+                onSendToChat={(text) => {
+                  setView("chat");
+                  setInput(text);
+                }}
+              />
+            </Suspense>
+          )}
+          {view === "chat" && (
+            <ChatPage
+              user={user}
+              messages={messages}
+              loading={loading}
+              working={working}
+              progress={progress}
+              pagePlan={pagePlan}
+              streamedPages={streamedPages}
+              error={error}
+              input={input}
+              setInput={setInput}
+              onSend={send}
+              onOpenSql={openInSqlEditor}
+              conversationId={conversationId}
+              onOpenConversation={openConversation}
+              onNewConversation={newConversation}
+            />
+          )}
+        </div>
+        {isMobile && (
+          <BottomNav view={view} setView={setView} isAdmin={user.role === "admin"} />
+        )}
+      </div>
+      {isMobile && (
+        <Sheet open={convSheetOpen} onClose={() => setConvSheetOpen(false)} label="Conversations">
+          <ConversationList
+            activeId={conversationId}
+            onOpen={(id) => {
+              void openConversation(id);
+              setConvSheetOpen(false);
+            }}
+            onNew={() => {
+              newConversation();
+              setConvSheetOpen(false);
             }}
           />
-        </Suspense>
-      )}
-      {view === "chat" && (
-        <ChatPage
-          user={user}
-          messages={messages}
-          loading={loading}
-          working={working}
-          progress={progress}
-          pagePlan={pagePlan}
-          streamedPages={streamedPages}
-          error={error}
-          input={input}
-          setInput={setInput}
-          onSend={send}
-          onOpenSql={openInSqlEditor}
-          conversationId={conversationId}
-          onOpenConversation={openConversation}
-          onNewConversation={newConversation}
-        />
+        </Sheet>
       )}
     </div>
   );

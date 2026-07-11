@@ -31,7 +31,7 @@ const SUGGESTIONS = [
   "How many suburbs do we have?",
 ];
 
-function ConversationList({
+export function ConversationList({
   activeId,
   onOpen,
   onNew,

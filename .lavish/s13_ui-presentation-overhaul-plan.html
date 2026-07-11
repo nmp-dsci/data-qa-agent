@@ -1,0 +1,1272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s13 · UI &amp; Presentation Overhaul — data-qa-agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── Artifact styled in the app's own token system (frontend/src/styles.css),
+     set in the Inter/JetBrains Mono type this plan proposes. ── */
+:root {
+  --bg: #0b0d12; --panel: #12151c; --panel-2: #181c25; --panel-3: #1f2430;
+  --border: #232834; --border-2: #333a48;
+  --text: #e7e9ee; --muted: #98a2b6; --faint: #6b7280;
+  --accent: #b48a3f; --accent-soft: #f0c674; --accent-ink: #1a1206;
+  --blue: #7aa7f7; --good: #9ece6a; --warn: #e0af68; --bad: #f2777a;
+  --purple: #c58fff; --info: #7dcfff;
+  --r-sm: 6px; --r: 8px; --r-lg: 12px; --r-xl: 16px;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+* , *::before, *::after { box-sizing: border-box; }
+:where(.grid, .flex, [class*="cols"], [class*="row"]) > * { min-width: 0; }
+:where(p, h1, h2, h3, h4, li, td, th, dd, figcaption, .chip) { overflow-wrap: anywhere; }
+:where(img, svg, video) { max-width: 100%; height: auto; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
+  font-size: 14.5px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; color: var(--accent-soft); }
+h1, h2, h3, h4 { line-height: 1.25; margin: 0; }
+p { margin: 8px 0; }
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px 120px; }
+
+/* ── header ── */
+.hero { padding: 48px 0 26px; border-bottom: 1px solid var(--border); }
+.kicker { font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent-soft); margin-bottom: 12px; }
+.hero h1 { font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+.hero .sub { color: var(--muted); font-size: 15.5px; max-width: 860px; margin-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.chip { font-size: 11.5px; font-weight: 600; padding: 4px 11px; border-radius: 999px;
+  border: 1px solid var(--border-2); color: var(--muted); background: var(--panel); white-space: nowrap; }
+.chip b { color: var(--text); font-weight: 700; }
+.chip.gold { color: var(--accent-soft); border-color: rgba(180,138,63,.5); }
+
+/* ── toc ── */
+.toc { position: sticky; top: 0; z-index: 40; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+.toc-in { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.toc-in::-webkit-scrollbar { display: none; }
+.toc a { color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 11px 12px; white-space: nowrap;
+  border-bottom: 2px solid transparent; }
+.toc a:hover { color: var(--text); text-decoration: none; border-bottom-color: var(--border-2); }
+
+/* ── sections ── */
+section { padding-top: 56px; }
+.snum { font-family: var(--mono); color: var(--accent); font-size: 12px; letter-spacing: .1em; }
+section > h2 { font-size: 22px; font-weight: 800; letter-spacing: -.015em; margin: 6px 0 4px; }
+.lede { color: var(--muted); max-width: 880px; font-size: 14.5px; }
+
+/* ── verdict / tldr ── */
+.verdict { background: linear-gradient(180deg, var(--panel), var(--panel) 60%, #12151c00), var(--panel);
+  border: 1px solid var(--border); border-radius: var(--r-xl); padding: 22px 24px; margin-top: 18px; }
+.verdict p { font-size: 15.5px; max-width: 940px; }
+.verdict p:first-child { margin-top: 0; }
+.moves { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 18px; }
+.move { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 13px 14px; }
+.move .n { font-family: var(--mono); font-size: 11px; color: var(--accent-soft); }
+.move h4 { font-size: 13.5px; margin: 5px 0 4px; }
+.move p { font-size: 12.5px; color: var(--muted); margin: 0; }
+
+/* ── severity badges & findings ── */
+.sev { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .08em; padding: 2px 8px; border-radius: 5px; border: 1px solid; white-space: nowrap; }
+.sev.bug { color: var(--bad); border-color: rgba(242,119,122,.45); background: rgba(242,119,122,.08); }
+.sev.fric { color: var(--warn); border-color: rgba(224,175,104,.45); background: rgba(224,175,104,.08); }
+.sev.pol { color: var(--info); border-color: rgba(125,207,255,.35); background: rgba(125,207,255,.07); }
+.findings { border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; margin-top: 18px; }
+.findings-scroll { overflow-x: auto; }
+table.ft { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 760px; }
+.ft th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+  background: var(--panel-2); padding: 9px 14px; border-bottom: 1px solid var(--border); }
+.ft td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.ft tr:last-child td { border-bottom: none; }
+.ft .fid { font-family: var(--mono); font-size: 11.5px; color: var(--accent-soft); white-space: nowrap; }
+.ft .where { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+.ft b { font-weight: 650; }
+
+/* ── screenshot gallery ── */
+.gal { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 20px; }
+figure.shot { margin: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
+  overflow: hidden; display: flex; flex-direction: column; }
+figure.shot.spans2 { grid-column: span 2; }
+@media (max-width: 760px) { figure.shot.spans2 { grid-column: span 1; } }
+figure.shot img { width: 100%; display: block; border-bottom: 1px solid var(--border); background: #000; }
+figure.shot figcaption { padding: 11px 14px 13px; font-size: 12.5px; color: var(--muted); }
+figure.shot figcaption b { color: var(--text); display: block; font-size: 12.5px; margin-bottom: 3px; }
+figure.shot .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.mini { font-family: var(--mono); font-size: 10px; color: var(--accent-soft); border: 1px solid rgba(180,138,63,.4);
+  border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+
+/* ── benchmark cards ── */
+.bench { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 20px; }
+.bcard { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px 17px; }
+.bcard .who { font-size: 15px; font-weight: 750; }
+.bcard .what { color: var(--accent-soft); font-size: 11px; font-family: var(--mono); text-transform: uppercase;
+  letter-spacing: .08em; margin: 3px 0 10px; }
+.bcard ul { margin: 0; padding-left: 17px; font-size: 13px; color: var(--muted); }
+.bcard li { margin: 5px 0; }
+.bcard li b { color: var(--text); font-weight: 620; }
+
+/* ── tokens spec ── */
+.tok-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 20px; }
+.tok { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 15px 17px; }
+.tok h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--accent-soft); margin-bottom: 9px; }
+.tok table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.tok td { padding: 5px 0; border-bottom: 1px dashed var(--border); vertical-align: baseline; }
+.tok tr:last-child td { border-bottom: none; }
+.tok td:first-child { color: var(--muted); width: 44%; padding-right: 10px; }
+.sw { display: inline-block; width: 13px; height: 13px; border-radius: 4px; border: 1px solid var(--border-2);
+  vertical-align: -2px; margin-right: 6px; }
+.keep { border-left: 3px solid var(--good); }
+.keep h4 { color: var(--good); }
+
+/* ── mockups ── */
+.mockrow { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; margin-top: 22px; align-items: start; }
+@media (max-width: 900px) { .mockrow { grid-template-columns: 1fr; } }
+.mock-note { font-size: 13px; color: var(--muted); }
+.mock-note h3 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
+.mock-note ul { padding-left: 17px; margin: 8px 0; }
+.mock-note li { margin: 4px 0; }
+.frame { border: 1px solid var(--border-2); border-radius: 14px; overflow: hidden; background: #0a0c10;
+  box-shadow: 0 18px 48px rgba(0,0,0,.45); }
+.frame-bar { display: flex; align-items: center; gap: 6px; padding: 9px 12px; background: #14171f;
+  border-bottom: 1px solid var(--border); }
+.frame-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--border-2); display: block; }
+.frame-bar span { margin-left: 8px; font-size: 11px; color: var(--faint); font-family: var(--mono); }
+/* All mockups use the tokens-v2 values this plan proposes */
+.mk { font-family: var(--sans); }
+
+/* login mock */
+.mk-login { position: relative; min-height: 430px; display: grid; place-items: center; padding: 34px 20px;
+  background: radial-gradient(700px 340px at 50% -80px, rgba(180,138,63,.14), transparent 60%),
+    radial-gradient(500px 280px at 85% 110%, rgba(122,167,247,.07), transparent 60%), #0b0d12;
+}
+.mk-login::before { content: ""; position: absolute; inset: 0; opacity: .5;
+  background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 44px 44px; mask-image: radial-gradient(520px 300px at 50% 30%, rgba(0,0,0,.5), transparent 75%); }
+.mk-login-card { position: relative; width: min(360px, 100%); background: #12151cee; border: 1px solid var(--border-2);
+  border-radius: 16px; padding: 28px 26px 20px; box-shadow: 0 24px 60px rgba(0,0,0,.5); text-align: center; }
+.mk-mark { width: 40px; height: 40px; margin: 0 auto 12px; border-radius: 11px; display: grid; place-items: center;
+  background: linear-gradient(135deg, #c9974b, #8a6a2f); color: #14100a; font-weight: 800; font-size: 19px; }
+.mk-login-card h3 { font-size: 19px; font-weight: 750; letter-spacing: -.01em; }
+.mk-login-card .tag { color: var(--muted); font-size: 12.5px; margin: 5px 0 18px; }
+.mk-gbtn { display: flex; align-items: center; justify-content: center; gap: 9px; background: #fff; color: #1b1f27;
+  border-radius: 9px; padding: 10px; font-size: 13.5px; font-weight: 650; }
+.mk-gbtn .g { font-weight: 800; color: #4285f4; }
+.mk-div { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .09em; margin: 15px 0 11px; }
+.mk-div::before, .mk-div::after { content: ""; height: 1px; flex: 1; background: var(--border); }
+.mk-user { display: flex; align-items: center; gap: 10px; text-align: left; background: #181c25;
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 11px; margin-bottom: 7px; cursor: pointer; }
+.mk-user:hover { border-color: var(--accent); }
+.mk-av { width: 26px; height: 26px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  font-size: 11px; font-weight: 700; color: #0b0d12; }
+.mk-user div b { display: block; font-size: 12.5px; font-weight: 650; }
+.mk-user div span { font-size: 11px; color: var(--muted); }
+.mk-foot { color: var(--faint); font-size: 10.5px; margin-top: 13px; }
+
+/* chat hero mock */
+.mk-shell { display: grid; grid-template-columns: 56px minmax(0, 1fr); min-height: 430px; background: #0b0d12; }
+.mk-rail { border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center;
+  padding: 10px 0; gap: 4px; background: #0d1016; }
+.mk-rail .logo { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, #c9974b, #8a6a2f);
+  color: #14100a; display: grid; place-items: center; font-weight: 800; font-size: 14px; margin-bottom: 10px; }
+.mk-rit { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; font-size: 16px;
+  color: var(--muted); }
+.mk-rit.on { background: #1f2430; color: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--border-2); }
+.mk-rit:hover { color: var(--text); }
+.mk-rail .spacer { flex: 1; }
+.mk-rail .uav { width: 30px; height: 30px; border-radius: 50%; background: #35507a; color: #cfe0ff; display: grid;
+  place-items: center; font-size: 11px; font-weight: 700; }
+.mk-hero { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 26px; }
+.mk-hero h3 { font-size: 21px; font-weight: 750; letter-spacing: -.015em; }
+.mk-hero .sub { color: var(--muted); font-size: 13px; margin: 6px 0 20px; }
+.mk-composer { width: min(560px, 100%); background: #12151c; border: 1px solid var(--border-2); border-radius: 14px;
+  padding: 13px 14px 10px; box-shadow: 0 10px 34px rgba(0,0,0,.35); }
+.mk-composer .ph { color: var(--faint); font-size: 13.5px; }
+.mk-composer .crow { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
+.mk-composer .hint { font-size: 10.5px; color: var(--faint); font-family: var(--mono); }
+.mk-send { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, #c9974b, #a87f39);
+  color: #14100a; display: grid; place-items: center; font-weight: 800; }
+.mk-sugs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: min(560px, 100%); margin-top: 12px; }
+@media (max-width: 560px) { .mk-sugs { grid-template-columns: 1fr; } }
+.mk-sug { background: #12151c; border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; cursor: pointer; }
+.mk-sug:hover { border-color: var(--border-2); background: #181c25; }
+.mk-sug b { font-size: 12.5px; font-weight: 650; display: flex; gap: 7px; align-items: center; }
+.mk-sug span { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+/* answer canvas mock */
+.mk-thread { background: #0b0d12; padding: 20px 22px 14px; min-height: 430px; display: flex; flex-direction: column; }
+.mk-q { align-self: flex-end; background: #223047; border-radius: 14px 14px 4px 14px; padding: 9px 13px;
+  font-size: 13px; max-width: 78%; }
+.mk-arow { display: flex; gap: 9px; margin-top: 16px; align-items: center; }
+.mk-aav { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, #c9974b, #8a6a2f);
+  color: #14100a; display: grid; place-items: center; font-size: 10px; font-weight: 800; flex: none; }
+.mk-arow b { font-size: 12px; }
+.mk-arow span { font-size: 10.5px; color: var(--faint); font-family: var(--mono); }
+.mk-canvas { margin: 10px 0 0 31px; }
+.mk-ans { font-size: 13.5px; line-height: 1.55; max-width: 640px; }
+.mk-ptabs { display: flex; gap: 6px; margin: 12px 0 10px; }
+.mk-ptab { font-size: 11px; font-weight: 650; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--muted); }
+.mk-ptab.on { background: #1f2430; color: var(--accent-soft); border-color: rgba(180,138,63,.45); }
+.mk-page { display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.35fr); gap: 10px; }
+@media (max-width: 640px) { .mk-page { grid-template-columns: 1fr; } }
+.mk-kpi { background: #12151c; border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; }
+.mk-kpi .l { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.mk-kpi .v { font-size: 21px; font-weight: 750; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.mk-kpi .v em { font-style: normal; font-size: 12px; font-weight: 650; color: var(--good); margin-left: 7px; }
+.mk-kpi .b { font-size: 10.5px; color: var(--faint); margin-top: 3px; }
+.mk-note { background: #12151c; border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 10px; padding: 9px 12px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.mk-chart { background: #12151c; border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.mk-chart .t { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.mk-tools { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.mk-tool { font-size: 10.5px; font-family: var(--mono); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 9px; }
+.mk-tool:hover { color: var(--text); border-color: var(--border-2); }
+.mk-fups { display: flex; gap: 7px; margin-top: 12px; flex-wrap: wrap; }
+.mk-fup { font-size: 11.5px; color: var(--blue); border: 1px solid rgba(122,167,247,.35); border-radius: 999px;
+  padding: 4px 12px; }
+
+/* phone mock */
+.phone { width: min(290px, 100%); margin: 0 auto; border: 2px solid #2b313e; border-radius: 34px; overflow: hidden;
+  background: #0b0d12; box-shadow: 0 22px 60px rgba(0,0,0,.5); }
+.ph-status { display: flex; justify-content: space-between; padding: 9px 18px 5px; font-size: 10px;
+  color: var(--muted); font-family: var(--mono); }
+.ph-top { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px;
+  border-bottom: 1px solid var(--border); }
+.ph-top b { font-size: 13px; }
+.ph-top .ic { color: var(--muted); font-size: 15px; }
+.ph-body { padding: 12px 12px 8px; display: flex; flex-direction: column; gap: 8px; min-height: 320px; }
+.ph-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.ph-kpi { background: #12151c; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+.ph-kpi .l { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.ph-kpi .v { font-size: 15px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.ph-kpi .v em { font-style: normal; font-size: 9.5px; color: var(--good); margin-left: 4px; }
+.ph-chart { background: #12151c; border: 1px solid var(--border); border-radius: 10px; padding: 9px; flex: 1; }
+.ph-chart .t { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+.ph-comp { margin: 4px 10px 6px; background: #12151c; border: 1px solid var(--border-2); border-radius: 12px;
+  display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; }
+.ph-comp span { font-size: 11.5px; color: var(--faint); }
+.ph-comp i { width: 24px; height: 24px; border-radius: 8px; background: #c9974b; color: #14100a; display: grid;
+  place-items: center; font-size: 11px; font-weight: 800; font-style: normal; }
+.ph-nav { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--border);
+  padding: 7px 0 14px; background: #0d1016; }
+.ph-nav div { display: grid; place-items: center; gap: 2px; font-size: 9px; color: var(--faint); }
+.ph-nav div.on { color: var(--accent-soft); }
+.ph-nav i { font-size: 15px; font-style: normal; }
+
+/* ── before/after strip ── */
+.ba { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+@media (max-width: 760px) { .ba { grid-template-columns: 1fr; } }
+.ba .col { border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--panel); }
+.ba .col h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 9px 14px;
+  border-bottom: 1px solid var(--border); background: var(--panel-2); }
+.ba .col.bad h4 { color: var(--bad); }
+.ba .col.good h4 { color: var(--good); }
+.ba .col img { display: block; width: 100%; }
+.ba .col .pad { padding: 0; }
+
+/* ── mermaid ── */
+.flowgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+@media (max-width: 900px) { .flowgrid { grid-template-columns: 1fr; } }
+.flowcard { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px; overflow-x: auto; }
+.flowcard h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+.flowcard.cur h4 { color: var(--bad); }
+.flowcard.next h4 { color: var(--good); }
+.mermaid { display: flex; justify-content: center; }
+
+/* ── responsive tiers ── */
+.tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 20px; }
+.tier { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 15px 16px; }
+.tier .bp { font-family: var(--mono); font-size: 12px; color: var(--accent-soft); }
+.tier h4 { font-size: 15px; margin: 4px 0 8px; }
+.tier ul { margin: 0; padding-left: 16px; font-size: 12.5px; color: var(--muted); }
+.tier li { margin: 4px 0; }
+.mech { margin-top: 22px; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.mech-scroll { overflow-x: auto; }
+
+/* ── phases ── */
+.phases { display: grid; gap: 14px; margin-top: 22px; }
+.phase { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.phase-h { display: flex; align-items: center; gap: 12px; padding: 13px 18px; background: var(--panel-2);
+  border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.phase-h .pid { font-family: var(--mono); font-weight: 700; font-size: 13px; color: var(--accent-ink);
+  background: var(--accent-soft); border-radius: 7px; padding: 2px 9px; }
+.phase-h h3 { font-size: 15.5px; flex: 1; min-width: 200px; }
+.phase-h .eff { font-family: var(--mono); font-size: 11px; color: var(--muted); border: 1px solid var(--border-2);
+  border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+.phase-b { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 0; }
+@media (max-width: 860px) { .phase-b { grid-template-columns: 1fr; } }
+.phase-tasks { padding: 14px 18px; }
+.phase-tasks ul { margin: 0; padding-left: 17px; font-size: 13px; }
+.phase-tasks li { margin: 6px 0; }
+.phase-tasks li b { font-weight: 650; }
+.phase-side { border-left: 1px solid var(--border); padding: 14px 18px; background: rgba(0,0,0,.14); }
+@media (max-width: 860px) { .phase-side { border-left: none; border-top: 1px solid var(--border); } }
+.phase-side h5 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 6px; }
+.phase-side h5:not(:first-child) { margin-top: 12px; }
+.phase-side .files { font-family: var(--mono); font-size: 11px; color: var(--info); line-height: 1.8; }
+.phase-side .ac { font-size: 12px; color: var(--muted); }
+.phase-side .ac li { margin: 4px 0; }
+.phase-side ul { margin: 0; padding-left: 15px; }
+.fixes { color: var(--accent-soft); font-family: var(--mono); font-size: 11px; }
+
+/* ── risks ── */
+.risks { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 20px; }
+.risk { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--warn);
+  border-radius: var(--r); padding: 12px 15px; font-size: 13px; }
+.risk b { display: block; margin-bottom: 3px; }
+.risk span { color: var(--muted); font-size: 12.5px; }
+
+/* ── decisions ── */
+.dq { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 17px 19px; margin-top: 16px; }
+.dq h3 { font-size: 15px; margin-bottom: 3px; }
+.dq .why { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+.dq label.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: 8px; cursor: pointer; }
+.dq label.opt:hover { border-color: var(--border-2); background: var(--panel-2); }
+.dq label.opt:has(input:checked) { border-color: var(--accent); background: rgba(180,138,63,.07); }
+.dq input[type="radio"] { margin-top: 3px; accent-color: var(--accent); }
+.dq .ol b { font-size: 13px; font-weight: 650; }
+.dq .ol b .rec { color: var(--good); font-size: 11px; font-family: var(--mono); margin-left: 6px; }
+.dq .ol span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.dq .qrow { display: flex; align-items: center; gap: 12px; margin-top: 11px; }
+.dq button { background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 12.5px; font-weight: 700;
+  border: none; border-radius: 8px; padding: 7px 16px; cursor: pointer; }
+.dq button:hover { background: var(--accent-soft); }
+.dq .qstate { font-size: 12px; color: var(--good); }
+.dq input[type="text"] { background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 12.5px; width: min(280px, 100%); }
+
+/* locked decisions + name picker grid */
+.dec-locked-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 16px; }
+.dec-locked { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--good);
+  border-radius: var(--r); padding: 11px 14px; font-size: 13px; }
+.dec-locked b { display: block; font-size: 11.5px; color: var(--muted); font-weight: 600; margin-bottom: 2px; }
+.dec-locked span { color: var(--text); font-weight: 650; }
+.optgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 700px) { .optgrid { grid-template-columns: 1fr; } }
+.optgrid label.opt { margin-bottom: 0; }
+.nsnote { color: var(--faint); font-style: italic; }
+
+/* footer */
+.prov { margin-top: 64px; border-top: 1px solid var(--border); padding-top: 18px; color: var(--faint); font-size: 12px; }
+.prov a { color: var(--muted); }
+.srcs { font-size: 12px; color: var(--muted); columns: 2; column-gap: 32px; margin-top: 8px; }
+@media (max-width: 700px) { .srcs { columns: 1; } }
+.srcs li { margin: 3px 0; break-inside: avoid; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">s13 · UI &amp; Presentation Overhaul</div>
+  <h1>Make data-qa-agent look and feel like a professional product</h1>
+  <p class="sub">A code-and-screenshot review of the current frontend, what the best AI apps do differently, a concrete
+    design direction with mockups, a responsive strategy for phone → ultrawide, and a 6-phase implementation plan —
+    each phase an independently shippable PR.</p>
+  <div class="chips">
+    <span class="chip">Scope <b>entire app</b> — login → chat → SQL → admin → settings</span>
+    <span class="chip">Estimate <b>≈ 7.5–9 dev-days</b> across 6 PRs</span>
+    <span class="chip gold">Phase A alone fixes the 5 worst bugs in ~½ day</span>
+    <span class="chip">Stack unchanged <b>React 19 + hand-rolled CSS tokens</b></span>
+    <span class="chip gold">All five decisions locked — display name: <b>Datapilot</b></span>
+  </div>
+</header>
+
+<nav class="toc"><div class="toc-in">
+  <a href="#tldr">Verdict</a>
+  <a href="#current">1 · Current state</a>
+  <a href="#bench">2 · Benchmark</a>
+  <a href="#direction">3 · Design direction</a>
+  <a href="#flow">4 · Login → answer flow</a>
+  <a href="#responsive">5 · Responsive</a>
+  <a href="#plan">6 · Implementation</a>
+  <a href="#risks">7 · Risks</a>
+  <a href="#decide">8 · Decisions</a>
+</div></nav>
+
+<!-- ═══════════════════════ TL;DR ═══════════════════════ -->
+<section id="tldr">
+  <span class="snum">TL;DR</span>
+  <h2>The engine is good. The frame is what feels unprofessional.</h2>
+  <div class="verdict">
+    <p><b>What's strong:</b> the report engine (KPI tiles + visx charts + page templates), the streaming ghost-page
+      UX, the two-layer design-token architecture, ⌘K palette, and a11y basics (focus rings, ARIA tabs). Template
+      Studio proves the product's <em>output</em> already renders beautifully.</p>
+    <p><b>What breaks the impression:</b> three structural layout bugs make the app feel broken before styling even
+      matters — the page scrolls as one giant document so <b>the composer and header scroll out of view</b>, nothing
+      auto-follows the streaming answer, and on a phone the fixed 230px sidebar leaves ~140px for the actual chat.
+      On top of that: a repo slug (<code>data-qa-agent</code>) as the brand, system-default typography, browser-style
+      tabs, answers trapped in bubbles spanning ~1200px, a bare login card, and no motion.</p>
+    <p><b>The plan:</b> keep the stack and the report engine; rebuild the frame in 6 shippable phases —
+      <b>A</b> layout/scroll fixes · <b>B</b> identity + tokens v2 · <b>C</b> app shell (icon rail, mobile bottom nav) ·
+      <b>D</b> chat canvas (hero composer, open answers, reading column) · <b>E</b> login &amp; first-run ·
+      <b>F</b> parity + responsive hardening with a Playwright viewport-regression suite.</p>
+  </div>
+  <div class="moves">
+    <div class="move"><span class="n">MOVE 1</span><h4>Contain the layout</h4><p>Height-capped shell; panes scroll, composer and nav never leave the screen; stream auto-follows.</p></div>
+    <div class="move"><span class="n">MOVE 2</span><h4>Reading column</h4><p>Thread capped at ~768px like ChatGPT/Claude; answers leave their bubble and render on canvas.</p></div>
+    <div class="move"><span class="n">MOVE 3</span><h4>Hero → docked composer</h4><p>Perplexity-style centered ask on empty state; docks to bottom once a conversation starts.</p></div>
+    <div class="move"><span class="n">MOVE 4</span><h4>Identity + type</h4><p>Product mark, name treatment, favicon, Inter + JetBrains Mono, motion tokens — Linear-level craft.</p></div>
+    <div class="move"><span class="n">MOVE 5</span><h4>True responsive</h4><p>3 tiers (desktop / tablet / mobile): icon rail → bottom nav, drawers, dvh + safe-area, 44px targets.</p></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 1 · CURRENT STATE ═══════════════════════ -->
+<section id="current">
+  <span class="snum">SECTION 1</span>
+  <h2>Current state — what the screenshots show</h2>
+  <p class="lede">Captured from the live app at <code>localhost:5230</code> (Playwright, real dev-auth login, dark theme
+    default) at 1440×900 and 390×844. Findings are tagged
+    <span class="sev bug">BUG</span> breaks usage ·
+    <span class="sev fric">FRICTION</span> works but fights the user ·
+    <span class="sev pol">POLISH</span> looks unfinished.</p>
+
+  <div class="gal">
+    <figure class="shot">
+      <img src="s13_shot_login_desktop_dark.png" alt="Current login screen, desktop dark" loading="lazy"
+        onerror="this.closest('figure').style.display='none'">
+      <figcaption><b>Login (desktop)</b>A bare card floating in a void: repo slug as the title, three flat test-user
+        buttons, no mark, no value proposition, no depth or motion. Reads as an internal debug harness, and this is
+        the first screen every user sees.
+        <span class="tags"><span class="mini">P1 identity</span><span class="mini">F8 first-run</span></span>
+      </figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="s13_shot_chat_empty_desktop_dark.png" alt="Chat empty state, desktop dark" loading="lazy"
+        onerror="this.closest('figure').style.display='none'">
+      <figcaption><b>Chat, empty (desktop)</b>Look at the bottom edge: <b>there is no composer</b>. The sidebar's long
+        history stretches the whole page taller than the viewport, pushing the app's primary input below the fold.
+        Sidebar is unmanaged noise (repeated auto-titles, "2 msgs" meta); suggestions are five long sentence-pills;
+        the right two-thirds of the screen is dead space.
+        <span class="tags"><span class="mini">B1 composer off-screen</span><span class="mini">F3 sidebar noise</span><span class="mini">F8 empty state</span></span>
+      </figcaption>
+    </figure>
+    <figure class="shot spans2">
+      <img src="s13_shot_chat_streaming_desktop_dark.png" alt="Mid-answer streaming state, desktop" loading="lazy"
+        onerror="this.closest('figure').style.display='none'">
+      <figcaption><b>Mid-answer, while the agent streams (desktop)</b>This is where the app leaves you after you ask a
+        question: header and tabs have scrolled away entirely, the question and the working/ghost state are somewhere
+        above the fold, and nothing follows the stream. The (genuinely good) step list and ghost pages render off-screen.
+        <span class="tags"><span class="mini">B1 no containment</span><span class="mini">B3 no auto-follow</span><span class="mini">F5 nav not sticky</span></span>
+      </figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="s13_shot_chat_empty_mobile_dark.png" alt="Chat on a 390px phone" loading="lazy"
+        onerror="this.closest('figure').style.display='none'">
+      <figcaption><b>Chat (iPhone-width, 390px)</b>The 230px sidebar is hardcoded — <code>.chat-layout</code> is missing
+        from the 720px media query — so conversations eat 59% of the screen and the thread gets ~140px. Suggestion
+        pills (border-radius 999px on wrapped text) become tall ovals. Composer: below the fold again.
+        <span class="tags"><span class="mini">B2 sidebar squeeze</span><span class="mini">B5 pill ovals</span><span class="mini">B4 no dvh/safe-area</span></span>
+      </figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="s13_shot_sql_mobile_dark.png" alt="SQL editor on a phone" loading="lazy"
+        onerror="this.closest('figure').style.display='none'">
+      <figcaption><b>SQL editor (390px)</b>The 720px query does collapse it to one column — but the catalog panel is
+        capped awkwardly, tap targets are ~28px, and the toolbar buttons wrap loosely. Usable in an emergency, not
+        designed.
+        <span class="tags"><span class="mini">F7 editor layout</span><span class="mini">B4 touch targets</span></span>
+      </figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="s13_shot_sql_desktop_dark.png" alt="SQL editor desktop" loading="lazy"
+        onerror="this.closest('figure').style.display='none'">
+      <figcaption><b>SQL editor (desktop)</b>Structurally the best screen (catalog · tabs · AI bar · editor · run), but
+        the editor is a fixed 320px strip with a black void below, and the results area only exists after a run.
+        <span class="tags"><span class="mini">F7 fixed heights</span></span>
+      </figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="s13_shot_studio_desktop_dark.png" alt="Template Studio report preview" loading="lazy"
+        onerror="this.closest('figure').style.display='none'">
+      <figcaption><b>Template Studio (admin)</b>The counter-evidence: the production report renderer — KPI tile with
+        sparkline, insight note, multi-series trend chart — already looks like a real analytics product. The overhaul
+        should wrap <em>this</em> quality in a shell that matches it.
+        <span class="tags"><span class="mini">KEEP report engine</span></span>
+      </figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="s13_shot_settings_desktop_dark.png" alt="Settings screen" loading="lazy"
+        onerror="this.closest('figure').style.display='none'">
+      <figcaption><b>Settings (desktop)</b>Sound structure (appearance, provider, agent memories, data access) but
+        unbounded line lengths and full-width tables — needs the same reading-width discipline as chat.
+        <span class="tags"><span class="mini">F1 no max width</span></span>
+      </figcaption>
+    </figure>
+  </div>
+
+  <div class="findings">
+    <div class="findings-scroll">
+    <table class="ft">
+      <thead><tr><th>ID</th><th>Severity</th><th>Finding</th><th>Root cause (verified in code)</th></tr></thead>
+      <tbody>
+        <tr><td class="fid">B1</td><td><span class="sev bug">BUG</span></td>
+          <td><b>Composer, header and tabs scroll out of view.</b> The whole app scrolls as one document; the thread pane's <code>overflow-y</code> never engages.</td>
+          <td class="where">styles.css:138 — .app has min-height:100vh but no height cap, so it grows with the sidebar instead of containing it</td></tr>
+        <tr><td class="fid">B2</td><td><span class="sev bug">BUG</span></td>
+          <td><b>Mobile chat is unusable</b> — fixed 230px sidebar on a 390px phone leaves ~140px for messages.</td>
+          <td class="where">styles.css:598 — .chat-layout grid is absent from the @media (max-width:720px) block</td></tr>
+        <tr><td class="fid">B3</td><td><span class="sev bug">BUG</span></td>
+          <td><b>Nothing follows the stream.</b> Working steps, ghost pages and the final report render below the fold; user must scroll to find their answer.</td>
+          <td class="where">no scrollIntoView / scrollTo anywhere in frontend/src</td></tr>
+        <tr><td class="fid">B4</td><td><span class="sev bug">BUG</span></td>
+          <td><b>Mobile viewport basics missing</b> — 100vh vs iOS URL bar, no safe-area insets, ~28px tap targets, inputs &lt;16px trigger iOS zoom.</td>
+          <td class="where">no dvh/svh/env(safe-area-inset-*) in styles.css; viewport meta lacks viewport-fit</td></tr>
+        <tr><td class="fid">B5</td><td><span class="sev bug">BUG</span></td>
+          <td><b>Suggestion pills become tall ovals</b> when text wraps on narrow screens.</td>
+          <td class="where">styles.css:151 — border-radius:999px on multi-line buttons</td></tr>
+        <tr><td class="fid">F1</td><td><span class="sev fric">FRICTION</span></td>
+          <td>No reading column — thread and settings span ~1200px+; industry standard is ~720–768px for answers.</td>
+          <td class="where">main/.bubble width rules only (92% of pane)</td></tr>
+        <tr><td class="fid">F2</td><td><span class="sev fric">FRICTION</span></td>
+          <td>Reports are trapped inside chat bubbles — KPI grids and charts fight the bubble border instead of rendering as first-class canvas cards.</td>
+          <td class="where">ChatPage.tsx:273 — every assistant answer wraps in .bubble</td></tr>
+        <tr><td class="fid">F3</td><td><span class="sev fric">FRICTION</span></td>
+          <td>Conversation sidebar is raw data: duplicate truncated titles, "2 msgs" meta, no date grouping, no rename/delete, no search.</td>
+          <td class="where">ChatPage.tsx ConversationList; API already returns created_at for grouping</td></tr>
+        <tr><td class="fid">F5</td><td><span class="sev fric">FRICTION</span></td>
+          <td>Browser-style tab bar + header pills — a dated pattern that has no mobile answer and no icons.</td>
+          <td class="where">App.tsx:294 nav.tabs; styles.css:248</td></tr>
+        <tr><td class="fid">F6</td><td><span class="sev fric">FRICTION</span></td>
+          <td>Composer is a bare single-line input: no multiline, no Enter/Shift+Enter, no stop-while-streaming, no keyboard hints.</td>
+          <td class="where">ChatPage.tsx:297 — &lt;input&gt; + "Ask" button</td></tr>
+        <tr><td class="fid">F7</td><td><span class="sev fric">FRICTION</span></td>
+          <td>SQL editor: fixed 320px editor height with dead space below; results only appear post-run.</td>
+          <td class="where">styles.css:285 — .sqled-editor .cm-editor { height:320px }</td></tr>
+        <tr><td class="fid">F8</td><td><span class="sev fric">FRICTION</span></td>
+          <td>Empty state is "Try asking:" + five sentence-pills — no greeting, no hero moment, onboarding hint buried in one line.</td>
+          <td class="where">ChatPage.tsx:253</td></tr>
+        <tr><td class="fid">P1</td><td><span class="sev pol">POLISH</span></td>
+          <td>No identity: repo slug as product name, no logo/mark, no favicon, no theme-color, title = "data-qa-agent".</td>
+          <td class="where">index.html — head has only charset/viewport/title</td></tr>
+        <tr><td class="fid">P2</td><td><span class="sev pol">POLISH</span></td>
+          <td>System-default typography; tabular-nums only sporadic; no type scale — sizes are ad-hoc 10–22px.</td>
+          <td class="where">styles.css:120 body font stack</td></tr>
+        <tr><td class="fid">P3</td><td><span class="sev pol">POLISH</span></td>
+          <td>No motion system — tab switches, login→app, palette, drawers all cut instantly. Only 2 keyframes exist (step-in, ghost pulse).</td>
+          <td class="where">styles.css — no transition tokens</td></tr>
+        <tr><td class="fid">P4</td><td><span class="sev pol">POLISH</span></td>
+          <td>Loading states are text ("Loading SQL editor…", "Loading…") — no skeletons outside the (good) ghost pages; blank flash before the JS bundle paints.</td>
+          <td class="where">App.tsx Suspense fallback; index.html has no pre-paint background</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 2 · BENCHMARK ═══════════════════════ -->
+<section id="bench">
+  <span class="snum">SECTION 2</span>
+  <h2>What the best apps do — and what to take from each</h2>
+  <p class="lede">Researched against current (2026) production patterns in ChatGPT, Claude.ai, Perplexity, Linear, and
+    the modern data tools (Hex, Omni). The target in one line: <b>Perplexity's ask flow, in a Linear-quality shell,
+    with ChatGPT's reading ergonomics — wrapped around the report engine you already built.</b></p>
+  <div class="bench">
+    <div class="bcard">
+      <div class="who">ChatGPT · Claude.ai</div>
+      <div class="what">Shell &amp; reading ergonomics</div>
+      <ul>
+        <li><b>One collapsible left rail</b> (~260px) holding nav + date-grouped history; collapses to icons, becomes a drawer on mobile.</li>
+        <li><b>Message column capped ≈768px</b> — long answers stay readable at any window size.</li>
+        <li><b>Assistant answers on the canvas</b>, not in bubbles; only the user's message is a bubble.</li>
+        <li><b>Composer</b>: auto-growing textarea, Enter sends / Shift+Enter newline, stop button while streaming, sticky at bottom with a fade.</li>
+        <li><b>Auto-follow</b> during streaming with a "jump to latest" pill when you scroll up.</li>
+      </ul>
+    </div>
+    <div class="bcard">
+      <div class="who">Perplexity</div>
+      <div class="what">The ask flow</div>
+      <ul>
+        <li><b>Hero composer</b>: on empty state the input sits centered mid-screen with suggestion chips — the page IS the invitation to ask.</li>
+        <li><b>Docks after first ask</b> — composer moves to the bottom and the answer takes the stage.</li>
+        <li><b>Answer as a document</b>: title, meta row (sources → for us: engine, rows, SQL), then content blocks.</li>
+        <li><b>Follow-up chips</b> under every answer keep the conversation going.</li>
+      </ul>
+    </div>
+    <div class="bcard">
+      <div class="who">Linear</div>
+      <div class="what">Craft &amp; consistency</div>
+      <ul>
+        <li><b>Token rigor</b>: one type scale, 4/8px spacing grid, hairline borders, 3 elevation levels — nothing ad-hoc.</li>
+        <li><b>Motion</b>: 120–200ms ease-out on everything interactive; nothing cuts, nothing bounces.</li>
+        <li><b>⌘K as spine</b> (you have this!) plus visible keyboard hints to teach it.</li>
+        <li><b>Skeletons everywhere</b> — content-shaped loading, never spinner text.</li>
+      </ul>
+    </div>
+    <div class="bcard">
+      <div class="who">Hex · Omni</div>
+      <div class="what">Data-answer presentation</div>
+      <ul>
+        <li><b>Results are artifacts</b>: each output is a card with a toolbar — copy, CSV, PNG, open-in-editor.</li>
+        <li><b>Numbers set in tabular figures</b>, right-aligned in tables, units in the label not the value.</li>
+        <li><b>Chart cards</b> carry title + basis/source line + export — exactly your KPI/chart card shape, formalized.</li>
+        <li><b>Schema tree</b> with search and inline column profiles (you have the tree; keep it).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 3 · DESIGN DIRECTION ═══════════════════════ -->
+<section id="direction">
+  <span class="snum">SECTION 3</span>
+  <h2>Design direction — tokens v2 + four north-star mockups</h2>
+  <p class="lede">Evolution, not replacement: keep the two-layer token architecture, the dark-first gold identity, and
+    every report-engine component. Change the values, add the missing token families (type, motion, elevation), and
+    give the product a name treatment. The mockups below are live HTML in the proposed tokens — this is the actual
+    direction, not an illustration.</p>
+
+  <div class="tok-grid">
+    <div class="tok">
+      <h4>Typography — new family</h4>
+      <table>
+        <tr><td>UI face</td><td><b>Inter</b> (variable, self-hosted via <code>@fontsource-variable/inter</code>)</td></tr>
+        <tr><td>Code / SQL / run-ids</td><td><b>JetBrains Mono</b></td></tr>
+        <tr><td>Scale</td><td class="mono">28 · 22 · 17 · 15 (chat) · 14.5 (UI) · 12.5 · 11</td></tr>
+        <tr><td>Numerals</td><td><code>font-variant-numeric: tabular-nums</code> on KPIs, tables, meta</td></tr>
+        <tr><td>Micro-labels</td><td>11px / 600 / .06em tracking (existing pattern, formalized)</td></tr>
+      </table>
+    </div>
+    <div class="tok">
+      <h4>Color — value shifts only</h4>
+      <table>
+        <tr><td>bg</td><td><span class="sw" style="background:#0f1115"></span>#0f1115 → <span class="sw" style="background:#0b0d12"></span><b>#0b0d12</b> deeper canvas</td></tr>
+        <tr><td>panel</td><td><span class="sw" style="background:#171a21"></span>#171a21 → <span class="sw" style="background:#12151c"></span><b>#12151c</b> more layer contrast</td></tr>
+        <tr><td>border</td><td><span class="sw" style="background:#2a2f3a"></span>#2a2f3a → <span class="sw" style="background:#232834"></span><b>#232834</b> hairline feel</td></tr>
+        <tr><td>gold</td><td><span class="sw" style="background:#b48a3f"></span>kept — but <b>reserved for primary actions &amp; brand</b></td></tr>
+        <tr><td>blue</td><td><span class="sw" style="background:#7aa7f7"></span>all interactive text/links/focus — never decorative</td></tr>
+        <tr><td>light theme</td><td>same semantic names, re-audited for AA contrast</td></tr>
+      </table>
+    </div>
+    <div class="tok">
+      <h4>Motion + elevation — new families</h4>
+      <table>
+        <tr><td>--dur-1/2/3</td><td class="mono">120ms · 180ms · 260ms</td></tr>
+        <tr><td>--ease</td><td class="mono">cubic-bezier(.2,.8,.2,1)</td></tr>
+        <tr><td>Applies to</td><td>view fades, drawer slides, message fade-up, hover, palette</td></tr>
+        <tr><td>--elev-1/2/3</td><td>card · popover · modal shadows (3 levels, no more ad-hoc)</td></tr>
+        <tr><td>Reduced motion</td><td><code>prefers-reduced-motion</code> zeroes all durations</td></tr>
+      </table>
+    </div>
+    <div class="tok keep">
+      <h4>Explicitly kept</h4>
+      <table>
+        <tr><td>Token architecture</td><td>primitives → semantics, themed via <code>data-theme</code></td></tr>
+        <tr><td>Report engine</td><td>PageLayout, templates, KPI/Trend/Bars, chart tokens</td></tr>
+        <tr><td>Streaming UX</td><td>step list + ghost pages + locked teasers (restyled only)</td></tr>
+        <tr><td>⌘K palette</td><td>plus visible hints to teach it</td></tr>
+        <tr><td>A11y base</td><td>focus-visible rings, ARIA roles — extended, not replaced</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- mock 1: login -->
+  <div class="mockrow">
+    <div class="frame">
+      <div class="frame-bar"><i></i><i></i><i></i><span>proposed · login</span></div>
+      <div class="mk mk-login">
+        <div class="mk-login-card">
+          <div class="mk-mark">◈</div>
+          <h3>Datapilot</h3>
+          <p class="tag">Ask your data anything. Governed answers in seconds.</p>
+          <div class="mk-gbtn"><span class="g">G</span> Continue with Google</div>
+          <div class="mk-div">or try a demo profile</div>
+          <div class="mk-user"><span class="mk-av" style="background:#f0c674">AD</span><div><b>Admin</b><span>sees all data · full trace</span></div></div>
+          <div class="mk-user"><span class="mk-av" style="background:#9ece6a">U1</span><div><b>User One</b><span>property data access</span></div></div>
+          <p class="mk-foot">Row-level security · every query audited</p>
+        </div>
+      </div>
+    </div>
+    <div class="mock-note">
+      <h3>Mock 1 — Login that sells the product</h3>
+      <p>Fixes <span class="mini">P1</span> <span class="mini">F8</span>. One card, but with: a brand mark, the
+        product name (<b>Datapilot</b> — locked Q4), a one-line value proposition, the primary CTA
+        visually first, demo profiles demoted to secondary with avatars, and a trust line that turns the security
+        model into a feature.</p>
+      <ul>
+        <li>Backdrop: faint grid + gold radial glow — data-tool character, zero images to load.</li>
+        <li>Same component in <b>google</b> and <b>dev</b> auth modes (dev just adds the profile list).</li>
+        <li>Card fades up 180ms on mount; button hover lifts 120ms.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- mock 2: hero -->
+  <div class="mockrow">
+    <div class="frame">
+      <div class="frame-bar"><i></i><i></i><i></i><span>proposed · chat, empty state (desktop ≥1024)</span></div>
+      <div class="mk mk-shell">
+        <div class="mk-rail">
+          <div class="logo">◈</div>
+          <div class="mk-rit on" title="Chat">💬</div>
+          <div class="mk-rit" title="SQL">⌘</div>
+          <div class="mk-rit" title="Admin">⚙</div>
+          <div class="spacer"></div>
+          <div class="mk-rit" title="Theme">◐</div>
+          <div class="uav">NP</div>
+        </div>
+        <div class="mk-hero">
+          <h3>Good afternoon, Nathan</h3>
+          <p class="sub">Ask about NSW property — 24 suburbs · sales &amp; rents · 2010→2026</p>
+          <div class="mk-composer">
+            <div class="ph">Ask a question about your data…</div>
+            <div class="crow"><span class="hint">⏎ send · ⇧⏎ newline · ⌘K commands</span><span class="mk-send">↑</span></div>
+          </div>
+          <div class="mk-sugs">
+            <div class="mk-sug"><b>📈 Price trend</b><span>Normanhurst vs Hornsby houses, 2010–2026</span></div>
+            <div class="mk-sug"><b>🏆 Top movers</b><span>Suburbs with highest rent growth</span></div>
+            <div class="mk-sug"><b>⚖️ Compare</b><span>Top 10 by sale-price growth</span></div>
+            <div class="mk-sug"><b>🗺 Coverage</b><span>How many suburbs are tracked?</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-note">
+      <h3>Mock 2 — Hero composer in the new shell</h3>
+      <p>Fixes <span class="mini">F5</span> <span class="mini">F8</span> <span class="mini">B5</span>. The tab bar and
+        header collapse into a 56px icon rail (brand top, nav middle, theme + user bottom). The empty state becomes the
+        product's "search moment": personalized greeting, dataset facts as the subtitle, a real multiline composer with
+        keyboard hints, and four short suggestion <em>cards</em> (label + preview) replacing sentence-pills.</p>
+      <ul>
+        <li>Conversations live in a 260px panel that slides in from the rail (⌘⇧S or the 💬 icon) — not permanently stealing width.</li>
+        <li>Admin item shows only for the admin role, as today.</li>
+        <li>Suggestions come from the existing SUGGESTIONS list, retitled: short bold verb + full question as the preview/payload.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- mock 3: answer canvas -->
+  <div class="mockrow">
+    <div class="frame">
+      <div class="frame-bar"><i></i><i></i><i></i><span>proposed · answer canvas (reading column ≈768px)</span></div>
+      <div class="mk mk-thread">
+        <div class="mk-q">Which suburbs have the highest rent growth?</div>
+        <div class="mk-arow"><span class="mk-aav">◈</span><b>Data agent</b><span>deepseek · 142 rows · 6.2s</span></div>
+        <div class="mk-canvas">
+          <p class="mk-ans">Rent growth is led by <b>Hornsby (+6.1% YoY)</b>, with 2-bed units driving the move; the
+            top five suburbs all sit on the rail corridor.</p>
+          <div class="mk-ptabs"><span class="mk-ptab on">Summary</span><span class="mk-ptab">Insights</span><span class="mk-ptab">Opportunities</span></div>
+          <div class="mk-page">
+            <div>
+              <div class="mk-kpi"><div class="l">2bd unit median rent</div><div class="v">$671/wk<em>▲ +6.1% YoY</em></div><div class="b">6-mo rolling · 2026-05</div></div>
+              <div class="mk-note">2-bed units lead at +6.1% YoY; supply near the station stays tight.</div>
+            </div>
+            <div class="mk-chart">
+              <div class="t">Median weekly rent by month · top suburbs</div>
+              <svg viewBox="0 0 300 110" preserveAspectRatio="none" style="width:100%;height:104px" aria-hidden="true">
+                <line x1="0" y1="95" x2="300" y2="95" stroke="#232834"/>
+                <line x1="0" y1="55" x2="300" y2="55" stroke="#20242e" stroke-dasharray="3 4"/>
+                <line x1="0" y1="15" x2="300" y2="15" stroke="#20242e" stroke-dasharray="3 4"/>
+                <path d="M0,78 C40,74 70,70 105,64 S190,52 230,44 280,34 300,30" fill="none" stroke="#9ece6a" stroke-width="2.2"/>
+                <path d="M0,88 C50,86 90,82 130,78 S220,68 300,60" fill="none" stroke="#7aa7f7" stroke-width="2.2"/>
+                <path d="M0,96 C60,94 110,92 160,90 S250,86 300,84" fill="none" stroke="#b48a3f" stroke-width="2.2"/>
+              </svg>
+            </div>
+          </div>
+          <div class="mk-tools"><span class="mk-tool">⧉ copy</span><span class="mk-tool">↓ csv</span><span class="mk-tool">🖼 png</span><span class="mk-tool">⌘ open in SQL</span><span class="mk-tool">👍</span><span class="mk-tool">👎</span></div>
+          <div class="mk-fups"><span class="mk-fup">Break down by bedrooms</span><span class="mk-fup">Same for sale prices</span><span class="mk-fup">Show as table</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-note">
+      <h3>Mock 3 — Answers on the canvas, not in a bubble</h3>
+      <p>Fixes <span class="mini">F1</span> <span class="mini">F2</span> <span class="mini">F6</span>. Only the user's
+        message keeps a bubble. The assistant gets an identity row (mark + engine/rows/latency meta — today's
+        <code>.meta</code>, promoted), then the answer text and report pages render directly on the canvas inside a
+        ~768px reading column. Report pages become segmented pills instead of stacked sections.</p>
+      <ul>
+        <li><b>Answer toolbar</b> (copy / CSV / PNG export — PNG exists today per-chart / open-in-SQL / 👍👎 feedback) replaces scattered links; admin keeps trace + render-JSON expanders behind a ⋯ menu.</li>
+        <li><b>Follow-up chips</b> after each answer (static heuristics first: "as table", "by &lt;dimension&gt;"; agent-suggested later).</li>
+        <li>Click-to-annotate feedback (K3) keeps working — cards are the same components.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- mock 4: mobile -->
+  <div class="mockrow">
+    <div class="frame" style="background:transparent;border:none;box-shadow:none">
+      <div class="phone">
+        <div class="ph-status"><span>16:12</span><span>𝄃𝄃𝄃 ᯤ ▮</span></div>
+        <div class="ph-top"><b>◈ Datapilot</b><span class="ic">☰</span></div>
+        <div class="ph-body">
+          <div class="ph-kpis">
+            <div class="ph-kpi"><div class="l">2bd median rent</div><div class="v">$671<em>+6.1%</em></div></div>
+            <div class="ph-kpi"><div class="l">Top suburb</div><div class="v">Hornsby</div></div>
+          </div>
+          <div class="ph-chart">
+            <div class="t">Rent by month</div>
+            <svg viewBox="0 0 240 90" preserveAspectRatio="none" style="width:100%;height:84px" aria-hidden="true">
+              <line x1="0" y1="78" x2="240" y2="78" stroke="#232834"/>
+              <path d="M0,64 C35,60 60,56 90,50 S160,40 200,32 230,26 240,24" fill="none" stroke="#9ece6a" stroke-width="2"/>
+              <path d="M0,72 C45,70 80,66 115,62 S190,54 240,48" fill="none" stroke="#7aa7f7" stroke-width="2"/>
+            </svg>
+          </div>
+        </div>
+        <div class="ph-comp"><span>Ask a follow-up…</span><i>↑</i></div>
+        <div class="ph-nav">
+          <div class="on"><i>💬</i>Chat</div>
+          <div><i>⌘</i>SQL</div>
+          <div><i>◐</i>Settings</div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-note">
+      <h3>Mock 4 — Mobile as a designed target, not a fallback</h3>
+      <p>Fixes <span class="mini">B2</span> <span class="mini">B4</span>. Below 768px: the rail disappears, a
+        <b>bottom tab bar</b> (56px + safe-area) carries Chat / SQL / Settings (+ Admin for admins), conversations open
+        as a slide-over sheet from ☰, the composer docks above the nav, and report columns stack (the media query that
+        already exists — finally reachable because the shell no longer squeezes it).</p>
+      <ul>
+        <li>Heights in <code>dvh</code>; composer and nav padded by <code>env(safe-area-inset-bottom)</code>.</li>
+        <li>Tap targets ≥44px; composer font-size 16px (kills iOS auto-zoom).</li>
+        <li>KPI tile-grid drops to 2-up (exists), charts cap at 240px height on phones.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 4 · FLOW ═══════════════════════ -->
+<section id="flow">
+  <span class="snum">SECTION 4</span>
+  <h2>Login → first answer: the felt difference</h2>
+  <p class="lede">The presentation problem is really a flow problem: today every transition is a hard cut into a
+    screen that isn't ready for you. The proposed flow has a prepared moment at each step.</p>
+  <div class="flowgrid">
+    <div class="flowcard cur">
+      <h4>Today</h4>
+      <pre class="mermaid">
+flowchart TD
+  A["Visit app<br/>(blank flash, default favicon)"] --> B["Bare card: repo slug +<br/>3 test-user buttons"]
+  B --> C["Instant DOM swap<br/>no transition"]
+  C --> D["'Try asking:' text +<br/>5 sentence-pills<br/>composer below the fold"]
+  D --> E["Type in single-line input"]
+  E --> F["Steps + ghosts append<br/>below the fold<br/>header scrolls away"]
+  F --> G["Report lands off-screen —<br/>user scrolls to find it"]
+  style A fill:#1e222b,stroke:#6b2a2a,color:#e7e9ee
+  style D fill:#1e222b,stroke:#6b2a2a,color:#e7e9ee
+  style F fill:#1e222b,stroke:#6b2a2a,color:#e7e9ee
+  style G fill:#1e222b,stroke:#6b2a2a,color:#e7e9ee
+  style B fill:#1e222b,stroke:#6b5a2a,color:#e7e9ee
+  style C fill:#1e222b,stroke:#6b5a2a,color:#e7e9ee
+  style E fill:#1e222b,stroke:#6b5a2a,color:#e7e9ee
+      </pre>
+    </div>
+    <div class="flowcard next">
+      <h4>Proposed</h4>
+      <pre class="mermaid">
+flowchart TD
+  A["Visit app<br/>brand favicon + pre-painted bg"] --> B["Branded login:<br/>mark · value line · one CTA"]
+  B --> C["Shell skeleton fades in 180ms<br/>(rail + panels, content-shaped)"]
+  C --> D["Hero: greeting + dataset facts<br/>big composer + 4 suggestion cards"]
+  D --> E["Ask → composer docks to bottom"]
+  E --> F["Auto-follow stream:<br/>steps + ghost pages stay in view<br/>stop button available"]
+  F --> G["Answer canvas: pages + toolbar<br/>+ follow-up chips"]
+  G -->|"follow-up"| E
+  style A fill:#1e222b,stroke:#33502f,color:#e7e9ee
+  style B fill:#1e222b,stroke:#33502f,color:#e7e9ee
+  style C fill:#1e222b,stroke:#33502f,color:#e7e9ee
+  style D fill:#1e222b,stroke:#33502f,color:#e7e9ee
+  style E fill:#1e222b,stroke:#33502f,color:#e7e9ee
+  style F fill:#1e222b,stroke:#33502f,color:#e7e9ee
+  style G fill:#1e222b,stroke:#b48a3f,color:#e7e9ee
+      </pre>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 5 · RESPONSIVE ═══════════════════════ -->
+<section id="responsive">
+  <span class="snum">SECTION 5</span>
+  <h2>Responsive strategy — three tiers, one shell</h2>
+  <p class="lede">Replace the single 720px patch-query with three deliberate tiers. The same shell component renders
+    all three; only the nav chrome and panel behavior change.</p>
+
+  <div class="tiers">
+    <div class="tier">
+      <div class="bp">≥ 1024px</div>
+      <h4>Desktop</h4>
+      <ul>
+        <li>56px icon rail (brand / nav / theme / user)</li>
+        <li>Contextual panel: conversations (chat) or catalog (SQL), collapsible, 260px</li>
+        <li>Thread reading column ≈768px; report cards may breakout to 960px</li>
+        <li>Content max 1440px centered (as today)</li>
+      </ul>
+    </div>
+    <div class="tier">
+      <div class="bp">768 – 1023px</div>
+      <h4>Tablet</h4>
+      <ul>
+        <li>Rail stays (56px); contextual panel becomes an overlay drawer</li>
+        <li>Reading column fills width minus rail, max 768px</li>
+        <li>Report pages keep 2-col templates; KPI grid 2-up</li>
+        <li>SQL: catalog as drawer, editor full-width</li>
+      </ul>
+    </div>
+    <div class="tier">
+      <div class="bp">&lt; 768px</div>
+      <h4>Mobile</h4>
+      <ul>
+        <li>Bottom tab bar (56px + safe-area); rail hidden</li>
+        <li>Conversations = slide-over sheet (☰)</li>
+        <li>Composer docks above nav; 16px input font</li>
+        <li>Report columns stack; charts capped 240px; tables scroll-x with sticky first column</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="mech">
+    <div class="mech-scroll">
+    <table class="ft">
+      <thead><tr><th>Mechanic</th><th>Today</th><th>Target</th></tr></thead>
+      <tbody>
+        <tr><td><b>Height chain</b></td><td class="where">.app min-height:100vh → page scrolls as one document (B1)</td>
+          <td><code>html,body,#root{height:100%}</code> · shell <code>height:100dvh; overflow:hidden</code> · thread/panels each scroll themselves</td></tr>
+        <tr><td><b>Stream follow</b></td><td class="where">none (B3)</td>
+          <td>Auto-scroll while pinned to bottom; "↓ jump to latest" pill when user scrolls up ≥120px; smooth-scroll on answer land</td></tr>
+        <tr><td><b>Safe areas</b></td><td class="where">none (B4)</td>
+          <td><code>viewport-fit=cover</code> + <code>env(safe-area-inset-*)</code> on composer &amp; bottom nav</td></tr>
+        <tr><td><b>Touch targets</b></td><td class="where">~28px buttons/chips</td><td>≥44px interactive height on &lt;768px (padding scale bump)</td></tr>
+        <tr><td><b>Tables</b></td><td class="where">nowrap cells, plain overflow-x</td><td>Wrapper scroll + sticky first column + right-aligned tabular numerals</td></tr>
+        <tr><td><b>Charts</b></td><td class="where">✅ already ParentSize-responsive</td><td>Keep; add mobile height cap + fewer x-ticks under 480px</td></tr>
+        <tr><td><b>Breakpoint tokens</b></td><td class="where">one hardcoded 720px query</td><td><code>--bp-md:768px; --bp-lg:1024px</code> documented; queries reference the tiers</td></tr>
+        <tr><td><b>Reduced motion</b></td><td class="where">n/a (no motion)</td><td>All new motion behind <code>prefers-reduced-motion</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 6 · IMPLEMENTATION ═══════════════════════ -->
+<section id="plan">
+  <span class="snum">SECTION 6</span>
+  <h2>Implementation plan — six shippable phases</h2>
+  <p class="lede">Ordered so value lands early: A is pure fixes (could merge tomorrow), B–E each transform one surface,
+    F locks it in with regression tests. Every phase = one PR through the normal gate (<code>make smoke</code>, service
+    tests, Playwright e2e). Estimates assume one developer with AI assistance.</p>
+
+  <div class="phases">
+
+    <div class="phase">
+      <div class="phase-h"><span class="pid">A</span><h3>Stop the bleeding — layout containment &amp; scroll</h3><span class="eff">~0.5–1 day</span></div>
+      <div class="phase-b">
+        <div class="phase-tasks">
+          <ul>
+            <li>Height chain: <code>html,body,#root {height:100%}</code>; <code>.app{height:100dvh; overflow:hidden}</code> (drop min-height) — header/tabs/composer become permanently visible; <span class="fixes">fixes B1</span></li>
+            <li>Add <code>.chat-layout{grid-template-columns:1fr}</code> + hide/overlay <code>.conv-panel</code> in the ≤768px query; <span class="fixes">fixes B2</span></li>
+            <li><code>useStickToBottom</code> hook on the thread: follow stream while pinned; "jump to latest" pill; <span class="fixes">fixes B3</span></li>
+            <li><code>viewport-fit=cover</code> + safe-area padding on composer; inputs to 16px on mobile; <span class="fixes">fixes B4</span></li>
+            <li>Suggestion pills → <code>border-radius:14px</code> + left-aligned wrap; <span class="fixes">fixes B5</span></li>
+            <li>Make conv-panel + main the only scroll containers (they already have overflow-y, it will now engage)</li>
+          </ul>
+        </div>
+        <div class="phase-side">
+          <h5>Files</h5>
+          <div class="files">frontend/src/styles.css<br>frontend/src/features/chat/ChatPage.tsx<br>frontend/index.html</div>
+          <h5>Acceptance</h5>
+          <ul class="ac">
+            <li>Composer visible at every viewport with 50 conversations in history</li>
+            <li>Stream stays in view hands-free; scroll-up pauses following</li>
+            <li>390px: thread ≥ full width minus 24px gutters</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pid">B</span><h3>Identity &amp; tokens v2</h3><span class="eff">~1 day</span></div>
+      <div class="phase-b">
+        <div class="phase-tasks">
+          <ul>
+            <li>Add <code>@fontsource-variable/inter</code> + <code>@fontsource/jetbrains-mono</code>; wire <code>--sans/--mono</code> tokens; type scale + <code>tabular-nums</code> utilities <span class="fixes">P2</span></li>
+            <li>Color value shifts (bg/panel/border deltas above); motion + elevation token families; hover/transition pass on buttons, tabs, cards, rows <span class="fixes">P3</span></li>
+            <li>Brand kit: SVG mark (gold ◈-style), <code>favicon.svg</code> + <code>apple-touch-icon</code>, <code>&lt;title&gt;</code>, <code>theme-color</code>, OG description, pre-painted background in index.html (kills the white flash) <span class="fixes">P1 P4</span></li>
+            <li>Split <code>styles.css</code> (671 lines) → <code>styles/tokens.css · base.css · shell.css · chat.css · report.css · sql.css · admin.css</code> via CSS imports (Vite bundles them; zero runtime change)</li>
+            <li>Display name: render <b>Datapilot</b> (locked Q4) everywhere the slug appears — login, rail wordmark, <code>&lt;title&gt;</code>, OG meta</li>
+            <li>Theme default → follow system preference with persisted manual override (locked Q5): <code>getTheme()</code> in <code>lib/theme.ts</code> falls back to <code>prefers-color-scheme</code> instead of dark</li>
+          </ul>
+        </div>
+        <div class="phase-side">
+          <h5>Files</h5>
+          <div class="files">frontend/src/styles/ (new split)<br>frontend/index.html<br>frontend/public/favicon.svg (new)<br>frontend/package.json</div>
+          <h5>Acceptance</h5>
+          <ul class="ac">
+            <li>Lighthouse: no layout shift from fonts (fallback metrics via size-adjust)</li>
+            <li>Both themes AA contrast on text tokens</li>
+            <li>Dark tab bar + favicon in the browser chrome</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pid">C</span><h3>App shell — icon rail, bottom nav, drawers</h3><span class="eff">~1.5–2 days</span></div>
+      <div class="phase-b">
+        <div class="phase-tasks">
+          <ul>
+            <li>New <code>NavRail</code> (56px: brand · Chat/SQL/Admin/Settings icons+tooltips · theme toggle · user menu w/ sign-out) replaces header+tabs on ≥768px <span class="fixes">F5</span></li>
+            <li>New <code>BottomNav</code> + sheet primitives for &lt;768px; conversations &amp; SQL catalog become drawers there</li>
+            <li>Contextual panel slot: conversations (chat) / catalog (SQL) — collapsible on desktop, remembered per user</li>
+            <li>Route transitions: 180ms cross-fade between views; palette gets scale-in</li>
+            <li>Keep routes /chat /sql /admin /settings; keep role gating; e2e helpers updated (nav is <code>role="tab"</code>-compatible or specs move to <code>getByRole("link")</code>)</li>
+          </ul>
+        </div>
+        <div class="phase-side">
+          <h5>Files</h5>
+          <div class="files">frontend/src/app/App.tsx<br>frontend/src/app/NavRail.tsx (new)<br>frontend/src/app/BottomNav.tsx (new)<br>frontend/src/ui/Sheet.tsx (new)<br>frontend/e2e/helpers.ts</div>
+          <h5>Acceptance</h5>
+          <ul class="ac">
+            <li>All 4 sections reachable at 390 / 834 / 1440px</li>
+            <li>No horizontal scroll at any width 320–1920px</li>
+            <li>e2e suite green with updated selectors</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pid">D</span><h3>Chat canvas — hero, docked composer, open answers</h3><span class="eff">~2 days</span></div>
+      <div class="phase-b">
+        <div class="phase-tasks">
+          <ul>
+            <li>Hero empty state: greeting (user.display_name + time of day), dataset facts line, centered composer, 4 suggestion cards; composer docks bottom after first send <span class="fixes">F8</span></li>
+            <li>New <code>Composer</code>: auto-grow textarea (max 6 lines), Enter/Shift+Enter, send icon button, <b>stop</b> button while streaming (abort the SSE fetch), hint row <span class="fixes">F6</span></li>
+            <li>Answers leave the bubble: identity row (mark, engine·rows·latency meta), answer text, pages as segmented pills, report on canvas; reading column 768px / breakout 960px <span class="fixes">F1 F2</span></li>
+            <li>Answer toolbar: copy · CSV (from report data / legacy rows) · PNG (existing exportPng) · open-in-SQL · 👍👎; admin trace + render-JSON behind ⋯</li>
+            <li>Sidebar v2: date groups (created_at exists in ConversationSummary), hover rename/delete (needs 2 small backend endpoints — flagged), search filter, cleaner titles <span class="fixes">F3</span></li>
+            <li>Restyle ghosts/steps to tokens v2 (keep the mechanism untouched)</li>
+          </ul>
+        </div>
+        <div class="phase-side">
+          <h5>Files</h5>
+          <div class="files">frontend/src/features/chat/*<br>frontend/src/ui/Composer.tsx (new)<br>frontend/src/lib/api.ts (abort + rename/delete)<br>services/backend-api (2 endpoints, optional)</div>
+          <h5>Acceptance</h5>
+          <ul class="ac">
+            <li>Ask → answer with zero manual scrolling at 390/1440px</li>
+            <li>Stop cancels a stream cleanly (no orphan bubble)</li>
+            <li>Feedback click-to-annotate still works on canvas cards</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pid">E</span><h3>Login &amp; first-run</h3><span class="eff">~1 day</span></div>
+      <div class="phase-b">
+        <div class="phase-tasks">
+          <ul>
+            <li>Login per Mock 1 — both auth modes; GIS button styled inside the card; error/loading states designed <span class="fixes">P1 F8</span></li>
+            <li>Post-auth handoff: shell skeleton (rail + panel bones) while auth config + conversations load; 180ms content fade — no hard swap</li>
+            <li>First-run vs returning: personalized hero (name, dataset facts); returning users land on hero with recent conversations one tap away</li>
+            <li>Track the funnel: keep login_screen_view / login_success events; add time-to-first-question</li>
+          </ul>
+        </div>
+        <div class="phase-side">
+          <h5>Files</h5>
+          <div class="files">frontend/src/app/Login.tsx<br>frontend/src/app/App.tsx<br>frontend/src/lib/auth.ts (loading states)</div>
+          <h5>Acceptance</h5>
+          <ul class="ac">
+            <li>Login→hero feels continuous (no blank frame) on throttled 3G</li>
+            <li>Google mode verified against the s11 flow</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pid">F</span><h3>Parity, hardening &amp; visual regression</h3><span class="eff">~1.5–2 days</span></div>
+      <div class="phase-b">
+        <div class="phase-tasks">
+          <ul>
+            <li>SQL editor: editor grows with content (min 320px), results panel designed empty state, catalog drawer on mobile, 44px targets <span class="fixes">F7</span></li>
+            <li>Admin + Settings: reading widths, card grids on tokens v2, table polish (sticky first col, tabular-nums)</li>
+            <li>Skeletons replace text loaders (SQL tab lazy-load, conversations, admin queries) <span class="fixes">P4</span></li>
+            <li><b>Playwright visual suite</b>: screenshot matrix (login/hero/answer/sql/settings × 390/834/1440 × dark/light) with <code>toHaveScreenshot</code> baselines — the suite that would have caught B1–B5</li>
+            <li>A11y pass: axe run, contrast audit both themes, keyboard walk of every flow</li>
+          </ul>
+        </div>
+        <div class="phase-side">
+          <h5>Files</h5>
+          <div class="files">frontend/src/features/sql/*<br>frontend/src/features/admin/*<br>frontend/e2e/visual.spec.ts (new)</div>
+          <h5>Acceptance</h5>
+          <ul class="ac">
+            <li>Visual baselines committed; CI fails on unexpected diffs</li>
+            <li>No horizontal overflow 320–1920px on any screen</li>
+            <li>axe: zero serious/critical on all views</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 7 · RISKS ═══════════════════════ -->
+<section id="risks">
+  <span class="snum">SECTION 7</span>
+  <h2>Risks &amp; migration concerns</h2>
+  <div class="risks">
+    <div class="risk"><b>e2e selector breakage</b><span>helpers.ts logs in via <code>getByRole("tab")</code> and text
+      clicks; Phase C changes nav semantics. Mitigation: update helpers in the same PR; smoke + chat/studio specs are
+      the contract.</span></div>
+    <div class="risk"><b>Shared renderer blast radius</b><span>PageLayout is used by chat, Template Studio and the
+      playground — restyles propagate everywhere. Mitigation: that's by design; add studio + playground to the visual
+      suite in Phase F and eyeball in Phase D.</span></div>
+    <div class="risk"><b>Template registry coupling</b><span>Column tracks come inline from the registry with an
+      <code>!important</code> mobile override. Keep that contract in Phase A/C; revisit only if a template needs a
+      tablet-specific layout.</span></div>
+    <div class="risk"><b>Streaming abort path</b><span>The stop button needs askStream to accept an AbortSignal;
+      verify backend closes the SSE cleanly and the conversation stays consistent (message persisted or not at all).</span></div>
+    <div class="risk"><b>Font loading</b><span>Self-host via @fontsource (no CDN, works in the App Runner deploy);
+      preload + <code>size-adjust</code> fallback metrics to avoid CLS; ~60KB gz added — acceptable.</span></div>
+    <div class="risk"><b>Light theme drift</b><span>Every new token needs a light value or light mode regresses
+      quietly. The visual matrix runs both themes to catch it.</span></div>
+    <div class="risk"><b>Conversation rename/delete needs backend</b><span>Two small endpoints (PATCH title, DELETE)
+      + RLS checks. If out of scope, sidebar v2 ships with grouping/search only — still a big win.</span></div>
+    <div class="risk"><b>Known live-stack flake</b><span>During this review the live agent didn't return a report
+      within 4 min (matches the undiagnosed journey failures noted in CI memory). Unrelated to UI but will make
+      Phase D verification annoying — worth a look first.</span></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 8 · DECISIONS ═══════════════════════ -->
+<section id="decide">
+  <span class="snum">SECTION 8</span>
+  <h2>Decisions — all five locked</h2>
+  <p class="lede">Locked from your review on 2026-07-11. The plan, mockups and phases reflect these — the build can
+    start with Phase A. (Annotations on any section remain welcome.)</p>
+
+  <div class="dec-locked-grid">
+    <div class="dec-locked"><b>Q1 · Desktop navigation</b><span>✓ Icon rail + contextual panel</span></div>
+    <div class="dec-locked"><b>Q2 · Mobile navigation</b><span>✓ Bottom tab bar + sheets</span></div>
+    <div class="dec-locked"><b>Q3 · Styling strategy</b><span>✓ Evolve hand-rolled token CSS</span></div>
+    <div class="dec-locked"><b>Q4 · Display name</b><span>✓ Datapilot</span></div>
+    <div class="dec-locked"><b>Q5 · Default theme</b><span>✓ Follow system, manual override kept</span></div>
+  </div>
+</section>
+
+<footer class="prov">
+  <p><b>Provenance.</b> Code review of <code>frontend/src</code> (styles.css, App.tsx, Login.tsx, ChatPage.tsx,
+    ResultView.tsx, PageLayout.tsx, charts) at branch <code>main</code>; screenshots captured live from
+    <code>localhost:5230</code> on 2026-07-11 via Playwright (dev-auth, admin user). Root causes cite file:line.
+    Mockups render the proposed tokens-v2 values inline in this page.</p>
+  <p><b>Research sources</b> (2026 pattern surveys):</p>
+  <ul class="srcs">
+    <li><a href="https://www.setproduct.com/blog/ai-chat-interface-ui-design" target="_blank" rel="noopener">Setproduct — Designing AI chat interfaces: anatomy &amp; patterns</a></li>
+    <li><a href="https://aiuxplayground.com/teardowns/" target="_blank" rel="noopener">AI UX Playground — ChatGPT / Claude / Perplexity teardowns</a></li>
+    <li><a href="https://grokipedia.com/page/AI_Chat_PWA_UI_Design_Trends_20252026" target="_blank" rel="noopener">AI chat UI trends 2025–2026 (rail / 768px column / canvas answers)</a></li>
+    <li><a href="https://thefrontkit.com/blogs/ai-chat-ui-best-practices" target="_blank" rel="noopener">TheFrontKit — AI chat UI best practices 2026</a></li>
+    <li><a href="https://www.eleken.co/blog-posts/login-page-examples" target="_blank" rel="noopener">Eleken — 50+ SaaS login page examples</a></li>
+    <li><a href="https://userpilot.com/blog/best-user-onboarding-experience/" target="_blank" rel="noopener">Userpilot — best onboarding experiences 2026</a></li>
+    <li><a href="https://designrevision.com/blog/saas-onboarding-best-practices" target="_blank" rel="noopener">DesignRevision — SaaS onboarding practices that reduce churn</a></li>
+  </ul>
+</footer>
+
+</div><!-- /wrap -->
+
+<script>
+function queueDecision(form, label, field) {
+  const fd = new FormData(form);
+  let v = fd.get(field);
+  if (!v) return;
+  if (v === "__custom__") {
+    const custom = (fd.get(field + "_custom") || "").toString().trim();
+    if (!custom) return;
+    v = custom + " (custom)";
+  }
+  const state = form.querySelector(".qstate");
+  if (window.lavish && window.lavish.queuePrompt) {
+    window.lavish.queuePrompt("Decision — " + label + ": " + v, {
+      tag: "decision",
+      text: label + ": " + v,
+      element: form,
+      data: { question: label, answer: v },
+    });
+    if (state) state.textContent = "queued ✓ — press Send to Agent when done";
+  } else if (state) {
+    state.textContent = "open this page via lavish-axi to queue answers";
+    state.style.color = "var(--warn)";
+  }
+}
+</script>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(foreground, background) {
+    const fa = foreground[3] / 255, ba = background[3] / 255;
+    const a = fa + ba * (1 - fa);
+    if (a === 0) return [0, 0, 0, 0];
+    return [
+      (foreground[0] * fa + background[0] * ba * (1 - fa)) / a,
+      (foreground[1] * fa + background[1] * ba * (1 - fa)) / a,
+      (foreground[2] * fa + background[2] * ba * (1 - fa)) / a,
+      a * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBackground = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBackground = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0, 0, 0, 0];
+    const [r, g, b, a] = compositeRgba(bodyBackground, rootBackground);
+    if (a > 0) return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+    const cs = getComputedStyle(root).colorScheme;
+    if (cs.includes("dark") && !cs.includes("light")) return true;
+    if (cs.includes("light") && !cs.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied, rendering = false, queued = false;
+  function queueRender() { queued = true; if (!rendering) void render(); }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({ startOnLoad: false, theme, securityLevel: "strict" });
+        for (const { el, src } of diagrams) { el.removeAttribute("data-processed"); el.textContent = src; }
+        try { await mermaid.run({ nodes: diagrams.map((d) => d.el) }); }
+        catch (error) { console.error("Mermaid diagram render failed:", error); return; }
+        applied = theme;
+      }
+    } finally {
+      rendering = false;
+      if (queued) queueRender();
+    }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const themeObserver = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    themeObserver.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  document.addEventListener("change", queueRender, true);
+  document.addEventListener("transitionend", ({ propertyName }) => {
+    if (propertyName === "background-color") queueRender();
+  }, true);
+  darkQuery.addEventListener("change", queueRender);
+</script>
+</body>
+</html>

@@ -9,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from .config import settings
 
@@ -18,8 +19,14 @@ from .config import settings
 # semantics, and what every other client in this stack does. Upgrade to
 # verify-full + the RDS CA bundle in the harden phase.
 _connect_args = {"ssl": settings.db_ssl} if settings.db_ssl else {}
+# NullPool: close the connection when the request finishes instead of keeping a
+# warm pool. An always-on App Runner instance would otherwise hold ~5 idle
+# connections forever, so Aurora Serverless v2 never sees the zero-connection
+# window it needs to auto-pause (scale to zero) — the dominant idle cost. A
+# fresh connect per request costs a few ms, negligible at this app's traffic;
+# pre-ping is unnecessary since every checkout is already a new connection.
 engine = create_async_engine(
-    settings.database_url, pool_pre_ping=True, future=True, connect_args=_connect_args
+    settings.database_url, poolclass=NullPool, future=True, connect_args=_connect_args
 )
 
 

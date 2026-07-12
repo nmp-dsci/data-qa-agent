@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 
 from .config import settings
 from .sql_guardrails import validate_select
@@ -17,14 +18,19 @@ from .sql_guardrails import validate_select
 # semantics, and what every other client in this stack does. Upgrade to
 # verify-full + the RDS CA bundle in the harden phase.
 _connect_args = {"ssl": settings.db_ssl} if settings.db_ssl else {}
+# NullPool: drop the connection when a query finishes rather than holding a warm
+# pool open. Combined with the same change on backend-api, an idle stack holds
+# zero DB connections, so Aurora Serverless v2 can reach its zero-connection
+# window and auto-pause (scale to zero) — the main idle cost. Reconnect is a few
+# ms per request; long agent runs hold their connection for the run either way.
 engine = create_async_engine(
-    settings.agent_database_url, pool_pre_ping=True, future=True, connect_args=_connect_args
+    settings.agent_database_url, poolclass=NullPool, future=True, connect_args=_connect_args
 )
 # Elevated read-only engine for admin SQL-editor queries (admin_ro: BYPASSRLS,
 # SELECT on every schema). Only role == "admin" run_select(..., as_admin=True)
 # calls use it; the agent + regular users stay on `engine` (agent_ro, RLS-scoped).
 admin_engine = create_async_engine(
-    settings.admin_ro_database_url, pool_pre_ping=True, future=True, connect_args=_connect_args
+    settings.admin_ro_database_url, poolclass=NullPool, future=True, connect_args=_connect_args
 )
 
 

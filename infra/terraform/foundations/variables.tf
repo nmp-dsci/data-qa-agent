@@ -48,9 +48,9 @@ variable "db_min_acu" {
 }
 
 variable "db_max_acu" {
-  description = "Aurora Serverless v2 maximum capacity (ACUs)."
+  description = "Aurora Serverless v2 maximum capacity (ACUs). 1 ACU (~2 GiB) is ample for this personal app's query + agent load and caps burst cost; raise if heavy pipeline/analytics runs need more headroom."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "db_extra_ingress_cidrs" {

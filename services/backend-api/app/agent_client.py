@@ -79,6 +79,18 @@ async def ask_agent(
         return cast(dict[str, Any], resp.json())
 
 
+async def prep_golden(*, sql: str, code: str, user_id: str, role: str = "user") -> dict[str, Any]:
+    """Golden authoring (s14 E1): run confirmed SQL through the governed extract,
+    then (if code is given) the run_analysis script in the sandbox. Returns the
+    extract rows + the produced report/skills so the Builder can draft Goal B.
+    """
+    payload = {"sql": sql, "code": code, "user": {"id": user_id, "role": role}}
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
+        resp = await client.post(f"{settings.agent_url}/agent/analysis", json=payload)
+        resp.raise_for_status()
+        return cast(dict[str, Any], resp.json())
+
+
 async def run_sql_on_agent(*, sql: str, user_id: str, role: str) -> dict[str, Any]:
     """Execute raw editor SQL via the data-agent's read-only, RLS-scoped executor."""
     payload = {"sql": sql, "user": {"id": user_id, "role": role}}

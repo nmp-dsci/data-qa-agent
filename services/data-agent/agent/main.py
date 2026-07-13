@@ -25,6 +25,8 @@ from .knowledge import knowledge_version  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
 from .pages import compose_pages, page_plan, planned_kinds  # noqa: E402
 from .provider import choose_provider  # noqa: E402
+from .sandbox import run_code  # noqa: E402
+from .sandbox.extract import extract  # noqa: E402
 from .sandbox_agent import answer_with_sandbox  # noqa: E402
 from .schema import get_catalog, merge_catalogs  # noqa: E402
 from .sql_assist import sql_assist  # noqa: E402
@@ -600,6 +602,56 @@ async def agent_sql_assist(body: SqlAssistRequest) -> SqlAssistResult:
         user_id=body.user.id,
     )
     return SqlAssistResult(**result)
+
+
+class AnalysisRequest(BaseModel):
+    sql: str
+    code: str = ""
+    user: UserCtx
+
+
+class AnalysisResponse(BaseModel):
+    columns: list[str] = []
+    rows: list[list[Any]] = []
+    row_count: int = 0
+    report: dict[str, Any] | None = None
+    skills_used: list[str] = []
+    skill_gaps: list[dict[str, Any]] = []
+    error: str | None = None
+
+
+@app.post("/agent/analysis", response_model=AnalysisResponse)
+async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
+    """Golden authoring (s14 E1) — run a confirmed SQL extract, then optionally the
+    run_analysis script, in the SAME governed extract + sandbox path the agent uses.
+
+    With no ``code`` this is the Builder's Goal A step (run the SQL, inspect rows).
+    With ``code`` it is Goal B: the metrics come from the tested skills in the
+    locked-down sandbox, not hand-typing — so the golden reflects a real run.
+    """
+    try:
+        frame, meta = await extract(body.sql, user_id=body.user.id)
+    except UnsafeSQLError as exc:
+        return AnalysisResponse(error=f"extract rejected: {exc}")
+    except Exception as exc:  # noqa: BLE001 — surface DB/extract errors to the builder
+        return AnalysisResponse(error=f"extract failed: {exc}")
+
+    columns = meta.get("columns", [])
+    rows = meta.get("rows", [])
+    row_count = meta.get("row_count", len(rows))
+    if not body.code.strip():
+        return AnalysisResponse(columns=columns, rows=rows, row_count=row_count)
+
+    outcome = run_code(body.code, df=frame, frames={"extract": frame})
+    return AnalysisResponse(
+        columns=columns,
+        rows=rows,
+        row_count=row_count,
+        report=outcome.report,
+        skills_used=outcome.skills_used,
+        skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
+        error=outcome.error,
+    )
 
 
 def _enrich_catalog_with_known_docs(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:

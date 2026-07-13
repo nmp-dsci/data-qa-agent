@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from ..agent_client import prep_golden
 from ..auth import CurrentUser, require_admin
 from ..db import jsonable, rls_connection
 
@@ -201,3 +202,21 @@ async def delete_golden(
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="golden not found")
     return {"status": "ok", "deleted": result.rowcount}
+
+
+class PrepIn(BaseModel):
+    sql: str
+    code: str = ""
+    # Run the extract under this user id's RLS; defaults to the admin.
+    as_user: str | None = None
+
+
+@router.post("/admin/eval-goldens/prep")
+async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
+    """Draft a golden's data via the data-agent: run the confirmed SQL (Goal A) and,
+    if a sandbox script is given, the metrics (Goal B) — the same governed path the
+    agent uses. Returns extract rows + the produced report/skills for the builder.
+    """
+    return await prep_golden(
+        sql=body.sql, code=body.code, user_id=body.as_user or admin.id, role="user"
+    )

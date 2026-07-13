@@ -660,6 +660,100 @@ export function getEvalCases(): Promise<EvalCase[]> {
   return adminGet<EvalCase[]>("/admin/eval-cases");
 }
 
+// --- Golden Answer (Builder) — s14 E1 --------------------------------------
+export interface GoldenListItem {
+  id: string;
+  dataset: string | null;
+  tier: string | null;
+  question: string;
+  as_user: string | null;
+  tags: string[];
+  holdout: boolean;
+  authoring_status: string;
+  has_sql: boolean;
+  has_sandbox: boolean;
+  has_data: boolean;
+  has_report: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoldenFull extends GoldenListItem {
+  source: string;
+  expectation: string | null;
+  golden_sql: string | null;
+  golden_sandbox: string | null;
+  golden_data: unknown;
+  golden_report: unknown;
+}
+
+export interface GoldenInput {
+  question: string;
+  dataset?: string | null;
+  tier?: string | null;
+  as_user?: string | null;
+  tags?: string[];
+  holdout?: boolean;
+  authoring_status?: string;
+  golden_sql?: string | null;
+  golden_sandbox?: string | null;
+  golden_data?: unknown;
+  golden_report?: unknown;
+  expectation?: string | null;
+}
+
+export interface PrepResult {
+  columns: string[];
+  rows: unknown[][];
+  row_count: number;
+  report: Record<string, unknown> | null;
+  skills_used: string[];
+  skill_gaps: { need: string; why: string }[];
+  error: string | null;
+}
+
+async function adminSend<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const resp = await fetch(`${API}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Admin request failed (${resp.status})`);
+  return resp.json();
+}
+
+export function listGoldens(dataset?: string): Promise<GoldenListItem[]> {
+  const q = dataset ? `?dataset=${encodeURIComponent(dataset)}` : "";
+  return adminGet<GoldenListItem[]>(`/admin/eval-goldens${q}`);
+}
+
+export function getGolden(id: string): Promise<GoldenFull> {
+  return adminGet<GoldenFull>(`/admin/eval-goldens/${id}`);
+}
+
+export function createGolden(body: GoldenInput): Promise<{ status: string; id: string }> {
+  return adminPost<{ status: string; id: string }>("/admin/eval-goldens", body);
+}
+
+export function updateGolden(
+  id: string,
+  patch: Partial<GoldenInput>,
+): Promise<{ status: string; updated: number }> {
+  return adminSend<{ status: string; updated: number }>(`/admin/eval-goldens/${id}`, "PUT", patch);
+}
+
+export function deleteGolden(id: string): Promise<{ status: string; deleted: number }> {
+  return adminSend<{ status: string; deleted: number }>(`/admin/eval-goldens/${id}`, "DELETE");
+}
+
+export function prepGolden(body: {
+  sql: string;
+  code?: string;
+  as_user?: string | null;
+}): Promise<PrepResult> {
+  return adminPost<PrepResult>("/admin/eval-goldens/prep", body);
+}
+
 async function adminPost<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(`${API}${path}`, {
     method: "POST",

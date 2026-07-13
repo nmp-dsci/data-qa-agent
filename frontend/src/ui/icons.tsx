@@ -29,6 +29,14 @@ export const IconChat = () => (
   </I>
 );
 
+export const IconGolden = () => (
+  <I>
+    <circle cx="12" cy="12" r="8" />
+    <circle cx="12" cy="12" r="3.2" />
+    <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22" />
+  </I>
+);
+
 export const IconSql = () => (
   <I>
     <rect x="3" y="4.5" width="18" height="15" rx="2" />

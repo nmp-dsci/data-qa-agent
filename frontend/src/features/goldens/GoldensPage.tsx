@@ -16,7 +16,7 @@ import {
   PrepResult,
   createGolden,
   deleteGolden,
-  draftGolden,
+  draftGoldenStream,
   getGolden,
   listGoldens,
   prepGolden,
@@ -98,6 +98,7 @@ export function GoldensPage() {
   const [prep, setPrep] = useState<PrepResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [draftStatus, setDraftStatus] = useState<string>("");
 
   const refresh = useCallback(async () => {
     try {
@@ -246,12 +247,16 @@ export function GoldensPage() {
     }
     setBusy("draft");
     setMsg(null);
+    setDraftStatus("starting…");
     try {
-      const res = await draftGolden({
-        question: draft.question,
-        as_user: draft.as_user || null,
-        dataset: draft.dataset,
-      });
+      const res = await draftGoldenStream(
+        {
+          question: draft.question,
+          as_user: draft.as_user || null,
+          dataset: draft.dataset,
+        },
+        (label) => setDraftStatus(label),
+      );
       const hasPages = !!(res.pages && res.pages.length);
       const report = hasPages ? { pages: res.pages } : draft.golden_report;
       setDraft((d) => ({
@@ -420,7 +425,11 @@ export function GoldensPage() {
             >
               {busy === "draft" ? "Drafting…" : "✨ Draft with agent (first pass)"}
             </button>
-            <span style={label}>runs the data-agent, then you review &amp; edit each stage</span>
+            <span style={busy === "draft" ? { ...label, opacity: 0.95 } : label}>
+              {busy === "draft"
+                ? `▷ ${draftStatus || "working…"}`
+                : "runs the data-agent, then you review & edit each stage"}
+            </span>
           </div>
         </div>
 

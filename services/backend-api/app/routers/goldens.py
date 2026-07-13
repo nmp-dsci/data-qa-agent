@@ -12,13 +12,15 @@ share the table but are managed by feedback.py.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..agent_client import ask_agent, prep_golden
+from ..agent_client import ask_agent, ask_agent_stream, prep_golden
 from ..auth import CurrentUser, require_admin
 from ..db import jsonable, rls_connection
 
@@ -279,3 +281,92 @@ async def draft(body: DraftIn, admin: CurrentUser = Depends(require_admin)) -> d
         "pages": ans.get("pages"),
         "summary": report.get("summary"),
     }
+
+
+def _sse(event: str, data: Any) -> str:
+    payload = data if isinstance(data, str) else json.dumps(data)
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+def _progress_label(data: Any) -> str:
+    if isinstance(data, dict):
+        for key in ("label", "step", "message", "detail", "note", "state"):
+            val = data.get(key)
+            if val:
+                return str(val)[:90]
+        return "working…"
+    return str(data)[:90]
+
+
+def _shape_draft(result: dict[str, Any], pages: list[Any] | None = None) -> dict[str, Any]:
+    report = result.get("report") or {}
+    queries = report.get("queries") or []
+    return {
+        "sql": result.get("sql") or (queries[0].get("sql") if queries else None),
+        "sandbox": _sandbox_code_from_steps(result.get("steps") or []),
+        "columns": result.get("columns", []),
+        "rows": result.get("rows", []),
+        "report": result.get("report"),
+        # Non-stream carries pages in the answer; the stream delivers page content
+        # as separate frames, so the caller may pass what it accumulated.
+        "pages": pages if pages else result.get("pages"),
+        "summary": report.get("summary"),
+    }
+
+
+@router.post("/admin/eval-goldens/draft/stream")
+async def draft_stream(
+    body: DraftIn, admin: CurrentUser = Depends(require_admin)
+) -> StreamingResponse:
+    """SSE variant of /draft: emits one ``status`` frame per streamed agent object
+    (the UI shows a single line that updates), then a final ``draft`` frame with
+    the shaped golden — same shaping as /draft.
+    """
+
+    async def gen() -> AsyncIterator[str]:
+        yield _sse("status", {"label": "starting the agent…"})
+        result: dict[str, Any] | None = None
+        pages_acc: dict[int, Any] = {}
+        n = 0
+        try:
+            async for ev in ask_agent_stream(
+                question=body.question,
+                user_id=body.as_user or admin.id,
+                role="user",
+                plan="pro",
+                dataset_slug=body.dataset or "nsw_sales",
+            ):
+                name, data = ev["event"], ev["data"]
+                if name == "progress":
+                    n += 1
+                    yield _sse("status", {"label": _progress_label(data), "n": n})
+                elif name == "plan":
+                    count = len(data) if isinstance(data, list) else "?"
+                    yield _sse("status", {"label": f"planning {count} pages…", "n": n})
+                elif name == "page":
+                    n += 1
+                    idx = data.get("index") if isinstance(data, dict) else None
+                    if isinstance(data, dict) and data.get("page") is not None:
+                        pages_acc[int(idx) if idx is not None else len(pages_acc)] = data["page"]
+                    label = f"page {idx if idx is not None else ''} ready".strip()
+                    yield _sse("status", {"label": label, "n": n})
+                elif name == "result":
+                    result = data
+                elif name == "error":
+                    yield _sse("error", data)
+                    return
+        except Exception as exc:  # noqa: BLE001 — surface agent/stream failures to the builder
+            yield _sse("error", {"detail": f"Agent unavailable: {exc}"})
+            return
+
+        if result is None:
+            yield _sse("error", {"detail": "Agent stream ended without a result"})
+            return
+        streamed_pages = [pages_acc[k] for k in sorted(pages_acc)] or None
+        yield _sse("draft", _shape_draft(result, pages=streamed_pages))
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

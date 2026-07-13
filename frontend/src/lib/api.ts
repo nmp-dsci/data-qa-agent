@@ -772,6 +772,59 @@ export function draftGolden(body: {
   return adminPost<DraftResult>("/admin/eval-goldens/draft", body);
 }
 
+/** Streaming draft: onStatus fires once per streamed agent object (a single
+ *  updating line); resolves with the final shaped golden. */
+export async function draftGoldenStream(
+  body: { question: string; as_user?: string | null; dataset?: string },
+  onStatus: (label: string) => void,
+): Promise<DraftResult> {
+  const resp = await fetch(`${API}/admin/eval-goldens/draft/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok || !resp.body) throw new Error(`Draft failed (${resp.status})`);
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let draft: DraftResult | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    for (;;) {
+      const sep = buffer.indexOf("\n\n");
+      if (sep === -1) break;
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const eventLine = frame.split("\n").find((l) => l.startsWith("event: "));
+      const dataLine = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!eventLine || !dataLine) continue;
+      const event = eventLine.slice(7).trim();
+      const raw = dataLine.slice(6);
+      if (event === "status") {
+        try {
+          onStatus(String((JSON.parse(raw) as { label?: string }).label ?? ""));
+        } catch {
+          /* ignore malformed status */
+        }
+      } else if (event === "draft") {
+        draft = JSON.parse(raw) as DraftResult;
+      } else if (event === "error") {
+        let detail = "draft error";
+        try {
+          detail = String((JSON.parse(raw) as { detail?: string }).detail ?? detail);
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+    }
+  }
+  if (!draft) throw new Error("Draft stream ended without a result");
+  return draft;
+}
+
 async function adminPost<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(`${API}${path}`, {
     method: "POST",

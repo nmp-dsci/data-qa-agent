@@ -754,6 +754,22 @@ export function prepGolden(body: {
   return adminPost<PrepResult>("/admin/eval-goldens/prep", body);
 }
 
+export interface DraftResult {
+  sql: string | null;
+  columns: string[];
+  rows: unknown[][];
+  report: Record<string, unknown> | null;
+  pages: Page[] | null;
+}
+
+export function draftGolden(body: {
+  question: string;
+  as_user?: string | null;
+  dataset?: string;
+}): Promise<DraftResult> {
+  return adminPost<DraftResult>("/admin/eval-goldens/draft", body);
+}
+
 async function adminPost<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(`${API}${path}`, {
     method: "POST",

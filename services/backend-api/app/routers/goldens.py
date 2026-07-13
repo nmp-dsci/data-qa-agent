@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..agent_client import prep_golden
+from ..agent_client import ask_agent, prep_golden
 from ..auth import CurrentUser, require_admin
 from ..db import jsonable, rls_connection
 
@@ -220,3 +220,31 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
     return await prep_golden(
         sql=body.sql, code=body.code, user_id=body.as_user or admin.id, role="user"
     )
+
+
+class DraftIn(BaseModel):
+    question: str
+    as_user: str | None = None
+    dataset: str = "nsw_sales"
+
+
+@router.post("/admin/eval-goldens/draft")
+async def draft(body: DraftIn, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
+    """First pass: run the data-agent on the question so the human can review and
+    edit a pre-filled golden — the agent's SQL + rows + rendered report/pages. The
+    curator then corrects each stage; a run of an upstream stage re-feeds the next.
+    """
+    ans = await ask_agent(
+        question=body.question,
+        user_id=body.as_user or admin.id,
+        role="user",
+        plan="pro",
+        dataset_slug=body.dataset or "nsw_sales",
+    )
+    return {
+        "sql": ans.get("sql"),
+        "columns": ans.get("columns", []),
+        "rows": ans.get("rows", []),
+        "report": ans.get("report"),
+        "pages": ans.get("pages"),
+    }

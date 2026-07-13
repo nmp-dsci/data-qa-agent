@@ -7,21 +7,24 @@
 // Save persists through /admin/eval-goldens; a `ready` golden is the 100/100
 // benchmark the eval runner (E2) scores the agent against. A run of any upstream
 // stage refreshes the extract that feeds the next — the A→B→C cascade from the plan.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   GoldenInput,
   GoldenListItem,
+  Page,
   PrepResult,
   createGolden,
   deleteGolden,
+  draftGolden,
   getGolden,
   listGoldens,
   prepGolden,
   updateGolden,
 } from "../../lib/api";
+import { ReportEditor } from "./ReportEditor";
 
-const DATASETS = ["nsw_property", "nsw_sales", "nsw_rent"];
+const DATASETS = ["nsw_sales", "nsw_rent"];
 const TIERS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7"];
 
 interface Draft {
@@ -53,6 +56,12 @@ const emptyDraft = (dataset: string): Draft => ({
   golden_report: null,
 });
 
+function pagesFromReport(report: unknown): Page[] {
+  if (Array.isArray(report)) return report as Page[];
+  const r = report as { pages?: unknown } | null;
+  return r && Array.isArray(r.pages) ? (r.pages as Page[]) : [];
+}
+
 const box: React.CSSProperties = {
   border: "1px solid rgba(128,128,128,0.3)",
   borderRadius: 10,
@@ -82,9 +91,9 @@ function btn(active = true): React.CSSProperties {
 }
 
 export function GoldensPage() {
-  const [dataset, setDataset] = useState<string>("nsw_property");
+  const [dataset, setDataset] = useState<string>("nsw_sales");
   const [list, setList] = useState<GoldenListItem[]>([]);
-  const [draft, setDraft] = useState<Draft>(() => emptyDraft("nsw_property"));
+  const [draft, setDraft] = useState<Draft>(() => emptyDraft("nsw_sales"));
   const [reportText, setReportText] = useState<string>("");
   const [prep, setPrep] = useState<PrepResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -230,15 +239,58 @@ export function GoldensPage() {
     }
   }
 
-  const reportPreview = useMemo(() => {
-    if (!reportText.trim()) return null;
-    try {
-      const parsed = JSON.parse(reportText) as { pages?: { template?: string; columns?: unknown[] }[] };
-      return parsed.pages ?? null;
-    } catch {
-      return null;
+  async function draftWithAgent() {
+    if (!draft.question.trim()) {
+      setMsg("Enter a question first.");
+      return;
     }
-  }, [reportText]);
+    setBusy("draft");
+    setMsg(null);
+    try {
+      const res = await draftGolden({
+        question: draft.question,
+        as_user: draft.as_user || null,
+        dataset: draft.dataset,
+      });
+      const report = res.pages ? { pages: res.pages } : draft.golden_report;
+      setDraft((d) => ({ ...d, golden_sql: res.sql ?? d.golden_sql, golden_report: report }));
+      if (res.pages) setReportText(JSON.stringify({ pages: res.pages }, null, 2));
+      setPrep({
+        columns: res.columns,
+        rows: res.rows,
+        row_count: res.rows.length,
+        report: res.report,
+        skills_used: [],
+        skill_gaps: [],
+        error: null,
+      });
+      setMsg("Agent draft loaded — review and edit each stage, then save.");
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Visual edits from ReportEditor and the raw JSON box both drive golden_report.
+  function onEditPages(next: Page[]) {
+    const report = { pages: next };
+    patch("golden_report", report);
+    setReportText(JSON.stringify(report, null, 2));
+  }
+  function onReportText(t: string) {
+    setReportText(t);
+    if (!t.trim()) {
+      patch("golden_report", null);
+      return;
+    }
+    try {
+      patch("golden_report", JSON.parse(t));
+      setMsg(null);
+    } catch {
+      // keep the last valid pages on screen; save() surfaces the parse error
+    }
+  }
 
   return (
     <section style={{ padding: 18, display: "grid", gridTemplateColumns: "260px 1fr", gap: 16 }}>
@@ -339,6 +391,24 @@ export function GoldensPage() {
               holdout
             </label>
           </div>
+          <div
+            style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+          >
+            <button
+              type="button"
+              style={{
+                ...btn(busy !== "draft"),
+                background: "rgba(120,160,255,0.18)",
+                borderColor: "rgba(120,160,255,0.6)",
+                fontWeight: 600,
+              }}
+              onClick={() => void draftWithAgent()}
+              disabled={busy === "draft"}
+            >
+              {busy === "draft" ? "Drafting…" : "✨ Draft with agent (first pass)"}
+            </button>
+            <span style={label}>runs the data-agent, then you review &amp; edit each stage</span>
+          </div>
         </div>
 
         {/* ① SQL */}
@@ -414,24 +484,21 @@ export function GoldensPage() {
 
         {/* ③ Report */}
         <div style={box}>
-          <div style={label}>③ Report — presentation (PagesEnvelope)</div>
-          <textarea
-            value={reportText}
-            onChange={(e) => setReportText(e.target.value)}
-            spellCheck={false}
-            rows={6}
-            style={{ ...mono, width: "100%", marginTop: 6 }}
-            placeholder='{ "pages": [ { "template": "summary", "columns": [] } ] }'
-          />
-          {reportPreview && (
-            <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {reportPreview.map((p, i) => (
-                <span key={i} style={{ ...btn(), cursor: "default" }}>
-                  page {i + 1}: {p.template ?? "?"} · {(p.columns ?? []).length} cols
-                </span>
-              ))}
-            </div>
-          )}
+          <div style={label}>③ Report — presentation (interactive)</div>
+          <div style={{ marginTop: 8 }}>
+            <ReportEditor pages={pagesFromReport(draft.golden_report)} onChange={onEditPages} />
+          </div>
+          <details style={{ marginTop: 10 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.7 }}>raw JSON</summary>
+            <textarea
+              value={reportText}
+              onChange={(e) => onReportText(e.target.value)}
+              spellCheck={false}
+              rows={8}
+              style={{ ...mono, width: "100%", marginTop: 6 }}
+              placeholder='{ "pages": [ { "template": "summary", "columns": [] } ] }'
+            />
+          </details>
         </div>
 
         {/* actions */}

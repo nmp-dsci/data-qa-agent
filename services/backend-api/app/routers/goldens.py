@@ -222,6 +222,31 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
     )
 
 
+def _sandbox_code_from_steps(steps: list[Any]) -> str:
+    """Recover the run_analysis scripts the agent ran, in order, from the trace.
+
+    A model turn's tool_calls carry ``args`` as a JSON string; the run_analysis
+    passes are what built the report, so joining their ``code`` gives a faithful
+    starting point for the golden's sandbox stage that the curator then edits.
+    """
+    blocks: list[str] = []
+    for step in steps:
+        if not isinstance(step, dict) or step.get("kind") != "model":
+            continue
+        for call in step.get("tool_calls") or []:
+            if not isinstance(call, dict) or call.get("name") != "run_analysis":
+                continue
+            args = call.get("args")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    continue
+            if isinstance(args, dict) and args.get("code"):
+                blocks.append(str(args["code"]).strip())
+    return "\n\n# --- next run_analysis pass ---\n\n".join(blocks)
+
+
 class DraftIn(BaseModel):
     question: str
     as_user: str | None = None
@@ -231,8 +256,9 @@ class DraftIn(BaseModel):
 @router.post("/admin/eval-goldens/draft")
 async def draft(body: DraftIn, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
     """First pass: run the data-agent on the question so the human can review and
-    edit a pre-filled golden — the agent's SQL + rows + rendered report/pages. The
-    curator then corrects each stage; a run of an upstream stage re-feeds the next.
+    edit a pre-filled golden — the agent's SQL, sandbox script, extract rows, and
+    the rendered report/pages. The curator then corrects each stage; a run of an
+    upstream stage re-feeds the next. On a no-answer, `summary` explains why.
     """
     ans = await ask_agent(
         question=body.question,
@@ -241,10 +267,15 @@ async def draft(body: DraftIn, admin: CurrentUser = Depends(require_admin)) -> d
         plan="pro",
         dataset_slug=body.dataset or "nsw_sales",
     )
+    report = ans.get("report") or {}
+    queries = report.get("queries") or []
+    sql = ans.get("sql") or (queries[0].get("sql") if queries else None)
     return {
-        "sql": ans.get("sql"),
+        "sql": sql,
+        "sandbox": _sandbox_code_from_steps(ans.get("steps") or []),
         "columns": ans.get("columns", []),
         "rows": ans.get("rows", []),
         "report": ans.get("report"),
         "pages": ans.get("pages"),
+        "summary": report.get("summary"),
     }

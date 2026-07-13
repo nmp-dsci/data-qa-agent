@@ -756,10 +756,12 @@ export function prepGolden(body: {
 
 export interface DraftResult {
   sql: string | null;
+  sandbox: string;
   columns: string[];
   rows: unknown[][];
   report: Record<string, unknown> | null;
   pages: Page[] | null;
+  summary: string | null;
 }
 
 export function draftGolden(body: {

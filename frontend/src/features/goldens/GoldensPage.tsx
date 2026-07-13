@@ -252,9 +252,16 @@ export function GoldensPage() {
         as_user: draft.as_user || null,
         dataset: draft.dataset,
       });
-      const report = res.pages ? { pages: res.pages } : draft.golden_report;
-      setDraft((d) => ({ ...d, golden_sql: res.sql ?? d.golden_sql, golden_report: report }));
-      if (res.pages) setReportText(JSON.stringify({ pages: res.pages }, null, 2));
+      const hasPages = !!(res.pages && res.pages.length);
+      const report = hasPages ? { pages: res.pages } : draft.golden_report;
+      setDraft((d) => ({
+        ...d,
+        golden_sql: res.sql ?? d.golden_sql,
+        golden_sandbox: res.sandbox || d.golden_sandbox,
+        golden_report: report,
+        golden_data: { columns: res.columns, rows: res.rows },
+      }));
+      if (hasPages) setReportText(JSON.stringify({ pages: res.pages }, null, 2));
       setPrep({
         columns: res.columns,
         rows: res.rows,
@@ -264,7 +271,13 @@ export function GoldensPage() {
         skill_gaps: [],
         error: null,
       });
-      setMsg("Agent draft loaded — review and edit each stage, then save.");
+      setMsg(
+        hasPages
+          ? "Agent draft loaded — review & edit each stage, then save."
+          : res.summary
+            ? `Agent returned no chart for this question: ${res.summary.slice(0, 160)}`
+            : "Agent returned no answer — try a question the dataset covers.",
+      );
     } catch (e) {
       setMsg((e as Error).message);
     } finally {

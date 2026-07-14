@@ -64,6 +64,24 @@ function pagesFromReport(report: unknown): Page[] {
   return r && Array.isArray(r.pages) ? (r.pages as Page[]) : [];
 }
 
+/** The augmented data the sandbox produced, as a table — the chart series the
+ *  report built, i.e. how the sandbox transformed the SQL extract. */
+function sandboxTable(report: unknown): { columns: string[]; rows: unknown[][] } | null {
+  const chart = (report as { main_chart?: { data?: unknown } } | null)?.main_chart;
+  const data = chart?.data;
+  if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object" && data[0] !== null) {
+    const columns = Object.keys(data[0] as Record<string, unknown>);
+    const rows = data.map((r) => columns.map((c) => (r as Record<string, unknown>)[c]));
+    return { columns, rows };
+  }
+  return null;
+}
+
+/** Skill names referenced in the run_analysis code, in first-seen order. */
+function appliedSkills(code: string): string[] {
+  return Array.from(new Set(Array.from(code.matchAll(/skills\.(\w+)/g), (m) => m[1])));
+}
+
 const box: React.CSSProperties = {
   border: "1px solid rgba(128,128,128,0.3)",
   borderRadius: 10,
@@ -572,6 +590,21 @@ export function GoldensPage() {
               <div style={{ ...label, marginBottom: 4 }}>
                 run_analysis code · add / edit / remove skill calls
               </div>
+              {appliedSkills(draft.golden_sandbox).length > 0 && (
+                <div
+                  style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginBottom: 5 }}
+                >
+                  <span style={label}>applied to this code:</span>
+                  {appliedSkills(draft.golden_sandbox).map((s) => (
+                    <span
+                      key={s}
+                      style={{ ...btn(), cursor: "default", padding: "1px 7px", fontSize: 11.5 }}
+                    >
+                      skills.{s}
+                    </span>
+                  ))}
+                </div>
+              )}
               <textarea
                 value={draft.golden_sandbox}
                 onChange={(e) => patch("golden_sandbox", e.target.value)}
@@ -619,23 +652,74 @@ export function GoldensPage() {
                       skill gaps: {prep.skill_gaps.map((g) => g.need).join(", ")}
                     </div>
                   )}
-                  <div style={label}>output data</div>
-                  <pre
-                    style={{
-                      ...mono,
-                      overflowX: "auto",
-                      maxHeight: 220,
-                      background: "rgba(128,128,128,0.08)",
-                      padding: 8,
-                      borderRadius: 6,
-                    }}
-                  >
-                    {JSON.stringify(
-                      prep.report ?? { columns: prep.columns, rows: prep.rows.slice(0, 12) },
-                      null,
-                      2,
-                    )}
-                  </pre>
+                  <div style={label}>output data · how the sandbox augmented the extract</div>
+                  {(() => {
+                    const t = sandboxTable(prep.report);
+                    if (!t) {
+                      return (
+                        <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
+                          no tabular output — see report JSON below
+                        </div>
+                      );
+                    }
+                    return (
+                      <div style={{ overflowX: "auto", marginTop: 4 }}>
+                        <table style={{ ...mono, borderCollapse: "collapse" }}>
+                          <thead>
+                            <tr>
+                              {t.columns.map((c) => (
+                                <th
+                                  key={c}
+                                  style={{ textAlign: "left", padding: "3px 8px", opacity: 0.7 }}
+                                >
+                                  {c}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {t.rows.slice(0, 12).map((row, i) => (
+                              <tr key={i}>
+                                {row.map((cell, j) => (
+                                  <td
+                                    key={j}
+                                    style={{
+                                      padding: "3px 8px",
+                                      borderTop: "1px solid rgba(128,128,128,0.2)",
+                                    }}
+                                  >
+                                    {String(cell)}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div style={{ ...label, marginTop: 4 }}>{t.rows.length} rows</div>
+                      </div>
+                    );
+                  })()}
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.7 }}>
+                      report JSON
+                    </summary>
+                    <pre
+                      style={{
+                        ...mono,
+                        overflowX: "auto",
+                        maxHeight: 200,
+                        background: "rgba(128,128,128,0.08)",
+                        padding: 8,
+                        borderRadius: 6,
+                      }}
+                    >
+                      {JSON.stringify(
+                        prep.report ?? { columns: prep.columns, rows: prep.rows.slice(0, 12) },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </details>
                 </div>
               )}
             </div>

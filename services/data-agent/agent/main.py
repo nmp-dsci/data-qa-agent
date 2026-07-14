@@ -615,6 +615,7 @@ class AnalysisResponse(BaseModel):
     rows: list[list[Any]] = []
     row_count: int = 0
     report: dict[str, Any] | None = None
+    pages: list[dict[str, Any]] | None = None
     skills_used: list[str] = []
     skill_gaps: list[dict[str, Any]] = []
     error: str | None = None
@@ -643,11 +644,20 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
         return AnalysisResponse(columns=columns, rows=rows, row_count=row_count)
 
     outcome = run_code(body.code, df=frame, frames={"extract": frame})
+    # Compose renderable pages from the produced report so the Builder can add
+    # this sandbox run's output as a report page (the same PageLayout as chat).
+    pages: list[dict[str, Any]] = []
+    if outcome.report:
+        try:
+            pages, _ = compose_pages(outcome.report)
+        except Exception:  # noqa: BLE001 — page composition is best-effort here
+            pages = []
     return AnalysisResponse(
         columns=columns,
         rows=rows,
         row_count=row_count,
         report=outcome.report,
+        pages=pages or None,
         skills_used=outcome.skills_used,
         skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
         error=outcome.error,

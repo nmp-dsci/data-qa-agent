@@ -12,6 +12,7 @@ share the table but are managed by feedback.py.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -232,13 +233,15 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
 
 
 def _sandbox_code_from_steps(steps: list[Any]) -> str:
-    """Recover the run_analysis scripts the agent ran, in order, from the trace.
+    """Recover a *runnable* run_analysis script from the trace.
 
-    A model turn's tool_calls carry ``args`` as a JSON string; the run_analysis
-    passes are what built the report, so joining their ``code`` gives a faithful
-    starting point for the golden's sandbox stage that the curator then edits.
+    A model turn's tool_calls carry ``args`` as a JSON string. The sandbox
+    preloads ``df``/``pd``/``skills`` and blocks imports, so we take the first
+    run_analysis pass and strip any import lines — a self-contained script that
+    reproduces the answer and runs as-is, which the curator then edits. (Joining
+    every pass produced un-runnable code: pass 1 kept ``import pandas`` and the
+    passes aren't a single script.)
     """
-    blocks: list[str] = []
     for step in steps:
         if not isinstance(step, dict) or step.get("kind") != "model":
             continue
@@ -251,9 +254,15 @@ def _sandbox_code_from_steps(steps: list[Any]) -> str:
                     args = json.loads(args)
                 except json.JSONDecodeError:
                     continue
-            if isinstance(args, dict) and args.get("code"):
-                blocks.append(str(args["code"]).strip())
-    return "\n\n# --- next run_analysis pass ---\n\n".join(blocks)
+            code = args.get("code") if isinstance(args, dict) else None
+            if code:
+                lines = [
+                    ln
+                    for ln in str(code).splitlines()
+                    if not re.match(r"\s*(import |from \S+ import )", ln)
+                ]
+                return "\n".join(lines).strip()
+    return ""
 
 
 class DraftIn(BaseModel):

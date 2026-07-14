@@ -707,6 +707,7 @@ export interface PrepResult {
   rows: unknown[][];
   row_count: number;
   report: Record<string, unknown> | null;
+  pages?: Page[] | null;
   skills_used: string[];
   skill_gaps: { need: string; why: string }[];
   error: string | null;

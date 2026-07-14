@@ -56,6 +56,16 @@ export function ReportEditor({
     onChange(next);
   }
 
+  function addPage() {
+    onChange([...clone(pages), { template: "one-col", columns: [[]] }]);
+  }
+
+  function removePage(pi: number) {
+    const next = clone(pages);
+    next.splice(pi, 1);
+    onChange(next);
+  }
+
   function del(id: string) {
     const loc = locate(pages, id);
     if (!loc) return;
@@ -156,8 +166,14 @@ export function ReportEditor({
 
   if (pages.length === 0) {
     return (
-      <div style={{ opacity: 0.6, fontSize: 13 }}>
-        No pages yet — “Draft with agent” or paste report JSON below.
+      <div style={{ fontSize: 13 }}>
+        <div style={{ opacity: 0.6, marginBottom: 6 }}>
+          No pages yet — “Draft with agent”, run the sandbox and “Add output as page”, or add a blank
+          page.
+        </div>
+        <button type="button" style={{ ...ctrl, padding: "4px 10px" }} onClick={addPage}>
+          ＋ Add blank page
+        </button>
       </div>
     );
   }
@@ -178,6 +194,9 @@ export function ReportEditor({
                 </option>
               ))}
             </select>
+            <button type="button" style={ctrl} title="remove this page" onClick={() => removePage(pi)}>
+              ✕ page
+            </button>
             <span style={{ fontSize: 11, opacity: 0.5 }}>
               drag cards to reorder · ↑↓ move · ◀▶ column · ✕ remove
             </span>
@@ -187,6 +206,9 @@ export function ReportEditor({
           </div>
         </div>
       ))}
+      <button type="button" style={{ ...ctrl, padding: "4px 10px" }} onClick={addPage}>
+        ＋ Add blank page
+      </button>
     </div>
   );
 }

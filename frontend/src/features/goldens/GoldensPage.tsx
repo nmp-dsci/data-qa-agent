@@ -143,6 +143,20 @@ export function GoldensPage() {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
+  function insertSkill(name: string) {
+    // A valid, editable call — never a bare "skills.x(" that breaks the parse.
+    const line = `out = skills.${name}(df)  # edit args`;
+    patch("golden_sandbox", `${draft.golden_sandbox}${draft.golden_sandbox ? "\n" : ""}${line}`);
+  }
+
+  function removeSkill(name: string) {
+    const next = draft.golden_sandbox
+      .split("\n")
+      .filter((ln) => !ln.includes(`skills.${name}`))
+      .join("\n");
+    patch("golden_sandbox", next);
+  }
+
   function newGolden() {
     setDraft(emptyDraft(dataset));
     setReportText("");
@@ -544,12 +558,7 @@ export function GoldensPage() {
                     <div
                       key={s.name}
                       title={`${s.name}${s.signature}\n${s.doc}`}
-                      onClick={() =>
-                        patch(
-                          "golden_sandbox",
-                          `${draft.golden_sandbox}${draft.golden_sandbox ? "\n" : ""}skills.${s.name}(`,
-                        )
-                      }
+                      onClick={() => insertSkill(s.name)}
                       style={{
                         cursor: "pointer",
                         padding: "3px 6px",
@@ -598,9 +607,24 @@ export function GoldensPage() {
                   {appliedSkills(draft.golden_sandbox).map((s) => (
                     <span
                       key={s}
-                      style={{ ...btn(), cursor: "default", padding: "1px 7px", fontSize: 11.5 }}
+                      style={{
+                        ...btn(),
+                        cursor: "default",
+                        padding: "1px 6px",
+                        fontSize: 11.5,
+                        display: "inline-flex",
+                        gap: 5,
+                        alignItems: "center",
+                      }}
                     >
                       skills.{s}
+                      <span
+                        onClick={() => removeSkill(s)}
+                        title={`remove skills.${s} line(s)`}
+                        style={{ cursor: "pointer", opacity: 0.65, fontWeight: 700 }}
+                      >
+                        ×
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -642,6 +666,20 @@ export function GoldensPage() {
                       <span style={{ opacity: 0.6 }}>— none —</span>
                     )}
                   </div>
+                  {prep.pages && prep.pages.length > 0 && (
+                    <button
+                      style={{ ...btn(), marginBottom: 6 }}
+                      onClick={() => {
+                        const added = prep.pages ?? [];
+                        onEditPages([...pagesFromReport(draft.golden_report), ...added]);
+                        setMsg(
+                          `Added ${added.length} page(s) from this sandbox run — scroll to the report below.`,
+                        );
+                      }}
+                    >
+                      ＋ Add this output as report page(s)
+                    </button>
+                  )}
                   {prep.error && (
                     <div style={{ color: "#c0392b", marginBottom: 6, whiteSpace: "pre-wrap" }}>
                       error: {prep.error}
@@ -652,6 +690,32 @@ export function GoldensPage() {
                       skill gaps: {prep.skill_gaps.map((g) => g.need).join(", ")}
                     </div>
                   )}
+                  {(() => {
+                    const r = prep.report as {
+                      summary?: string;
+                      headlines?: { label?: string; value?: string }[];
+                    } | null;
+                    if (!r || (!r.summary && !(r.headlines && r.headlines.length))) return null;
+                    return (
+                      <div style={{ marginBottom: 8 }}>
+                        {r.summary && (
+                          <div style={{ fontSize: 12.5, marginBottom: 4, whiteSpace: "pre-wrap" }}>
+                            {r.summary}
+                          </div>
+                        )}
+                        {Array.isArray(r.headlines) && r.headlines.length > 0 && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {r.headlines.map((h, i) => (
+                              <span key={i} style={{ ...btn(), cursor: "default", padding: "2px 8px" }}>
+                                <strong>{h.value}</strong>{" "}
+                                <span style={{ opacity: 0.7 }}>{h.label}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div style={label}>output data · how the sandbox augmented the extract</div>
                   {(() => {
                     const t = sandboxTable(prep.report);

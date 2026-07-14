@@ -14,10 +14,12 @@ import {
   GoldenListItem,
   Page,
   PrepResult,
+  SkillInfo,
   createGolden,
   deleteGolden,
   draftGoldenStream,
   getGolden,
+  getGoldenSkills,
   listGoldens,
   prepGolden,
   updateGolden,
@@ -99,6 +101,7 @@ export function GoldensPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<string>("");
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -111,6 +114,12 @@ export function GoldensPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    getGoldenSkills()
+      .then((r) => setSkills(r.skills))
+      .catch(() => {});
+  }, []);
 
   function patch<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -311,7 +320,18 @@ export function GoldensPage() {
   }
 
   return (
-    <section style={{ padding: 18, display: "grid", gridTemplateColumns: "260px 1fr", gap: 16 }}>
+    <section
+      style={{
+        padding: 18,
+        display: "grid",
+        gridTemplateColumns: "260px 1fr",
+        gap: 16,
+        flex: 1,
+        minHeight: 0,
+        overflowY: "auto",
+        alignContent: "start",
+      }}
+    >
       {/* ---- list ---- */}
       <div style={{ ...box, alignSelf: "start" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -476,32 +496,150 @@ export function GoldensPage() {
           )}
         </div>
 
-        {/* ② Sandbox */}
+        {/* ② Sandbox — skills */}
         <div style={box}>
-          <div style={label}>② Sandbox — preparation (the plan)</div>
-          <textarea
-            value={draft.golden_sandbox}
-            onChange={(e) => patch("golden_sandbox", e.target.value)}
-            spellCheck={false}
-            rows={4}
-            style={{ ...mono, width: "100%", marginTop: 6 }}
-            placeholder="# run_analysis over `df` via skills.*  →  result = skills.build_report(...)"
-          />
-          <button
-            style={btn(busy !== "sandbox")}
-            onClick={() => void runStage(true)}
-            disabled={busy === "sandbox"}
+          <div style={label}>② Sandbox — skills (the plan)</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0,240px) 1fr",
+              gap: 10,
+              marginTop: 6,
+            }}
           >
-            {busy === "sandbox" ? "Running…" : "▶ Run prep (sandbox)"}
-          </button>
-          {prep && (prep.report || prep.skills_used.length > 0) && (
-            <div style={{ marginTop: 8, fontSize: 13 }}>
-              <div style={label}>skills used: {prep.skills_used.join(", ") || "—"}</div>
-              <pre style={{ ...mono, overflowX: "auto", maxHeight: 180 }}>
-                {JSON.stringify(prep.report, null, 2)}
-              </pre>
+            {/* available skills — click to insert; used ones are highlighted */}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...label, marginBottom: 4 }}>available skills · click to insert</div>
+              <div
+                style={{
+                  maxHeight: 280,
+                  overflowY: "auto",
+                  border: "1px solid rgba(128,128,128,0.25)",
+                  borderRadius: 8,
+                  padding: 6,
+                }}
+              >
+                {skills.length === 0 && <span style={{ opacity: 0.6, fontSize: 12 }}>loading…</span>}
+                {skills.map((s) => {
+                  const used = prep?.skills_used.includes(s.name) ?? false;
+                  return (
+                    <div
+                      key={s.name}
+                      title={`${s.name}${s.signature}\n${s.doc}`}
+                      onClick={() =>
+                        patch(
+                          "golden_sandbox",
+                          `${draft.golden_sandbox}${draft.golden_sandbox ? "\n" : ""}skills.${s.name}(`,
+                        )
+                      }
+                      style={{
+                        cursor: "pointer",
+                        padding: "3px 6px",
+                        borderRadius: 5,
+                        marginBottom: 2,
+                        background: used ? "rgba(120,200,120,0.18)" : "transparent",
+                        borderLeft: used
+                          ? "3px solid rgba(120,200,120,0.9)"
+                          : "3px solid transparent",
+                      }}
+                    >
+                      <code style={{ fontSize: 11.5 }}>{s.name}</code>
+                      <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 4 }}>{s.group}</span>
+                      {used && (
+                        <span style={{ fontSize: 10, color: "rgb(90,170,90)", marginLeft: 4 }}>
+                          ✓ used
+                        </span>
+                      )}
+                      <div
+                        style={{
+                          fontSize: 10.5,
+                          opacity: 0.6,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {s.doc}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          )}
+
+            {/* code + run + output */}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...label, marginBottom: 4 }}>
+                run_analysis code · add / edit / remove skill calls
+              </div>
+              <textarea
+                value={draft.golden_sandbox}
+                onChange={(e) => patch("golden_sandbox", e.target.value)}
+                spellCheck={false}
+                rows={6}
+                style={{ ...mono, width: "100%" }}
+                placeholder="df is your extract. e.g.  result = skills.build_report(main_chart=skills.trend_chart(skills.trend_series(df)))"
+              />
+              <button
+                style={btn(busy !== "sandbox")}
+                onClick={() => void runStage(true)}
+                disabled={busy === "sandbox"}
+              >
+                {busy === "sandbox" ? "Running…" : "▶ Run skills"}
+              </button>
+              {prep && (
+                <div style={{ marginTop: 8, fontSize: 12.5 }}>
+                  <div style={label}>skills used</div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", margin: "3px 0 6px" }}>
+                    {prep.skills_used.length ? (
+                      prep.skills_used.map((s) => (
+                        <span
+                          key={s}
+                          style={{
+                            ...btn(),
+                            cursor: "default",
+                            padding: "1px 7px",
+                            background: "rgba(120,200,120,0.18)",
+                          }}
+                        >
+                          {s}
+                        </span>
+                      ))
+                    ) : (
+                      <span style={{ opacity: 0.6 }}>— none —</span>
+                    )}
+                  </div>
+                  {prep.error && (
+                    <div style={{ color: "#c0392b", marginBottom: 6, whiteSpace: "pre-wrap" }}>
+                      error: {prep.error}
+                    </div>
+                  )}
+                  {prep.skill_gaps.length > 0 && (
+                    <div style={{ ...label, marginBottom: 4 }}>
+                      skill gaps: {prep.skill_gaps.map((g) => g.need).join(", ")}
+                    </div>
+                  )}
+                  <div style={label}>output data</div>
+                  <pre
+                    style={{
+                      ...mono,
+                      overflowX: "auto",
+                      maxHeight: 220,
+                      background: "rgba(128,128,128,0.08)",
+                      padding: 8,
+                      borderRadius: 6,
+                    }}
+                  >
+                    {JSON.stringify(
+                      prep.report ?? { columns: prep.columns, rows: prep.rows.slice(0, 12) },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* ③ Report */}

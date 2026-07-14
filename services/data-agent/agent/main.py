@@ -654,6 +654,56 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
     )
 
 
+@app.get("/agent/skills")
+async def agent_skills() -> dict[str, Any]:
+    """The sandbox skill catalog (s14 Golden Examples). Lists the analysis/chart/
+    report skills a run_analysis script can call as ``skills.<name>`` — name,
+    group, one-line doc, and signature — so the Builder can show what's available
+    and which a run used, instead of the hard-to-read plan text."""
+    import inspect
+
+    from . import skills as skill_lib
+
+    mechanics = {"skill_gap", "note_inline_math", "reset", "used", "gaps"}
+    groups = {
+        "analysis": {
+            "trend_series",
+            "rolling_average",
+            "growth_rate",
+            "latest_value",
+            "top_growth",
+            "gross_yield",
+            "driver_analysis",
+        },
+        "chart": {
+            "trend_chart",
+            "comparison_chart",
+            "dual_axis_chart",
+            "distribution_chart",
+            "profile_chart",
+        },
+        "report": {"build_report", "build_insights", "make_insight", "related_metrics"},
+    }
+
+    def group_of(name: str) -> str:
+        return next((g for g, names in groups.items() if name in names), "other")
+
+    out: list[dict[str, Any]] = []
+    for name in skill_lib.__all__:
+        if name in mechanics:
+            continue
+        fn = getattr(skill_lib, name, None)
+        if not callable(fn):
+            continue
+        doc = (inspect.getdoc(fn) or "").split("\n")[0]
+        try:
+            sig = str(inspect.signature(fn))
+        except (TypeError, ValueError):
+            sig = "()"
+        out.append({"name": name, "group": group_of(name), "doc": doc, "signature": sig})
+    return {"skills": out}
+
+
 def _enrich_catalog_with_known_docs(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Fill descriptions for dbt-known tables after pg_catalog introspection."""
     known = {(t["schema"], t["table"]): t for t in get_catalog(role="admin")}

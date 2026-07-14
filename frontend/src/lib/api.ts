@@ -731,6 +731,17 @@ export function getGolden(id: string): Promise<GoldenFull> {
   return adminGet<GoldenFull>(`/admin/eval-goldens/${id}`);
 }
 
+export interface SkillInfo {
+  name: string;
+  group: string;
+  doc: string;
+  signature: string;
+}
+
+export function getGoldenSkills(): Promise<{ skills: SkillInfo[] }> {
+  return adminGet<{ skills: SkillInfo[] }>("/admin/eval-goldens/skills");
+}
+
 export function createGolden(body: GoldenInput): Promise<{ status: string; id: string }> {
   return adminPost<{ status: string; id: string }>("/admin/eval-goldens", body);
 }

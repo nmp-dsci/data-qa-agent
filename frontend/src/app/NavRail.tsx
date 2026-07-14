@@ -21,7 +21,7 @@ export type View = "chat" | "sql" | "goldens" | "admin" | "settings";
 const ITEMS: { view: View; label: string; icon: () => ReactElement; adminOnly?: boolean }[] = [
   { view: "chat", label: "Chat", icon: IconChat },
   { view: "sql", label: "SQL Editor", icon: IconSql },
-  { view: "goldens", label: "Golden Builder", icon: IconGolden, adminOnly: true },
+  { view: "goldens", label: "Golden Examples", icon: IconGolden, adminOnly: true },
   { view: "admin", label: "Admin", icon: IconAdmin, adminOnly: true },
   { view: "settings", label: "Settings", icon: IconSettings },
 ];

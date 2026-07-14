@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..agent_client import ask_agent, ask_agent_stream, prep_golden
+from ..agent_client import ask_agent, ask_agent_stream, fetch_skills, prep_golden
 from ..auth import CurrentUser, require_admin
 from ..db import jsonable, rls_connection
 
@@ -100,6 +100,13 @@ async def list_goldens(
             .all()
         )
     return [{k: jsonable(v) for k, v in r.items()} for r in rows]
+
+
+# Declared before /{golden_id} so "skills" isn't captured as a golden id.
+@router.get("/admin/eval-goldens/skills")
+async def skills(admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
+    """Sandbox skill catalog for the Golden Examples tab (available skills)."""
+    return await fetch_skills()
 
 
 @router.get("/admin/eval-goldens/{golden_id}")

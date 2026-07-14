@@ -130,3 +130,11 @@ async def fetch_catalog(*, role: str) -> dict[str, Any]:
         resp = await client.get(f"{settings.agent_url}/agent/schema", params={"role": role})
         resp.raise_for_status()
         return cast(dict[str, Any], resp.json())
+
+
+async def fetch_skills() -> dict[str, Any]:
+    """Fetch the sandbox skill catalog (s14 Golden Examples)."""
+    async with httpx.AsyncClient(timeout=15.0, headers=_headers()) as client:
+        resp = await client.get(f"{settings.agent_url}/agent/skills")
+        resp.raise_for_status()
+        return cast(dict[str, Any], resp.json())

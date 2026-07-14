@@ -138,3 +138,14 @@ async def fetch_skills() -> dict[str, Any]:
         resp = await client.get(f"{settings.agent_url}/agent/skills")
         resp.raise_for_status()
         return cast(dict[str, Any], resp.json())
+
+
+async def scaffold_skills(
+    *, question: str, columns: list[str], skills: list[str]
+) -> dict[str, Any]:
+    """Regenerate run_analysis code from selected skills, with reasoning (s14)."""
+    payload = {"question": question, "columns": columns, "skills": skills}
+    async with httpx.AsyncClient(timeout=90.0, headers=_headers()) as client:
+        resp = await client.post(f"{settings.agent_url}/agent/skills/scaffold", json=payload)
+        resp.raise_for_status()
+        return cast(dict[str, Any], resp.json())

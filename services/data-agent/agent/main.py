@@ -714,6 +714,31 @@ async def agent_skills() -> dict[str, Any]:
     return {"skills": out}
 
 
+class ScaffoldRequest(BaseModel):
+    question: str = ""
+    columns: list[str] = []
+    skills: list[str] = []
+
+
+class ScaffoldResponse(BaseModel):
+    code: str = ""
+    reasoning: list[dict[str, Any]] = []
+    engine: str = "stub"
+    error: str | None = None
+
+
+@app.post("/agent/skills/scaffold", response_model=ScaffoldResponse)
+async def agent_skills_scaffold(body: ScaffoldRequest) -> ScaffoldResponse:
+    """Regenerate run_analysis code from a chosen set of skills, with a reason per
+    skill (s14 Golden Examples). The model writes the code using exactly those skills."""
+    from .skill_codegen import scaffold_from_skills
+
+    out = await scaffold_from_skills(
+        question=body.question, columns=body.columns, skills=body.skills
+    )
+    return ScaffoldResponse(**out)
+
+
 def _enrich_catalog_with_known_docs(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Fill descriptions for dbt-known tables after pg_catalog introspection."""
     known = {(t["schema"], t["table"]): t for t in get_catalog(role="admin")}

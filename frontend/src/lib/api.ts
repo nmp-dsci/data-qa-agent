@@ -743,6 +743,21 @@ export function getGoldenSkills(): Promise<{ skills: SkillInfo[] }> {
   return adminGet<{ skills: SkillInfo[] }>("/admin/eval-goldens/skills");
 }
 
+export interface ScaffoldResult {
+  code: string;
+  reasoning: { skill: string; why: string }[];
+  engine: string;
+  error: string | null;
+}
+
+export function scaffoldGolden(body: {
+  question: string;
+  columns: string[];
+  skills: string[];
+}): Promise<ScaffoldResult> {
+  return adminPost<ScaffoldResult>("/admin/eval-goldens/scaffold", body);
+}
+
 export function createGolden(body: GoldenInput): Promise<{ status: string; id: string }> {
   return adminPost<{ status: string; id: string }>("/admin/eval-goldens", body);
 }

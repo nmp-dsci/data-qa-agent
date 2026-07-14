@@ -21,7 +21,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..agent_client import ask_agent, ask_agent_stream, fetch_skills, prep_golden
+from ..agent_client import ask_agent, ask_agent_stream, fetch_skills, prep_golden, scaffold_skills
 from ..auth import CurrentUser, require_admin
 from ..db import jsonable, rls_connection
 
@@ -269,6 +269,19 @@ class DraftIn(BaseModel):
     question: str
     as_user: str | None = None
     dataset: str = "nsw_sales"
+
+
+class ScaffoldIn(BaseModel):
+    question: str = ""
+    columns: list[str] = []
+    skills: list[str] = []
+
+
+@router.post("/admin/eval-goldens/scaffold")
+async def scaffold(body: ScaffoldIn, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
+    """Regenerate run_analysis code from a selected set of skills, with per-skill
+    reasoning (Golden Examples). The agent writes code using exactly those skills."""
+    return await scaffold_skills(question=body.question, columns=body.columns, skills=body.skills)
 
 
 @router.post("/admin/eval-goldens/draft")

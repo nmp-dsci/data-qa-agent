@@ -22,6 +22,7 @@ import {
   getGoldenSkills,
   listGoldens,
   prepGolden,
+  scaffoldGolden,
   updateGolden,
 } from "../../lib/api";
 import { ReportEditor } from "./ReportEditor";
@@ -120,6 +121,8 @@ export function GoldensPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<string>("");
   const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
+  const [reasoning, setReasoning] = useState<{ skill: string; why: string }[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -155,6 +158,43 @@ export function GoldensPage() {
       .filter((ln) => !ln.includes(`skills.${name}`))
       .join("\n");
     patch("golden_sandbox", next);
+  }
+
+  function toggleSkill(name: string) {
+    setSelectedSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  async function generateFromSkills() {
+    const picked = Array.from(selectedSkills);
+    if (picked.length === 0) {
+      setMsg("Tick some skills first, then generate.");
+      return;
+    }
+    setBusy("scaffold");
+    setMsg(null);
+    try {
+      const res = await scaffoldGolden({
+        question: draft.question,
+        columns: prep?.columns ?? [],
+        skills: picked,
+      });
+      if (res.code) patch("golden_sandbox", res.code);
+      setReasoning(res.reasoning ?? []);
+      setMsg(
+        res.error
+          ? `Generated with a note: ${res.error}`
+          : `Regenerated run_analysis from ${picked.length} skill(s) — review & Run.`,
+      );
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
   }
 
   function newGolden() {
@@ -541,7 +581,25 @@ export function GoldensPage() {
           >
             {/* available skills — click to insert; used ones are highlighted */}
             <div style={{ minWidth: 0 }}>
-              <div style={{ ...label, marginBottom: 4 }}>available skills · click to insert</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 4,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={label}>skills · ☑ select then generate · name inserts</span>
+                <button
+                  style={{ ...btn(busy !== "scaffold"), padding: "1px 8px", fontSize: 11 }}
+                  onClick={() => void generateFromSkills()}
+                  disabled={busy === "scaffold"}
+                  title="the agent regenerates run_analysis code using exactly the selected skills"
+                >
+                  {busy === "scaffold" ? "generating…" : `⟳ generate from ${selectedSkills.size}`}
+                </button>
+              </div>
               <div
                 style={{
                   maxHeight: 280,
@@ -554,13 +612,15 @@ export function GoldensPage() {
                 {skills.length === 0 && <span style={{ opacity: 0.6, fontSize: 12 }}>loading…</span>}
                 {skills.map((s) => {
                   const used = prep?.skills_used.includes(s.name) ?? false;
+                  const picked = selectedSkills.has(s.name);
+                  const why = reasoning.find((r) => r.skill === s.name)?.why;
                   return (
                     <div
                       key={s.name}
-                      title={`${s.name}${s.signature}\n${s.doc}`}
-                      onClick={() => insertSkill(s.name)}
                       style={{
-                        cursor: "pointer",
+                        display: "flex",
+                        gap: 6,
+                        alignItems: "flex-start",
                         padding: "3px 6px",
                         borderRadius: 5,
                         marginBottom: 2,
@@ -570,23 +630,38 @@ export function GoldensPage() {
                           : "3px solid transparent",
                       }}
                     >
-                      <code style={{ fontSize: 11.5 }}>{s.name}</code>
-                      <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 4 }}>{s.group}</span>
-                      {used && (
-                        <span style={{ fontSize: 10, color: "rgb(90,170,90)", marginLeft: 4 }}>
-                          ✓ used
-                        </span>
-                      )}
+                      <input
+                        type="checkbox"
+                        checked={picked}
+                        onChange={() => toggleSkill(s.name)}
+                        title="select for code generation"
+                        style={{ marginTop: 2 }}
+                      />
                       <div
-                        style={{
-                          fontSize: 10.5,
-                          opacity: 0.6,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
+                        style={{ minWidth: 0, flex: 1, cursor: "pointer" }}
+                        title={`${s.name}${s.signature}\nclick to insert`}
+                        onClick={() => insertSkill(s.name)}
                       >
-                        {s.doc}
+                        <code style={{ fontSize: 11.5 }}>{s.name}</code>
+                        <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 4 }}>{s.group}</span>
+                        {used && (
+                          <span style={{ fontSize: 10, color: "rgb(90,170,90)", marginLeft: 4 }}>
+                            ✓ used
+                          </span>
+                        )}
+                        <div
+                          style={{
+                            fontSize: 10.5,
+                            opacity: why ? 0.85 : 0.6,
+                            color: why ? "rgb(120,160,255)" : undefined,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                          title={why || s.doc}
+                        >
+                          {why ? `↳ why: ${why}` : s.doc}
+                        </div>
                       </div>
                     </div>
                   );

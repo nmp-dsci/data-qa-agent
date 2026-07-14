@@ -867,12 +867,28 @@ export function GoldensPage() {
 
         {/* ③ Report */}
         <div style={box}>
-          <div style={label}>③ Report — presentation (interactive)</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+            <div style={label}>③ Report — presentation (interactive)</div>
+            {(() => {
+              const pgs = pagesFromReport(draft.golden_report);
+              const objs = pgs.reduce(
+                (n, p) => n + (p.columns?.reduce((m, c) => m + c.length, 0) ?? 0),
+                0,
+              );
+              return (
+                <span style={{ ...label, opacity: 0.6 }}>
+                  {pgs.length} page(s) · {objs} object(s) · edits update golden_report JSON live
+                </span>
+              );
+            })()}
+          </div>
           <div style={{ marginTop: 8 }}>
             <ReportEditor pages={pagesFromReport(draft.golden_report)} onChange={onEditPages} />
           </div>
           <details style={{ marginTop: 10 }}>
-            <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.7 }}>raw JSON</summary>
+            <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.7 }}>
+              raw golden_report JSON — what gets saved (updates live as you edit above)
+            </summary>
             <textarea
               value={reportText}
               onChange={(e) => onReportText(e.target.value)}

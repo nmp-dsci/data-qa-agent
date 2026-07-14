@@ -385,7 +385,7 @@ async def answer_with_sandbox(
         # s10: the result honours the user's plan too — pages above it are
         # locked teasers on the wire, never delivered content.
         allowed_kinds = set(planned_kinds(plan))
-        pages = [p for p in pages if p["template"] in allowed_kinds]
+        pages = [p for p in pages if p.get("kind", p["template"]) in allowed_kinds]
         if pages:
             report["pages"] = pages
         deps.steps.extend(page_steps)
@@ -393,8 +393,9 @@ async def answer_with_sandbox(
         # built everything in one pass before the emit hooks fired), then tell
         # the client which planned pages won't arrive so its ghosts clear.
         for p in pages:
-            if p["template"] not in deps.pages_emitted:
-                deps.emit_page(p["template"], p)
+            kind = p.get("kind", p["template"])
+            if kind not in deps.pages_emitted:
+                deps.emit_page(kind, p)
         deps.emit_skipped_pages()
 
         trace = _merge_decision_log(_build_trace(messages), deps.steps)

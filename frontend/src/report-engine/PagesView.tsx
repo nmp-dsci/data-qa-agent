@@ -100,6 +100,7 @@ export function PagesView({
           <p className="report-sec">
             Page {i + 1} · {templateFor(page).label}
           </p>
+          {page.headline && <p className="page-headline">{page.headline}</p>}
           <PageLayout
             page={page}
             renderObject={(o) => (

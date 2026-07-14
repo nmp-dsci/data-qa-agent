@@ -157,32 +157,6 @@ export function templateDemoPage(name: string): Page | null {
   const template = name as TemplateId;
   if (!(template in TEMPLATES)) return null;
   const pagesByTemplate: Record<TemplateId, Page> = {
-    summary: {
-      template: "summary",
-      columns: [
-        [
-          OBJ.kpi(),
-          OBJ.note("2-bed units lead at +6.1% YoY; supply near the station stays tight."),
-        ],
-        [OBJ.trend("fill")],
-      ],
-    },
-    insights: {
-      template: "insights",
-      columns: [
-        [
-          OBJ.kpi("demo:t1", "1 bd", "$520/wk", 0.036),
-          OBJ.kpi("demo:t2", "2 bd", "$671/wk", 0.061),
-          OBJ.kpi("demo:t3", "3 bd", "$820/wk", 0.073),
-          OBJ.insight(
-            "demo:note",
-            "Drivers by bedroom band",
-            "3 bd +7.3% > 2 bd +6.1% > 1 bd +3.6% — larger dwellings are appreciating fastest.",
-          ),
-        ],
-        [OBJ.breakdown("fill")],
-      ],
-    },
     "one-col": {
       template: "one-col",
       columns: [[OBJ.kpi(), OBJ.trend("md"), INSIGHT_STEADY(), INSIGHT_GAP()]],

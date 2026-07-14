@@ -121,11 +121,16 @@ export interface PageObject {
   explains?: string | null;
 }
 
-export type TemplateId = "summary" | "insights" | "one-col" | "two-col" | "three-col";
+export type TemplateId = "one-col" | "two-col" | "three-col";
 
 export interface Page {
   template: TemplateId;
   columns: PageObject[][];
+  /** Optional page-level headline that summarises what the page shows. */
+  headline?: string | null;
+  /** Optional per-column relative widths (fr weights) overriding the template's
+   *  default tracks; one entry per column, left→right. */
+  widths?: number[] | null;
 }
 
 export interface AskResult {
@@ -779,6 +784,32 @@ export function prepGolden(body: {
   as_user?: string | null;
 }): Promise<PrepResult> {
   return adminPost<PrepResult>("/admin/eval-goldens/prep", body);
+}
+
+// Author one report object from a plain-English instruction: the agent rewrites
+// run_analysis to build the described chart, runs it in the sandbox, and returns
+// the lifted object (type + data) plus the refreshed sandbox report + code.
+export interface AuthorObjectResult {
+  code: string;
+  object: { type: PageObjectType; data: Record<string, unknown> } | null;
+  report: Record<string, unknown> | null;
+  columns: string[];
+  rows: unknown[][];
+  reasoning: { skill: string; why: string }[];
+  engine: string;
+  skills_used: string[];
+  skill_gaps: { need: string; why: string }[];
+  error: string | null;
+}
+
+export function authorObject(body: {
+  sql: string;
+  code?: string;
+  object_type: string;
+  instruction: string;
+  as_user?: string | null;
+}): Promise<AuthorObjectResult> {
+  return adminPost<AuthorObjectResult>("/admin/eval-goldens/object", body);
 }
 
 export interface DraftResult {

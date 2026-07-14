@@ -91,6 +91,33 @@ async def prep_golden(*, sql: str, code: str, user_id: str, role: str = "user") 
         return cast(dict[str, Any], resp.json())
 
 
+async def author_object(
+    *,
+    sql: str,
+    code: str,
+    object_type: str,
+    instruction: str,
+    user_id: str,
+    role: str = "user",
+) -> dict[str, Any]:
+    """Golden authoring (s14): author ONE report object from a plain-English
+    instruction — the data-agent rewrites run_analysis to build the described
+    chart, runs it in the sandbox, and returns the lifted object + refreshed
+    report so the Builder can drop real data into the presentation.
+    """
+    payload = {
+        "sql": sql,
+        "code": code,
+        "object_type": object_type,
+        "instruction": instruction,
+        "user": {"id": user_id, "role": role},
+    }
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
+        resp = await client.post(f"{settings.agent_url}/agent/analysis/object", json=payload)
+        resp.raise_for_status()
+        return cast(dict[str, Any], resp.json())
+
+
 async def run_sql_on_agent(*, sql: str, user_id: str, role: str) -> dict[str, Any]:
     """Execute raw editor SQL via the data-agent's read-only, RLS-scoped executor."""
     payload = {"sql": sql, "user": {"id": user_id, "role": role}}

@@ -13,8 +13,10 @@ import {
   GoldenInput,
   GoldenListItem,
   Page,
+  PageObject,
   PrepResult,
   SkillInfo,
+  authorObject,
   createGolden,
   deleteGolden,
   draftGoldenStream,
@@ -25,7 +27,7 @@ import {
   scaffoldGolden,
   updateGolden,
 } from "../../lib/api";
-import { ReportEditor } from "./ReportEditor";
+import { InstructResult, ReportEditor } from "./ReportEditor";
 
 const DATASETS = ["nsw_sales", "nsw_rent"];
 const TIERS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7"];
@@ -83,6 +85,122 @@ function appliedSkills(code: string): string[] {
   return Array.from(new Set(Array.from(code.matchAll(/skills\.(\w+)/g), (m) => m[1])));
 }
 
+/** Split on a separator at paren depth 0 only (so commas inside func(a, b) or a
+ *  subquery stay put) — used to lay the SELECT list out one column per line. */
+function splitTopLevel(s: string, sep = ","): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let cur = "";
+  for (const ch of s) {
+    if (quote) {
+      cur += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (ch === sep && depth === 0) {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur.trim()) out.push(cur);
+  return out;
+}
+
+/** Pretty-print SQL onto multiple lines: a newline before each major clause and
+ *  one SELECT column per line. Purely cosmetic (whitespace + keyword case) — the
+ *  text still runs exactly the same, so the extract it produces is unchanged. */
+// Clause keywords that start a new line — compound/qualified forms first so the
+// longest match wins (e.g. "LEFT JOIN" beats "JOIN", "UNION ALL" beats "UNION").
+const SQL_MAJORS = [
+  "LEFT OUTER JOIN",
+  "RIGHT OUTER JOIN",
+  "FULL OUTER JOIN",
+  "LEFT JOIN",
+  "RIGHT JOIN",
+  "FULL JOIN",
+  "INNER JOIN",
+  "CROSS JOIN",
+  "JOIN",
+  "WITH",
+  "SELECT",
+  "FROM",
+  "WHERE",
+  "GROUP BY",
+  "ORDER BY",
+  "HAVING",
+  "LIMIT",
+  "OFFSET",
+  "UNION ALL",
+  "UNION",
+  "ON",
+];
+
+function formatSql(raw: string): string {
+  const sql = (raw ?? "").trim();
+  if (!sql) return raw;
+  const s = sql.replace(/\s+/g, " ");
+  const upper = s.toUpperCase();
+  // Break before each major clause — but ONLY at paren depth 0, so a keyword
+  // inside a function or subquery (e.g. the FROM in EXTRACT(YEAR FROM month))
+  // never triggers a newline.
+  let out = "";
+  let depth = 0;
+  let quote: string | null = null;
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (quote) {
+      out += ch;
+      if (ch === quote) quote = null;
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (ch !== "(" && ch !== ")" && depth === 0) {
+      const kw = SQL_MAJORS.find((k) => {
+        if (!upper.startsWith(k, i)) return false;
+        const before = i === 0 ? " " : s[i - 1];
+        const after = s[i + k.length] ?? " ";
+        return /\s/.test(before) && /[\s(]/.test(after);
+      });
+      if (kw) {
+        out = out.replace(/ $/, "");
+        if (out) out += "\n";
+        out += upper.slice(i, i + kw.length);
+        i += kw.length;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  // One SELECT column per line (paren-aware) for the first SELECT clause —
+  // whether it leads the string or follows a newline.
+  out = out.replace(
+    /(^|\n)SELECT (DISTINCT )?([^\n]+)/i,
+    (_m, lead: string, distinct: string | undefined, cols: string) => {
+      const head = distinct ? `SELECT ${distinct.trim()}` : "SELECT";
+      const parts = splitTopLevel(cols).map((c) => c.trim());
+      if (parts.length < 2) return `${lead}${head} ${cols.trim()}`;
+      return `${lead}${head}\n  ${parts.join(",\n  ")}`;
+    },
+  );
+  return out.replace(/\n{2,}/g, "\n").trim();
+}
+
 const box: React.CSSProperties = {
   border: "1px solid rgba(128,128,128,0.3)",
   borderRadius: 10,
@@ -111,6 +229,49 @@ function btn(active = true): React.CSSProperties {
   };
 }
 
+/** A compact scrollable data table — reused for the SQL extract, the sandbox
+ *  input (df) and the augmented output, so all three read identically. */
+function DataTable({
+  columns,
+  rows,
+  max = 12,
+}: {
+  columns: string[];
+  rows: unknown[][];
+  max?: number;
+}) {
+  return (
+    <div style={{ overflowX: "auto", marginTop: 4 }}>
+      <table style={{ ...mono, borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {columns.map((c) => (
+              <th key={c} style={{ textAlign: "left", padding: "3px 8px", opacity: 0.7 }}>
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, max).map((row, i) => (
+            <tr key={i}>
+              {row.map((cell, j) => (
+                <td key={j} style={{ padding: "3px 8px", borderTop: "1px solid rgba(128,128,128,0.2)" }}>
+                  {String(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ ...label, marginTop: 4 }}>
+        {rows.length} row{rows.length === 1 ? "" : "s"}
+        {rows.length > max ? ` · showing ${max}` : ""}
+      </div>
+    </div>
+  );
+}
+
 export function GoldensPage() {
   const [dataset, setDataset] = useState<string>("nsw_sales");
   const [list, setList] = useState<GoldenListItem[]>([]);
@@ -123,6 +284,33 @@ export function GoldensPage() {
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
   const [reasoning, setReasoning] = useState<{ skill: string; why: string }[]>([]);
+  // The interactive report DRAFT — edits stay here until the curator Submits,
+  // which commits them to golden_report + reconciles golden_data (Goal C).
+  const [pendingPages, setPendingPages] = useState<Page[]>([]);
+
+  /** Preselect the skills a piece of run_analysis code already applies (plus any
+   *  a run reported), so the skills panel reflects what's in the code. */
+  function seedSelectedSkills(code: string, used: string[] = []) {
+    setSelectedSkills(new Set([...appliedSkills(code), ...used]));
+  }
+
+  // Drive both the visual editor and the raw-JSON view from the draft pages.
+  function setDraftPages(next: Page[]) {
+    setPendingPages(next);
+    setReportText(next.length ? JSON.stringify({ pages: next }, null, 2) : "");
+  }
+
+  // The sandbox output JSON to store as golden_data — the latest good run's
+  // report (or its extract rows), else whatever is already saved.
+  function reconciledData(): unknown {
+    if (prep && !prep.error) {
+      return prep.report ?? { columns: prep.columns, rows: prep.rows };
+    }
+    return draft.golden_data ?? null;
+  }
+
+  const committedPages = pagesFromReport(draft.golden_report);
+  const dirtyPresentation = JSON.stringify(pendingPages) !== JSON.stringify(committedPages);
 
   const refresh = useCallback(async () => {
     try {
@@ -200,6 +388,8 @@ export function GoldensPage() {
   function newGolden() {
     setDraft(emptyDraft(dataset));
     setReportText("");
+    setPendingPages([]);
+    setSelectedSkills(new Set());
     setPrep(null);
     setMsg(null);
   }
@@ -210,6 +400,7 @@ export function GoldensPage() {
     setPrep(null);
     try {
       const g = await getGolden(id);
+      const sandbox = g.golden_sandbox ?? "";
       setDraft({
         id: g.id,
         question: g.question,
@@ -219,12 +410,13 @@ export function GoldensPage() {
         tags: g.tags ?? [],
         holdout: g.holdout,
         authoring_status: g.authoring_status,
-        golden_sql: g.golden_sql ?? "",
-        golden_sandbox: g.golden_sandbox ?? "",
+        golden_sql: formatSql(g.golden_sql ?? ""),
+        golden_sandbox: sandbox,
         golden_data: g.golden_data ?? null,
         golden_report: g.golden_report ?? null,
       });
-      setReportText(g.golden_report ? JSON.stringify(g.golden_report, null, 2) : "");
+      setDraftPages(pagesFromReport(g.golden_report));
+      seedSelectedSkills(sandbox);
     } catch (e) {
       setMsg((e as Error).message);
     } finally {
@@ -251,6 +443,7 @@ export function GoldensPage() {
       } else if (withCode && res.report) {
         // Sandbox metrics become the golden_data that feeds the report stage.
         patch("golden_data", res.report);
+        seedSelectedSkills(draft.golden_sandbox, res.skills_used);
       } else if (!withCode) {
         patch("golden_data", { columns: res.columns, rows: res.rows });
       }
@@ -261,20 +454,56 @@ export function GoldensPage() {
     }
   }
 
+  // Author one report object from a plain-English instruction: the agent rewrites
+  // run_analysis to build the described chart, reruns the sandbox, and we drop the
+  // lifted object's data into the presentation while refreshing the sandbox code
+  // (golden_sandbox) + output JSON (golden_data). Resolves with the object's new
+  // type+data for ReportEditor to apply, or an error string.
+  async function instructObject(o: PageObject, instruction: string): Promise<InstructResult> {
+    if (!draft.golden_sql.trim()) return { error: "Add the ① SQL extract first." };
+    try {
+      const res = await authorObject({
+        sql: draft.golden_sql,
+        code: draft.golden_sandbox,
+        object_type: o.type,
+        instruction,
+        as_user: draft.as_user || null,
+      });
+      if (res.code) patch("golden_sandbox", res.code);
+      if (res.report) patch("golden_data", res.report);
+      // Reflect the run in the ② Sandbox panel too (output table + skills used).
+      setPrep({
+        columns: res.columns,
+        rows: res.rows,
+        row_count: res.rows.length,
+        report: res.report,
+        skills_used: res.skills_used,
+        skill_gaps: res.skill_gaps,
+        error: res.error,
+      });
+      if (!res.object) {
+        return {
+          error:
+            res.error ||
+            "The run produced no chart — describe the measures/dimension more explicitly.",
+        };
+      }
+      setMsg(`Object authored via ${res.engine} — sandbox code + output JSON updated.`);
+      return { type: res.object.type, data: res.object.data };
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+  }
+
   async function save() {
     if (!draft.question.trim()) {
       setMsg("A question is required.");
       return;
     }
-    let report: unknown = null;
-    if (reportText.trim()) {
-      try {
-        report = JSON.parse(reportText);
-      } catch {
-        setMsg("The report is not valid JSON — fix it before saving.");
-        return;
-      }
-    }
+    // Saving commits the interactive draft: the presentation on screen is what
+    // persists, and golden_data is reconciled to the latest sandbox output.
+    const report: unknown = pendingPages.length ? { pages: pendingPages } : null;
+    const data = reconciledData();
     setBusy("save");
     setMsg(null);
     const body: GoldenInput = {
@@ -287,9 +516,11 @@ export function GoldensPage() {
       authoring_status: draft.authoring_status,
       golden_sql: draft.golden_sql || null,
       golden_sandbox: draft.golden_sandbox || null,
-      golden_data: draft.golden_data ?? null,
+      golden_data: data ?? null,
       golden_report: report,
     };
+    patch("golden_report", report);
+    patch("golden_data", data ?? null);
     try {
       if (draft.id) {
         await updateGolden(draft.id, body);
@@ -340,14 +571,16 @@ export function GoldensPage() {
       );
       const hasPages = !!(res.pages && res.pages.length);
       const report = hasPages ? { pages: res.pages } : draft.golden_report;
+      const sandbox = res.sandbox || draft.golden_sandbox;
       setDraft((d) => ({
         ...d,
-        golden_sql: res.sql ?? d.golden_sql,
-        golden_sandbox: res.sandbox || d.golden_sandbox,
+        golden_sql: formatSql(res.sql ?? d.golden_sql),
+        golden_sandbox: sandbox,
         golden_report: report,
         golden_data: { columns: res.columns, rows: res.rows },
       }));
-      if (hasPages) setReportText(JSON.stringify({ pages: res.pages }, null, 2));
+      setDraftPages(hasPages ? (res.pages as Page[]) : pendingPages);
+      seedSelectedSkills(sandbox);
       setPrep({
         columns: res.columns,
         rows: res.rows,
@@ -371,24 +604,35 @@ export function GoldensPage() {
     }
   }
 
-  // Visual edits from ReportEditor and the raw JSON box both drive golden_report.
-  function onEditPages(next: Page[]) {
-    const report = { pages: next };
-    patch("golden_report", report);
-    setReportText(JSON.stringify(report, null, 2));
-  }
+  // Visual edits + the raw-JSON box both drive the DRAFT (pendingPages). Nothing
+  // reaches golden_report until submitPresentation() (or Save) commits it.
   function onReportText(t: string) {
     setReportText(t);
     if (!t.trim()) {
-      patch("golden_report", null);
+      setPendingPages([]);
       return;
     }
     try {
-      patch("golden_report", JSON.parse(t));
+      setPendingPages(pagesFromReport(JSON.parse(t)));
       setMsg(null);
     } catch {
-      // keep the last valid pages on screen; save() surfaces the parse error
+      // keep the last valid pages on screen; Submit/Save surfaces the parse error
     }
+  }
+
+  // Submit: commit the draft presentation to golden_report AND reconcile the
+  // sandbox output JSON (golden_data), so the saved golden is self-consistent.
+  function submitPresentation() {
+    const report = pendingPages.length ? { pages: pendingPages } : null;
+    const data = reconciledData();
+    patch("golden_report", report);
+    patch("golden_data", data ?? null);
+    setReportText(report ? JSON.stringify(report, null, 2) : "");
+    setMsg(
+      `Presentation submitted — golden_report (${pendingPages.length} page${
+        pendingPages.length === 1 ? "" : "s"
+      }) + sandbox output refreshed. Save to persist.`,
+    );
   }
 
   return (
@@ -532,38 +776,28 @@ export function GoldensPage() {
             value={draft.golden_sql}
             onChange={(e) => patch("golden_sql", e.target.value)}
             spellCheck={false}
-            rows={5}
-            style={{ ...mono, width: "100%", marginTop: 6 }}
-            placeholder="SELECT suburb, ... FROM mart_rent_yield WHERE ..."
+            rows={Math.min(16, Math.max(5, draft.golden_sql.split("\n").length + 1))}
+            style={{ ...mono, width: "100%", marginTop: 6, whiteSpace: "pre", lineHeight: 1.5 }}
+            placeholder={"SELECT suburb, ...\nFROM mart_rent_yield\nWHERE ..."}
           />
-          <button style={btn(busy !== "sql")} onClick={() => void runStage(false)} disabled={busy === "sql"}>
-            {busy === "sql" ? "Running…" : "▶ Run SQL"}
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button style={btn(busy !== "sql")} onClick={() => void runStage(false)} disabled={busy === "sql"}>
+              {busy === "sql" ? "Running…" : "▶ Run SQL"}
+            </button>
+            <button
+              type="button"
+              style={btn(!!draft.golden_sql.trim())}
+              onClick={() => patch("golden_sql", formatSql(draft.golden_sql))}
+              disabled={!draft.golden_sql.trim()}
+              title="pretty-print onto multiple lines (does not change what runs)"
+            >
+              ⋯ Format
+            </button>
+          </div>
           {prep && !prep.error && prep.columns.length > 0 && (
-            <div style={{ overflowX: "auto", marginTop: 8 }}>
-              <table style={{ ...mono, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {prep.columns.map((c) => (
-                      <th key={c} style={{ textAlign: "left", padding: "3px 8px", opacity: 0.7 }}>
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {prep.rows.slice(0, 10).map((row, i) => (
-                    <tr key={i}>
-                      {row.map((cell, j) => (
-                        <td key={j} style={{ padding: "3px 8px", borderTop: "1px solid rgba(128,128,128,0.2)" }}>
-                          {String(cell)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div style={{ ...label, marginTop: 4 }}>{prep.row_count} rows</div>
+            <div style={{ marginTop: 8 }}>
+              <div style={label}>extract — the exact rows the ② sandbox receives as df</div>
+              <DataTable columns={prep.columns} rows={prep.rows} max={10} />
             </div>
           )}
         </div>
@@ -672,7 +906,28 @@ export function GoldensPage() {
             {/* code + run + output */}
             <div style={{ minWidth: 0 }}>
               <div style={{ ...label, marginBottom: 4 }}>
-                run_analysis code · add / edit / remove skill calls
+                flow — ① extract (input df) → run_analysis → augmented output
+              </div>
+              {prep && !prep.error && prep.columns.length > 0 && (
+                <details
+                  style={{
+                    marginBottom: 8,
+                    padding: 6,
+                    borderRadius: 6,
+                    border: "1px solid rgba(128,128,128,0.25)",
+                  }}
+                >
+                  <summary style={{ ...label, cursor: "pointer" }}>
+                    input · df — the ① extract run_analysis receives ({prep.row_count} row
+                    {prep.row_count === 1 ? "" : "s"}) · click to expand
+                  </summary>
+                  <div style={{ marginTop: 6 }}>
+                    <DataTable columns={prep.columns} rows={prep.rows} max={6} />
+                  </div>
+                </details>
+              )}
+              <div style={{ ...label, marginBottom: 4 }}>
+                run_analysis code · consumes df · add / edit / remove skill calls
               </div>
               {appliedSkills(draft.golden_sandbox).length > 0 && (
                 <div
@@ -721,6 +976,30 @@ export function GoldensPage() {
               </button>
               {prep && (
                 <div style={{ marginTop: 8, fontSize: 12.5 }}>
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      padding: 6,
+                      borderRadius: 6,
+                      border: "1px solid rgba(120,200,120,0.4)",
+                      background: "rgba(120,200,120,0.06)",
+                    }}
+                  >
+                    <div style={label}>
+                      augmented output · what run_analysis produced from df (feeds the ③ report)
+                    </div>
+                    {(() => {
+                      const t = sandboxTable(prep.report);
+                      if (!t) {
+                        return (
+                          <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
+                            no tabular output — see report JSON below
+                          </div>
+                        );
+                      }
+                      return <DataTable columns={t.columns} rows={t.rows} max={12} />;
+                    })()}
+                  </div>
                   <div style={label}>skills used</div>
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", margin: "3px 0 6px" }}>
                     {prep.skills_used.length ? (
@@ -746,9 +1025,9 @@ export function GoldensPage() {
                       style={{ ...btn(), marginBottom: 6 }}
                       onClick={() => {
                         const added = prep.pages ?? [];
-                        onEditPages([...pagesFromReport(draft.golden_report), ...added]);
+                        setDraftPages([...pendingPages, ...added]);
                         setMsg(
-                          `Added ${added.length} page(s) from this sandbox run — scroll to the report below.`,
+                          `Added ${added.length} page(s) from this sandbox run to the draft — scroll to ③ Report, then Submit.`,
                         );
                       }}
                     >
@@ -791,53 +1070,6 @@ export function GoldensPage() {
                       </div>
                     );
                   })()}
-                  <div style={label}>output data · how the sandbox augmented the extract</div>
-                  {(() => {
-                    const t = sandboxTable(prep.report);
-                    if (!t) {
-                      return (
-                        <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
-                          no tabular output — see report JSON below
-                        </div>
-                      );
-                    }
-                    return (
-                      <div style={{ overflowX: "auto", marginTop: 4 }}>
-                        <table style={{ ...mono, borderCollapse: "collapse" }}>
-                          <thead>
-                            <tr>
-                              {t.columns.map((c) => (
-                                <th
-                                  key={c}
-                                  style={{ textAlign: "left", padding: "3px 8px", opacity: 0.7 }}
-                                >
-                                  {c}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {t.rows.slice(0, 12).map((row, i) => (
-                              <tr key={i}>
-                                {row.map((cell, j) => (
-                                  <td
-                                    key={j}
-                                    style={{
-                                      padding: "3px 8px",
-                                      borderTop: "1px solid rgba(128,128,128,0.2)",
-                                    }}
-                                  >
-                                    {String(cell)}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        <div style={{ ...label, marginTop: 4 }}>{t.rows.length} rows</div>
-                      </div>
-                    );
-                  })()}
                   <details style={{ marginTop: 6 }}>
                     <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.7 }}>
                       report JSON
@@ -867,27 +1099,53 @@ export function GoldensPage() {
 
         {/* ③ Report */}
         <div style={box}>
-          <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-            <div style={label}>③ Report — presentation (interactive)</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={label}>③ Report — presentation (interactive draft)</div>
             {(() => {
-              const pgs = pagesFromReport(draft.golden_report);
-              const objs = pgs.reduce(
+              const objs = pendingPages.reduce(
                 (n, p) => n + (p.columns?.reduce((m, c) => m + c.length, 0) ?? 0),
                 0,
               );
               return (
                 <span style={{ ...label, opacity: 0.6 }}>
-                  {pgs.length} page(s) · {objs} object(s) · edits update golden_report JSON live
+                  {pendingPages.length} page(s) · {objs} object(s)
                 </span>
               );
             })()}
+            {dirtyPresentation && (
+              <span style={{ ...label, color: "rgb(210,140,60)", opacity: 0.95 }}>
+                ● unsubmitted edits
+              </span>
+            )}
+            <button
+              type="button"
+              style={{
+                ...btn(),
+                marginLeft: "auto",
+                fontWeight: 600,
+                background: dirtyPresentation ? "rgba(120,160,255,0.22)" : "rgba(128,128,128,0.08)",
+                borderColor: dirtyPresentation ? "rgba(120,160,255,0.6)" : "rgba(128,128,128,0.4)",
+              }}
+              onClick={submitPresentation}
+              title="commit these edits to golden_report + refresh the sandbox output JSON (golden_data)"
+            >
+              ⤴ Submit presentation
+            </button>
+          </div>
+          <div style={{ ...label, opacity: 0.5, marginTop: 3 }}>
+            move objects across columns · add / edit / remove objects & pages · then Submit to refresh
+            golden_report + sandbox output JSON (the golden answer)
           </div>
           <div style={{ marginTop: 8 }}>
-            <ReportEditor pages={pagesFromReport(draft.golden_report)} onChange={onEditPages} />
+            <ReportEditor
+              pages={pendingPages}
+              onChange={setDraftPages}
+              onInstruct={instructObject}
+            />
           </div>
           <details style={{ marginTop: 10 }}>
             <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.7 }}>
-              raw golden_report JSON — what gets saved (updates live as you edit above)
+              raw golden_report JSON (draft — edit here or above; Submit / Save commits it)
             </summary>
             <textarea
               value={reportText}
@@ -895,8 +1153,28 @@ export function GoldensPage() {
               spellCheck={false}
               rows={8}
               style={{ ...mono, width: "100%", marginTop: 6 }}
-              placeholder='{ "pages": [ { "template": "summary", "columns": [] } ] }'
+              placeholder='{ "pages": [ { "template": "two-col", "columns": [[], []] } ] }'
             />
+          </details>
+          <details style={{ marginTop: 6 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.7 }}>
+              sandbox output JSON (golden_data — reconciled on Submit / Save)
+            </summary>
+            <pre
+              style={{
+                ...mono,
+                overflowX: "auto",
+                maxHeight: 220,
+                background: "rgba(128,128,128,0.08)",
+                padding: 8,
+                borderRadius: 6,
+                marginTop: 6,
+              }}
+            >
+              {draft.golden_data
+                ? JSON.stringify(draft.golden_data, null, 2)
+                : "— run ② Sandbox, then Submit —"}
+            </pre>
           </details>
         </div>
 

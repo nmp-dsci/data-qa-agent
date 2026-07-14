@@ -32,14 +32,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 # The published template registry — the frontend owns the layouts; the agent
-# side may only reference these ids. Kept in sync with the app.agent_config
-# seed (migration 0015) and the frontend's report-engine registry.
-TEMPLATE_IDS = ("summary", "insights", "one-col", "two-col", "three-col")
+# side may only reference these ids. Only column layouts exist (s14): a page's
+# *template* is purely how many columns to render. The semantic role of a page
+# (summary / insights / …) is carried separately as its ``kind`` (see PAGE_KINDS
+# and the composed page dicts), so removing the old summary/insights *templates*
+# never touched the agent's page plan. Kept in sync with the app.agent_config
+# seed (migration 0022) and the frontend's report-engine registry.
+TEMPLATE_IDS = ("one-col", "two-col", "three-col")
 
 # Max columns per template. A page may fill fewer (empty columns collapse).
 TEMPLATE_COLUMNS: dict[str, int] = {
-    "summary": 2,
-    "insights": 2,
     "one-col": 1,
     "two-col": 2,
     "three-col": 3,
@@ -49,7 +51,7 @@ TEMPLATE_COLUMNS: dict[str, int] = {
 HEIGHT_NAMES = ("sm", "md", "lg", "fill")
 
 ObjectType = Literal["kpi", "trend", "breakdown", "compare", "insight", "text"]
-TemplateId = Literal["summary", "insights", "one-col", "two-col", "three-col"]
+TemplateId = Literal["one-col", "two-col", "three-col"]
 
 
 class PageObject(BaseModel):
@@ -87,6 +89,13 @@ class Page(BaseModel):
 
     template: TemplateId
     columns: list[list[PageObject]] = Field(default_factory=list)
+    # Optional page-level headline summarising what the page shows (curators set
+    # it in the Golden builder; the agent may compose it later). Placement/schema
+    # never depend on it — it's presentation only.
+    headline: str | None = None
+    # Optional per-column relative widths (fr weights) overriding the template's
+    # default tracks; one entry per column, left→right. None = template default.
+    widths: list[float] | None = None
 
     @model_validator(mode="after")
     def _columns_fit_template(self) -> Page:
@@ -96,6 +105,14 @@ class Page(BaseModel):
                 f"template {self.template!r} renders at most {limit} columns, "
                 f"got {len(self.columns)}"
             )
+        if self.widths is not None:
+            if len(self.widths) > limit:
+                raise ValueError(
+                    f"template {self.template!r} has at most {limit} columns, "
+                    f"got {len(self.widths)} widths"
+                )
+            if any(w <= 0 for w in self.widths):
+                raise ValueError("column widths must be positive")
         return self
 
 
@@ -132,6 +149,11 @@ def _spec_mark(spec: dict[str, Any]) -> str | None:
     return None
 
 
+def _spec_layers(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    layers = spec.get("layer")
+    return [ly for ly in layers if isinstance(ly, dict)] if isinstance(layers, list) else []
+
+
 def _spec_encoding(spec: dict[str, Any]) -> dict[str, Any]:
     enc = spec.get("encoding")
     if isinstance(enc, dict):
@@ -158,6 +180,53 @@ def _spec_title(spec: dict[str, Any]) -> str | None:
     return title if isinstance(title, str) else None
 
 
+def _combo_object_from_spec(
+    spec: dict[str, Any],
+    *,
+    element_id: str,
+    role: str,
+    explains: str | None,
+    title: str | None,
+    values: list[dict[str, Any]],
+    extra: dict[str, Any],
+) -> PageObject | None:
+    """A layered bar+line spec (``dual_axis_chart``) → a ``compare`` object that
+    carries BOTH a bar ``measure`` and a secondary-axis ``line_measure`` (plus an
+    optional ``group`` series), so the frontend renders the combo instead of
+    silently dropping the line layer. Returns None if it isn't a bar+line pair."""
+    layers = _spec_layers(spec)
+    bar = next((ly for ly in layers if _spec_mark(ly) == "bar"), None)
+    line = next((ly for ly in layers if _spec_mark(ly) == "line"), None)
+    if bar is None or line is None:
+        return None
+    bar_enc_raw = bar.get("encoding")
+    line_enc_raw = line.get("encoding")
+    bar_enc: dict[str, Any] = bar_enc_raw if isinstance(bar_enc_raw, dict) else {}
+    line_enc: dict[str, Any] = line_enc_raw if isinstance(line_enc_raw, dict) else {}
+    dim = _enc_field(bar_enc, "x")
+    measure = _enc_field(bar_enc, "y")
+    line_measure = _enc_field(line_enc, "y")
+    if not dim or not measure or not line_measure:
+        return None
+    group = _enc_field(bar_enc, "xOffset") or _enc_field(bar_enc, "color")
+    return PageObject(
+        type="compare",
+        element_id=element_id,
+        role=role,
+        explains=explains,
+        data={
+            "intent": "combo",
+            "dimension": dim,
+            "measure": measure,
+            "line_measure": line_measure,
+            "group": group,
+            "title": title,
+            "rows": values,
+            **extra,
+        },
+    )
+
+
 def chart_object_from_spec(
     spec: dict[str, Any] | None,
     *,
@@ -176,6 +245,20 @@ def chart_object_from_spec(
     encoding = _spec_encoding(spec)
     title = _spec_title(spec)
     extra: dict[str, Any] = {} if height is None else {"height": height}
+    # A layered bar+line spec is a dual-axis combo — lift both measures before the
+    # single-mark paths (which see only the first/bar layer) can flatten it.
+    if _spec_layers(spec):
+        combo = _combo_object_from_spec(
+            spec,
+            element_id=element_id,
+            role=role,
+            explains=explains,
+            title=title,
+            values=values,
+            extra=extra,
+        )
+        if combo is not None:
+            return combo
     if mark in ("line", "area", "point"):
         x: str = _enc_field(encoding, "x") or "month"
         y: str = _enc_field(encoding, "y") or "value"
@@ -333,6 +416,17 @@ def _validated(page: Page) -> dict[str, Any]:
     return envelope.pages[0].model_dump(exclude_none=True)
 
 
+def _as_kind(page: dict[str, Any], kind: str) -> dict[str, Any]:
+    """Tag a composed page with its semantic ``kind`` (summary / insights / …).
+
+    The *template* is only a column layout now; ``kind`` is what the streaming
+    plan (page_plan / planned_kinds) keys off to place and gate each page, so it
+    travels on the page dict alongside the validated template + columns.
+    """
+    page["kind"] = kind
+    return page
+
+
 def _primary_headlines(report: dict[str, Any]) -> list[dict[str, Any]]:
     headlines = [h for h in report.get("headlines", []) if isinstance(h, dict)]
     return [h for h in headlines if not h.get("related")] or headlines
@@ -400,11 +494,11 @@ def compose_summary_page(
             {
                 "kind": "template_pick",
                 "status": "success",
-                "template": "summary",
+                "template": "two-col",
                 "why": "answers lead with the latest number + trend",
             }
         )
-        return _validated(_page("summary", columns)), steps
+        return _as_kind(_validated(_page("two-col", columns)), "summary"), steps
     except (ValidationError, Exception) as exc:  # noqa: BLE001 — pages must never break an answer
         steps.append(
             {"kind": "object_build", "status": "error", "page": "summary", "error": str(exc)}
@@ -468,11 +562,11 @@ def compose_insights_page(
             {
                 "kind": "template_pick",
                 "status": "success",
-                "template": "insights",
+                "template": "two-col",
                 "why": "insight cards / breakdown present — explain the headline",
             }
         )
-        return _validated(_page("insights", [note_col, chart_col])), steps
+        return _as_kind(_validated(_page("two-col", [note_col, chart_col])), "insights"), steps
     except (ValidationError, Exception) as exc:  # noqa: BLE001 — pages must never break an answer
         steps.append(
             {"kind": "object_build", "status": "error", "page": "insights", "error": str(exc)}

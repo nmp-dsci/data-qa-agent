@@ -21,7 +21,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..agent_client import ask_agent, ask_agent_stream, fetch_skills, prep_golden, scaffold_skills
+from ..agent_client import (
+    ask_agent,
+    ask_agent_stream,
+    author_object,
+    fetch_skills,
+    prep_golden,
+    scaffold_skills,
+)
 from ..auth import CurrentUser, require_admin
 from ..db import jsonable, rls_connection
 
@@ -229,6 +236,34 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
     """
     return await prep_golden(
         sql=body.sql, code=body.code, user_id=body.as_user or admin.id, role="user"
+    )
+
+
+class ObjectIn(BaseModel):
+    sql: str
+    code: str = ""
+    object_type: str = "compare"
+    instruction: str
+    # Author under this user id's RLS; defaults to the admin.
+    as_user: str | None = None
+
+
+@router.post("/admin/eval-goldens/object")
+async def author_object_endpoint(
+    body: ObjectIn, admin: CurrentUser = Depends(require_admin)
+) -> dict[str, Any]:
+    """Author one report object from a plain-English instruction (Golden Examples):
+    the data-agent rewrites run_analysis to build the described chart, runs it in
+    the governed sandbox, and returns the lifted object + refreshed report so the
+    Builder can populate + render the object without hand-writing the code.
+    """
+    return await author_object(
+        sql=body.sql,
+        code=body.code,
+        object_type=body.object_type,
+        instruction=body.instruction,
+        user_id=body.as_user or admin.id,
+        role="user",
     )
 
 

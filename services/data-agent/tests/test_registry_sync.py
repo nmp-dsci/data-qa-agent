@@ -6,8 +6,8 @@ published registry):
 
 * ``agent/pages.py`` — TEMPLATE_IDS / TEMPLATE_COLUMNS (the validator),
 * ``frontend/src/report-engine/registry.ts`` — TEMPLATES tracks (the renderer),
-* migration ``0015_template_studio.py`` — the app.agent_config seed (the
-  published registry the Template Studio shows).
+* migration ``0022_column_templates_only.py`` — the current app.agent_config
+  seed (the published registry the Template Studio shows).
 
 These tests parse the other two sources and assert they match pages.py, so a
 new template (e.g. ``four-col``) fails CI until all three agree. Skipped when
@@ -26,7 +26,12 @@ from agent.pages import TEMPLATE_COLUMNS, TEMPLATE_IDS
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = (
-    REPO_ROOT / "services" / "db-migrate" / "migrations" / "versions" / "0015_template_studio.py"
+    REPO_ROOT
+    / "services"
+    / "db-migrate"
+    / "migrations"
+    / "versions"
+    / "0022_column_templates_only.py"
 )
 REGISTRY_TS = REPO_ROOT / "frontend" / "src" / "report-engine" / "registry.ts"
 

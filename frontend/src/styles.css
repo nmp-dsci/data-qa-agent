@@ -774,6 +774,9 @@ a:focus-visible, [role="option"]:focus-visible {
 
 /* Report engine (s08 column model): pages, KPI tiles, visx charts */
 .answer-page { display: flex; flex-direction: column; gap: 8px; }
+/* Page-level headline: a one-line summary of what the page shows. */
+.page-headline { font-size: 15px; font-weight: 600; line-height: 1.35; margin: -2px 0 2px;
+  color: var(--text); }
 /* Positional columns: tracks come inline from the registry (per template). */
 .page-cols { display: grid; gap: 10px; align-items: stretch; }
 .page-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

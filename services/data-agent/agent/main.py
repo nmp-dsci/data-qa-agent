@@ -23,7 +23,7 @@ from .config import settings  # noqa: E402
 from .db import admin_engine, engine, load_database_catalog, run_select  # noqa: E402
 from .knowledge import knowledge_version  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
-from .pages import compose_pages, page_plan, planned_kinds  # noqa: E402
+from .pages import chart_object_from_spec, compose_pages, page_plan, planned_kinds  # noqa: E402
 from .provider import choose_provider  # noqa: E402
 from .sandbox import run_code  # noqa: E402
 from .sandbox.extract import extract  # noqa: E402
@@ -424,15 +424,16 @@ async def _answer(
             return
         emitted: set[str] = set()
         for p in pages:
-            index = page_index.get(p["template"])
+            kind = p.get("kind", p["template"])
+            index = page_index.get(kind)
             if index is None:
                 continue
-            emitted.add(p["template"])
+            emitted.add(kind)
             progress.put_nowait(
                 {
                     "event": "page",
                     "index": index,
-                    "kind": p["template"],
+                    "kind": kind,
                     "status": "complete",
                     "page": p,
                 }
@@ -480,7 +481,7 @@ async def _answer(
         pages, page_steps = compose_pages(report, question=body.question)
         # The stub honours the user's plan too (s10).
         allowed = set(planned_kinds(body.user.plan))
-        pages = [p for p in pages if p["template"] in allowed]
+        pages = [p for p in pages if p.get("kind", p["template"]) in allowed]
         steps.extend(page_steps)
         if pages:
             report["pages"] = pages
@@ -661,6 +662,91 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
         skills_used=outcome.skills_used,
         skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
         error=outcome.error,
+    )
+
+
+class AnalysisObjectRequest(BaseModel):
+    sql: str
+    code: str = ""
+    object_type: str = "compare"
+    instruction: str
+    user: UserCtx
+
+
+class AnalysisObjectResponse(BaseModel):
+    code: str = ""
+    object: dict[str, Any] | None = None
+    report: dict[str, Any] | None = None
+    columns: list[str] = []
+    rows: list[list[Any]] = []
+    reasoning: list[dict[str, Any]] = []
+    engine: str = "stub"
+    skills_used: list[str] = []
+    skill_gaps: list[dict[str, Any]] = []
+    error: str | None = None
+
+
+@app.post("/agent/analysis/object", response_model=AnalysisObjectResponse)
+async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectResponse:
+    """Author ONE report object from a plain-English instruction (Golden Examples).
+
+    Codegen (``scaffold_object``) rewrites run_analysis to build exactly the chart
+    the curator described, then it runs in the SAME governed extract + sandbox path
+    as ``/agent/analysis``; the produced ``main_chart`` is lifted back into a page
+    object (combo-aware) so the builder can drop real, sandbox-computed data into
+    the presentation. Never raises — errors travel on ``error`` for the builder.
+    """
+    from .object_codegen import scaffold_object
+
+    try:
+        frame, meta = await extract(body.sql, user_id=body.user.id)
+    except UnsafeSQLError as exc:
+        return AnalysisObjectResponse(error=f"extract rejected: {exc}")
+    except Exception as exc:  # noqa: BLE001 — surface DB/extract errors to the builder
+        return AnalysisObjectResponse(error=f"extract failed: {exc}")
+
+    columns = meta.get("columns", [])
+    rows = meta.get("rows", [])
+    gen = await scaffold_object(
+        instruction=body.instruction,
+        object_type=body.object_type,
+        columns=columns,
+        code=body.code,
+    )
+    code = str(gen.get("code") or "")
+    reasoning = gen.get("reasoning", [])
+    engine = str(gen.get("engine") or "stub")
+    if not code.strip():
+        return AnalysisObjectResponse(
+            columns=columns,
+            rows=rows,
+            reasoning=reasoning,
+            engine=engine,
+            error=gen.get("error") or "no code generated",
+        )
+
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    obj: dict[str, Any] | None = None
+    if outcome.report and isinstance(outcome.report, dict):
+        page_obj = chart_object_from_spec(
+            outcome.report.get("main_chart"),
+            element_id="authored:chart",
+            role="chart",
+            height="md",
+        )
+        if page_obj is not None:
+            obj = page_obj.model_dump(exclude_none=True)
+    return AnalysisObjectResponse(
+        code=code,
+        object=obj,
+        report=outcome.report,
+        columns=columns,
+        rows=rows,
+        reasoning=reasoning,
+        engine=engine,
+        skills_used=outcome.skills_used,
+        skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
+        error=outcome.error or gen.get("error"),
     )
 
 

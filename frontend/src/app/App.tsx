@@ -223,6 +223,11 @@ export default function App() {
       setMessages((m) => [...m, { role: "assistant", content: result.answer, result }]);
       if (isNewConversation) {
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        // The agent summarises the sidebar title in the background just after the
+        // stream closes (s17 E1); refetch once more to swap in the real title.
+        window.setTimeout(() => {
+          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        }, 2500);
       }
     } catch (e) {
       if (ctrl.signal.aborted) {

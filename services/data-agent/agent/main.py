@@ -31,6 +31,7 @@ from .sandbox_agent import answer_with_sandbox  # noqa: E402
 from .schema import get_catalog, merge_catalogs  # noqa: E402
 from .sql_assist import sql_assist  # noqa: E402
 from .sql_guardrails import UnsafeSQLError  # noqa: E402
+from .titles import summarize_title  # noqa: E402
 
 
 @asynccontextmanager
@@ -603,6 +604,25 @@ async def agent_sql_assist(body: SqlAssistRequest) -> SqlAssistResult:
         user_id=body.user.id,
     )
     return SqlAssistResult(**result)
+
+
+class TitleRequest(BaseModel):
+    question: str
+
+
+class TitleResponse(BaseModel):
+    title: str
+
+
+@app.post("/agent/title", response_model=TitleResponse)
+async def agent_title(body: TitleRequest) -> TitleResponse:
+    """A 3-5 word conversation title for a question (s17 E1).
+
+    Isolated from the answer path: the backend calls this best-effort on the first
+    answer and a backfill script reuses it. Falls back to an offline heuristic when
+    no LLM provider is configured, so it can never fail a chat.
+    """
+    return TitleResponse(title=await summarize_title(body.question))
 
 
 class AnalysisRequest(BaseModel):

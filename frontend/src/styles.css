@@ -963,6 +963,37 @@ a:focus-visible, [role="option"]:focus-visible {
   accent-color: var(--accent); width: auto; padding: 0; }
 .goldens-page button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 
+/* Visual object picker (C1 follow-up): replaces the report editor's bare native
+   <select> of object types with a recognisable popover generated from the
+   registry — glyph + name + one-line "what it is" per type, plus an optional
+   "link a ② Sandbox output" group so a curated card carries real data. */
+.obj-picker-wrap { position: relative; }
+.obj-add-btn { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 650;
+  color: var(--accent-ink); background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  border: none; border-radius: 7px; padding: 5px 11px; cursor: pointer; }
+.obj-add-btn:hover { filter: brightness(1.06); }
+.obj-picker { position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; width: 232px;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 10px;
+  box-shadow: var(--shadow-pop); overflow: hidden; }
+.obj-picker-head { padding: 7px 11px; font-size: 9px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--faint); border-bottom: 1px solid var(--border); background: var(--panel-2); }
+.obj-picker-head b { color: var(--accent-soft); }
+.obj-row { display: flex; gap: 9px; align-items: center; width: 100%; text-align: left;
+  padding: 7px 11px; background: transparent; border: none; cursor: pointer; }
+.obj-row + .obj-row { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.obj-row:hover, .obj-row:focus-visible { background: var(--panel-2); outline: none; }
+.obj-row-glyph { width: 26px; height: 26px; flex: none; border-radius: 7px; background: var(--panel-3);
+  display: grid; place-items: center; color: var(--accent); }
+.obj-row-glyph svg { width: 16px; height: 16px; }
+.obj-row:hover .obj-row-glyph, .obj-row:focus-visible .obj-row-glyph { background: var(--accent); color: var(--accent-ink); }
+.obj-row-text { min-width: 0; }
+.obj-row-text b { display: block; font-size: 11.5px; line-height: 1.25; color: var(--text); }
+.obj-row-text span { display: block; font-size: 9.5px; line-height: 1.3; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obj-picker-linkgroup { border-top: 1px solid var(--border); }
+.obj-picker-foot { padding: 6px 11px 3px; font-size: 8.5px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--accent-2); }
+
 /* Report engine (s08 column model): pages, KPI tiles, visx charts */
 .answer-page { display: flex; flex-direction: column; gap: 8px; }
 /* Page-level headline: a one-line summary of what the page shows. */

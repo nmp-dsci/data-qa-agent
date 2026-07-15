@@ -61,6 +61,17 @@ export const OBJECT_TYPE_LABELS: Record<PageObjectType, string> = {
   text: "Text",
 };
 
+/** One-line "what it is" per object type — the visual object picker reads these
+ *  so a curator chooses by recognition instead of decoding a bare dropdown. */
+export const OBJECT_TYPE_DESCRIPTIONS: Record<PageObjectType, string> = {
+  kpi: "Headline metric — big number + change",
+  trend: "A trend over time",
+  breakdown: "Compare categories",
+  compare: "Two measures overlaid",
+  insight: "Written takeaway + query refs",
+  text: "A note or caption",
+};
+
 /** Semantic chart heights (px). "fill" stretches to the column instead. */
 export const HEIGHTS = { sm: 180, md: 280, lg: 400 } as const;
 

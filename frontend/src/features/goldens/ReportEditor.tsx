@@ -11,15 +11,59 @@
 // the template width), the editor renders EXACTLY the template's columns —
 // including empty ones — as stable drop targets, so "move object to column 1/3"
 // behaves predictably and nothing silently vanishes.
-import { useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 
 import { Page, PageObject, PageObjectType, TemplateId } from "../../lib/api";
 import { ObjectBody, objectCardClass } from "../../report-engine/PageLayout";
-import { OBJECT_TYPE_LABELS, TEMPLATES, columnTracks } from "../../report-engine/registry";
+import {
+  OBJECT_TYPE_DESCRIPTIONS,
+  OBJECT_TYPE_LABELS,
+  TEMPLATES,
+  columnTracks,
+} from "../../report-engine/registry";
 
 const TEMPLATE_IDS: TemplateId[] = ["one-col", "two-col", "three-col"];
 const OBJECT_TYPES: PageObjectType[] = ["kpi", "trend", "breakdown", "compare", "insight", "text"];
 const HEIGHTS = ["sm", "md", "lg", "fill"] as const;
+
+// Glyph per object type for the visual add-object picker — 16-viewBox line icons
+// matching the app's icon language, keyed 1:1 with the registry object types.
+const g = (children: ReactNode) => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {children}
+  </svg>
+);
+const OBJECT_GLYPHS: Record<PageObjectType, ReactNode> = {
+  kpi: g(
+    <>
+      <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" />
+      <path d="M5 7.5h6M5 10h3.5" />
+    </>,
+  ),
+  trend: g(<polyline points="2,12 6,7 9,9 14,3" />),
+  breakdown: g(<path d="M3 13V8M8 13V4M13 13V10" />),
+  compare: g(
+    <>
+      <path d="M3 13V9M7.5 13V6M12 13V10" />
+      <polyline points="2.5,7 7.5,5 13.5,3" />
+    </>,
+  ),
+  insight: g(
+    <>
+      <circle cx="8" cy="6.5" r="3.6" />
+      <path d="M6.5 11.5h3M7 13.5h2" />
+    </>,
+  ),
+  text: g(<path d="M3 4.5h10M3 8h10M3 11.5h6" />),
+};
+
+/** A short label for a ② Sandbox output in the link picker (title/label/heading). */
+function objectTitle(o: PageObject): string {
+  const d = o.data ?? {};
+  const raw = d["title"] ?? d["label"] ?? d["heading"] ?? d["text"] ?? "";
+  const s = String(raw).trim();
+  return s.length > 40 ? `${s.slice(0, 40)}…` : s;
+}
 
 const colCount = (t: TemplateId): number => TEMPLATES[t]?.tracks.length ?? 1;
 
@@ -174,8 +218,8 @@ export function ReportEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<PageObject | null>(null);
   const focusNext = useRef<string | null>(null);
-  // Per-column pending "add" type selection.
-  const [addType, setAddType] = useState<Record<string, PageObjectType>>({});
+  // Which column's visual "add object" picker is open ("pi:ci"), if any.
+  const [pickerKey, setPickerKey] = useState<string | null>(null);
   // Per-object AI-instruction box: draft text, in-flight id, and last message.
   const [instructText, setInstructText] = useState<Record<string, string>>({});
   const [instructBusy, setInstructBusy] = useState<string | null>(null);
@@ -233,6 +277,17 @@ export function ReportEditor({
     const next = clone(pages);
     next[pi].columns[ci].push(newObject(type));
     emit(next);
+    setPickerKey(null);
+  }
+
+  /** Add an object linked to a ② Sandbox output — a deep copy that keeps the
+   *  sandbox object's type + data + element_id, so the curated card carries real
+   *  data (the shared element_id IS the link, same as bindLinked). */
+  function addLinked(pi: number, ci: number, src: PageObject) {
+    const next = clone(pages);
+    next[pi].columns[ci].push(JSON.parse(JSON.stringify(src)) as PageObject);
+    emit(next);
+    setPickerKey(null);
   }
 
   function del(id: string) {
@@ -252,6 +307,23 @@ export function ReportEditor({
       focusNext.current = null;
     }
   });
+
+  // Close the open add-object picker on outside click or Escape.
+  useEffect(() => {
+    if (!pickerKey) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".obj-picker-wrap")) setPickerKey(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPickerKey(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pickerKey]);
 
   /** A detached copy with a fresh element_id — a paste must never duplicate an
    *  id (that would collide in React keys and element-pinned feedback refs). */
@@ -920,7 +992,6 @@ export function ReportEditor({
             >
               {Array.from({ length: cols }, (_, ci) => {
                 const key = `${pi}:${ci}`;
-                const at = addType[key] ?? "kpi";
                 return (
                   <div
                     key={ci}
@@ -939,29 +1010,61 @@ export function ReportEditor({
                   >
                     <div style={{ ...label, opacity: 0.5 }}>column {ci + 1}</div>
                     {page.columns[ci].map((o) => editableCard(o, cols))}
-                    <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: "auto" }}>
-                      <select
-                        data-testid={`add-type-${pi}-${ci}`}
-                        value={at}
-                        onChange={(e) =>
-                          setAddType((m) => ({ ...m, [key]: e.target.value as PageObjectType }))
-                        }
-                        style={{ fontSize: 11, padding: "1px 3px" }}
-                      >
-                        {OBJECT_TYPES.map((t) => (
-                          <option key={t} value={t}>
-                            {OBJECT_TYPE_LABELS[t]}
-                          </option>
-                        ))}
-                      </select>
+                    <div className="obj-picker-wrap" style={{ marginTop: "auto" }}>
                       <button
                         type="button"
                         data-testid={`add-btn-${pi}-${ci}`}
-                        style={ctrl}
-                        onClick={() => addObject(pi, ci, at)}
+                        className="obj-add-btn"
+                        aria-haspopup="menu"
+                        aria-expanded={pickerKey === key}
+                        onClick={() => setPickerKey((k) => (k === key ? null : key))}
                       >
-                        ＋ add
+                        ＋ Add object
                       </button>
+                      {pickerKey === key && (
+                        <div className="obj-picker" role="menu">
+                          <div className="obj-picker-head">
+                            Add to <b>column {ci + 1}</b>
+                          </div>
+                          {OBJECT_TYPES.map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              role="menuitem"
+                              className="obj-row"
+                              data-testid={`add-opt-${pi}-${ci}-${t}`}
+                              onClick={() => addObject(pi, ci, t)}
+                            >
+                              <span className="obj-row-glyph">{OBJECT_GLYPHS[t]}</span>
+                              <span className="obj-row-text">
+                                <b>{OBJECT_TYPE_LABELS[t]}</b>
+                                <span>{OBJECT_TYPE_DESCRIPTIONS[t]}</span>
+                              </span>
+                            </button>
+                          ))}
+                          {sandboxObjects.length > 0 && (
+                            <div className="obj-picker-linkgroup">
+                              <div className="obj-picker-foot">↳ link a ② Sandbox output</div>
+                              {sandboxObjects.map((s) => (
+                                <button
+                                  key={s.element_id}
+                                  type="button"
+                                  role="menuitem"
+                                  className="obj-row obj-row-link"
+                                  data-testid={`add-link-${pi}-${ci}-${s.element_id}`}
+                                  onClick={() => addLinked(pi, ci, s)}
+                                >
+                                  <span className="obj-row-glyph">{OBJECT_GLYPHS[s.type]}</span>
+                                  <span className="obj-row-text">
+                                    <b>{objectTitle(s) || OBJECT_TYPE_LABELS[s.type]}</b>
+                                    <span>linked · carries real data</span>
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

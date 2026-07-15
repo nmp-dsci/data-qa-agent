@@ -79,6 +79,17 @@ async def ask_agent(
         return cast(dict[str, Any], resp.json())
 
 
+async def title_agent(question: str) -> str:
+    """Ask the data-agent for a 3-5 word conversation title (s17 E1). Short call
+    with a tight timeout — the caller treats any failure as "keep the fallback"."""
+    async with httpx.AsyncClient(timeout=20.0, headers=_headers()) as client:
+        resp = await client.post(
+            f"{settings.agent_url}/agent/title", json={"question": question}
+        )
+        resp.raise_for_status()
+        return cast(str, resp.json().get("title", ""))
+
+
 async def prep_golden(
     *,
     sql: str,

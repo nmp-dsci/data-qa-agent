@@ -72,8 +72,9 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
   const col = page.getByTestId("col-1-1"); // page 2 (index 1), column 2 (index 1)
   await expect(col).toBeVisible();
 
-  await page.getByTestId("add-type-1-1").selectOption({ label: "Line + bar chart" });
+  // Visual object picker: open it, then pick "Line + bar chart" (type "compare").
   await page.getByTestId("add-btn-1-1").click();
+  await page.getByTestId("add-opt-1-1-compare").click();
 
   // Open the new card's edit panel (the last ✎ in this column) and link it.
   await col.getByTitle("edit fields").last().click();

@@ -29,7 +29,9 @@ interface Datum {
   line: number | null;
 }
 
-const MARGIN = { top: 16, right: 56, bottom: 42, left: 56 };
+// top margin carries the legend row above the plot (issue #4 — a bottom legend
+// collided with the rotated first x-axis tick).
+const MARGIN = { top: 34, right: 56, bottom: 42, left: 56 };
 const MAX_CATEGORIES = 20;
 
 function parseData(data: ComboData): Datum[] {
@@ -229,8 +231,9 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
             tickLabelProps={() => ({ fill: theme.label, fontSize: 10, textAnchor: "start", dx: 4, dy: 3 })}
           />
         </Group>
-        {/* Legend: series (or the two measures when ungrouped) */}
-        <Group left={MARGIN.left} top={height - 8}>
+        {/* Legend above the plot (series, or the two measures when ungrouped) —
+            series order matches the bar/line coloring. */}
+        <Group left={MARGIN.left} top={18}>
           {(grouped ? groups : [data.measure]).map((g, i) => (
             <g key={g} transform={`translate(${i * 120}, 0)`}>
               <rect width={9} height={9} y={-8} rx={2} fill={color(grouped ? g : "")} />

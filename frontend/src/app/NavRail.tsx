@@ -63,7 +63,7 @@ export function NavRail({
 }) {
   return (
     <nav className="rail">
-      <div className="rail-brand" title="Datapilot">
+      <div className="rail-brand" title="Data Pilot">
         <BrandMark size={30} />
       </div>
       <div className="rail-tabs" role="tablist" aria-orientation="vertical" aria-label="App sections">

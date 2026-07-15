@@ -665,7 +665,7 @@ export function ReportEditor({
                 {instructBusy === o.element_id ? "⟳ generating…" : "⟳ Generate & run"}
               </button>
               {instructMsg[o.element_id] && (
-                <span style={{ fontSize: 11, color: "#c0392b", whiteSpace: "pre-wrap" }}>
+                <span style={{ fontSize: 11, color: "var(--bad)", whiteSpace: "pre-wrap" }}>
                   {instructMsg[o.element_id]}
                 </span>
               )}

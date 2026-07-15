@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Datapilot</title>
-    <meta name="description" content="Datapilot — ask your data anything. Governed answers in seconds." />
+    <title>Data Pilot</title>
+    <meta name="description" content="Data Pilot — your data, flown right. Ask in plain English; get governed answers in seconds." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d12" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f5f8" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0d15" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f4ee" />
     <!-- Resolve the theme before first paint (stored override, else system) so
          there is no flash of the wrong background while the bundle loads. The
          theme-color metas above only track the system scheme, so point them at
@@ -19,15 +19,15 @@
           t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
         }
         document.documentElement.dataset.theme = t;
-        var c = t === "light" ? "#f4f5f8" : "#0b0d12";
+        var c = t === "light" ? "#f6f4ee" : "#0a0d15";
         document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
           m.setAttribute("content", c);
         });
       } catch (e) {}
     </script>
     <style>
-      html { background: #0b0d12; }
-      html[data-theme="light"] { background: #f4f5f8; }
+      html { background: #0a0d15; }
+      html[data-theme="light"] { background: #f6f4ee; }
     </style>
   </head>
   <body>

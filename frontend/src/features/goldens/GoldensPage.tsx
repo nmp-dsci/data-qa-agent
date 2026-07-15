@@ -162,7 +162,7 @@ function skillChipStyle(kind: "maker" | "enrich"): React.CSSProperties {
       ? ["rgb(90,170,90)", "rgba(120,200,120,0.16)"]
       : ["rgb(120,160,255)", "rgba(120,160,255,0.14)"];
   return {
-    fontFamily: "var(--font-mono, ui-monospace, Menlo, monospace)",
+    fontFamily: "var(--mono, ui-monospace, Menlo, monospace)",
     fontSize: 10,
     borderRadius: 5,
     padding: "1px 6px",
@@ -181,7 +181,7 @@ function typeChipStyle(type: string): React.CSSProperties {
         ? ["rgb(90,170,90)", "rgba(120,200,120,0.16)"]
         : ["rgb(150,150,158)", "rgba(128,128,128,0.14)"];
   return {
-    fontFamily: "var(--font-mono, ui-monospace, Menlo, monospace)",
+    fontFamily: "var(--mono, ui-monospace, Menlo, monospace)",
     fontSize: 10,
     textTransform: "lowercase",
     borderRadius: 5,
@@ -402,12 +402,13 @@ function measureChip(m: SandboxMeasure | undefined): string | null {
 }
 
 const box: React.CSSProperties = {
-  border: "1px solid rgba(128,128,128,0.3)",
+  border: "1px solid var(--border)",
+  background: "var(--panel)",
   borderRadius: 10,
   padding: "12px 14px",
 };
 const mono: React.CSSProperties = {
-  fontFamily: "var(--font-mono, ui-monospace, Menlo, monospace)",
+  fontFamily: "var(--mono, ui-monospace, Menlo, monospace)",
   fontSize: 12.5,
 };
 const label: React.CSSProperties = {
@@ -419,8 +420,9 @@ const label: React.CSSProperties = {
 
 function btn(active = true): React.CSSProperties {
   return {
-    border: "1px solid rgba(128,128,128,0.4)",
-    background: "rgba(128,128,128,0.08)",
+    border: "1px solid var(--border-2)",
+    background: "var(--panel-2)",
+    color: "var(--text)",
     borderRadius: 8,
     padding: "5px 12px",
     fontSize: 13,
@@ -1112,7 +1114,7 @@ export function GoldensPage() {
               style={{
                 fontSize: 10,
                 opacity: 0.6,
-                fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                fontFamily: "var(--mono, ui-monospace, monospace)",
                 border: "1px solid rgba(128,128,128,0.3)",
                 borderRadius: 4,
                 padding: "0 4px",
@@ -1158,7 +1160,7 @@ export function GoldensPage() {
                 fontSize: 11,
                 opacity: 0.75,
                 marginBottom: 4,
-                fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                fontFamily: "var(--mono, ui-monospace, monospace)",
               }}
             >
               ← {prov}
@@ -1216,7 +1218,7 @@ export function GoldensPage() {
               </button>
               <button
                 type="button"
-                style={{ ...btn(), padding: "3px 10px", fontSize: 12, color: "#c0392b" }}
+                style={{ ...btn(), padding: "3px 10px", fontSize: 12, color: "var(--bad)" }}
                 onClick={() => removeObject(built.element_id)}
               >
                 ✕ Remove
@@ -1230,6 +1232,7 @@ export function GoldensPage() {
 
   return (
     <section
+      className="goldens-page"
       style={{
         padding: 18,
         display: "grid",
@@ -1743,7 +1746,7 @@ export function GoldensPage() {
                   </div>
                 )}
                 {prep.error && (
-                  <div style={{ color: "#c0392b", margin: "6px 0", whiteSpace: "pre-wrap" }}>
+                  <div style={{ color: "var(--bad)", margin: "6px 0", whiteSpace: "pre-wrap" }}>
                     error: {prep.error}
                   </div>
                 )}
@@ -1999,7 +2002,7 @@ export function GoldensPage() {
             {draft.id ? "Save golden" : "Create golden"}
           </button>
           {draft.id && (
-            <button style={{ ...btn(), color: "#c0392b" }} onClick={() => void remove()}>
+            <button style={{ ...btn(), color: "var(--bad)" }} onClick={() => void remove()}>
               Delete
             </button>
           )}

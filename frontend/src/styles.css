@@ -7,23 +7,25 @@
    dark is the default and matches the app's existing look exactly.
 --------------------------------------------------------------------------- */
 :root {
-  /* -- primitives (dark) — tokens v2: deeper canvas, more layer contrast,
-        hairline borders (s13 Phase B) -- */
-  --gray-950: #0b0d12;
-  --gray-900: #12151c;
-  --gray-850: #181c25;
-  --gray-800: #1f2430;
-  --gray-700: #232834;
-  --gray-600: #333a48;
-  --gray-100: #e7e9ee;
-  --gray-300: #98a2b6;
-  --gray-400: #79839a; /* AA on the v2 canvas for small hint text */
-  --ink-code: #0b0d11;
-  --gold-500: #b48a3f;
-  --gold-ink: #1a1206;
-  --gold-200: #f0c674;
-  --blue-400: #6ea8fe;
-  --blue-900: #223047;
+  /* -- primitives (dark) — Night Flight (s17): the neutral ramp is a navy-ink
+        cockpit scale, the accent a brighter instrument gold. Primitive NAMES
+        are kept from tokens v2 (nothing outside this block references them);
+        only the values are re-tuned. Never referenced by components. -- */
+  --gray-950: #0a0d15; /* canvas — navy ink */
+  --gray-900: #111522; /* panel */
+  --gray-850: #171c2b; /* panel-2 */
+  --gray-800: #1e2434; /* panel-3 */
+  --gray-700: #242b3d; /* border */
+  --gray-600: #333d55; /* border-2 */
+  --gray-100: #eaecf3; /* text */
+  --gray-300: #9aa4bb; /* muted */
+  --gray-400: #7a84a0; /* faint — AA on the navy canvas for small hint text */
+  --ink-code: #0a0d13;
+  --gold-500: #d9a84e; /* instrument gold — brighter for panel warmth */
+  --gold-ink: #1a1204;
+  --gold-200: #f2ca79;
+  --blue-400: #7fb0ff;
+  --blue-900: #22304a;
   --green-400: #9ece6a;
   --amber-400: #e0af68;
   --red-400: #f2777a;
@@ -68,8 +70,8 @@
   --chart-2: var(--accent-2);
   --chart-3: var(--good);
   --chart-4: var(--purple);
-  --chart-5: var(--warn);
-  --chart-grid: #20242e;
+  --chart-5: var(--info); /* Night Flight c5 — sky cyan */
+  --chart-grid: #1d2434;
   --chart-axis: var(--gray-700);
   --chart-label: var(--gray-300);
 
@@ -99,21 +101,23 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #f4f5f8;
+  /* Night Flight light (s17): warm "chart-paper" cream instead of cool SaaS
+     grey — distinctive, and the warm gold reads as ink on paper. */
+  --bg: #f6f4ee;
   --panel: #ffffff;
-  --panel-2: #eef0f4;
-  --panel-3: #e5e8ee;
-  --border: #d7dbe3;
-  --border-2: #c3c9d4;
-  --text: #1b202a;
-  --muted: #5b6472;
-  --faint: #6d7686; /* AA on light panels */
-  --accent: #8a6a2f;
+  --panel-2: #efece2;
+  --panel-3: #e7e2d4;
+  --border: #ddd7c7;
+  --border-2: #c9c1ac;
+  --text: #23293a;
+  --muted: #67604e;
+  --faint: #7d7663; /* AA on warm light panels */
+  --accent: #9a7328;
   --accent-ink: #fffaf0;
   --accent-soft: #7a5c22;
   --accent-2: #2456c9; /* AA for link text on white panels */
-  --user: #dce8fb;
-  --code-bg: #eef0f4;
+  --user: #e3ddcb;
+  --code-bg: #f3f0e6;
   --good: #35803f;
   --good-border: #a9d3ae;
   --warn: #8f6a12;
@@ -127,10 +131,10 @@
   --info: #0d6e8c;
   --info-soft: #0d6e8c;
   --info-border: #a4cfdd;
-  --chart-grid: #e3e6ec;
-  --chart-axis: #c3c9d4;
-  --chart-label: #5b6472;
-  --shadow-pop: 0 12px 36px rgba(30, 40, 60, 0.18);
+  --chart-grid: #e6e0d0;
+  --chart-axis: #c9c1ac;
+  --chart-label: #67604e;
+  --shadow-pop: 0 12px 36px rgba(60, 50, 30, 0.16);
 }
 
 * { box-sizing: border-box; }
@@ -138,6 +142,26 @@
 html, body, #root { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
   font-size: 14.5px; -webkit-font-smoothing: antialiased; }
+
+/* App-wide cockpit canvas (s17) — a fixed, pointer-events-none backdrop behind
+   the whole shell: a canopy horizon glow along the top edge, an accent aurora
+   off to one side, and a faint radar dot-field over the navy canvas. Panels,
+   tables, charts and code keep their solid fills, so the texture only reads
+   through the transparent gutters (rail edges, hero, scroll margins) and data
+   stays full-contrast. #root is promoted to a stacking context above it. */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 150px),
+    radial-gradient(720px 340px at 80% -80px, color-mix(in srgb, var(--accent) 13%, transparent), transparent 62%),
+    radial-gradient(560px 320px at 8% 108%, color-mix(in srgb, var(--accent-2) 8%, transparent), transparent 60%),
+    radial-gradient(var(--chart-grid) 1px, transparent 1.5px);
+  background-size: 100% 150px, auto, auto, 22px 22px;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  background-position: top, center top, left bottom, left top;
+  opacity: .6;
+}
+#root { position: relative; z-index: 1; }
 button { cursor: pointer; font: inherit; }
 /* One motion voice: interactive surfaces ease, never cut. */
 button, .chip, a, input, select, textarea {
@@ -151,36 +175,90 @@ table, .h-value, .metric strong, .meta, .kpi-growth, .conv-meta, .history-meta {
 }
 code, pre, kbd { font-family: var(--mono); }
 
-/* Login — branded card over a faint grid + gold glow (zero image weight). */
-.login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px;
-  position: relative; overflow: hidden;
-  background:
-    radial-gradient(700px 340px at 50% -60px, rgba(180, 138, 63, 0.13), transparent 60%),
-    radial-gradient(520px 300px at 88% 108%, rgba(110, 168, 254, 0.06), transparent 60%),
-    var(--bg); }
-.login::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
-  background-image: linear-gradient(var(--border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border) 1px, transparent 1px);
-  background-size: 44px 44px;
-  -webkit-mask-image: radial-gradient(560px 320px at 50% 34%, rgba(0, 0, 0, 0.5), transparent 74%);
-  mask-image: radial-gradient(560px 320px at 50% 34%, rgba(0, 0, 0, 0.5), transparent 74%); }
-.login-card { position: relative; background: color-mix(in srgb, var(--panel) 94%, transparent);
-  border: 1px solid var(--border-2); border-radius: 18px; padding: 30px 28px 20px;
-  width: min(400px, 100%); text-align: center; box-shadow: var(--elev-2);
-  animation: card-up var(--dur-3) var(--ease); }
+/* ===================================================================
+   Login (s17) — the split front door. Left: a sign-in card in a cockpit
+   scene. Right: a self-advancing flight-path walkthrough. Pure CSS/SVG.
+   position:fixed decouples it from the app's no-scroll height chain so it
+   can grow + scroll on mobile. All motion is decorative and freezes under
+   prefers-reduced-motion (global guard + the explicit block at the end). */
+.login { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden;
+  display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); background: var(--bg); }
+@media (max-width: 860px) { .login { grid-template-columns: 1fr; grid-template-rows: auto auto; } }
 @keyframes card-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.login-mark { display: grid; place-items: center; margin-bottom: 10px; }
-.login-mark svg { border-radius: 12px; box-shadow: var(--elev-1); }
-.login-card h1 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -.01em; }
-.sub { color: var(--muted); margin: 6px 0 16px; font-size: 13px; }
+
+/* -- left panel: cockpit scene + sign-in card -- */
+.login-left { position: relative; display: grid; place-items: center; overflow: hidden; padding: 34px 24px;
+  min-height: 100dvh;
+  background: radial-gradient(680px 360px at 50% -90px, color-mix(in srgb, var(--accent) 14%, transparent), transparent 62%), var(--bg); }
+@media (max-width: 860px) { .login-left { min-height: 0; padding: 40px 20px 44px; } }
+/* faint nav-grid under the scene, feathered at the edges */
+.login-left::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .4;
+  background-image: linear-gradient(var(--chart-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--chart-grid) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask-image: radial-gradient(360px 320px at 50% 44%, rgba(0, 0, 0, .6), transparent 76%);
+  mask-image: radial-gradient(360px 320px at 50% 44%, rgba(0, 0, 0, .6), transparent 76%); }
+
+/* cockpit backdrop: canopy pillars, HUD, drifting glyphs, jet + dash */
+.cockpit { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+.cockpit::before, .cockpit::after { content: ""; position: absolute; top: 0; width: 62px; height: 42%;
+  background: linear-gradient(var(--panel-3), transparent); opacity: .5; }
+.cockpit::before { left: 0; clip-path: polygon(0 0, 100% 0, 0 100%); }
+.cockpit::after { right: 0; clip-path: polygon(0 0, 100% 0, 100% 100%); }
+.cockpit-htape { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-family: var(--mono);
+  font-size: 9px; letter-spacing: .18em; color: var(--muted); opacity: .7; white-space: nowrap;
+  animation: dp-tape 8s ease-in-out infinite; }
+.cockpit-hud { position: absolute; top: 36px; left: 50%; width: 46px; height: 20px; transform: translateX(-50%);
+  opacity: .85; animation: dp-hud 4s ease-in-out infinite; }
+.cockpit-hud::before { content: ""; position: absolute; top: 2px; bottom: 2px; left: 50%; width: 16px;
+  transform: translateX(-50%); border: 1.4px solid var(--accent); border-radius: 50%; }
+.cockpit-hud::after { content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1.4px;
+  background: linear-gradient(90deg, var(--accent) 0 13px, transparent 13px calc(100% - 13px), var(--accent) calc(100% - 13px)); }
+.cockpit-glyph { position: absolute; font-family: var(--mono); color: var(--accent-soft); white-space: nowrap;
+  opacity: .26; animation: dp-drift-a 10s ease-in-out infinite; }
+.cockpit-glyph.big { font-size: 22px; opacity: .18; animation: dp-drift-c 14s ease-in-out infinite; }
+.cockpit-glyph.dim { color: var(--accent-2); opacity: .22; font-size: 13px; animation: dp-drift-b 12s ease-in-out infinite; }
+.cockpit-jet { position: absolute; top: 15%; left: 6%; width: 70%; height: auto; opacity: .85; }
+.jet-trail { stroke: var(--accent); stroke-width: 1.4; fill: none; stroke-dasharray: 4 4; opacity: .6;
+  animation: dp-march 1.8s linear infinite; }
+.jet-body { fill: var(--accent-soft); }
+.cockpit-dash { position: absolute; left: 0; right: 0; bottom: 0; height: 34px; background: var(--panel-3);
+  border-top: 1px solid var(--border-2); opacity: .8; border-radius: 55% 55% 0 0 / 90% 90% 0 0;
+  display: flex; gap: 16px; align-items: center; justify-content: center; }
+.cockpit-dash i { width: 30px; height: 6px; border-radius: 3px; background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border-2); position: relative; }
+.cockpit-dash i::after { content: ""; position: absolute; left: 62%; top: -3px; width: 2px; height: 12px;
+  background: var(--accent); border-radius: 1px; }
+.cockpit-dash b { width: 18px; height: 18px; border-radius: 50%; background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border-2); position: relative; }
+.cockpit-dash b::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 7px;
+  background: var(--accent); border-radius: 1px; transform-origin: 50% 0; transform: rotate(48deg); }
+.cockpit-dash b:last-of-type::after { transform: rotate(-35deg); }
+
+@keyframes dp-drift-a { 0% { transform: translate(0, 0); } 33% { transform: translate(5px, -5px); } 66% { transform: translate(-4px, -3px); } 100% { transform: translate(0, 0); } }
+@keyframes dp-drift-b { 0% { transform: translate(0, 0); } 33% { transform: translate(-5px, 4px); } 66% { transform: translate(3px, 5px); } 100% { transform: translate(0, 0); } }
+@keyframes dp-drift-c { 0% { transform: translate(0, 0); } 50% { transform: translate(4px, -4px); } 100% { transform: translate(0, 0); } }
+@keyframes dp-march { to { stroke-dashoffset: -16; } }
+@keyframes dp-hud { 0%, 100% { opacity: .85; transform: translateX(-50%) scale(1); } 50% { opacity: .5; transform: translateX(-50%) scale(1.06); } }
+@keyframes dp-tape { 0%, 100% { transform: translateX(-53%); } 50% { transform: translateX(-47%); } }
+
+/* -- sign-in card -- */
+.login-card { position: relative; z-index: 2; width: min(342px, 100%);
+  background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--border-2);
+  border-radius: 18px; padding: 26px 26px 18px; text-align: center; box-shadow: var(--elev-2);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: card-up var(--dur-3) var(--ease); }
+.login-mark { display: grid; place-items: center; margin-bottom: 12px; }
+.login-mark svg { border-radius: 13px; box-shadow: var(--elev-1); }
+.login-title { margin: 0; font-size: 24px; font-weight: 750; letter-spacing: -.02em; }
+.login-title em { font-style: normal; color: var(--accent-soft); }
+.login-tagline { color: var(--muted); margin: 4px 0 18px; font-size: 13px; }
 .login-div { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 10.5px;
   text-transform: uppercase; letter-spacing: .09em; margin: 4px 0 12px; }
 .login-div::before, .login-div::after { content: ""; height: 1px; flex: 1; background: var(--border); }
 .users { display: grid; gap: 8px; margin: 0 0 14px; }
 .users.google { display: flex; justify-content: center; margin: 12px 0 14px; }
 .users button { display: flex; align-items: center; gap: 11px; background: var(--panel-2);
-  border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 12px;
-  text-align: left; }
+  border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 12px; text-align: left; }
 .users button:hover { border-color: var(--accent); background: var(--panel-3); }
 .login-av { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center;
   font-size: 11px; font-weight: 750; color: #14100a; }
@@ -188,6 +266,52 @@ code, pre, kbd { font-family: var(--mono); }
 .login-who strong { font-size: 13px; font-weight: 650; }
 .login-who span { color: var(--muted); font-size: 11.5px; }
 .foot { color: var(--faint); font-size: 11px; text-align: center; margin: 4px 0 0; }
+
+/* -- right panel: flight-path walkthrough -- */
+.walk { position: relative; display: flex; flex-direction: column; justify-content: center;
+  border-left: 1px solid var(--border); padding: 44px clamp(24px, 5vw, 56px); overflow: hidden;
+  background-color: var(--panel);
+  background-image: radial-gradient(var(--chart-grid) 1px, transparent 1.4px); background-size: 26px 26px; }
+.walk:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -3px; border-radius: 0; }
+@media (max-width: 860px) { .walk { border-left: none; border-top: 1px solid var(--border); padding: 30px 22px 40px; } }
+.walk-map { position: relative; }
+.walk-fp { width: 100%; height: auto; display: block; overflow: visible; }
+.fp-route { stroke: var(--accent); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; opacity: .32;
+  animation: dp-march 1.8s linear infinite; }
+.fp-lit { stroke: var(--accent); stroke-width: 1.9; fill: none; stroke-linecap: round;
+  transition: stroke-dashoffset var(--dur-3) var(--ease); }
+.fp-wp { fill: var(--panel); stroke: var(--accent); stroke-width: 1.6; transition: fill var(--dur-2) var(--ease); }
+.fp-wp.lit { fill: var(--accent); }
+.fp-plane { fill: var(--accent-soft); transform-box: view-box; transform-origin: 0 0;
+  transition: transform var(--dur-3) var(--ease); }
+.walk-wl { position: absolute; transform: translate(-50%, -50%); font-family: var(--mono); font-size: 8.5px;
+  letter-spacing: .1em; color: var(--faint); pointer-events: none; transition: color var(--dur-2) var(--ease); }
+.walk-wl.on { color: var(--accent-soft); }
+.walk-story { min-height: 66px; margin-top: 18px; }
+.walk-story h2 { margin: 0; font-size: 20px; font-weight: 750; letter-spacing: -.015em; color: var(--text); }
+.walk-story p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.walk-props { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 7px; }
+.walk-prop { display: flex; gap: 11px; align-items: flex-start; border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 70%, transparent); border-radius: 11px; padding: 9px 12px;
+  transition: border-color var(--dur-2) var(--ease), background var(--dur-2) var(--ease); }
+.walk-prop.lit { border-color: var(--accent); background: var(--panel-2); }
+.walk-prop-i { width: 22px; height: 22px; flex: none; border-radius: 7px; display: grid; place-items: center;
+  background: var(--panel-3); color: var(--accent-soft); font-size: 11px; font-weight: 800;
+  font-variant-numeric: tabular-nums; transition: background var(--dur-2) var(--ease), color var(--dur-2) var(--ease); }
+.walk-prop.lit .walk-prop-i { background: var(--accent); color: var(--accent-ink); }
+.walk-prop b { display: block; font-size: 13px; line-height: 1.3; }
+.walk-prop span { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+.walk-dots { display: flex; gap: 6px; margin-top: 16px; }
+.walk-dot { width: 7px; height: 7px; padding: 0; border: none; border-radius: 50%; background: var(--border-2);
+  cursor: pointer; transition: width var(--dur-2) var(--ease), background var(--dur-2) var(--ease); }
+.walk-dot.on { background: var(--accent); width: 20px; border-radius: 4px; }
+.walk-dot:hover { background: var(--accent-soft); }
+
+/* Static under reduced motion: freeze the cockpit + route drift and the sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .cockpit-htape, .cockpit-hud, .cockpit-glyph, .jet-trail, .fp-route, .hero-wrap::after {
+    animation: none !important; }
+}
 
 /* Content-shaped loading shimmer (sidebar, lazy views). */
 .skel { position: relative; overflow: hidden; background: var(--panel-2); border-radius: var(--radius-sm); }
@@ -223,7 +347,7 @@ code, pre, kbd { font-family: var(--mono); }
   background: transparent; border: none; color: var(--muted); }
 .rail-item:hover { color: var(--text); background: var(--panel-2); }
 .rail-item.active { color: var(--accent-soft); background: var(--panel-3);
-  box-shadow: inset 0 0 0 1px var(--border-2); }
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 0 0 1px var(--border-2); }
 .rail-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .rail-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--user); color: var(--text);
   display: grid; place-items: center; font-size: 11px; font-weight: 700; }
@@ -241,7 +365,7 @@ code, pre, kbd { font-family: var(--mono); }
 .bnav-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 5px;
   min-height: 48px; background: none; border: none; color: var(--faint);
   border-radius: var(--radius); font-size: 10px; font-weight: 600; }
-.bnav-item.active { color: var(--accent-soft); }
+.bnav-item.active { color: var(--accent-soft); box-shadow: inset 0 2px 0 var(--accent); }
 .bnav-item:hover { color: var(--text); }
 
 /* Slide-over sheet (mobile conversations / catalog) */
@@ -275,17 +399,35 @@ main > .answer.wide { width: min(960px, 100%); }
 .answer-note { color: var(--muted); font-size: 12px; }
 
 /* Hero empty state: the ask moment. */
-.hero-wrap { flex: 1; min-height: 0; overflow-y: auto; display: grid; place-items: center; padding: 24px 18px; }
-.hero { width: min(620px, 100%); display: flex; flex-direction: column; }
+.hero-wrap { flex: 1; min-height: 0; overflow-y: auto; display: grid; place-items: center;
+  padding: 24px 18px; position: relative; }
+/* Hero radar reticle (s17): a faint scope in the top-right gutter with a slow
+   sweep hand — the ask moment matches the login cockpit. Behind the content
+   (z-index 0); the sweep freezes under prefers-reduced-motion (global guard). */
+.hero-wrap::before, .hero-wrap::after { content: ""; position: absolute; top: 24px; right: 28px;
+  width: 92px; height: 92px; z-index: 0; pointer-events: none; border-radius: 50%; opacity: .5; }
+.hero-wrap::before {
+  background:
+    radial-gradient(circle at 50% 50%, transparent 38px, color-mix(in srgb, var(--accent) 26%, transparent) 38px 39px, transparent 39px),
+    radial-gradient(circle at 50% 50%, transparent 24px, color-mix(in srgb, var(--accent) 20%, transparent) 24px 25px, transparent 25px),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 55%, transparent) 0 2px, transparent 2px); }
+.hero-wrap::after { transform-origin: 50% 50%; animation: radar-sweep 6s linear infinite;
+  background: conic-gradient(from 0deg, color-mix(in srgb, var(--accent) 22%, transparent), transparent 34%); }
+@keyframes radar-sweep { to { transform: rotate(360deg); } }
+@media (max-width: 767px) { .hero-wrap::before, .hero-wrap::after { display: none; } }
+.hero { width: min(620px, 100%); display: flex; flex-direction: column; position: relative; z-index: 1; }
 .hero h1 { font-size: 24px; font-weight: 750; letter-spacing: -.015em; margin: 0; }
 .hero-sub { color: var(--muted); font-size: 13.5px; margin: 6px 0 18px; }
 .sugs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 @media (max-width: 560px) { .sugs { grid-template-columns: 1fr; } }
-.sug { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-  padding: 10px 12px; text-align: left; color: var(--text); }
+.sug { display: flex; gap: 10px; align-items: flex-start; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; text-align: left; color: var(--text); }
 .sug:hover { border-color: var(--border-2); background: var(--panel-2); }
-.sug b { display: block; font-size: 12.5px; font-weight: 650; }
-.sug span { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;
+.sug-icon { flex: none; width: 18px; height: 18px; color: var(--accent); margin-top: 1px; }
+.sug-icon svg { width: 100%; height: 100%; display: block; }
+.sug-text { min-width: 0; }
+.sug-text b { display: block; font-size: 12.5px; font-weight: 650; }
+.sug-text > span { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 /* Composer v2: auto-growing textarea + hint row + icon send/stop. */
@@ -294,8 +436,11 @@ main > .answer.wide { width: min(960px, 100%); }
 .composer2 { background: var(--panel); border: 1px solid var(--border-2); border-radius: 14px;
   padding: 11px 13px 8px; box-shadow: var(--elev-1); }
 .composer2:focus-within { border-color: var(--accent-2); }
+/* Single focus ring (issue #9): the card's :focus-within border is the only
+   affordance — suppress the textarea's own a11y outline so there's no second box. */
 .composer2 textarea { display: block; width: 100%; background: transparent; border: none; outline: none;
   resize: none; color: var(--text); font: inherit; font-size: 14.5px; line-height: 1.5; max-height: 152px; }
+.composer2 textarea:focus-visible { outline: none; }
 .composer2 textarea::placeholder { color: var(--faint); }
 .composer2-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 7px; }
 .composer2-hint { font-family: var(--mono); font-size: 10px; color: var(--muted); }
@@ -309,6 +454,14 @@ main > .answer.wide { width: min(960px, 100%); }
 
 .result { margin-top: 10px; }
 .meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+/* Answer-first meta footer (issue #10): actions lead; internals demote to a
+   faded cluster on the right that comes to full on hover (tokens/latency in the
+   title tooltip). */
+.answer-meta { flex-wrap: wrap; margin-top: 10px; }
+.answer-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.answer-meta-details { margin-left: auto; display: flex; align-items: center; gap: 8px;
+  opacity: .6; transition: opacity var(--dur-1) var(--ease); cursor: default; }
+.answer-meta-details:hover { opacity: 1; }
 .badge { text-transform: uppercase; font-size: 10px; letter-spacing: .05em; padding: 2px 6px;
   border-radius: var(--radius-sm); border: 1px solid var(--border); }
 .badge.stub { color: var(--muted); }
@@ -338,7 +491,14 @@ tbody tr:last-child td { border-bottom: none; }
 .metric { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .metric span { display: block; color: var(--muted); font-size: 12px; }
 .metric strong { display: block; margin-top: 3px; font-size: 22px; }
-.wide-cell { min-width: 260px; white-space: normal; }
+/* 7-day sparkline (issue #12): real per-day counts give the metric context. */
+.metric-spark { display: block; width: 100%; height: 16px; margin-top: 6px; opacity: .9; }
+/* Wrapping evidence column — capped so the wide feedback/eval tables stay narrow
+   enough that Status + Triage never scroll off the viewport edge (issue #3). */
+.wide-cell { min-width: 220px; max-width: 340px; white-space: normal; }
+/* Compact feedback "User" cell: name over rating + accuracy on one line. */
+.fb-user { display: flex; flex-direction: column; gap: 2px; }
+.fb-user-meta { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 
 /* Agent-Config: clickable registry rows + live demo preview panel */
 .selectable-row { cursor: pointer; transition: background .12s ease; }
@@ -696,7 +856,9 @@ th.sortable:hover { color: var(--text); }
 .config-table { width: 100%; }
 .config-table th, .config-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; vertical-align: top; white-space: normal; }
 .config-table th { color: var(--muted); font-weight: 500; font-size: 12px; width: 42%; text-transform: none; letter-spacing: 0; background: transparent; position: static; }
-.config-table td code { color: var(--text); word-break: break-all; }
+/* overflow-wrap:anywhere breaks long URLs/ids only where needed, not mid-word
+   at every character like word-break:break-all did (issue #12). */
+.config-table td code { color: var(--text); overflow-wrap: anywhere; }
 .config-note { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .badge.secret { color: var(--accent); border-color: var(--warn-border); margin-left: 6px; }
 
@@ -711,7 +873,7 @@ a:focus-visible, [role="option"]:focus-visible {
   display: flex; justify-content: center; padding-top: 14vh; }
 .palette { width: min(520px, calc(100vw - 32px)); align-self: flex-start; background: var(--panel);
   border: 1px solid var(--border-2); border-radius: var(--radius-xl); overflow: hidden;
-  box-shadow: var(--shadow-pop); }
+  box-shadow: var(--shadow-pop), inset 0 1px 0 color-mix(in srgb, var(--accent) 32%, transparent); }
 .palette-input { width: 100%; background: var(--panel-2); border: none; border-bottom: 1px solid var(--border);
   color: var(--text); padding: 13px 16px; font-size: 14px; outline: none; }
 .palette-list { list-style: none; margin: 0; padding: 6px; max-height: 320px; overflow-y: auto; }
@@ -725,11 +887,13 @@ a:focus-visible, [role="option"]:focus-visible {
 .onboard-hint kbd { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px;
   padding: 1px 6px; font-size: 11px; font-family: inherit; }
 .chart { position: relative; }
+/* Always discoverable (issue #14 — hover-only export is invisible on touch):
+   the button sits quiet at ~0.5 and comes to full on hover/focus. */
 .chart-export { position: absolute; top: 8px; right: 8px; z-index: 2; font-size: 10px;
   color: var(--muted); background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 5px; padding: 2px 7px; cursor: pointer; opacity: 0; transition: opacity .12s; }
+  border-radius: 5px; padding: 2px 7px; cursor: pointer; opacity: .5; transition: opacity .12s; }
 .chart:hover .chart-export, .chart-export:focus-visible { opacity: 1; }
-.chart-export:hover { color: var(--accent-2); border-color: var(--accent-2); }
+.chart-export:hover { color: var(--accent-2); border-color: var(--accent-2); opacity: 1; }
 
 /* Chat history sidebar */
 .chat-layout { flex: 1; display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 0; }
@@ -771,6 +935,33 @@ a:focus-visible, [role="option"]:focus-visible {
 /* Settings */
 .settings section { display: flex; flex-direction: column; gap: 10px; }
 .settings-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* Remembered preferences as cards (issue #13): each memory gets its learned/used
+   context and a quiet "forget" — the login's memory promise, made visible. */
+.mem-list { display: grid; gap: 8px; }
+.mem-card { display: flex; align-items: flex-start; gap: 12px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 11px 13px; }
+.mem-body { flex: 1; min-width: 0; }
+.mem-text { font-size: 13.5px; line-height: 1.45; }
+.mem-meta { color: var(--faint); font-size: 11px; margin-top: 5px; }
+.mem-forget { flex: none; font-size: 11.5px; padding: 4px 11px; }
+
+/* Golden Examples authoring surface (C1): the page is built with inline styles +
+   native form controls, so it used to render as white islands in dark mode.
+   Rather than unpick every inline style, scope the theme-critical properties
+   (control background / border / text) to the token system here. The visual
+   ReportEditor renders inside this container, so it inherits the same fix. */
+.goldens-page { color: var(--text); }
+.goldens-page input, .goldens-page select, .goldens-page textarea {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 7px; padding: 6px 9px; font: inherit; font-size: 13px; outline: none; }
+.goldens-page input:focus, .goldens-page select:focus, .goldens-page textarea:focus {
+  border-color: var(--accent-2); }
+.goldens-page option { background: var(--panel); color: var(--text); }
+.goldens-page textarea { resize: vertical; }
+/* Native checkboxes/radios get the accent so they're not stark white boxes. */
+.goldens-page input[type="checkbox"], .goldens-page input[type="radio"] {
+  accent-color: var(--accent); width: auto; padding: 0; }
+.goldens-page button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 
 /* Report engine (s08 column model): pages, KPI tiles, visx charts */
 .answer-page { display: flex; flex-direction: column; gap: 8px; }

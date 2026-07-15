@@ -1308,6 +1308,21 @@ export function GoldensPage() {
                                     >
                                       {title}
                                     </span>
+                                    {o.element_id && (
+                                      <code
+                                        title="unique object id — the same element_id links this to the presentation object in ③ Report"
+                                        style={{
+                                          fontSize: 10,
+                                          opacity: 0.55,
+                                          fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                                          border: "1px solid rgba(128,128,128,0.3)",
+                                          borderRadius: 4,
+                                          padding: "0 4px",
+                                        }}
+                                      >
+                                        {o.element_id}
+                                      </code>
+                                    )}
                                     {makers.length > 0 && (
                                       <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
                                         <span style={{ ...label, opacity: 0.5 }}>made by</span>
@@ -1366,20 +1381,6 @@ export function GoldensPage() {
                       );
                     })()}
                   </div>
-                  {prep.pages && prep.pages.length > 0 && (
-                    <button
-                      style={{ ...btn(), marginBottom: 6 }}
-                      onClick={() => {
-                        const added = prep.pages ?? [];
-                        setDraftPages([...pendingPages, ...added]);
-                        setMsg(
-                          `Added ${added.length} page(s) from this sandbox run to the draft — scroll to ③ Report, then Submit.`,
-                        );
-                      }}
-                    >
-                      ＋ Add this output as report page(s)
-                    </button>
-                  )}
                   {prep.error && (
                     <div style={{ color: "#c0392b", marginBottom: 6, whiteSpace: "pre-wrap" }}>
                       error: {prep.error}
@@ -1390,32 +1391,6 @@ export function GoldensPage() {
                       skill gaps: {prep.skill_gaps.map((g) => g.need).join(", ")}
                     </div>
                   )}
-                  {(() => {
-                    const r = prep.report as {
-                      summary?: string;
-                      headlines?: { label?: string; value?: string }[];
-                    } | null;
-                    if (!r || (!r.summary && !(r.headlines && r.headlines.length))) return null;
-                    return (
-                      <div style={{ marginBottom: 8 }}>
-                        {r.summary && (
-                          <div style={{ fontSize: 12.5, marginBottom: 4, whiteSpace: "pre-wrap" }}>
-                            {r.summary}
-                          </div>
-                        )}
-                        {Array.isArray(r.headlines) && r.headlines.length > 0 && (
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {r.headlines.map((h, i) => (
-                              <span key={i} style={{ ...btn(), cursor: "default", padding: "2px 8px" }}>
-                                <strong>{h.value}</strong>{" "}
-                                <span style={{ opacity: 0.7 }}>{h.label}</span>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
                   <details style={{ marginTop: 6 }}>
                     <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.7 }}>
                       report JSON

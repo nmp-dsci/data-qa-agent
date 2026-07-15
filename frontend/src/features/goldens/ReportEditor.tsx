@@ -461,6 +461,26 @@ export function ReportEditor({
           gap: 6,
         }}
       >
+        {/* The object's unique id — the same element_id names this object in the
+            ② Sandbox ③ objects view, so the curator can see the visualisation it's
+            built on. */}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={label}>linked object</span>
+          <code
+            title="the visualisation this object is built on — the same element_id appears in the ② Sandbox ③ objects view"
+            style={{
+              fontSize: 11,
+              fontFamily: "var(--font-mono, ui-monospace, Menlo, monospace)",
+              border: "1px solid rgba(120,160,255,0.4)",
+              background: "rgba(120,160,255,0.08)",
+              color: "rgb(120,160,255)",
+              borderRadius: 4,
+              padding: "1px 6px",
+            }}
+          >
+            {o.element_id}
+          </code>
+        </div>
         {isChart && onInstruct && (
           <div
             style={{

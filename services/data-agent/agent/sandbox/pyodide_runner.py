@@ -91,6 +91,7 @@ def run_code(
         report=payload.get("report"),
         skills_used=payload.get("skills_used", []),
         skill_gaps=gaps,
+        frames=payload.get("frames", []),
         used_inline_math=payload.get("used_inline_math", False),
         error=payload.get("error"),
     )

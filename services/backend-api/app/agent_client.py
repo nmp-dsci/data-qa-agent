@@ -99,17 +99,22 @@ async def author_object(
     instruction: str,
     user_id: str,
     role: str = "user",
+    objects: list[dict[str, Any]] | None = None,
+    target_element_id: str | None = None,
 ) -> dict[str, Any]:
-    """Golden authoring (s14): author ONE report object from a plain-English
-    instruction — the data-agent rewrites run_analysis to build the described
-    chart, runs it in the sandbox, and returns the lifted object + refreshed
-    report so the Builder can drop real data into the presentation.
+    """Golden authoring (s14/s16): edit ONE report object from a plain-English
+    instruction — the data-agent rewrites run_analysis to rebuild the WHOLE report
+    (every object + the change), may revise the SQL when the data isn't in the
+    extract, runs it, and returns the revised sql + full pages + the lifted target
+    so the Builder keeps SQL/sandbox/data/presentation in sync.
     """
     payload = {
         "sql": sql,
         "code": code,
         "object_type": object_type,
         "instruction": instruction,
+        "objects": objects or [],
+        "target_element_id": target_element_id,
         "user": {"id": user_id, "role": role},
     }
     async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:

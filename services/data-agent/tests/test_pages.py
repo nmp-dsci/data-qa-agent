@@ -14,6 +14,9 @@ import pandas as pd
 
 from agent.pages import (
     PagesEnvelope,
+    _insights_headline,
+    _one_line,
+    _summary_headline,
     chart_object_from_spec,
     compose_insights_page,
     compose_pages,
@@ -152,6 +155,11 @@ def test_compose_pages_summary_then_insights() -> None:
     assert note["element_id"] == "insight:0"
     assert note["data"]["refs"] == ["Q1"]
 
+    # The agent now composes a page headline for every report (curators may
+    # override): summary → the answer's key takeaway, insights → what explains it.
+    assert summary["headline"] == "Hornsby (2077) 2br unit median rent is $671/wk, up 6.1% YoY."
+    assert insights["headline"] == "3-bed units drove the rise"
+
     # Whole output re-validates against the schema (what the frontend consumes).
     PagesEnvelope(pages=pages)  # does not raise
 
@@ -162,6 +170,25 @@ def test_compose_pages_summary_then_insights() -> None:
     assert kinds[-1] == "page_compose"
     assert steps[-1]["status"] == "success"
     assert steps[-1]["templates"] == ["two-col", "two-col"]
+
+
+def test_page_headline_helpers() -> None:
+    # First sentence only, and an abbreviation's dot ("6.1%") is not a break.
+    assert _one_line("Rents rose 6.1% YoY. A second sentence.") == "Rents rose 6.1% YoY."
+    # Prose with no terminator is used whole; newlines flattened.
+    assert _one_line("no terminator\nhere") == "no terminator here"
+    # Over-long headlines are truncated with an ellipsis.
+    long = "word " * 40
+    trimmed = _one_line(long)
+    assert trimmed is not None and len(trimmed) <= 120 and trimmed.endswith("…")
+    # Empty / whitespace-only report prose → no headline (falls back to None).
+    assert _one_line("   ") is None
+    assert _summary_headline({"summary": ""}) is None
+    assert _insights_headline({"insights": [], "profiles": []}) is None
+    # Insights headline prefers the first insight heading, else a profile heading.
+    assert _insights_headline({"profiles": [{"heading": "Prices cluster east"}]}) == (
+        "Prices cluster east"
+    )
 
 
 def test_compose_pages_empty_report_yields_no_pages() -> None:

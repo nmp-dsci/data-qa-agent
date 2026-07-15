@@ -707,12 +707,25 @@ export interface GoldenInput {
   expectation?: string | null;
 }
 
+/** A derived frame the sandbox built and fed to a skill — the enrichment stage
+ *  between the SQL extract and the report objects (Golden builder Sandbox view). */
+export interface SandboxFrame {
+  name: string;
+  columns: string[];
+  rows: unknown[][];
+  shape: [number, number];
+  /** True when this frame was fed to a skill, so its data is in a chart/analysis
+   *  object; false when it's a derived frame behind a KPI/scalar. */
+  fed_object?: boolean;
+}
+
 export interface PrepResult {
   columns: string[];
   rows: unknown[][];
   row_count: number;
   report: Record<string, unknown> | null;
   pages?: Page[] | null;
+  frames?: SandboxFrame[];
   skills_used: string[];
   skill_gaps: { need: string; why: string }[];
   error: string | null;
@@ -791,8 +804,14 @@ export function prepGolden(body: {
 // the lifted object (type + data) plus the refreshed sandbox report + code.
 export interface AuthorObjectResult {
   code: string;
+  // The extract that produced this — the revised SQL when the agent had to add
+  // columns for the requested data, else the caller's SQL unchanged (s16).
+  sql: string | null;
   object: { type: PageObjectType; data: Record<string, unknown> } | null;
   report: Record<string, unknown> | null;
+  // The FULL recomposed report as pages (every object with fresh data) so the
+  // builder can refresh the whole presentation in sync, not just one object.
+  pages: Page[] | null;
   columns: string[];
   rows: unknown[][];
   reasoning: { skill: string; why: string }[];
@@ -802,11 +821,23 @@ export interface AuthorObjectResult {
   error: string | null;
 }
 
+/** A slim digest of a presentation object (no row payload) — tells the agent what
+ *  to preserve and marks which object is being edited. */
+export interface ObjectDigest {
+  element_id: string;
+  type: string;
+  role: string | null;
+  data: Record<string, unknown>;
+  _target?: boolean;
+}
+
 export function authorObject(body: {
   sql: string;
   code?: string;
   object_type: string;
   instruction: string;
+  objects?: ObjectDigest[];
+  target_element_id?: string | null;
   as_user?: string | null;
 }): Promise<AuthorObjectResult> {
   return adminPost<AuthorObjectResult>("/admin/eval-goldens/object", body);

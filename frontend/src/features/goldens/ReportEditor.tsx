@@ -11,7 +11,7 @@
 // the template width), the editor renders EXACTLY the template's columns —
 // including empty ones — as stable drop targets, so "move object to column 1/3"
 // behaves predictably and nothing silently vanishes.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Page, PageObject, PageObjectType, TemplateId } from "../../lib/api";
 import { ObjectBody, objectCardClass } from "../../report-engine/PageLayout";
@@ -139,7 +139,15 @@ const fieldInput: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export type InstructResult = { type: PageObjectType; data: Record<string, unknown> } | { error: string };
+export type InstructResult =
+  | {
+      type: PageObjectType;
+      data: Record<string, unknown>;
+      /** The full recomposed report; present only when the extract changed, so the
+       *  OTHER objects' pipeline data is refreshed too (s16 Q2). */
+      refresh?: Page[];
+    }
+  | { error: string };
 
 export function ReportEditor({
   pages,
@@ -155,6 +163,13 @@ export function ReportEditor({
 }) {
   const dragId = useRef<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  // Keyboard copy / paste / delete on the interactive draft (drag-and-drop is
+  // unchanged). `selectedId` is the focused/highlighted card; `clipboard` holds
+  // a detached copy of an object; `focusNext` queues the card to focus after a
+  // paste/delete re-render so the keyboard flow continues without the mouse.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [clipboard, setClipboard] = useState<PageObject | null>(null);
+  const focusNext = useRef<string | null>(null);
   // Per-column pending "add" type selection.
   const [addType, setAddType] = useState<Record<string, PageObjectType>>({});
   // Per-object AI-instruction box: draft text, in-flight id, and last message.
@@ -224,6 +239,76 @@ export function ReportEditor({
     emit(next);
   }
 
+  // After a paste/delete, move DOM focus to the queued card so ⌘C/⌘V/Del keep
+  // working. Runs after every render but only acts when a focus was queued —
+  // so editing a text field never yanks focus back to the card.
+  useEffect(() => {
+    if (focusNext.current) {
+      document.getElementById(focusNext.current)?.focus();
+      focusNext.current = null;
+    }
+  });
+
+  /** A detached copy with a fresh element_id — a paste must never duplicate an
+   *  id (that would collide in React keys and element-pinned feedback refs). */
+  function reid(src: PageObject): PageObject {
+    return {
+      ...(JSON.parse(JSON.stringify(src)) as PageObject),
+      element_id: `edit:${src.type}:${Date.now().toString(36)}:${Math.random()
+        .toString(36)
+        .slice(2, 6)}`,
+    };
+  }
+
+  function copyObject(o: PageObject) {
+    setClipboard(o);
+  }
+
+  /** Paste the clipboard object immediately below `afterId` in its column. */
+  function pasteAfter(afterId: string) {
+    if (!clipboard) return;
+    const loc = locate(pages, afterId);
+    if (!loc) return;
+    const obj = reid(clipboard);
+    const next = clone(pages);
+    next[loc.pi].columns[loc.ci].splice(loc.oi + 1, 0, obj);
+    focusNext.current = obj.element_id;
+    setSelectedId(obj.element_id);
+    emit(next);
+  }
+
+  /** Delete `id` and focus a neighbour so the keyboard flow keeps going. */
+  function deleteAndReselect(id: string) {
+    const loc = locate(pages, id);
+    if (!loc) return;
+    const col = pages[loc.pi].columns[loc.ci];
+    const neighbour = col[loc.oi + 1] ?? col[loc.oi - 1] ?? null;
+    focusNext.current = neighbour?.element_id ?? null;
+    setSelectedId(neighbour?.element_id ?? null);
+    del(id);
+  }
+
+  function onCardKeyDown(e: React.KeyboardEvent<HTMLDivElement>, o: PageObject) {
+    // Only when the card itself holds focus — never hijack typing in the edit
+    // panel's fields (their key events bubble up to this same handler).
+    if (e.target !== e.currentTarget) return;
+    const meta = e.metaKey || e.ctrlKey;
+    const k = e.key.toLowerCase();
+    if (meta && k === "c") {
+      e.preventDefault();
+      copyObject(o);
+    } else if (meta && k === "v") {
+      e.preventDefault();
+      pasteAfter(o.element_id);
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      deleteAndReselect(o.element_id);
+    } else if (e.key === "Escape") {
+      setClipboard(null);
+      setSelectedId(null);
+    }
+  }
+
   function patchObject(id: string, patch: Partial<PageObject>) {
     const loc = locate(pages, id);
     if (!loc) return;
@@ -253,15 +338,39 @@ export function ReportEditor({
     emit(next);
   }
 
-  /** Replace an object's type + data wholesale — the AI instruct flow drops in
-   *  the freshly sandbox-computed chart (rows + encoding), so the object renders. */
-  function applyObject(id: string, type: PageObjectType, data: Record<string, unknown>) {
+  /** Apply an AI object-edit (s16): replace the edited (target) object's type +
+   *  data AND — when the extract changed (`refresh` present) — re-sync the OTHER
+   *  objects from the recomposed pages (matched by element_id). Their rows AND
+   *  encoding move together (a refresh that swapped only rows would leave the old
+   *  x/y pointing at renamed columns → "no chartable rows"); we keep only the
+   *  curator's presentation keys (height / title / label / heading). One emit. */
+  function applyInstruct(
+    id: string,
+    type: PageObjectType,
+    data: Record<string, unknown>,
+    refresh?: Page[],
+  ) {
     const loc = locate(pages, id);
     if (!loc) return;
     const next = clone(pages);
-    const obj = next[loc.pi].columns[loc.ci][loc.oi];
-    obj.type = type;
-    obj.data = data;
+    const target = next[loc.pi].columns[loc.ci][loc.oi];
+    target.type = type;
+    target.data = data;
+    if (refresh && refresh.length) {
+      const byId = new Map<string, PageObject>();
+      for (const p of refresh) for (const col of p.columns ?? []) for (const ob of col) byId.set(ob.element_id, ob);
+      const keepKeys = ["height", "title", "label", "heading"] as const;
+      for (const p of next)
+        for (const col of p.columns)
+          for (const ob of col) {
+            if (ob.element_id === id) continue; // the target is already applied
+            const match = byId.get(ob.element_id);
+            if (!match || !match.data || match.type !== ob.type) continue;
+            const kept: Record<string, unknown> = {};
+            for (const k of keepKeys) if (k in ob.data) kept[k] = ob.data[k];
+            ob.data = { ...match.data, ...kept };
+          }
+    }
     emit(next);
   }
 
@@ -277,7 +386,7 @@ export function ReportEditor({
         setInstructMsg((m) => ({ ...m, [o.element_id]: res.error }));
         return;
       }
-      applyObject(o.element_id, res.type, res.data);
+      applyInstruct(o.element_id, res.type, res.data, res.refresh);
       setInstructMsg((m) => ({ ...m, [o.element_id]: "" }));
       toggleOpen(o.element_id); // success → close the panel; the object re-renders
     } catch (e) {
@@ -490,8 +599,10 @@ export function ReportEditor({
   const editableCard = (o: PageObject, cols: number) => (
     <div
       key={o.element_id}
+      id={o.element_id}
       className={objectCardClass(o)}
       draggable
+      tabIndex={0}
       onDragStart={() => {
         dragId.current = o.element_id;
       }}
@@ -500,7 +611,14 @@ export function ReportEditor({
         e.stopPropagation();
         onDropCard(o.element_id);
       }}
-      style={{ position: "relative" }}
+      onFocus={() => setSelectedId(o.element_id)}
+      onClick={() => setSelectedId(o.element_id)}
+      onKeyDown={(e) => onCardKeyDown(e, o)}
+      style={{
+        position: "relative",
+        outline: selectedId === o.element_id ? "2px solid rgba(120,160,255,0.85)" : undefined,
+        outlineOffset: 2,
+      }}
     >
       <div style={{ position: "absolute", top: 4, right: 4, display: "flex", gap: 2, zIndex: 2 }}>
         <button type="button" title="move up" style={ctrl} onClick={() => moveInCol(o.element_id, -1)}>
@@ -542,6 +660,28 @@ export function ReportEditor({
 
   return (
     <div className="report">
+      {clipboard && (
+        <div
+          style={{
+            ...label,
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            marginBottom: 8,
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid rgba(120,160,255,0.45)",
+            background: "rgba(120,160,255,0.08)",
+            color: "rgb(120,160,255)",
+          }}
+        >
+          📋 copied a {OBJECT_TYPE_LABELS[clipboard.type]} — focus a card and press ⌘/Ctrl+V to
+          paste it below
+          <button type="button" style={{ ...ctrl, marginLeft: "auto" }} onClick={() => setClipboard(null)}>
+            clear
+          </button>
+        </div>
+      )}
       {pages.map((rawPage, pi) => {
         const page = normColumns(rawPage);
         const cols = colCount(page.template);
@@ -599,7 +739,8 @@ export function ReportEditor({
                 ✕ page
               </button>
               <span style={{ fontSize: 11, opacity: 0.5 }}>
-                drag cards or use ↑↓ · ✎ edit · column picker to move · ✕ remove
+                drag cards or use ↑↓ · ✎ edit · column picker to move · ✕ remove · click a card
+                then ⌘/Ctrl+C copy · ⌘/Ctrl+V paste below · Del remove
               </span>
             </div>
             <input

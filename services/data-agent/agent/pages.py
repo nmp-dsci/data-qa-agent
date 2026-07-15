@@ -27,6 +27,7 @@ so element-pinned feedback and the eval loop keep working unchanged.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -405,9 +406,12 @@ def compose_pages(
     return out, steps
 
 
-def _page(template: TemplateId, columns: list[list[PageObject]]) -> Page:
-    """Build a page, dropping empty columns (placement stays positional)."""
-    return Page(template=template, columns=[c for c in columns if c])
+def _page(
+    template: TemplateId, columns: list[list[PageObject]], *, headline: str | None = None
+) -> Page:
+    """Build a page, dropping empty columns (placement stays positional). An
+    optional ``headline`` summarises what the page shows (presentation only)."""
+    return Page(template=template, columns=[c for c in columns if c], headline=headline or None)
 
 
 def _validated(page: Page) -> dict[str, Any]:
@@ -430,6 +434,35 @@ def _as_kind(page: dict[str, Any], kind: str) -> dict[str, Any]:
 def _primary_headlines(report: dict[str, Any]) -> list[dict[str, Any]]:
     headlines = [h for h in report.get("headlines", []) if isinstance(h, dict)]
     return [h for h in headlines if not h.get("related")] or headlines
+
+
+def _one_line(text: str, *, limit: int = 120) -> str | None:
+    """First sentence of ``text`` as a one-line headline, trimmed to ``limit``
+    chars. Deterministic (no LLM): just the leading sentence of report prose."""
+    prose = (text or "").strip()
+    if not prose:
+        return None
+    match = re.match(r"\s*(.+?[.!?])(\s|$)", prose, re.DOTALL)
+    head = (match.group(1) if match else prose).strip().replace("\n", " ")
+    if len(head) > limit:
+        head = head[: limit - 1].rstrip() + "…"
+    return head or None
+
+
+def _summary_headline(report: dict[str, Any]) -> str | None:
+    """Headline for the summary page: the answer's key takeaway, taken from the
+    report summary's first sentence. Curators can still overwrite it."""
+    return _one_line(str(report.get("summary") or ""))
+
+
+def _insights_headline(report: dict[str, Any]) -> str | None:
+    """Headline for the insights page: what explains the numbers — the first
+    insight's heading, else the first profile's. None when there are none."""
+    for source in (report.get("insights"), report.get("profiles")):
+        for item in source or []:
+            if isinstance(item, dict) and str(item.get("heading") or "").strip():
+                return _one_line(str(item["heading"]))
+    return None
 
 
 def _first_kpi_id(report: dict[str, Any]) -> str | None:
@@ -498,7 +531,8 @@ def compose_summary_page(
                 "why": "answers lead with the latest number + trend",
             }
         )
-        return _as_kind(_validated(_page("two-col", columns)), "summary"), steps
+        page = _page("two-col", columns, headline=_summary_headline(report))
+        return _as_kind(_validated(page), "summary"), steps
     except (ValidationError, Exception) as exc:  # noqa: BLE001 — pages must never break an answer
         steps.append(
             {"kind": "object_build", "status": "error", "page": "summary", "error": str(exc)}
@@ -566,7 +600,8 @@ def compose_insights_page(
                 "why": "insight cards / breakdown present — explain the headline",
             }
         )
-        return _as_kind(_validated(_page("two-col", [note_col, chart_col])), "insights"), steps
+        page = _page("two-col", [note_col, chart_col], headline=_insights_headline(report))
+        return _as_kind(_validated(page), "insights"), steps
     except (ValidationError, Exception) as exc:  # noqa: BLE001 — pages must never break an answer
         steps.append(
             {"kind": "object_build", "status": "error", "page": "insights", "error": str(exc)}

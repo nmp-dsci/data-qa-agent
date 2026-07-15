@@ -617,6 +617,9 @@ class AnalysisResponse(BaseModel):
     row_count: int = 0
     report: dict[str, Any] | None = None
     pages: list[dict[str, Any]] | None = None
+    # The enrichment stage: named derived frames the run built + fed to a skill,
+    # so the Golden builder can show extract → derived frames → objects.
+    frames: list[dict[str, Any]] = []
     skills_used: list[str] = []
     skill_gaps: list[dict[str, Any]] = []
     error: str | None = None
@@ -659,6 +662,7 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
         row_count=row_count,
         report=outcome.report,
         pages=pages or None,
+        frames=outcome.frames,
         skills_used=outcome.skills_used,
         skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
         error=outcome.error,
@@ -670,13 +674,24 @@ class AnalysisObjectRequest(BaseModel):
     code: str = ""
     object_type: str = "compare"
     instruction: str
+    # s16 full cascade: the golden's current presentation objects (digest) + which
+    # one is being edited, so the agent rebuilds the WHOLE report (not one object)
+    # and we lift the right object back into the presentation.
+    objects: list[dict[str, Any]] = []
+    target_element_id: str | None = None
     user: UserCtx
 
 
 class AnalysisObjectResponse(BaseModel):
     code: str = ""
+    # The extract that produced this result — the revised SQL when the agent had
+    # to add columns for the requested data, else the caller's SQL unchanged.
+    sql: str = ""
     object: dict[str, Any] | None = None
     report: dict[str, Any] | None = None
+    # The FULL recomposed report as pages (every object with real data), so the
+    # builder can refresh the whole presentation in sync — not just one object.
+    pages: list[dict[str, Any]] | None = None
     columns: list[str] = []
     rows: list[list[Any]] = []
     reasoning: list[dict[str, Any]] = []
@@ -684,6 +699,61 @@ class AnalysisObjectResponse(BaseModel):
     skills_used: list[str] = []
     skill_gaps: list[dict[str, Any]] = []
     error: str | None = None
+
+
+_CHART_TYPES = {"trend", "breakdown", "compare"}
+
+
+def _chart_sig(data: dict[str, Any]) -> tuple[str, str, str, str]:
+    """A chart's field signature — dimension/measure/line/group, from bar OR trend
+    shape — so we can tell which recomposed chart is the one the curator edited."""
+    dim = str(data.get("dimension") or data.get("x") or "")
+    meas = str(data.get("measure") or data.get("y") or "")
+    line = str(data.get("line_measure") or "")
+    grp = str(data.get("group") or data.get("series") or "")
+    return (dim, meas, line, grp)
+
+
+def _lift_target(
+    pages: list[dict[str, Any]],
+    report: dict[str, Any] | None,
+    target_element_id: str | None,
+    existing: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Pick the object the curator was editing out of the recomposed pages.
+
+    An explicit ``element_id`` match wins (editing an existing, stably-id'd
+    object). Otherwise the target is the chart whose field signature isn't among
+    the existing presentation charts — i.e. the one this instruction newly built
+    (robust to which chart the model made ``main_chart``). Returns ``None`` when no
+    new-or-changed chart was produced, so a run that failed to honour the edit
+    surfaces as an error rather than silently applying a stale duplicate.
+    """
+    flat = [o for p in pages for col in p.get("columns", []) for o in col if isinstance(o, dict)]
+    if target_element_id:
+        for obj in flat:
+            if obj.get("element_id") == target_element_id:
+                return obj
+    charts = [o for o in flat if o.get("type") in _CHART_TYPES]
+    existing_sigs: set[tuple[str, str, str, str]] = set()
+    for obj in existing or []:
+        data = obj.get("data") if isinstance(obj, dict) else None
+        if obj.get("type") in _CHART_TYPES and isinstance(data, dict):
+            if data.get("dimension") or data.get("x"):
+                existing_sigs.add(_chart_sig(data))
+    for obj in charts:
+        if _chart_sig(obj.get("data") or {}) not in existing_sigs:
+            return obj
+    # No id match and no new/changed chart. If the golden had NO charts before,
+    # this is the first-object case → lift the report's main_chart. Otherwise the
+    # edit didn't take (every chart matches a pre-existing one) → None (error).
+    if not existing_sigs:
+        spec = report.get("main_chart") if isinstance(report, dict) else None
+        lifted = chart_object_from_spec(
+            spec, element_id="authored:chart", role="chart", height="md"
+        )
+        return lifted.model_dump(exclude_none=True) if lifted is not None else None
+    return None
 
 
 @app.post("/agent/analysis/object", response_model=AnalysisObjectResponse)
@@ -701,23 +771,31 @@ async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectRe
     try:
         frame, meta = await extract(body.sql, user_id=body.user.id)
     except UnsafeSQLError as exc:
-        return AnalysisObjectResponse(error=f"extract rejected: {exc}")
+        return AnalysisObjectResponse(sql=body.sql, error=f"extract rejected: {exc}")
     except Exception as exc:  # noqa: BLE001 — surface DB/extract errors to the builder
-        return AnalysisObjectResponse(error=f"extract failed: {exc}")
+        return AnalysisObjectResponse(sql=body.sql, error=f"extract failed: {exc}")
 
     columns = meta.get("columns", [])
     rows = meta.get("rows", [])
+    # The agent rewrites the WHOLE report (every object + the change) and may
+    # return a revised SQL when the requested data isn't in the extract. It runs
+    # the extract/sandbox tools to verify before finalizing (s16).
     gen = await scaffold_object(
         instruction=body.instruction,
         object_type=body.object_type,
         columns=columns,
         code=body.code,
+        sql=body.sql,
+        objects=body.objects,
+        user_id=body.user.id,
+        frame=frame,
     )
     code = str(gen.get("code") or "")
     reasoning = gen.get("reasoning", [])
     engine = str(gen.get("engine") or "stub")
     if not code.strip():
         return AnalysisObjectResponse(
+            sql=body.sql,
             columns=columns,
             rows=rows,
             reasoning=reasoning,
@@ -725,21 +803,49 @@ async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectRe
             error=gen.get("error") or "no code generated",
         )
 
+    # Apply a revised extract, if the agent produced one — all-or-nothing: a bad
+    # SQL leaves every stage on the caller's original (no partial write).
+    effective_sql = body.sql
+    new_sql = str(gen.get("sql") or "").strip()
+    if new_sql and new_sql != body.sql.strip():
+        try:
+            frame, meta = await extract(new_sql, user_id=body.user.id)
+            columns = meta.get("columns", [])
+            rows = meta.get("rows", [])
+            effective_sql = new_sql
+        except UnsafeSQLError as exc:
+            return AnalysisObjectResponse(
+                sql=body.sql,
+                columns=columns,
+                rows=rows,
+                reasoning=reasoning,
+                engine=engine,
+                error=f"revised extract rejected: {exc}",
+            )
+        except Exception as exc:  # noqa: BLE001 — surface to the builder, keep old SQL
+            return AnalysisObjectResponse(
+                sql=body.sql,
+                columns=columns,
+                rows=rows,
+                reasoning=reasoning,
+                engine=engine,
+                error=f"revised extract failed: {exc}",
+            )
+
     outcome = run_code(code, df=frame, frames={"extract": frame})
-    obj: dict[str, Any] | None = None
+    pages: list[dict[str, Any]] = []
     if outcome.report and isinstance(outcome.report, dict):
-        page_obj = chart_object_from_spec(
-            outcome.report.get("main_chart"),
-            element_id="authored:chart",
-            role="chart",
-            height="md",
-        )
-        if page_obj is not None:
-            obj = page_obj.model_dump(exclude_none=True)
+        try:
+            pages, _ = compose_pages(outcome.report)
+        except Exception:  # noqa: BLE001 — page composition is best-effort here
+            pages = []
+    obj = _lift_target(pages, outcome.report, body.target_element_id, body.objects)
     return AnalysisObjectResponse(
         code=code,
+        sql=effective_sql,
         object=obj,
         report=outcome.report,
+        pages=pages or None,
         columns=columns,
         rows=rows,
         reasoning=reasoning,

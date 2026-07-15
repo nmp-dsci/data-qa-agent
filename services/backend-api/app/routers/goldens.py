@@ -244,6 +244,10 @@ class ObjectIn(BaseModel):
     code: str = ""
     object_type: str = "compare"
     instruction: str
+    # s16 full cascade: the golden's current presentation objects + which one is
+    # being edited, so the agent rebuilds the whole report and lifts the right one.
+    objects: list[dict[str, Any]] = []
+    target_element_id: str | None = None
     # Author under this user id's RLS; defaults to the admin.
     as_user: str | None = None
 
@@ -262,6 +266,8 @@ async def author_object_endpoint(
         code=body.code,
         object_type=body.object_type,
         instruction=body.instruction,
+        objects=body.objects,
+        target_element_id=body.target_element_id,
         user_id=body.as_user or admin.id,
         role="user",
     )

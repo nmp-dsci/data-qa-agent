@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   GoldenInput,
   GoldenListItem,
+  ObjectDigest,
   Page,
   PageObject,
   PrepResult,
@@ -68,13 +69,19 @@ function pagesFromReport(report: unknown): Page[] {
 }
 
 /** The augmented data the sandbox produced, as a table — the chart series the
- *  report built, i.e. how the sandbox transformed the SQL extract. */
+ *  report built, i.e. how the sandbox transformed the SQL extract. House chart
+ *  specs nest their rows under `main_chart.data.values` (Vega-lite shape); older
+ *  or plain shapes put the array directly on `data`. Accept either. */
 function sandboxTable(report: unknown): { columns: string[]; rows: unknown[][] } | null {
-  const chart = (report as { main_chart?: { data?: unknown } } | null)?.main_chart;
-  const data = chart?.data;
-  if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object" && data[0] !== null) {
-    const columns = Object.keys(data[0] as Record<string, unknown>);
-    const rows = data.map((r) => columns.map((c) => (r as Record<string, unknown>)[c]));
+  const raw = (report as { main_chart?: { data?: unknown } } | null)?.main_chart?.data;
+  const values = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { values?: unknown } | null)?.values)
+      ? (raw as { values: unknown[] }).values
+      : null;
+  if (values && values.length > 0 && typeof values[0] === "object" && values[0] !== null) {
+    const columns = Object.keys(values[0] as Record<string, unknown>);
+    const rows = values.map((r) => columns.map((c) => (r as Record<string, unknown>)[c]));
     return { columns, rows };
   }
   return null;
@@ -287,6 +294,9 @@ export function GoldensPage() {
   // The interactive report DRAFT — edits stay here until the curator Submits,
   // which commits them to golden_report + reconciles golden_data (Goal C).
   const [pendingPages, setPendingPages] = useState<Page[]>([]);
+  // When an AI object-edit rewrites the ① SQL extract, this holds the previous
+  // SQL so the curator can revert it in one click (s16 Q1: auto-apply + revert).
+  const [sqlRevert, setSqlRevert] = useState<string | null>(null);
 
   /** Preselect the skills a piece of run_analysis code already applies (plus any
    *  a run reported), so the skills panel reflects what's in the code. */
@@ -392,12 +402,14 @@ export function GoldensPage() {
     setSelectedSkills(new Set());
     setPrep(null);
     setMsg(null);
+    setSqlRevert(null);
   }
 
   async function selectGolden(id: string) {
     setBusy("load");
     setMsg(null);
     setPrep(null);
+    setSqlRevert(null);
     try {
       const g = await getGolden(id);
       const sandbox = g.golden_sandbox ?? "";
@@ -454,21 +466,64 @@ export function GoldensPage() {
     }
   }
 
-  // Author one report object from a plain-English instruction: the agent rewrites
-  // run_analysis to build the described chart, reruns the sandbox, and we drop the
-  // lifted object's data into the presentation while refreshing the sandbox code
-  // (golden_sandbox) + output JSON (golden_data). Resolves with the object's new
-  // type+data for ReportEditor to apply, or an error string.
+  // Edit ONE report object from a plain-English instruction (s16 full cascade):
+  // the agent rebuilds the WHOLE run_analysis (every object + the change), may
+  // revise the SQL extract when the data isn't present, reruns, and returns the
+  // revised sql + full recomposed pages + the lifted target. On success we apply
+  // every stage together — golden_sql / golden_sandbox / golden_data / the
+  // presentation — so the golden stays reproducible; on failure NOTHING is
+  // clobbered. Resolves with the target's type+data (+ a refresh set when the SQL
+  // changed) for ReportEditor to apply, or an error string.
   async function instructObject(o: PageObject, instruction: string): Promise<InstructResult> {
     if (!draft.golden_sql.trim()) return { error: "Add the ① SQL extract first." };
+    // Send every current object minus its (large) row payload so the agent knows
+    // what to preserve; mark the one being edited so it changes only that.
+    const digest: ObjectDigest[] = pendingPages
+      .flatMap((p) => p.columns.flat())
+      .map((obj) => {
+        const { rows: _rows, ...fields } = obj.data as Record<string, unknown>;
+        return {
+          element_id: obj.element_id,
+          type: obj.type,
+          role: obj.role ?? null,
+          data: fields,
+          _target: obj.element_id === o.element_id,
+        };
+      });
     try {
       const res = await authorObject({
         sql: draft.golden_sql,
         code: draft.golden_sandbox,
         object_type: o.type,
         instruction,
+        objects: digest,
+        target_element_id: o.element_id,
         as_user: draft.as_user || null,
       });
+      if (!res.object) {
+        // Nothing usable was produced — leave every stored stage untouched.
+        return {
+          error:
+            res.error ||
+            "The run produced no chart — describe the measures/dimension more explicitly.",
+        };
+      }
+      if (res.engine === "stub") {
+        // The agent couldn't author the edit (no LLM key, or it hit its budget).
+        // Don't apply the fallback's stand-in object or clobber any stage.
+        return {
+          error:
+            res.error ||
+            "Couldn't author this edit automatically — try rephrasing the measures/dimension.",
+        };
+      }
+      // Success → apply the cascade in sync. Every stage the agent rebuilt lands
+      // together, keeping SQL ↔ sandbox ↔ data ↔ presentation reproducible.
+      const sqlChanged = !!res.sql && res.sql.trim() !== draft.golden_sql.trim();
+      if (sqlChanged) {
+        setSqlRevert(draft.golden_sql); // one-click revert of the previous extract
+        patch("golden_sql", formatSql(res.sql as string));
+      }
       if (res.code) patch("golden_sandbox", res.code);
       if (res.report) patch("golden_data", res.report);
       // Reflect the run in the ② Sandbox panel too (output table + skills used).
@@ -477,19 +532,21 @@ export function GoldensPage() {
         rows: res.rows,
         row_count: res.rows.length,
         report: res.report,
+        pages: res.pages,
         skills_used: res.skills_used,
         skill_gaps: res.skill_gaps,
         error: res.error,
       });
-      if (!res.object) {
-        return {
-          error:
-            res.error ||
-            "The run produced no chart — describe the measures/dimension more explicitly.",
-        };
-      }
-      setMsg(`Object authored via ${res.engine} — sandbox code + output JSON updated.`);
-      return { type: res.object.type, data: res.object.data };
+      setMsg(
+        `Object authored via ${res.engine} — ${sqlChanged ? "SQL + " : ""}sandbox code + ` +
+          `output JSON updated${sqlChanged ? " · SQL changed (review/revert in ① SQL)" : ""}.`,
+      );
+      return {
+        type: res.object.type,
+        data: res.object.data,
+        // Q2: refresh the OTHER objects' data only when the extract really changed.
+        refresh: sqlChanged ? res.pages ?? undefined : undefined,
+      };
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -774,12 +831,44 @@ export function GoldensPage() {
           <div style={label}>① SQL — extraction</div>
           <textarea
             value={draft.golden_sql}
-            onChange={(e) => patch("golden_sql", e.target.value)}
+            onChange={(e) => {
+              patch("golden_sql", e.target.value);
+              setSqlRevert(null); // a manual edit supersedes the AI's rewrite
+            }}
             spellCheck={false}
             rows={Math.min(16, Math.max(5, draft.golden_sql.split("\n").length + 1))}
             style={{ ...mono, width: "100%", marginTop: 6, whiteSpace: "pre", lineHeight: 1.5 }}
             placeholder={"SELECT suburb, ...\nFROM mart_rent_yield\nWHERE ..."}
           />
+          {sqlRevert !== null && (
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                flexWrap: "wrap",
+                margin: "6px 0",
+                padding: "5px 10px",
+                borderRadius: 6,
+                fontSize: 12.5,
+                border: "1px solid rgba(210,140,60,0.5)",
+                background: "rgba(210,140,60,0.1)",
+                color: "rgb(210,140,60)",
+              }}
+            >
+              ● The AI object-edit rewrote this SQL to add the data it needed.
+              <button
+                type="button"
+                style={{ ...btn(), padding: "2px 10px", fontSize: 12 }}
+                onClick={() => {
+                  patch("golden_sql", sqlRevert);
+                  setSqlRevert(null);
+                }}
+              >
+                ↺ revert to previous SQL
+              </button>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button style={btn(busy !== "sql")} onClick={() => void runStage(false)} disabled={busy === "sql"}>
               {busy === "sql" ? "Running…" : "▶ Run SQL"}
@@ -802,15 +891,20 @@ export function GoldensPage() {
           )}
         </div>
 
-        {/* ② Sandbox — skills */}
-        <div style={box}>
-          <div style={label}>② Sandbox — skills (the plan)</div>
+        {/* ② Sandbox — the data pipeline (open by default; still collapsible).
+            Shows ① SQL extract → ② enrichment (derived frames) → ③ presentation
+            objects, plus the editable run_analysis script + skills catalogue. */}
+        <details open style={box}>
+          <summary style={{ ...label, cursor: "pointer" }}>
+            ② Sandbox — data pipeline · ① extract → ② enrichment → ③ objects (▶ Run skills to
+            populate · click to collapse)
+          </summary>
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "minmax(0,240px) 1fr",
               gap: 10,
-              marginTop: 6,
+              marginTop: 10,
             }}
           >
             {/* available skills — click to insert; used ones are highlighted */}
@@ -906,7 +1000,8 @@ export function GoldensPage() {
             {/* code + run + output */}
             <div style={{ minWidth: 0 }}>
               <div style={{ ...label, marginBottom: 4 }}>
-                flow — ① extract (input df) → run_analysis → augmented output
+                pipeline · ① SQL extract (df) → run_analysis → ② enrichment (derived frames) → ③
+                presentation objects
               </div>
               {prep && !prep.error && prep.columns.length > 0 && (
                 <details
@@ -918,7 +1013,7 @@ export function GoldensPage() {
                   }}
                 >
                   <summary style={{ ...label, cursor: "pointer" }}>
-                    input · df — the ① extract run_analysis receives ({prep.row_count} row
+                    ① SQL extract · df — the raw rows run_analysis receives ({prep.row_count} row
                     {prep.row_count === 1 ? "" : "s"}) · click to expand
                   </summary>
                   <div style={{ marginTop: 6 }}>
@@ -976,6 +1071,47 @@ export function GoldensPage() {
               </button>
               {prep && (
                 <div style={{ marginTop: 8, fontSize: 12.5 }}>
+                  {/* ② enrichment — the derived frames run_analysis built and fed to a skill */}
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      padding: 6,
+                      borderRadius: 6,
+                      border: "1px solid rgba(120,160,255,0.35)",
+                      background: "rgba(120,160,255,0.05)",
+                    }}
+                  >
+                    <div style={label}>
+                      ② enrichment · derived frames run_analysis built (avg price, growth, moving
+                      avgs…) — the data behind the objects
+                    </div>
+                    {prep.frames && prep.frames.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+                        {prep.frames.map((f) => (
+                          <div key={f.name} style={{ minWidth: 0 }}>
+                            <div
+                              style={{ display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}
+                            >
+                              <code style={{ fontSize: 12, color: "rgb(120,160,255)" }}>{f.name}</code>
+                              <span style={{ ...label, opacity: 0.55 }}>
+                                {f.shape[0]} × {f.shape[1]}
+                              </span>
+                              <span style={{ ...label, opacity: 0.9, color: f.fed_object ? "rgb(90,170,90)" : undefined }}>
+                                {f.fed_object ? "→ chart" : "→ kpi / derived"}
+                              </span>
+                            </div>
+                            <DataTable columns={f.columns} rows={f.rows} max={8} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
+                        no named derived frames captured — the run computed inline, or fed the extract
+                        straight to a skill
+                      </div>
+                    )}
+                  </div>
+                  {/* ③ presentation objects — what the report renders */}
                   <div
                     style={{
                       marginBottom: 8,
@@ -986,8 +1122,49 @@ export function GoldensPage() {
                     }}
                   >
                     <div style={label}>
-                      augmented output · what run_analysis produced from df (feeds the ③ report)
+                      ③ presentation objects · the report this run built (feeds the ③ Report below)
                     </div>
+                    {prep.pages && prep.pages.length > 0 && (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", margin: "6px 0" }}>
+                        {prep.pages
+                          .flatMap((p) => (p.columns ?? []).flat())
+                          .map((o, i) => {
+                            const d = o.data as Record<string, unknown>;
+                            const title = String(d?.title ?? d?.label ?? d?.heading ?? "");
+                            return (
+                              <span
+                                key={o.element_id ?? i}
+                                title={title || o.type}
+                                style={{
+                                  ...btn(),
+                                  cursor: "default",
+                                  padding: "1px 7px",
+                                  fontSize: 11,
+                                  display: "inline-flex",
+                                  gap: 5,
+                                  alignItems: "baseline",
+                                  maxWidth: 200,
+                                }}
+                              >
+                                <strong style={{ color: "rgb(90,170,90)" }}>{o.type}</strong>
+                                {title && (
+                                  <span
+                                    style={{
+                                      opacity: 0.7,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {title}
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })}
+                      </div>
+                    )}
+                    <div style={{ ...label, opacity: 0.7 }}>main chart data</div>
                     {(() => {
                       const t = sandboxTable(prep.report);
                       if (!t) {
@@ -1095,7 +1272,7 @@ export function GoldensPage() {
               )}
             </div>
           </div>
-        </div>
+        </details>
 
         {/* ③ Report */}
         <div style={box}>

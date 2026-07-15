@@ -25,6 +25,7 @@ from ..agent_client import (
     ask_agent,
     ask_agent_stream,
     author_object,
+    build_object,
     fetch_skills,
     prep_golden,
     scaffold_skills,
@@ -45,9 +46,9 @@ _LIST_COLS = (
 _FULL_COLS = (
     "id, source, dataset, tier, question, expectation, as_user, tags, holdout, "
     "authoring_status, golden_sql, golden_sandbox, golden_data, golden_report, "
-    "created_at, updated_at"
+    "golden_objects, created_at, updated_at"
 )
-_JSONB_COLS = {"tags", "golden_data", "golden_report"}
+_JSONB_COLS = {"tags", "golden_data", "golden_report", "golden_objects"}
 
 
 class GoldenIn(BaseModel):
@@ -62,6 +63,7 @@ class GoldenIn(BaseModel):
     golden_sandbox: str | None = None
     golden_data: Any | None = None
     golden_report: Any | None = None
+    golden_objects: Any | None = None
     expectation: str | None = None
 
 
@@ -77,6 +79,7 @@ class GoldenPatch(BaseModel):
     golden_sandbox: str | None = None
     golden_data: Any | None = None
     golden_report: Any | None = None
+    golden_objects: Any | None = None
     expectation: str | None = None
 
 
@@ -150,10 +153,12 @@ async def create_golden(
                 text(
                     "INSERT INTO app.eval_cases "
                     "(source, question, expectation, dataset, tier, as_user, tags, holdout, "
-                    " authoring_status, golden_sql, golden_sandbox, golden_data, golden_report) "
+                    " authoring_status, golden_sql, golden_sandbox, golden_data, golden_report, "
+                    " golden_objects) "
                     "VALUES ('authored', :q, :exp, :ds, :tier, :as_user, CAST(:tags AS jsonb), "
                     " :holdout, :status, :sql, :sandbox, "
-                    " CAST(:data AS jsonb), CAST(:report AS jsonb)) "
+                    " CAST(:data AS jsonb), CAST(:report AS jsonb), "
+                    " CAST(COALESCE(:objects, '[]') AS jsonb)) "
                     "RETURNING id"
                 ),
                 {
@@ -169,6 +174,7 @@ async def create_golden(
                     "sandbox": body.golden_sandbox,
                     "data": _jsonb_param(body.golden_data),
                     "report": _jsonb_param(body.golden_report),
+                    "objects": _jsonb_param(body.golden_objects),
                 },
             )
         ).scalar()
@@ -224,6 +230,8 @@ async def delete_golden(
 class PrepIn(BaseModel):
     sql: str
     code: str = ""
+    # s18: named presentation objects to recompute against the same extract.
+    objects: list[dict[str, Any]] = []
     # Run the extract under this user id's RLS; defaults to the admin.
     as_user: str | None = None
 
@@ -235,7 +243,42 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
     agent uses. Returns extract rows + the produced report/skills for the builder.
     """
     return await prep_golden(
-        sql=body.sql, code=body.code, user_id=body.as_user or admin.id, role="user"
+        sql=body.sql,
+        code=body.code,
+        objects=body.objects,
+        user_id=body.as_user or admin.id,
+        role="user",
+    )
+
+
+class BuildObjectIn(BaseModel):
+    sql: str
+    name: str
+    object_type: str = "compare"
+    # Structured form state (grain, dimension, group, bar/line measures + windows).
+    spec: dict[str, Any] = {}
+    # Optional NL instruction — routes to the DeepSeek scaffold path instead.
+    instruction: str = ""
+    as_user: str | None = None
+
+
+@router.post("/admin/eval-goldens/build-object")
+async def build_object_endpoint(
+    body: BuildObjectIn, admin: CurrentUser = Depends(require_admin)
+) -> dict[str, Any]:
+    """Deterministically build a NAMED presentation object (Golden Sandbox, s18):
+    the data-agent emits run_analysis from the spec, extends the shared extract as
+    needed, runs the governed sandbox, and returns the lifted object + its code +
+    the (possibly revised) SQL so the Builder can add it and link it by name.
+    """
+    return await build_object(
+        sql=body.sql,
+        name=body.name,
+        object_type=body.object_type,
+        spec=body.spec,
+        instruction=body.instruction,
+        user_id=body.as_user or admin.id,
+        role="user",
     )
 
 

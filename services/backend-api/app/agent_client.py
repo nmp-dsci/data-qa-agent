@@ -79,14 +79,57 @@ async def ask_agent(
         return cast(dict[str, Any], resp.json())
 
 
-async def prep_golden(*, sql: str, code: str, user_id: str, role: str = "user") -> dict[str, Any]:
+async def prep_golden(
+    *,
+    sql: str,
+    code: str,
+    user_id: str,
+    role: str = "user",
+    objects: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Golden authoring (s14 E1): run confirmed SQL through the governed extract,
     then (if code is given) the run_analysis script in the sandbox. Returns the
     extract rows + the produced report/skills so the Builder can draft Goal B.
+
+    ``objects`` (s18) are named presentation objects recomputed against the same
+    extract, so the Golden Sandbox repopulates built objects on load.
     """
-    payload = {"sql": sql, "code": code, "user": {"id": user_id, "role": role}}
+    payload = {
+        "sql": sql,
+        "code": code,
+        "objects": objects or [],
+        "user": {"id": user_id, "role": role},
+    }
     async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(f"{settings.agent_url}/agent/analysis", json=payload)
+        resp.raise_for_status()
+        return cast(dict[str, Any], resp.json())
+
+
+async def build_object(
+    *,
+    sql: str,
+    name: str,
+    object_type: str,
+    spec: dict[str, Any],
+    user_id: str,
+    role: str = "user",
+    instruction: str = "",
+) -> dict[str, Any]:
+    """Golden Sandbox (s18): deterministically build a NAMED presentation object
+    from a structured spec (or an NL instruction) — the data-agent extends the
+    shared extract as needed, runs the governed sandbox, and returns the lifted
+    object + its generating code + the (possibly revised) SQL."""
+    payload = {
+        "sql": sql,
+        "name": name,
+        "object_type": object_type,
+        "spec": spec,
+        "instruction": instruction,
+        "user": {"id": user_id, "role": role},
+    }
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
+        resp = await client.post(f"{settings.agent_url}/agent/analysis/build-object", json=payload)
         resp.raise_for_status()
         return cast(dict[str, Any], resp.json())
 

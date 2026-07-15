@@ -690,6 +690,7 @@ export interface GoldenFull extends GoldenListItem {
   golden_sandbox: string | null;
   golden_data: unknown;
   golden_report: unknown;
+  golden_objects?: GoldenObject[] | null;
 }
 
 export interface GoldenInput {
@@ -704,7 +705,49 @@ export interface GoldenInput {
   golden_sandbox?: string | null;
   golden_data?: unknown;
   golden_report?: unknown;
+  golden_objects?: GoldenObject[] | null;
   expectation?: string | null;
+}
+
+/** One measure a Presentation Object builds — either a plain agg of one column
+ *  (source + agg) or a weighted average (num / den). ``months`` windows it. */
+export interface SandboxMeasure {
+  label: string;
+  source?: string;
+  agg?: "sum" | "mean";
+  num?: string;
+  den?: string;
+  months?: number | null;
+}
+
+/** The structured form state behind a named presentation object — grain +
+ *  encoding + the bar/line measures. The deterministic builder emits code from
+ *  it, and it stays on the object so the builder can re-edit columns (lineage). */
+export interface SandboxObjectSpec {
+  grain?: string[];
+  dimension?: string;
+  group?: string | null;
+  bar_measure?: SandboxMeasure;
+  line_measure?: SandboxMeasure;
+  months?: number;
+  title?: string;
+  summary?: string;
+  /** Exact WHERE predicate scoping the object's extract (e.g.
+   *  `property_type = 'house' AND suburb IN ('Hornsby','Normanhurst')`). Blank =
+   *  carry the golden's filters from the shared extract. Editable lineage. */
+  filter?: string;
+  /** Optional natural-language instruction (routes to the LLM scaffold path). */
+  instruction?: string;
+}
+
+/** A named presentation object persisted on a golden: its stable link id, the
+ *  generating run_analysis code (lineage), and the form spec that produced it. */
+export interface GoldenObject {
+  name: string;
+  element_id: string;
+  object_type: PageObjectType;
+  code: string;
+  spec?: SandboxObjectSpec;
 }
 
 /** A derived frame the sandbox built and fed to a skill — the enrichment stage
@@ -719,6 +762,13 @@ export interface SandboxFrame {
   fed_object?: boolean;
 }
 
+/** A named object recomputed against the extract during prep (s18). */
+export interface PrepObjectOut {
+  element_id: string;
+  object: PageObject | null;
+  error: string | null;
+}
+
 export interface PrepResult {
   columns: string[];
   rows: unknown[][];
@@ -728,7 +778,36 @@ export interface PrepResult {
   frames?: SandboxFrame[];
   skills_used: string[];
   skill_gaps: { need: string; why: string }[];
+  objects_out?: PrepObjectOut[];
   error: string | null;
+}
+
+/** Result of deterministically building a named presentation object (s18). */
+export interface BuildObjectResult {
+  name: string;
+  element_id: string;
+  object_type: PageObjectType;
+  /** The extract that produced this — revised (extended) when the object needed
+   *  columns the shared extract lacked, else the caller's SQL unchanged. */
+  sql: string;
+  code: string;
+  object: PageObject | null;
+  columns: string[];
+  rows: unknown[][];
+  skills_used: string[];
+  skill_gaps: { need: string; why: string }[];
+  error: string | null;
+}
+
+export function buildGoldenObject(body: {
+  sql: string;
+  name: string;
+  object_type: string;
+  spec: SandboxObjectSpec;
+  instruction?: string;
+  as_user?: string | null;
+}): Promise<BuildObjectResult> {
+  return adminPost<BuildObjectResult>("/admin/eval-goldens/build-object", body);
 }
 
 async function adminSend<T>(path: string, method: string, body?: unknown): Promise<T> {
@@ -794,6 +873,7 @@ export function deleteGolden(id: string): Promise<{ status: string; deleted: num
 export function prepGolden(body: {
   sql: string;
   code?: string;
+  objects?: { element_id: string; object_type: string; code: string }[];
   as_user?: string | null;
 }): Promise<PrepResult> {
   return adminPost<PrepResult>("/admin/eval-goldens/prep", body);

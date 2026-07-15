@@ -608,6 +608,10 @@ async def agent_sql_assist(body: SqlAssistRequest) -> SqlAssistResult:
 class AnalysisRequest(BaseModel):
     sql: str
     code: str = ""
+    # s18 Golden Sandbox: named presentation objects to (re)compute against the
+    # SAME extract — each ``{element_id, object_type, code}`` — so the builder can
+    # repopulate every built object on golden load in one round-trip.
+    objects: list[dict[str, Any]] = []
     user: UserCtx
 
 
@@ -622,7 +626,61 @@ class AnalysisResponse(BaseModel):
     frames: list[dict[str, Any]] = []
     skills_used: list[str] = []
     skill_gaps: list[dict[str, Any]] = []
+    # s18: each named object recomputed against the extract — {element_id, object, error}.
+    objects_out: list[dict[str, Any]] = []
     error: str | None = None
+
+
+def _lift_object(
+    report: dict[str, Any] | None, *, element_id: str, object_type: str = "compare"
+) -> dict[str, Any] | None:
+    """Lift a built object's report into ONE page object with a stable element_id.
+
+    Charts lift their ``main_chart`` (combo-aware, via chart_object_from_spec);
+    kpi/headline objects carry no chart, so the first headline tile is lifted."""
+    if not isinstance(report, dict):
+        return None
+    spec = report.get("main_chart")
+    if spec:
+        lifted = chart_object_from_spec(spec, element_id=element_id, role="chart", height="md")
+        if lifted is not None:
+            return lifted.model_dump(exclude_none=True)
+    heads = report.get("headlines") or []
+    if heads and isinstance(heads[0], dict):
+        h = heads[0]
+        return {
+            "type": "kpi",
+            "element_id": element_id,
+            "role": "headline",
+            "data": {
+                "label": h.get("label", ""),
+                "value": h.get("value", ""),
+                "basis": h.get("basis", ""),
+            },
+        }
+    return None
+
+
+def _run_named_objects(objects: list[dict[str, Any]], frame: Any) -> list[dict[str, Any]]:
+    """Run each named object's run_analysis snippet against the extract + lift it."""
+    out: list[dict[str, Any]] = []
+    for spec in objects or []:
+        if not isinstance(spec, dict):
+            continue
+        code = str(spec.get("code") or "")
+        eid = str(spec.get("element_id") or "")
+        otype = str(spec.get("object_type") or "compare")
+        if not code or not eid:
+            continue
+        try:
+            outcome = run_code(code, df=frame, frames={"extract": frame})
+            obj = _lift_object(outcome.report, element_id=eid, object_type=otype)
+            out.append(
+                {"element_id": eid, "object": obj, "error": None if obj else outcome.error}
+            )
+        except Exception as exc:  # noqa: BLE001 — one bad object must not fail the prep
+            out.append({"element_id": eid, "object": None, "error": str(exc)})
+    return out
 
 
 @app.post("/agent/analysis", response_model=AnalysisResponse)
@@ -644,8 +702,12 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
     columns = meta.get("columns", [])
     rows = meta.get("rows", [])
     row_count = meta.get("row_count", len(rows))
+    # Named presentation objects recompute against this same extract (s18).
+    objects_out = _run_named_objects(body.objects, frame)
     if not body.code.strip():
-        return AnalysisResponse(columns=columns, rows=rows, row_count=row_count)
+        return AnalysisResponse(
+            columns=columns, rows=rows, row_count=row_count, objects_out=objects_out
+        )
 
     outcome = run_code(body.code, df=frame, frames={"extract": frame})
     # Compose renderable pages from the produced report so the Builder can add
@@ -665,6 +727,7 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
         frames=outcome.frames,
         skills_used=outcome.skills_used,
         skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
+        objects_out=objects_out,
         error=outcome.error,
     )
 
@@ -853,6 +916,149 @@ async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectRe
         skills_used=outcome.skills_used,
         skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
         error=outcome.error or gen.get("error"),
+    )
+
+
+class AnalysisBuildObjectRequest(BaseModel):
+    sql: str
+    name: str
+    object_type: str = "compare"
+    # Structured form state (grain, dimension, group, bar/line measures + windows)
+    # the deterministic builder emits code from — see agent.object_builder.
+    spec: dict[str, Any] = {}
+    # Optional NL instruction — when set, the DeepSeek scaffold_object path authors
+    # the code instead of the deterministic builder (relabelled with this name).
+    instruction: str = ""
+    user: UserCtx
+
+
+class AnalysisBuildObjectResponse(BaseModel):
+    name: str = ""
+    element_id: str = ""
+    object_type: str = "compare"
+    # The extract that produced this — extended to add the object's columns when
+    # they weren't already SELECTed, else the caller's SQL unchanged.
+    sql: str = ""
+    code: str = ""
+    object: dict[str, Any] | None = None
+    columns: list[str] = []
+    rows: list[list[Any]] = []
+    skills_used: list[str] = []
+    skill_gaps: list[dict[str, Any]] = []
+    error: str | None = None
+
+
+@app.post("/agent/analysis/build-object", response_model=AnalysisBuildObjectResponse)
+async def agent_analysis_build_object(
+    body: AnalysisBuildObjectRequest,
+) -> AnalysisBuildObjectResponse:
+    """Deterministically build a NAMED presentation object (s18 Golden Sandbox).
+
+    The builder emits run_analysis from the ``spec`` (or delegates to the NL
+    scaffold path), *extends the shared extract* when the object needs columns it
+    lacks (carrying the golden's suburb/property filters), runs it in the governed
+    sandbox, and lifts the ``main_chart`` back into a page object with the object's
+    stable ``element_id`` so the report can link to it by name.
+    """
+    from .object_builder import (
+        build_object_code,
+        canonical_extract_sql,
+        element_id_for,
+        needed_columns,
+    )
+
+    eid = element_id_for(body.name)
+
+    def _err(msg: str, *, sql: str, code: str = "") -> AnalysisBuildObjectResponse:
+        return AnalysisBuildObjectResponse(
+            name=body.name,
+            element_id=eid,
+            object_type=body.object_type,
+            sql=sql,
+            code=code,
+            error=msg,
+        )
+
+    # 1. Run the current extract; extend it if the object needs columns it lacks.
+    # A failing base SQL (or a placeholder) doesn't block a deterministic build —
+    # when a spec is given we fall through to the canonical grain-level extract.
+    frame: Any = None
+    meta: dict[str, Any] = {}
+    columns: list[str] = []
+    base_error: str | None = None
+    try:
+        frame, meta = await extract(body.sql, user_id=body.user.id)
+        columns = meta.get("columns", [])
+    except UnsafeSQLError as exc:
+        base_error = f"extract rejected: {exc}"
+    except Exception as exc:  # noqa: BLE001 — surface DB/extract errors to the builder
+        base_error = f"extract failed: {exc}"
+    effective_sql = body.sql
+    need = needed_columns(body.spec)
+    must_rewrite = bool(body.spec) and (base_error is not None or not need.issubset(set(columns)))
+    if must_rewrite:
+        grain = body.spec.get("grain") or ["suburb", "area_band", "month"]
+        new_sql = canonical_extract_sql(
+            body.sql,
+            grain=grain,
+            measure_source_cols=need,
+            where_override=str(body.spec.get("filter") or ""),
+        )
+        try:
+            frame, meta = await extract(new_sql, user_id=body.user.id)
+            columns = meta.get("columns", [])
+            effective_sql = new_sql
+        except UnsafeSQLError as exc:
+            return _err(f"revised extract rejected: {exc}", sql=body.sql)
+        except Exception as exc:  # noqa: BLE001 — keep the caller's SQL on failure
+            return _err(f"revised extract failed: {exc}", sql=body.sql)
+    elif base_error is not None:
+        # No spec to build a canonical extract from — surface the base failure.
+        return _err(base_error, sql=body.sql)
+
+    # 2. Code: the deterministic builder, or the NL scaffold path when instructed.
+    if body.instruction.strip():
+        from .object_codegen import scaffold_object
+
+        gen = await scaffold_object(
+            instruction=body.instruction,
+            object_type=body.object_type,
+            columns=columns,
+            code="",
+            sql=effective_sql,
+            objects=None,
+            user_id=body.user.id,
+            frame=frame,
+        )
+        code = str(gen.get("code") or "")
+        new_sql = str(gen.get("sql") or "").strip()
+        if new_sql and new_sql != effective_sql.strip():
+            try:
+                frame, meta = await extract(new_sql, user_id=body.user.id)
+                columns = meta.get("columns", [])
+                effective_sql = new_sql
+            except Exception as exc:  # noqa: BLE001
+                return _err(f"revised extract failed: {exc}", sql=effective_sql, code=code)
+        if not code.strip():
+            return _err(gen.get("error") or "no code generated", sql=effective_sql)
+    else:
+        code = build_object_code(object_type=body.object_type, spec=body.spec)
+
+    # 3. Run + lift the object.
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    obj = _lift_object(outcome.report, element_id=eid, object_type=body.object_type)
+    return AnalysisBuildObjectResponse(
+        name=body.name,
+        element_id=eid,
+        object_type=body.object_type,
+        sql=effective_sql,
+        code=code,
+        object=obj,
+        columns=columns,
+        rows=meta.get("rows", []),
+        skills_used=outcome.skills_used,
+        skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
+        error=outcome.error if obj is not None else (outcome.error or "object produced no chart"),
     )
 
 

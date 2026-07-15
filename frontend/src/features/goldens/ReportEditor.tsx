@@ -491,6 +491,69 @@ export function ReportEditor({
     emit(next);
   }
 
+  /** Chart encoding controls — map the object's row columns onto the chart's
+   *  channels (x/measure/line/group per type). This is how a curator "configures
+   *  the chart as x=area_band, line=avg price, bar=volume, group=suburb" after
+   *  linking it to a sandbox dataset. Columns come from the object's own rows. */
+  const encodingControls = (o: PageObject) => {
+    const rows = (o.data["rows"] as Record<string, unknown>[]) ?? [];
+    const cols = rows.length ? Object.keys(rows[0]) : [];
+    if (cols.length === 0) {
+      return (
+        <div style={{ ...label, opacity: 0.5 }}>
+          link a sandbox object (above) to configure encodings from its columns
+        </div>
+      );
+    }
+    const enc = (key: string, lbl: string, testid: string) => (
+      <label style={label}>
+        {lbl}{" "}
+        <select
+          data-testid={testid}
+          value={String(o.data[key] ?? "")}
+          onChange={(e) => patchData(o.element_id, key, e.target.value || null)}
+          style={{ fontSize: 12 }}
+        >
+          <option value="">—</option>
+          {cols.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+    return (
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          alignItems: "center",
+          padding: 6,
+          borderRadius: 6,
+          border: "1px solid rgba(128,128,128,0.25)",
+        }}
+      >
+        <span style={{ ...label, opacity: 0.7 }}>encoding</span>
+        {o.type === "trend" ? (
+          <>
+            {enc("x", "x", "enc-x")}
+            {enc("y", "y", "enc-y")}
+            {enc("series", "series", "enc-series")}
+          </>
+        ) : (
+          <>
+            {enc("dimension", "x / dimension", "enc-dimension")}
+            {enc("measure", o.type === "compare" ? "bars (measure)" : "measure", "enc-measure")}
+            {o.type === "compare" && enc("line_measure", "line (2nd axis)", "enc-line_measure")}
+            {enc("group", "group / series", "enc-group")}
+          </>
+        )}
+      </div>
+    );
+  };
+
   const editPanel = (o: PageObject, cols: number) => {
     const isChart = o.type === "trend" || o.type === "breakdown" || o.type === "compare";
     const loc = locate(pages, o.element_id);
@@ -531,6 +594,7 @@ export function ReportEditor({
             return (
               <>
                 <select
+                  data-testid="linked-object-select"
                   value={linked ? o.element_id : ""}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -681,11 +745,7 @@ export function ReportEditor({
             )}
           </label>
         ))}
-        {isChart && (
-          <div style={{ ...label, opacity: 0.5 }}>
-            series come from the sandbox output — edit them by re-running ② Sandbox
-          </div>
-        )}
+        {isChart && encodingControls(o)}
         <button type="button" style={{ ...ctrl, alignSelf: "flex-start" }} onClick={() => toggleOpen(o.element_id)}>
           done
         </button>
@@ -785,6 +845,7 @@ export function ReportEditor({
         return (
           <div
             key={pi}
+            data-testid={`page-${pi}`}
             style={{
               marginBottom: 14,
               border: "1px solid rgba(128,128,128,0.25)",
@@ -794,7 +855,11 @@ export function ReportEditor({
           >
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, opacity: 0.7 }}>page {pi + 1}</span>
-              <select value={page.template} onChange={(e) => setTemplate(pi, e.target.value as TemplateId)}>
+              <select
+                data-testid={`page-template-${pi}`}
+                value={page.template}
+                onChange={(e) => setTemplate(pi, e.target.value as TemplateId)}
+              >
                 {TEMPLATE_IDS.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -859,6 +924,7 @@ export function ReportEditor({
                 return (
                   <div
                     key={ci}
+                    data-testid={`col-${pi}-${ci}`}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => onDropColumn(pi, ci)}
                     style={{
@@ -875,6 +941,7 @@ export function ReportEditor({
                     {page.columns[ci].map((o) => editableCard(o, cols))}
                     <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: "auto" }}>
                       <select
+                        data-testid={`add-type-${pi}-${ci}`}
                         value={at}
                         onChange={(e) =>
                           setAddType((m) => ({ ...m, [key]: e.target.value as PageObjectType }))
@@ -887,7 +954,12 @@ export function ReportEditor({
                           </option>
                         ))}
                       </select>
-                      <button type="button" style={ctrl} onClick={() => addObject(pi, ci, at)}>
+                      <button
+                        type="button"
+                        data-testid={`add-btn-${pi}-${ci}`}
+                        style={ctrl}
+                        onClick={() => addObject(pi, ci, at)}
+                      >
                         ＋ add
                       </button>
                     </div>

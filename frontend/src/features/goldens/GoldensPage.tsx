@@ -12,12 +12,17 @@ import { useCallback, useEffect, useState } from "react";
 import {
   GoldenInput,
   GoldenListItem,
+  GoldenObject,
   ObjectDigest,
   Page,
   PageObject,
+  PageObjectType,
   PrepResult,
+  SandboxMeasure,
+  SandboxObjectSpec,
   SkillInfo,
   authorObject,
+  buildGoldenObject,
   createGolden,
   deleteGolden,
   draftGoldenStream,
@@ -46,6 +51,7 @@ interface Draft {
   golden_sandbox: string;
   golden_data: unknown;
   golden_report: unknown;
+  golden_objects: GoldenObject[];
 }
 
 const emptyDraft = (dataset: string): Draft => ({
@@ -60,31 +66,13 @@ const emptyDraft = (dataset: string): Draft => ({
   golden_sandbox: "",
   golden_data: null,
   golden_report: null,
+  golden_objects: [],
 });
 
 function pagesFromReport(report: unknown): Page[] {
   if (Array.isArray(report)) return report as Page[];
   const r = report as { pages?: unknown } | null;
   return r && Array.isArray(r.pages) ? (r.pages as Page[]) : [];
-}
-
-/** The augmented data the sandbox produced, as a table — the chart series the
- *  report built, i.e. how the sandbox transformed the SQL extract. House chart
- *  specs nest their rows under `main_chart.data.values` (Vega-lite shape); older
- *  or plain shapes put the array directly on `data`. Accept either. */
-function sandboxTable(report: unknown): { columns: string[]; rows: unknown[][] } | null {
-  const raw = (report as { main_chart?: { data?: unknown } } | null)?.main_chart?.data;
-  const values = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { values?: unknown } | null)?.values)
-      ? (raw as { values: unknown[] }).values
-      : null;
-  if (values && values.length > 0 && typeof values[0] === "object" && values[0] !== null) {
-    const columns = Object.keys(values[0] as Record<string, unknown>);
-    const rows = values.map((r) => columns.map((c) => (r as Record<string, unknown>)[c]));
-    return { columns, rows };
-  }
-  return null;
 }
 
 /** Skill names referenced in the run_analysis code, in first-seen order. */
@@ -320,6 +308,99 @@ function formatSql(raw: string): string {
   return out.replace(/\n{2,}/g, "\n").trim();
 }
 
+// The object types the Presentation Object builder can create, labelled like the
+// report editor's picker so "Line + bar chart" reads the same everywhere.
+const BUILDER_TYPES: { type: PageObjectType; label: string }[] = [
+  { type: "compare", label: "Line + bar chart" },
+  { type: "breakdown", label: "Bar chart" },
+  { type: "trend", label: "Line chart" },
+  { type: "kpi", label: "KPI" },
+];
+
+// The builder's flat form state (compare covers every field; simpler types read a
+// subset). Defaults are the house line+bar recipe so a first build just works.
+interface BuilderForm {
+  name: string;
+  object_type: PageObjectType;
+  grain: string;
+  dimension: string;
+  group: string;
+  filter: string;
+  months: number;
+  bar_label: string;
+  bar_source: string;
+  bar_agg: "sum" | "mean";
+  bar_months: number;
+  line_label: string;
+  line_mode: "wavg" | "column";
+  line_num: string;
+  line_den: string;
+  line_source: string;
+  line_agg: "sum" | "mean";
+  line_months: number;
+  instruction: string;
+}
+
+const defaultBuilder = (): BuilderForm => ({
+  name: "",
+  object_type: "compare",
+  grain: "month, suburb, area_band",
+  dimension: "area_band",
+  group: "suburb",
+  filter: "",
+  months: 12,
+  bar_label: "sales_volume",
+  bar_source: "n_sold",
+  bar_agg: "sum",
+  bar_months: 12,
+  line_label: "avg_sale_price",
+  line_mode: "wavg",
+  line_num: "total_sale_value",
+  line_den: "n_sold",
+  line_source: "avg_sale_price",
+  line_agg: "mean",
+  line_months: 6,
+  instruction: "",
+});
+
+function barMeasure(f: BuilderForm): SandboxMeasure {
+  return { label: f.bar_label, source: f.bar_source, agg: f.bar_agg, months: f.bar_months };
+}
+
+function lineMeasure(f: BuilderForm): SandboxMeasure {
+  return f.line_mode === "wavg"
+    ? { label: f.line_label, num: f.line_num, den: f.line_den, months: f.line_months }
+    : { label: f.line_label, source: f.line_source, agg: f.line_agg, months: f.line_months };
+}
+
+/** Assemble the structured spec the deterministic builder emits code from. */
+function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
+  const grain = f.grain
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const spec: SandboxObjectSpec = {
+    grain,
+    dimension: f.dimension.trim(),
+    group: f.group.trim() || null,
+    months: Number(f.months) || 12,
+    bar_measure: barMeasure(f),
+    line_measure: lineMeasure(f),
+    title: f.name,
+  };
+  if (f.filter.trim()) spec.filter = f.filter.trim();
+  if (f.instruction.trim()) spec.instruction = f.instruction.trim();
+  return spec;
+}
+
+/** A short human label for a measure — the "6-mo avg" / "12-mo sum" chip. */
+function measureChip(m: SandboxMeasure | undefined): string | null {
+  if (!m) return null;
+  const win = m.months ? `${m.months}-mo ` : "";
+  const kind = m.num && m.den ? "wtd-avg" : m.agg === "mean" ? "avg" : "sum";
+  return `${m.label} · ${win}${kind}`;
+}
+
 const box: React.CSSProperties = {
   border: "1px solid rgba(128,128,128,0.3)",
   borderRadius: 10,
@@ -409,6 +490,12 @@ export function GoldensPage() {
   // When an AI object-edit rewrites the ① SQL extract, this holds the previous
   // SQL so the curator can revert it in one click (s16 Q1: auto-apply + revert).
   const [sqlRevert, setSqlRevert] = useState<string | null>(null);
+  // s18: the live lifted PageObjects of the golden's NAMED presentation objects
+  // (golden_objects) — populated on build + on load (via prep). Keyed by
+  // element_id; these join the composed objects as sandbox link targets.
+  const [builtObjects, setBuiltObjects] = useState<PageObject[]>([]);
+  const [builder, setBuilder] = useState<BuilderForm>(defaultBuilder);
+  const [buildMsg, setBuildMsg] = useState<string | null>(null);
 
   /** Preselect the skills a piece of run_analysis code already applies (plus any
    *  a run reported), so the skills panel reflects what's in the code. */
@@ -436,7 +523,22 @@ export function GoldensPage() {
 
   // The objects the sandbox produced (the source of truth for the report) and the
   // objects the interactive report currently holds — linked by shared element_id.
-  const sandboxObjects: PageObject[] = (prep?.pages ?? []).flatMap((p) => (p.columns ?? []).flat());
+  // Composed objects (from the run) + the NAMED built objects (golden_objects),
+  // deduped by element_id so a built object wins over a composed one.
+  //
+  // NON-NEGOTIABLE INVARIANT: every committed report object maps to a sandbox
+  // object. With no live run yet (prep null — e.g. just after loading a saved
+  // golden) we derive the composed objects from the committed golden_report, so
+  // the ② Sandbox always shows every object the ③ report renders, not just the
+  // named ones. A real run (prep set) then supersedes this.
+  const composedObjects: PageObject[] = (
+    prep ? (prep.pages ?? []) : pagesFromReport(draft.golden_report)
+  ).flatMap((p) => (p.columns ?? []).flat());
+  const builtIds = new Set(builtObjects.map((o) => o.element_id));
+  const sandboxObjects: PageObject[] = [
+    ...composedObjects.filter((o) => !builtIds.has(o.element_id)),
+    ...builtObjects,
+  ];
   const reportObjects: PageObject[] = pendingPages.flatMap((p) => (p.columns ?? []).flat());
   const sandboxIds = new Set(sandboxObjects.map((o) => o.element_id));
   const reportIds = new Set(reportObjects.map((o) => o.element_id));
@@ -470,14 +572,6 @@ export function GoldensPage() {
     // A valid, editable call — never a bare "skills.x(" that breaks the parse.
     const line = `out = skills.${name}(df)  # edit args`;
     patch("golden_sandbox", `${draft.golden_sandbox}${draft.golden_sandbox ? "\n" : ""}${line}`);
-  }
-
-  function removeSkill(name: string) {
-    const next = draft.golden_sandbox
-      .split("\n")
-      .filter((ln) => !ln.includes(`skills.${name}`))
-      .join("\n");
-    patch("golden_sandbox", next);
   }
 
   function toggleSkill(name: string) {
@@ -525,6 +619,54 @@ export function GoldensPage() {
     setPrep(null);
     setMsg(null);
     setSqlRevert(null);
+    setBuiltObjects([]);
+    setBuilder(defaultBuilder());
+    setBuildMsg(null);
+  }
+
+  /** Replace/insert an object in a list keyed by element_id. */
+  function upsertObject(list: PageObject[], obj: PageObject): PageObject[] {
+    const rest = list.filter((o) => o.element_id !== obj.element_id);
+    return [...rest, obj];
+  }
+
+  /** Recompute the golden's named objects against its extract (one round-trip) so
+   *  builtObjects has live rows. NON-DESTRUCTIVE: every named object keeps a copy
+   *  (the ``fallback`` seeded from the saved report) if its live re-run fails or is
+   *  skipped, so a named object never vanishes from the ② Sandbox on load. */
+  async function repopulateObjects(
+    sql: string,
+    objects: GoldenObject[],
+    fallback: PageObject[] = [],
+  ) {
+    const seeded = (go: GoldenObject) => fallback.find((f) => f.element_id === go.element_id);
+    if (!sql.trim() || objects.length === 0) {
+      setBuiltObjects(fallback);
+      return;
+    }
+    try {
+      const res = await prepGolden({
+        sql,
+        objects: objects.map((o) => ({
+          element_id: o.element_id,
+          object_type: o.object_type,
+          code: o.code,
+        })),
+        as_user: draft.as_user || null,
+      });
+      const byId = new Map(
+        (res.objects_out ?? [])
+          .filter((r) => r.object)
+          .map((r) => [r.element_id, r.object as PageObject]),
+      );
+      // Fresh lift when the re-run produced one, else the seeded (saved) copy.
+      const merged = objects
+        .map((go) => byId.get(go.element_id) ?? seeded(go))
+        .filter((o): o is PageObject => !!o);
+      setBuiltObjects(merged);
+    } catch {
+      setBuiltObjects(fallback);
+    }
   }
 
   async function selectGolden(id: string) {
@@ -532,9 +674,13 @@ export function GoldensPage() {
     setMsg(null);
     setPrep(null);
     setSqlRevert(null);
+    setBuiltObjects([]);
+    setBuildMsg(null);
     try {
       const g = await getGolden(id);
       const sandbox = g.golden_sandbox ?? "";
+      const goldenObjects = g.golden_objects ?? [];
+      const sql = formatSql(g.golden_sql ?? "");
       setDraft({
         id: g.id,
         question: g.question,
@@ -544,18 +690,127 @@ export function GoldensPage() {
         tags: g.tags ?? [],
         holdout: g.holdout,
         authoring_status: g.authoring_status,
-        golden_sql: formatSql(g.golden_sql ?? ""),
+        golden_sql: sql,
         golden_sandbox: sandbox,
         golden_data: g.golden_data ?? null,
         golden_report: g.golden_report ?? null,
+        golden_objects: goldenObjects,
       });
       setDraftPages(pagesFromReport(g.golden_report));
       seedSelectedSkills(sandbox);
+      // Seed each named object from its saved report copy so it shows immediately
+      // (with data) — repopulateObjects then refreshes rows but never wipes these.
+      const reportObjs = pagesFromReport(g.golden_report).flatMap((p) => (p.columns ?? []).flat());
+      const seeded = goldenObjects
+        .map((go) => reportObjs.find((o) => o.element_id === go.element_id))
+        .filter((o): o is PageObject => !!o);
+      setBuiltObjects(seeded);
+      void repopulateObjects(g.golden_sql ?? "", goldenObjects, seeded);
     } catch (e) {
       setMsg((e as Error).message);
     } finally {
       setBusy(null);
     }
+  }
+
+  /** Build (or rebuild) a named presentation object from the builder form. */
+  async function buildObject() {
+    const name = builder.name.trim();
+    if (!name) {
+      setBuildMsg("Give the object a name first.");
+      return;
+    }
+    if (!draft.golden_sql.trim()) {
+      setBuildMsg("Add the ① SQL extract first.");
+      return;
+    }
+    const spec = specFromBuilder(builder);
+    setBusy("build");
+    setBuildMsg(null);
+    try {
+      const res = await buildGoldenObject({
+        sql: draft.golden_sql,
+        name,
+        object_type: builder.object_type,
+        spec,
+        instruction: builder.instruction.trim() || undefined,
+        as_user: draft.as_user || null,
+      });
+      if (!res.object) {
+        setBuildMsg(res.error || "The build produced no object — check the columns/measures.");
+        return;
+      }
+      // The builder may have extended the shared extract to add the object's
+      // columns — apply it and offer a one-click revert (as the AI edit does).
+      if (res.sql && res.sql.trim() && res.sql.trim() !== draft.golden_sql.trim()) {
+        setSqlRevert(draft.golden_sql);
+        patch("golden_sql", formatSql(res.sql));
+      }
+      const go: GoldenObject = {
+        name,
+        element_id: res.element_id,
+        object_type: res.object_type,
+        code: res.code,
+        spec,
+      };
+      patch(
+        "golden_objects",
+        (() => {
+          const rest = draft.golden_objects.filter((o) => o.element_id !== res.element_id);
+          return [...rest, go];
+        })(),
+      );
+      setBuiltObjects((prev) => upsertObject(prev, res.object as PageObject));
+      setBuildMsg(
+        `Built “${name}” (${res.rows.length} extract rows)${res.error ? ` · note: ${res.error}` : ""}. ` +
+          `Link it from a report chart in ③.`,
+      );
+    } catch (e) {
+      setBuildMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Re-run one built object's code (after editing it) against the extract. */
+  async function rerunObject(o: GoldenObject) {
+    setBusy(`rerun:${o.element_id}`);
+    setBuildMsg(null);
+    try {
+      const res = await prepGolden({
+        sql: draft.golden_sql,
+        objects: [{ element_id: o.element_id, object_type: o.object_type, code: o.code }],
+        as_user: draft.as_user || null,
+      });
+      const lifted = (res.objects_out ?? []).find((r) => r.element_id === o.element_id);
+      if (lifted?.object) {
+        setBuiltObjects((prev) => upsertObject(prev, lifted.object as PageObject));
+        setBuildMsg(`Re-ran “${o.name}”.`);
+      } else {
+        setBuildMsg(lifted?.error || `“${o.name}” produced no object.`);
+      }
+    } catch (e) {
+      setBuildMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Edit a built object's generating code (lineage) in place. */
+  function patchObjectCode(element_id: string, code: string) {
+    patch(
+      "golden_objects",
+      draft.golden_objects.map((o) => (o.element_id === element_id ? { ...o, code } : o)),
+    );
+  }
+
+  /** Remove a named object from the golden + its live lifted copy. */
+  function removeObject(element_id: string) {
+    patch(
+      "golden_objects",
+      draft.golden_objects.filter((o) => o.element_id !== element_id),
+    );
+    setBuiltObjects((prev) => prev.filter((o) => o.element_id !== element_id));
   }
 
   async function runStage(withCode: boolean) {
@@ -697,6 +952,7 @@ export function GoldensPage() {
       golden_sandbox: draft.golden_sandbox || null,
       golden_data: data ?? null,
       golden_report: report,
+      golden_objects: draft.golden_objects,
     };
     patch("golden_report", report);
     patch("golden_data", data ?? null);
@@ -814,6 +1070,161 @@ export function GoldensPage() {
       `Presentation submitted — golden_report (${pendingPages.length} page${
         pendingPages.length === 1 ? "" : "s"
       }) + sandbox output refreshed. Save to persist.`,
+    );
+  }
+
+  // One presentation object as a collapsible card: header (type · title · id · in
+  // report) + body (skills applied → provenance → its data). Built objects also
+  // carry their editable generating code (lineage) + Re-run / Remove.
+  function renderObjectCard(o: PageObject, built?: GoldenObject) {
+    const d = o.data as Record<string, unknown>;
+    const title = built?.name ?? String(d.title ?? d.label ?? d.heading ?? o.type);
+    const prov = objectProvenance(o);
+    const t = objectRows(o);
+    const codeSkills = built ? appliedSkills(built.code) : objectMakers(o, prep?.skills_used ?? []);
+    const enrichChips = codeSkills.filter((s) => ENRICHMENT_SKILLS.includes(s));
+    const makerChips = codeSkills.filter((s) => !ENRICHMENT_SKILLS.includes(s));
+    const metricChips = built?.spec
+      ? [measureChip(built.spec.bar_measure), measureChip(built.spec.line_measure)].filter(
+          (x): x is string => !!x,
+        )
+      : [];
+    const rerunning = busy === `rerun:${o.element_id}`;
+    return (
+      <details
+        key={o.element_id}
+        data-testid={built ? `builtobj-${built.element_id}` : undefined}
+        style={{
+          border: `1px solid ${built ? "rgba(120,160,255,0.4)" : "rgba(120,200,120,0.35)"}`,
+          borderRadius: 8,
+          background: "rgba(128,128,128,0.04)",
+        }}
+      >
+        <summary style={{ cursor: "pointer", padding: "7px 10px" }}>
+          <span
+            style={{ display: "inline-flex", gap: 7, alignItems: "center", flexWrap: "wrap", verticalAlign: "middle" }}
+          >
+            <span style={typeChipStyle(o.type)}>{o.type}</span>
+            {built && <span style={{ ...label, color: "rgb(120,160,255)" }}>built</span>}
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>{title}</span>
+            <code
+              title="unique object id — link a report object to this element_id in ③ Report"
+              style={{
+                fontSize: 10,
+                opacity: 0.6,
+                fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                border: "1px solid rgba(128,128,128,0.3)",
+                borderRadius: 4,
+                padding: "0 4px",
+              }}
+            >
+              {o.element_id}
+            </code>
+            <span
+              style={{
+                ...label,
+                fontSize: 10,
+                color: reportIds.has(o.element_id) ? "rgb(90,170,90)" : "rgb(150,150,158)",
+              }}
+            >
+              {reportIds.has(o.element_id) ? "✓ in report" : "○ not in report"}
+            </span>
+          </span>
+        </summary>
+        <div style={{ padding: "0 10px 9px" }}>
+          {(makerChips.length > 0 || enrichChips.length > 0 || metricChips.length > 0) && (
+            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", marginBottom: 5 }}>
+              <span style={{ ...label, opacity: 0.6 }}>skills applied:</span>
+              {makerChips.map((s) => (
+                <span key={s} style={skillChipStyle("maker")}>
+                  {s}
+                </span>
+              ))}
+              {enrichChips.map((s) => (
+                <span key={s} style={skillChipStyle("enrich")}>
+                  {s}
+                </span>
+              ))}
+              {metricChips.map((s) => (
+                <span key={s} style={skillChipStyle("enrich")}>
+                  {s}
+                </span>
+              ))}
+            </div>
+          )}
+          {prov && (
+            <div
+              style={{
+                fontSize: 11,
+                opacity: 0.75,
+                marginBottom: 4,
+                fontFamily: "var(--font-mono, ui-monospace, monospace)",
+              }}
+            >
+              ← {prov}
+            </div>
+          )}
+          {o.type === "kpi" ? (
+            <div
+              style={{
+                display: "inline-flex",
+                flexDirection: "column",
+                border: "1px solid rgba(128,128,128,0.25)",
+                borderRadius: 8,
+                padding: "6px 12px",
+                minWidth: 120,
+              }}
+            >
+              <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>
+                {String(d.value ?? "—")}
+              </span>
+              <span style={{ ...label, opacity: 0.6 }}>{String(d.label ?? "")}</span>
+            </div>
+          ) : t ? (
+            <DataTable columns={t.columns} rows={t.rows} max={6} />
+          ) : o.type === "text" || o.type === "insight" ? (
+            <div style={{ fontSize: 12, opacity: 0.85, whiteSpace: "pre-wrap" }}>
+              {String(d.text ?? d.heading ?? "")}
+            </div>
+          ) : (
+            <div style={{ ...label, opacity: 0.5 }}>no rows captured</div>
+          )}
+          {built && (
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.7 }}>
+                run_analysis code · the lineage — edit columns/skills then Re-run
+              </summary>
+              <textarea
+                data-testid={`builtcode-${built.element_id}`}
+                value={built.code}
+                onChange={(e) => patchObjectCode(built.element_id, e.target.value)}
+                spellCheck={false}
+                rows={Math.min(16, Math.max(5, built.code.split("\n").length + 1))}
+                style={{ ...mono, width: "100%", marginTop: 6, whiteSpace: "pre" }}
+              />
+            </details>
+          )}
+          {built && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+              <button
+                type="button"
+                style={{ ...btn(!rerunning), padding: "3px 10px", fontSize: 12 }}
+                onClick={() => void rerunObject(built)}
+                disabled={rerunning}
+              >
+                {rerunning ? "Re-running…" : "↻ Re-run"}
+              </button>
+              <button
+                type="button"
+                style={{ ...btn(), padding: "3px 10px", fontSize: 12, color: "#c0392b" }}
+                onClick={() => removeObject(built.element_id)}
+              >
+                ✕ Remove
+              </button>
+            </div>
+          )}
+        </div>
+      </details>
     );
   }
 
@@ -1016,425 +1427,480 @@ export function GoldensPage() {
           )}
         </div>
 
-        {/* ② Sandbox — the data pipeline (open by default; still collapsible).
-            Shows ① SQL extract → ② enrichment (derived frames) → ③ presentation
-            objects, plus the editable run_analysis script + skills catalogue. */}
+        {/* ② Sandbox — object-first (s18): lead with the presentation objects the
+            report renders; the ① SQL extract is their input. Build/edit named
+            objects here; the raw run_analysis script lives under "advanced". */}
         <details open style={box}>
           <summary style={{ ...label, cursor: "pointer" }}>
-            ② Sandbox — data pipeline · ① extract → ② enrichment → ③ objects (▶ Run skills to
-            populate · click to collapse)
+            ② Sandbox — presentation objects · the datasets your report renders (① SQL extract is the
+            input · click to collapse)
           </summary>
-          <div
+
+          {/* Presentation Object builder — create a named dataset for a visualisation */}
+          <details
             style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0,240px) 1fr",
-              gap: 10,
+              ...box,
               marginTop: 10,
+              borderColor: "rgba(120,160,255,0.5)",
+              background: "rgba(120,160,255,0.05)",
             }}
           >
-            {/* available skills — click to insert; used ones are highlighted */}
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginBottom: 4,
-                  flexWrap: "wrap",
-                }}
-              >
-                <span style={label}>skills · ☑ select then generate · name inserts</span>
-                <button
-                  style={{ ...btn(busy !== "scaffold"), padding: "1px 8px", fontSize: 11 }}
-                  onClick={() => void generateFromSkills()}
-                  disabled={busy === "scaffold"}
-                  title="the agent regenerates run_analysis code using exactly the selected skills"
+            <summary style={{ ...label, cursor: "pointer", color: "rgb(120,160,255)" }}>
+              ✦ Presentation Object builder — add a named object by picking columns + skills
+            </summary>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input
+                  data-testid="builder-name"
+                  value={builder.name}
+                  placeholder="object name, e.g. line-bar-sale-volume"
+                  onChange={(e) => setBuilder((b) => ({ ...b, name: e.target.value }))}
+                  style={{ padding: 5, minWidth: 240, fontSize: 13 }}
+                />
+                <select
+                  data-testid="builder-type"
+                  value={builder.object_type}
+                  onChange={(e) =>
+                    setBuilder((b) => ({ ...b, object_type: e.target.value as PageObjectType }))
+                  }
                 >
-                  {busy === "scaffold" ? "generating…" : `⟳ generate from ${selectedSkills.size}`}
-                </button>
+                  {BUILDER_TYPES.map((t) => (
+                    <option key={t.type} value={t.type}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div
-                style={{
-                  maxHeight: 280,
-                  overflowY: "auto",
-                  border: "1px solid rgba(128,128,128,0.25)",
-                  borderRadius: 8,
-                  padding: 6,
-                }}
-              >
-                {skills.length === 0 && <span style={{ opacity: 0.6, fontSize: 12 }}>loading…</span>}
-                {skills.map((s) => {
-                  const used = prep?.skills_used.includes(s.name) ?? false;
-                  const picked = selectedSkills.has(s.name);
-                  const why = reasoning.find((r) => r.skill === s.name)?.why;
-                  return (
-                    <div
-                      key={s.name}
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        alignItems: "flex-start",
-                        padding: "3px 6px",
-                        borderRadius: 5,
-                        marginBottom: 2,
-                        background: used ? "rgba(120,200,120,0.18)" : "transparent",
-                        borderLeft: used
-                          ? "3px solid rgba(120,200,120,0.9)"
-                          : "3px solid transparent",
-                      }}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <label style={label}>
+                  grain{" "}
+                  <input
+                    data-testid="builder-grain"
+                    value={builder.grain}
+                    onChange={(e) => setBuilder((b) => ({ ...b, grain: e.target.value }))}
+                    style={{ fontSize: 12, padding: "2px 4px", width: 180 }}
+                  />
+                </label>
+                <label style={label}>
+                  x / dimension{" "}
+                  <input
+                    data-testid="builder-dimension"
+                    value={builder.dimension}
+                    onChange={(e) => setBuilder((b) => ({ ...b, dimension: e.target.value }))}
+                    style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
+                  />
+                </label>
+                <label style={label}>
+                  group{" "}
+                  <input
+                    data-testid="builder-group"
+                    value={builder.group}
+                    onChange={(e) => setBuilder((b) => ({ ...b, group: e.target.value }))}
+                    style={{ fontSize: 12, padding: "2px 4px", width: 90 }}
+                  />
+                </label>
+                <label style={label}>
+                  latest N months{" "}
+                  <input
+                    type="number"
+                    value={builder.months}
+                    onChange={(e) =>
+                      setBuilder((b) => ({ ...b, months: Number(e.target.value) || 12 }))
+                    }
+                    style={{ fontSize: 12, padding: "2px 4px", width: 56 }}
+                  />
+                </label>
+              </div>
+              <label style={{ ...label, display: "block" }}>
+                filter (WHERE) · scopes the extract — blank carries the golden's filters
+                <input
+                  data-testid="builder-filter"
+                  value={builder.filter}
+                  placeholder="property_type = 'house' AND suburb IN ('Hornsby', 'Normanhurst')"
+                  onChange={(e) => setBuilder((b) => ({ ...b, filter: e.target.value }))}
+                  style={{ ...mono, fontSize: 12, padding: "3px 5px", width: "100%", marginTop: 3 }}
+                />
+              </label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ ...label, color: "rgb(90,170,90)" }}>bars =</span>
+                <input
+                  data-testid="builder-bar-label"
+                  title="series label"
+                  value={builder.bar_label}
+                  onChange={(e) => setBuilder((b) => ({ ...b, bar_label: e.target.value }))}
+                  style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
+                />
+                <select
+                  value={builder.bar_agg}
+                  onChange={(e) =>
+                    setBuilder((b) => ({ ...b, bar_agg: e.target.value as "sum" | "mean" }))
+                  }
+                >
+                  <option value="sum">sum</option>
+                  <option value="mean">mean</option>
+                </select>
+                <input
+                  data-testid="builder-bar-source"
+                  title="column"
+                  value={builder.bar_source}
+                  onChange={(e) => setBuilder((b) => ({ ...b, bar_source: e.target.value }))}
+                  style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
+                />
+                <label style={label}>
+                  window{" "}
+                  <input
+                    type="number"
+                    value={builder.bar_months}
+                    onChange={(e) =>
+                      setBuilder((b) => ({ ...b, bar_months: Number(e.target.value) || 12 }))
+                    }
+                    style={{ fontSize: 12, padding: "2px 4px", width: 50 }}
+                  />
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ ...label, color: "rgb(120,160,255)" }}>line =</span>
+                <input
+                  data-testid="builder-line-label"
+                  title="series label"
+                  value={builder.line_label}
+                  onChange={(e) => setBuilder((b) => ({ ...b, line_label: e.target.value }))}
+                  style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
+                />
+                <select
+                  value={builder.line_mode}
+                  onChange={(e) =>
+                    setBuilder((b) => ({ ...b, line_mode: e.target.value as "wavg" | "column" }))
+                  }
+                >
+                  <option value="wavg">wtd-avg</option>
+                  <option value="column">column</option>
+                </select>
+                {builder.line_mode === "wavg" ? (
+                  <>
+                    <input
+                      data-testid="builder-line-num"
+                      title="numerator"
+                      value={builder.line_num}
+                      onChange={(e) => setBuilder((b) => ({ ...b, line_num: e.target.value }))}
+                      style={{ fontSize: 12, padding: "2px 4px", width: 120 }}
+                    />
+                    <span style={label}>/</span>
+                    <input
+                      data-testid="builder-line-den"
+                      title="denominator"
+                      value={builder.line_den}
+                      onChange={(e) => setBuilder((b) => ({ ...b, line_den: e.target.value }))}
+                      style={{ fontSize: 12, padding: "2px 4px", width: 90 }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <select
+                      value={builder.line_agg}
+                      onChange={(e) =>
+                        setBuilder((b) => ({ ...b, line_agg: e.target.value as "sum" | "mean" }))
+                      }
                     >
-                      <input
-                        type="checkbox"
-                        checked={picked}
-                        onChange={() => toggleSkill(s.name)}
-                        title="select for code generation"
-                        style={{ marginTop: 2 }}
-                      />
-                      <div
-                        style={{ minWidth: 0, flex: 1, cursor: "pointer" }}
-                        title={`${s.name}${s.signature}\nclick to insert`}
-                        onClick={() => insertSkill(s.name)}
-                      >
-                        <code style={{ fontSize: 11.5 }}>{s.name}</code>
-                        <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 4 }}>{s.group}</span>
-                        {used && (
-                          <span style={{ fontSize: 10, color: "rgb(90,170,90)", marginLeft: 4 }}>
-                            ✓ used
-                          </span>
-                        )}
-                        <div
-                          style={{
-                            fontSize: 10.5,
-                            opacity: why ? 0.85 : 0.6,
-                            color: why ? "rgb(120,160,255)" : undefined,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                          title={why || s.doc}
-                        >
-                          {why ? `↳ why: ${why}` : s.doc}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      <option value="mean">mean</option>
+                      <option value="sum">sum</option>
+                    </select>
+                    <input
+                      data-testid="builder-line-source"
+                      title="column"
+                      value={builder.line_source}
+                      onChange={(e) => setBuilder((b) => ({ ...b, line_source: e.target.value }))}
+                      style={{ fontSize: 12, padding: "2px 4px", width: 120 }}
+                    />
+                  </>
+                )}
+                <label style={label}>
+                  window{" "}
+                  <input
+                    type="number"
+                    value={builder.line_months}
+                    onChange={(e) =>
+                      setBuilder((b) => ({ ...b, line_months: Number(e.target.value) || 6 }))
+                    }
+                    style={{ fontSize: 12, padding: "2px 4px", width: 50 }}
+                  />
+                </label>
+              </div>
+              <details>
+                <summary style={{ ...label, cursor: "pointer", opacity: 0.7 }}>
+                  optional — describe it in words instead (AI authors the code)
+                </summary>
+                <textarea
+                  data-testid="builder-instruction"
+                  value={builder.instruction}
+                  onChange={(e) => setBuilder((b) => ({ ...b, instruction: e.target.value }))}
+                  placeholder="e.g. bars = number of sales, line = 6-mo avg sale price, x = land-size band, grouped by suburb"
+                  rows={2}
+                  spellCheck={false}
+                  style={{ ...mono, width: "100%", marginTop: 6 }}
+                />
+              </details>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  data-testid="builder-build"
+                  style={{
+                    ...btn(busy !== "build"),
+                    background: "rgba(120,160,255,0.22)",
+                    borderColor: "rgba(120,160,255,0.6)",
+                    fontWeight: 600,
+                  }}
+                  onClick={() => void buildObject()}
+                  disabled={busy === "build"}
+                >
+                  {busy === "build" ? "Building…" : "＋ Build object"}
+                </button>
+                {buildMsg && (
+                  <span data-testid="builder-msg" style={{ fontSize: 12, opacity: 0.85 }}>
+                    {buildMsg}
+                  </span>
+                )}
               </div>
             </div>
+          </details>
 
-            {/* code + run + output */}
-            <div style={{ minWidth: 0 }}>
-              <div style={{ ...label, marginBottom: 4 }}>
-                pipeline · ① SQL extract (df) → run_analysis → ② enrichment (derived frames) → ③
-                presentation objects
-              </div>
-              {prep && !prep.error && prep.columns.length > 0 && (
-                <details
-                  style={{
-                    marginBottom: 8,
-                    padding: 6,
-                    borderRadius: 6,
-                    border: "1px solid rgba(128,128,128,0.25)",
-                  }}
-                >
-                  <summary style={{ ...label, cursor: "pointer" }}>
-                    ① SQL extract · df — the raw rows run_analysis receives ({prep.row_count} row
-                    {prep.row_count === 1 ? "" : "s"}) · click to expand
-                  </summary>
-                  <div style={{ marginTop: 6 }}>
-                    <DataTable columns={prep.columns} rows={prep.rows} max={6} />
-                  </div>
-                </details>
-              )}
-              <div style={{ ...label, marginBottom: 4 }}>
-                run_analysis code · consumes df · add / edit / remove skill calls
-              </div>
-              {appliedSkills(draft.golden_sandbox).length > 0 && (
-                <div
-                  style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginBottom: 5 }}
-                >
-                  <span style={label}>applied to this code:</span>
-                  {appliedSkills(draft.golden_sandbox).map((s) => (
-                    <span
-                      key={s}
-                      style={{
-                        ...btn(),
-                        cursor: "default",
-                        padding: "1px 6px",
-                        fontSize: 11.5,
-                        display: "inline-flex",
-                        gap: 5,
-                        alignItems: "center",
-                      }}
-                    >
-                      skills.{s}
-                      <span
-                        onClick={() => removeSkill(s)}
-                        title={`remove skills.${s} line(s)`}
-                        style={{ cursor: "pointer", opacity: 0.65, fontWeight: 700 }}
-                      >
-                        ×
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <textarea
-                value={draft.golden_sandbox}
-                onChange={(e) => patch("golden_sandbox", e.target.value)}
-                spellCheck={false}
-                rows={6}
-                style={{ ...mono, width: "100%" }}
-                placeholder="df is your extract. e.g.  result = skills.build_report(main_chart=skills.trend_chart(skills.trend_series(df)))"
-              />
-              <button
-                style={btn(busy !== "sandbox")}
-                onClick={() => void runStage(true)}
-                disabled={busy === "sandbox"}
-              >
-                {busy === "sandbox" ? "Running…" : "▶ Run skills"}
-              </button>
-              {prep && (
-                <div style={{ marginTop: 8, fontSize: 12.5 }}>
-                  {/* ② enrichment — the derived frames run_analysis built and fed to a skill */}
-                  <div
-                    style={{
-                      marginBottom: 8,
-                      padding: 6,
-                      borderRadius: 6,
-                      border: "1px solid rgba(120,160,255,0.35)",
-                      background: "rgba(120,160,255,0.05)",
-                    }}
-                  >
-                    <div style={label}>
-                      ② enrichment · derived frames run_analysis built (avg price, growth, moving
-                      avgs…) — the data behind the objects
-                    </div>
-                    {enrichmentSkillsUsed(prep.skills_used).length > 0 && (
-                      <div
-                        style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", margin: "5px 0 2px" }}
-                      >
-                        <span style={{ ...label, opacity: 0.7 }}>skills applied to the data:</span>
-                        {enrichmentSkillsUsed(prep.skills_used).map((s) => (
-                          <span key={s} style={skillChipStyle("enrich")}>
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {prep.frames && prep.frames.length > 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
-                        {prep.frames.map((f) => (
-                          <div key={f.name} style={{ minWidth: 0 }}>
-                            <div
-                              style={{ display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}
-                            >
-                              <code style={{ fontSize: 12, color: "rgb(120,160,255)" }}>{f.name}</code>
-                              <span style={{ ...label, opacity: 0.55 }}>
-                                {f.shape[0]} × {f.shape[1]}
-                              </span>
-                              <span style={{ ...label, opacity: 0.9, color: f.fed_object ? "rgb(90,170,90)" : undefined }}>
-                                {f.fed_object ? "→ chart" : "→ kpi / derived"}
-                              </span>
-                            </div>
-                            <DataTable columns={f.columns} rows={f.rows} max={8} />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
-                        no named derived frames captured — the run computed inline, or fed the extract
-                        straight to a skill
-                      </div>
-                    )}
-                  </div>
-                  {/* ③ presentation objects — what the report renders */}
-                  <div
-                    style={{
-                      marginBottom: 8,
-                      padding: 6,
-                      borderRadius: 6,
-                      border: "1px solid rgba(120,200,120,0.4)",
-                      background: "rgba(120,200,120,0.06)",
-                    }}
-                  >
-                    <div style={label}>
-                      ③ presentation objects · the report this run built (feeds the ③ Report below)
-                    </div>
-                    <div style={{ ...label, opacity: 0.7 }}>
-                      each object · the data + fields behind it
-                    </div>
-                    {(() => {
-                      const objs = (prep.pages ?? []).flatMap((p) => (p.columns ?? []).flat());
-                      if (objs.length === 0) {
-                        // No composed pages this run — fall back to the main chart's data.
-                        const t = sandboxTable(prep.report);
-                        return t ? (
-                          <DataTable columns={t.columns} rows={t.rows} max={12} />
-                        ) : (
-                          <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
-                            no tabular output — see report JSON below
-                          </div>
-                        );
-                      }
-                      return (
-                        <div
-                          style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}
-                        >
-                          {objs.map((o, i) => {
-                            const d = o.data as Record<string, unknown>;
-                            const title = String(d.title ?? d.label ?? d.heading ?? o.type);
-                            const prov = objectProvenance(o);
-                            const t = objectRows(o);
-                            const makers = objectMakers(o, prep.skills_used);
-                            return (
-                              <details
-                                key={o.element_id ?? i}
-                                style={{
-                                  border: "1px solid rgba(120,200,120,0.35)",
-                                  borderRadius: 8,
-                                  background: "rgba(128,128,128,0.04)",
-                                }}
-                              >
-                                {/* Keep the summary a default list-item so Chrome's
-                                    disclosure triangle stays (a flex summary hides
-                                    it); lay the row out with an inner inline-flex. */}
-                                <summary style={{ cursor: "pointer", padding: "7px 10px" }}>
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      gap: 7,
-                                      alignItems: "center",
-                                      flexWrap: "wrap",
-                                      verticalAlign: "middle",
-                                    }}
-                                  >
-                                    <span style={typeChipStyle(o.type)}>{o.type}</span>
-                                    <span
-                                      style={{
-                                        fontSize: 12.5,
-                                        fontWeight: 600,
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {title}
-                                    </span>
-                                    {o.element_id && (
-                                      <code
-                                        title="unique object id — the same element_id links this to the presentation object in ③ Report"
-                                        style={{
-                                          fontSize: 10,
-                                          opacity: 0.55,
-                                          fontFamily: "var(--font-mono, ui-monospace, monospace)",
-                                          border: "1px solid rgba(128,128,128,0.3)",
-                                          borderRadius: 4,
-                                          padding: "0 4px",
-                                        }}
-                                      >
-                                        {o.element_id}
-                                      </code>
-                                    )}
-                                    {o.element_id && (
-                                      <span
-                                        title={
-                                          reportIds.has(o.element_id)
-                                            ? "this object is placed in the ③ interactive report (linked by element_id)"
-                                            : "not yet in the report — add an object in ③ and link it to this element_id"
-                                        }
-                                        style={{
-                                          ...label,
-                                          fontSize: 10,
-                                          opacity: 0.95,
-                                          color: reportIds.has(o.element_id)
-                                            ? "rgb(90,170,90)"
-                                            : "rgb(150,150,158)",
-                                        }}
-                                      >
-                                        {reportIds.has(o.element_id) ? "✓ in report" : "○ not in report"}
-                                      </span>
-                                    )}
-                                  </span>
-                                </summary>
-                                <div style={{ padding: "0 10px 9px" }}>
-                                  {makers.length > 0 && (
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        gap: 4,
-                                        alignItems: "center",
-                                        flexWrap: "wrap",
-                                        marginBottom: 5,
-                                      }}
-                                    >
-                                      <span style={{ ...label, opacity: 0.6 }}>skills applied:</span>
-                                      {makers.map((s) => (
-                                        <span key={s} style={skillChipStyle("maker")}>
-                                          {s}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {prov && (
-                                    <div
-                                      style={{
-                                        fontSize: 11,
-                                        opacity: 0.75,
-                                        marginBottom: 4,
-                                        fontFamily: "var(--font-mono, ui-monospace, monospace)",
-                                      }}
-                                    >
-                                      ← {prov}
-                                    </div>
-                                  )}
-                                  {o.type === "kpi" ? (
-                                    <div
-                                      style={{
-                                        display: "inline-flex",
-                                        flexDirection: "column",
-                                        border: "1px solid rgba(128,128,128,0.25)",
-                                        borderRadius: 8,
-                                        padding: "6px 12px",
-                                        minWidth: 120,
-                                      }}
-                                    >
-                                      <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>
-                                        {String(d.value ?? "—")}
-                                      </span>
-                                      <span style={{ ...label, opacity: 0.6 }}>{String(d.label ?? "")}</span>
-                                    </div>
-                                  ) : t ? (
-                                    <DataTable columns={t.columns} rows={t.rows} max={6} />
-                                  ) : o.type === "text" || o.type === "insight" ? (
-                                    <div style={{ fontSize: 12, opacity: 0.85, whiteSpace: "pre-wrap" }}>
-                                      {String(d.text ?? d.heading ?? "")}
-                                    </div>
-                                  ) : (
-                                    <div style={{ ...label, opacity: 0.5 }}>no rows captured</div>
-                                  )}
-                                </div>
-                              </details>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  {prep.error && (
-                    <div style={{ color: "#c0392b", marginBottom: 6, whiteSpace: "pre-wrap" }}>
-                      error: {prep.error}
-                    </div>
-                  )}
-                  {prep.skill_gaps.length > 0 && (
-                    <div style={{ ...label, marginBottom: 4 }}>
-                      skill gaps: {prep.skill_gaps.map((g) => g.need).join(", ")}
-                    </div>
-                  )}
+          {/* Presentation Objects — built (named) + composed, each detailing its data + skills */}
+          <div style={{ marginTop: 12 }}>
+            <div style={label}>
+              Presentation Objects · the ① SQL extract is the input · each object details the skills
+              applied to build it
+            </div>
+            <div
+              data-testid="presentation-objects"
+              style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}
+            >
+              {draft.golden_objects.map((go) => {
+                const live = builtObjects.find((o) => o.element_id === go.element_id);
+                const obj: PageObject =
+                  live ??
+                  ({
+                    type: go.object_type,
+                    element_id: go.element_id,
+                    role: null,
+                    data: { title: go.name },
+                  } as PageObject);
+                return renderObjectCard(obj, go);
+              })}
+              {composedObjects
+                .filter((o) => !builtIds.has(o.element_id))
+                .map((o) => renderObjectCard(o))}
+              {draft.golden_objects.length === 0 && composedObjects.length === 0 && (
+                <div style={{ ...label, opacity: 0.6 }}>
+                  No presentation objects yet — build one above, or “Draft with agent”.
                 </div>
               )}
             </div>
           </div>
+
+          {/* ② enrichment — the derived frames a run built (collapsed) */}
+          {prep && (
+            <details style={{ marginTop: 12 }}>
+              <summary style={{ ...label, cursor: "pointer" }}>
+                ② enrichment · derived frames the run built (avg price, growth, moving avgs…) · click
+                to expand
+              </summary>
+              <div style={{ marginTop: 8, fontSize: 12.5 }}>
+                {enrichmentSkillsUsed(prep.skills_used).length > 0 && (
+                  <div
+                    style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", margin: "5px 0 2px" }}
+                  >
+                    <span style={{ ...label, opacity: 0.7 }}>skills applied to the data:</span>
+                    {enrichmentSkillsUsed(prep.skills_used).map((s) => (
+                      <span key={s} style={skillChipStyle("enrich")}>
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {prep.frames && prep.frames.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+                    {prep.frames.map((f) => (
+                      <div key={f.name} style={{ minWidth: 0 }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+                          <code style={{ fontSize: 12, color: "rgb(120,160,255)" }}>{f.name}</code>
+                          <span style={{ ...label, opacity: 0.55 }}>
+                            {f.shape[0]} × {f.shape[1]}
+                          </span>
+                          <span
+                            style={{ ...label, opacity: 0.9, color: f.fed_object ? "rgb(90,170,90)" : undefined }}
+                          >
+                            {f.fed_object ? "→ chart" : "→ kpi / derived"}
+                          </span>
+                        </div>
+                        <DataTable columns={f.columns} rows={f.rows} max={8} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
+                    no named derived frames captured — the run computed inline, or fed the extract
+                    straight to a skill
+                  </div>
+                )}
+                {prep.error && (
+                  <div style={{ color: "#c0392b", margin: "6px 0", whiteSpace: "pre-wrap" }}>
+                    error: {prep.error}
+                  </div>
+                )}
+                {prep.skill_gaps.length > 0 && (
+                  <div style={{ ...label, marginTop: 4 }}>
+                    skill gaps: {prep.skill_gaps.map((g) => g.need).join(", ")}
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
+
+          {/* advanced — the raw run_analysis script + skills catalogue (the drafted
+              single-script base report; the primary flow is the builder above). */}
+          <details style={{ ...box, marginTop: 12 }}>
+            <summary style={{ ...label, cursor: "pointer" }}>
+              advanced — raw run_analysis script (the drafted base report) + skills catalogue
+            </summary>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0,240px) 1fr",
+                gap: 10,
+                marginTop: 10,
+              }}
+            >
+              {/* available skills — click to insert; used ones are highlighted */}
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 4,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={label}>skills · ☑ select then generate · name inserts</span>
+                  <button
+                    style={{ ...btn(busy !== "scaffold"), padding: "1px 8px", fontSize: 11 }}
+                    onClick={() => void generateFromSkills()}
+                    disabled={busy === "scaffold"}
+                    title="the agent regenerates run_analysis code using exactly the selected skills"
+                  >
+                    {busy === "scaffold" ? "generating…" : `⟳ generate from ${selectedSkills.size}`}
+                  </button>
+                </div>
+                <div
+                  style={{
+                    maxHeight: 280,
+                    overflowY: "auto",
+                    border: "1px solid rgba(128,128,128,0.25)",
+                    borderRadius: 8,
+                    padding: 6,
+                  }}
+                >
+                  {skills.length === 0 && <span style={{ opacity: 0.6, fontSize: 12 }}>loading…</span>}
+                  {skills.map((s) => {
+                    const used = prep?.skills_used.includes(s.name) ?? false;
+                    const picked = selectedSkills.has(s.name);
+                    const why = reasoning.find((r) => r.skill === s.name)?.why;
+                    return (
+                      <div
+                        key={s.name}
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          alignItems: "flex-start",
+                          padding: "3px 6px",
+                          borderRadius: 5,
+                          marginBottom: 2,
+                          background: used ? "rgba(120,200,120,0.18)" : "transparent",
+                          borderLeft: used
+                            ? "3px solid rgba(120,200,120,0.9)"
+                            : "3px solid transparent",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={picked}
+                          onChange={() => toggleSkill(s.name)}
+                          title="select for code generation"
+                          style={{ marginTop: 2 }}
+                        />
+                        <div
+                          style={{ minWidth: 0, flex: 1, cursor: "pointer" }}
+                          title={`${s.name}${s.signature}\nclick to insert`}
+                          onClick={() => insertSkill(s.name)}
+                        >
+                          <code style={{ fontSize: 11.5 }}>{s.name}</code>
+                          <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 4 }}>{s.group}</span>
+                          {used && (
+                            <span style={{ fontSize: 10, color: "rgb(90,170,90)", marginLeft: 4 }}>
+                              ✓ used
+                            </span>
+                          )}
+                          <div
+                            style={{
+                              fontSize: 10.5,
+                              opacity: why ? 0.85 : 0.6,
+                              color: why ? "rgb(120,160,255)" : undefined,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={why || s.doc}
+                          >
+                            {why ? `↳ why: ${why}` : s.doc}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* code + run */}
+              <div style={{ minWidth: 0 }}>
+                {prep && !prep.error && prep.columns.length > 0 && (
+                  <details
+                    style={{
+                      marginBottom: 8,
+                      padding: 6,
+                      borderRadius: 6,
+                      border: "1px solid rgba(128,128,128,0.25)",
+                    }}
+                  >
+                    <summary style={{ ...label, cursor: "pointer" }}>
+                      ① SQL extract · df — the raw rows run_analysis receives ({prep.row_count} row
+                      {prep.row_count === 1 ? "" : "s"}) · click to expand
+                    </summary>
+                    <div style={{ marginTop: 6 }}>
+                      <DataTable columns={prep.columns} rows={prep.rows} max={6} />
+                    </div>
+                  </details>
+                )}
+                <div style={{ ...label, marginBottom: 4 }}>
+                  run_analysis code · consumes df · the drafted base report script
+                </div>
+                <textarea
+                  value={draft.golden_sandbox}
+                  onChange={(e) => patch("golden_sandbox", e.target.value)}
+                  spellCheck={false}
+                  rows={6}
+                  style={{ ...mono, width: "100%" }}
+                  placeholder="df is your extract. e.g.  result = skills.build_report(main_chart=skills.trend_chart(skills.trend_series(df)))"
+                />
+                <button
+                  style={btn(busy !== "sandbox")}
+                  onClick={() => void runStage(true)}
+                  disabled={busy === "sandbox"}
+                >
+                  {busy === "sandbox" ? "Running…" : "▶ Run script"}
+                </button>
+              </div>
+            </div>
+          </details>
         </details>
 
         {/* ③ Report */}
@@ -1446,6 +1912,7 @@ export function GoldensPage() {
             </span>
             {reportObjects.length > 0 && (
               <span
+                data-testid="sandbox-coverage"
                 title="how many report objects are backed by a ② Sandbox object of the same element_id — 100% means the whole presentation is generated by the sandbox"
                 style={{
                   ...label,

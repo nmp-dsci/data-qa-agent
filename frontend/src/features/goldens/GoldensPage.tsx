@@ -132,6 +132,58 @@ function objectRows(o: PageObject): { columns: string[]; rows: unknown[][] } | n
   };
 }
 
+// Skills that MAKE a presentation object (produce the visual), keyed by type.
+// The house recipe is 1:1 — a breakdown is always a comparison_chart, a compare
+// a dual_axis_chart, etc. — so intersecting with the run's skills_used attributes
+// the maker skill(s) to each object reliably.
+const MAKER_SKILLS: Record<string, string[]> = {
+  trend: ["trend_chart"],
+  breakdown: ["comparison_chart"],
+  compare: ["dual_axis_chart"],
+  insight: ["make_insight"],
+  kpi: ["latest_value"],
+  text: [],
+};
+// Skills that ENRICH the data — derive columns/series (rolling avg, growth…) that
+// feed the objects, rather than producing a visual. Shown in the ② enrichment step.
+const ENRICHMENT_SKILLS = [
+  "trend_series",
+  "rolling_average",
+  "growth_rate",
+  "top_growth",
+  "gross_yield",
+  "driver_analysis",
+];
+
+/** The skill(s) that built this object, from the run's skills_used (maker chips). */
+function objectMakers(o: PageObject, used: string[]): string[] {
+  const set = new Set(used);
+  return (MAKER_SKILLS[o.type] ?? []).filter((s) => set.has(s));
+}
+
+/** The enrichment (data-transform) skills the run used — for the ② step. */
+function enrichmentSkillsUsed(used: string[]): string[] {
+  const set = new Set(used);
+  return ENRICHMENT_SKILLS.filter((s) => set.has(s));
+}
+
+/** A small skill chip — green = made an object, blue = enriched the data. */
+function skillChipStyle(kind: "maker" | "enrich"): React.CSSProperties {
+  const [color, background] =
+    kind === "maker"
+      ? ["rgb(90,170,90)", "rgba(120,200,120,0.16)"]
+      : ["rgb(120,160,255)", "rgba(120,160,255,0.14)"];
+  return {
+    fontFamily: "var(--font-mono, ui-monospace, Menlo, monospace)",
+    fontSize: 10,
+    borderRadius: 5,
+    padding: "1px 6px",
+    fontWeight: 600,
+    color,
+    background,
+  };
+}
+
 /** A colour-coded object-type chip (kpi = blue, charts = green, text = grey). */
 function typeChipStyle(type: string): React.CSSProperties {
   const [color, background] =
@@ -1145,6 +1197,18 @@ export function GoldensPage() {
                       ② enrichment · derived frames run_analysis built (avg price, growth, moving
                       avgs…) — the data behind the objects
                     </div>
+                    {enrichmentSkillsUsed(prep.skills_used).length > 0 && (
+                      <div
+                        style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", margin: "5px 0 2px" }}
+                      >
+                        <span style={{ ...label, opacity: 0.7 }}>skills applied to the data:</span>
+                        {enrichmentSkillsUsed(prep.skills_used).map((s) => (
+                          <span key={s} style={skillChipStyle("enrich")}>
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {prep.frames && prep.frames.length > 0 ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
                         {prep.frames.map((f) => (
@@ -1202,119 +1266,105 @@ export function GoldensPage() {
                       }
                       return (
                         <div
-                          style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}
+                          style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}
                         >
                           {objs.map((o, i) => {
                             const d = o.data as Record<string, unknown>;
                             const title = String(d.title ?? d.label ?? d.heading ?? o.type);
                             const prov = objectProvenance(o);
                             const t = objectRows(o);
+                            const makers = objectMakers(o, prep.skills_used);
                             return (
-                              <div
+                              <details
                                 key={o.element_id ?? i}
                                 style={{
                                   border: "1px solid rgba(120,200,120,0.35)",
                                   borderRadius: 8,
-                                  padding: "8px 10px",
                                   background: "rgba(128,128,128,0.04)",
                                 }}
                               >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: 7,
-                                    alignItems: "baseline",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <span style={typeChipStyle(o.type)}>{o.type}</span>
+                                {/* Keep the summary a default list-item so Chrome's
+                                    disclosure triangle stays (a flex summary hides
+                                    it); lay the row out with an inner inline-flex. */}
+                                <summary style={{ cursor: "pointer", padding: "7px 10px" }}>
                                   <span
                                     style={{
-                                      fontSize: 12.5,
-                                      fontWeight: 600,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    {title}
-                                  </span>
-                                </div>
-                                {prov && (
-                                  <div
-                                    style={{
-                                      fontSize: 11,
-                                      opacity: 0.75,
-                                      marginTop: 3,
-                                      fontFamily: "var(--font-mono, ui-monospace, monospace)",
-                                    }}
-                                  >
-                                    ← {prov}
-                                  </div>
-                                )}
-                                {o.type === "kpi" ? (
-                                  <div
-                                    style={{
-                                      marginTop: 6,
                                       display: "inline-flex",
-                                      flexDirection: "column",
-                                      border: "1px solid rgba(128,128,128,0.25)",
-                                      borderRadius: 8,
-                                      padding: "6px 12px",
-                                      minWidth: 120,
+                                      gap: 7,
+                                      alignItems: "center",
+                                      flexWrap: "wrap",
+                                      verticalAlign: "middle",
                                     }}
                                   >
-                                    <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>
-                                      {String(d.value ?? "—")}
+                                    <span style={typeChipStyle(o.type)}>{o.type}</span>
+                                    <span
+                                      style={{
+                                        fontSize: 12.5,
+                                        fontWeight: 600,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {title}
                                     </span>
-                                    <span style={{ ...label, opacity: 0.6 }}>{String(d.label ?? "")}</span>
-                                  </div>
-                                ) : t ? (
-                                  <div style={{ marginTop: 4 }}>
+                                    {makers.length > 0 && (
+                                      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                                        <span style={{ ...label, opacity: 0.5 }}>made by</span>
+                                        {makers.map((s) => (
+                                          <span key={s} style={skillChipStyle("maker")}>
+                                            {s}
+                                          </span>
+                                        ))}
+                                      </span>
+                                    )}
+                                  </span>
+                                </summary>
+                                <div style={{ padding: "0 10px 9px" }}>
+                                  {prov && (
+                                    <div
+                                      style={{
+                                        fontSize: 11,
+                                        opacity: 0.75,
+                                        marginBottom: 4,
+                                        fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                                      }}
+                                    >
+                                      ← {prov}
+                                    </div>
+                                  )}
+                                  {o.type === "kpi" ? (
+                                    <div
+                                      style={{
+                                        display: "inline-flex",
+                                        flexDirection: "column",
+                                        border: "1px solid rgba(128,128,128,0.25)",
+                                        borderRadius: 8,
+                                        padding: "6px 12px",
+                                        minWidth: 120,
+                                      }}
+                                    >
+                                      <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>
+                                        {String(d.value ?? "—")}
+                                      </span>
+                                      <span style={{ ...label, opacity: 0.6 }}>{String(d.label ?? "")}</span>
+                                    </div>
+                                  ) : t ? (
                                     <DataTable columns={t.columns} rows={t.rows} max={6} />
-                                  </div>
-                                ) : o.type === "text" || o.type === "insight" ? (
-                                  <div
-                                    style={{
-                                      fontSize: 12,
-                                      opacity: 0.85,
-                                      marginTop: 4,
-                                      whiteSpace: "pre-wrap",
-                                    }}
-                                  >
-                                    {String(d.text ?? d.heading ?? "")}
-                                  </div>
-                                ) : (
-                                  <div style={{ ...label, opacity: 0.5, marginTop: 4 }}>
-                                    no rows captured
-                                  </div>
-                                )}
-                              </div>
+                                  ) : o.type === "text" || o.type === "insight" ? (
+                                    <div style={{ fontSize: 12, opacity: 0.85, whiteSpace: "pre-wrap" }}>
+                                      {String(d.text ?? d.heading ?? "")}
+                                    </div>
+                                  ) : (
+                                    <div style={{ ...label, opacity: 0.5 }}>no rows captured</div>
+                                  )}
+                                </div>
+                              </details>
                             );
                           })}
                         </div>
                       );
                     })()}
-                  </div>
-                  <div style={label}>skills used</div>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", margin: "3px 0 6px" }}>
-                    {prep.skills_used.length ? (
-                      prep.skills_used.map((s) => (
-                        <span
-                          key={s}
-                          style={{
-                            ...btn(),
-                            cursor: "default",
-                            padding: "1px 7px",
-                            background: "rgba(120,200,120,0.18)",
-                          }}
-                        >
-                          {s}
-                        </span>
-                      ))
-                    ) : (
-                      <span style={{ opacity: 0.6 }}>— none —</span>
-                    )}
                   </div>
                   {prep.pages && prep.pages.length > 0 && (
                     <button

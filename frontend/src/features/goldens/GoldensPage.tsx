@@ -92,6 +92,66 @@ function appliedSkills(code: string): string[] {
   return Array.from(new Set(Array.from(code.matchAll(/skills\.(\w+)/g), (m) => m[1])));
 }
 
+const CHART_TYPES = new Set<string>(["trend", "breakdown", "compare"]);
+
+/** The field mapping behind an object — what it plots / reads, as one provenance
+ *  line (③ objects step): so a curator can trace enriched columns → the object. */
+function objectProvenance(o: PageObject): string {
+  const d = o.data as Record<string, unknown>;
+  const s = (k: string) => (d[k] != null && d[k] !== "" ? String(d[k]) : null);
+  if (o.type === "trend") {
+    return [`x ${s("x") ?? "?"}`, `y ${s("y") ?? "?"}`, s("series") && `series ${s("series")}`]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  if (o.type === "breakdown" || o.type === "compare") {
+    return [
+      `dim ${s("dimension") ?? "?"}`,
+      `measure ${s("measure") ?? "?"}`,
+      s("line_measure") && `line ${s("line_measure")}`,
+      s("group") && `group ${s("group")}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  if (o.type === "kpi") return s("basis") ? `basis ${s("basis")}` : "headline tile";
+  return "";
+}
+
+/** An object's own rows as a compact table — charts carry their data inline as
+ *  data.rows, so we can show the exact data behind each object. */
+function objectRows(o: PageObject): { columns: string[]; rows: unknown[][] } | null {
+  const raw = (o.data as { rows?: unknown }).rows;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const first = raw[0];
+  if (typeof first !== "object" || first === null) return null;
+  const columns = Object.keys(first as Record<string, unknown>);
+  return {
+    columns,
+    rows: raw.map((r) => columns.map((c) => (r as Record<string, unknown>)[c])),
+  };
+}
+
+/** A colour-coded object-type chip (kpi = blue, charts = green, text = grey). */
+function typeChipStyle(type: string): React.CSSProperties {
+  const [color, background] =
+    type === "kpi"
+      ? ["rgb(120,160,255)", "rgba(120,160,255,0.14)"]
+      : CHART_TYPES.has(type)
+        ? ["rgb(90,170,90)", "rgba(120,200,120,0.16)"]
+        : ["rgb(150,150,158)", "rgba(128,128,128,0.14)"];
+  return {
+    fontFamily: "var(--font-mono, ui-monospace, Menlo, monospace)",
+    fontSize: 10,
+    textTransform: "lowercase",
+    borderRadius: 5,
+    padding: "1px 6px",
+    fontWeight: 600,
+    color,
+    background,
+  };
+}
+
 /** Split on a separator at paren depth 0 only (so commas inside func(a, b) or a
  *  subquery stay put) — used to lay the SELECT list out one column per line. */
 function splitTopLevel(s: string, sep = ","): string[] {
@@ -1124,33 +1184,54 @@ export function GoldensPage() {
                     <div style={label}>
                       ③ presentation objects · the report this run built (feeds the ③ Report below)
                     </div>
-                    {prep.pages && prep.pages.length > 0 && (
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", margin: "6px 0" }}>
-                        {prep.pages
-                          .flatMap((p) => (p.columns ?? []).flat())
-                          .map((o, i) => {
+                    <div style={{ ...label, opacity: 0.7 }}>
+                      each object · the data + fields behind it
+                    </div>
+                    {(() => {
+                      const objs = (prep.pages ?? []).flatMap((p) => (p.columns ?? []).flat());
+                      if (objs.length === 0) {
+                        // No composed pages this run — fall back to the main chart's data.
+                        const t = sandboxTable(prep.report);
+                        return t ? (
+                          <DataTable columns={t.columns} rows={t.rows} max={12} />
+                        ) : (
+                          <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
+                            no tabular output — see report JSON below
+                          </div>
+                        );
+                      }
+                      return (
+                        <div
+                          style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}
+                        >
+                          {objs.map((o, i) => {
                             const d = o.data as Record<string, unknown>;
-                            const title = String(d?.title ?? d?.label ?? d?.heading ?? "");
+                            const title = String(d.title ?? d.label ?? d.heading ?? o.type);
+                            const prov = objectProvenance(o);
+                            const t = objectRows(o);
                             return (
-                              <span
+                              <div
                                 key={o.element_id ?? i}
-                                title={title || o.type}
                                 style={{
-                                  ...btn(),
-                                  cursor: "default",
-                                  padding: "1px 7px",
-                                  fontSize: 11,
-                                  display: "inline-flex",
-                                  gap: 5,
-                                  alignItems: "baseline",
-                                  maxWidth: 200,
+                                  border: "1px solid rgba(120,200,120,0.35)",
+                                  borderRadius: 8,
+                                  padding: "8px 10px",
+                                  background: "rgba(128,128,128,0.04)",
                                 }}
                               >
-                                <strong style={{ color: "rgb(90,170,90)" }}>{o.type}</strong>
-                                {title && (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: 7,
+                                    alignItems: "baseline",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <span style={typeChipStyle(o.type)}>{o.type}</span>
                                   <span
                                     style={{
-                                      opacity: 0.7,
+                                      fontSize: 12.5,
+                                      fontWeight: 600,
                                       overflow: "hidden",
                                       textOverflow: "ellipsis",
                                       whiteSpace: "nowrap",
@@ -1158,23 +1239,61 @@ export function GoldensPage() {
                                   >
                                     {title}
                                   </span>
+                                </div>
+                                {prov && (
+                                  <div
+                                    style={{
+                                      fontSize: 11,
+                                      opacity: 0.75,
+                                      marginTop: 3,
+                                      fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                                    }}
+                                  >
+                                    ← {prov}
+                                  </div>
                                 )}
-                              </span>
+                                {o.type === "kpi" ? (
+                                  <div
+                                    style={{
+                                      marginTop: 6,
+                                      display: "inline-flex",
+                                      flexDirection: "column",
+                                      border: "1px solid rgba(128,128,128,0.25)",
+                                      borderRadius: 8,
+                                      padding: "6px 12px",
+                                      minWidth: 120,
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>
+                                      {String(d.value ?? "—")}
+                                    </span>
+                                    <span style={{ ...label, opacity: 0.6 }}>{String(d.label ?? "")}</span>
+                                  </div>
+                                ) : t ? (
+                                  <div style={{ marginTop: 4 }}>
+                                    <DataTable columns={t.columns} rows={t.rows} max={6} />
+                                  </div>
+                                ) : o.type === "text" || o.type === "insight" ? (
+                                  <div
+                                    style={{
+                                      fontSize: 12,
+                                      opacity: 0.85,
+                                      marginTop: 4,
+                                      whiteSpace: "pre-wrap",
+                                    }}
+                                  >
+                                    {String(d.text ?? d.heading ?? "")}
+                                  </div>
+                                ) : (
+                                  <div style={{ ...label, opacity: 0.5, marginTop: 4 }}>
+                                    no rows captured
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
-                      </div>
-                    )}
-                    <div style={{ ...label, opacity: 0.7 }}>main chart data</div>
-                    {(() => {
-                      const t = sandboxTable(prep.report);
-                      if (!t) {
-                        return (
-                          <div style={{ ...label, opacity: 0.6, marginTop: 4 }}>
-                            no tabular output — see report JSON below
-                          </div>
-                        );
-                      }
-                      return <DataTable columns={t.columns} rows={t.rows} max={12} />;
+                        </div>
+                      );
                     })()}
                   </div>
                   <div style={label}>skills used</div>

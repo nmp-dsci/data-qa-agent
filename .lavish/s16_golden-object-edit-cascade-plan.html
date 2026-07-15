@@ -1,0 +1,366 @@
+<meta charset="utf-8" />
+<title>s16 · Golden object edit → full cascade</title>
+<style>
+  :root {
+    --bg: #0b0c10;
+    --panel: #14161d;
+    --panel-2: #1a1d26;
+    --ink: #e7e9ee;
+    --muted: #9aa1b0;
+    --line: rgba(140, 150, 170, 0.22);
+    --blue: rgb(120, 160, 255);
+    --blue-soft: rgba(120, 160, 255, 0.12);
+    --green: rgb(120, 200, 120);
+    --green-soft: rgba(120, 200, 120, 0.12);
+    --amber: rgb(224, 168, 74);
+    --amber-soft: rgba(224, 168, 74, 0.12);
+    --red: #e0605f;
+    --red-soft: rgba(224, 96, 95, 0.12);
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f0f2f6; --ink: #16181d;
+      --muted: #5c6470; --line: rgba(20, 25, 40, 0.14);
+      --blue: rgb(58, 108, 217); --blue-soft: rgba(58, 108, 217, 0.09);
+      --green: rgb(46, 138, 60); --green-soft: rgba(46, 138, 60, 0.1);
+      --amber: rgb(176, 120, 20); --amber-soft: rgba(176, 120, 20, 0.1);
+      --red: #c0392b; --red-soft: rgba(192, 57, 43, 0.09);
+    }
+  }
+  * { box-sizing: border-box; min-width: 0; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+    line-height: 1.5; font-size: 15px; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 96px; }
+  header.hero { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 34px; }
+  .eyebrow { font: 600 12px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--blue); margin-bottom: 12px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.02em; }
+  h1 .accent { color: var(--blue); }
+  .lede { color: var(--muted); font-size: 16px; max-width: 74ch; margin: 0; }
+  .decision-chip { display: inline-flex; gap: 8px; align-items: center; margin-top: 16px;
+    font: 600 12.5px/1 var(--mono); background: var(--green-soft); color: var(--green);
+    border: 1px solid rgba(120,200,120,0.4); border-radius: 999px; padding: 7px 13px; }
+  section { margin: 40px 0; }
+  h2 { font-size: 13px; font-family: var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 18px; display: flex; align-items: center; gap: 10px; }
+  h2 .num { color: var(--blue); }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  h3 { font-size: 17px; margin: 26px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--muted); }
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font: 600 11px/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  td.good { color: var(--green); } td.bad { color: var(--red); }
+  .pill { display: inline-block; font: 600 11px/1 var(--mono); border-radius: 999px; padding: 4px 9px; white-space: nowrap; }
+  .pill.ok { background: var(--green-soft); color: var(--green); }
+  .pill.bad { background: var(--red-soft); color: var(--red); }
+  .pill.warn { background: var(--amber-soft); color: var(--amber); }
+  .pill.info { background: var(--blue-soft); color: var(--blue); }
+  ul.tight { margin: 8px 0 14px; padding-left: 20px; } ul.tight li { margin: 5px 0; }
+  .callout { border-left: 3px solid var(--blue); background: var(--blue-soft); border-radius: 0 10px 10px 0;
+    padding: 13px 16px; margin: 16px 0; font-size: 14px; }
+  .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+  .fileref { font-family: var(--mono); font-size: 12px; color: var(--blue); }
+  .steps { counter-reset: s; display: flex; flex-direction: column; gap: 12px; }
+  .step { display: grid; grid-template-columns: 30px minmax(0,1fr); gap: 14px; align-items: start; }
+  .step .b { counter-increment: s; }
+  .step .b::before { content: counter(s); display: grid; place-items: center; width: 26px; height: 26px;
+    border-radius: 8px; background: var(--blue-soft); color: var(--blue); font: 700 13px/1 var(--mono); }
+  .mermaid { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+    overflow-x: auto; text-align: center; }
+  .filechange { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin: 12px 0; background: var(--panel); }
+  .filechange > .fh { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; justify-content: space-between;
+    padding: 12px 16px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .filechange .fh .path { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+  .filechange .fh .path b { color: var(--blue); }
+  .filechange .body { padding: 14px 16px; font-size: 14px; }
+  .filechange .body ul { margin: 0; padding-left: 18px; } .filechange .body li { margin: 6px 0; }
+  #diffhost, #filehost { margin-top: 8px; }
+  .qcard { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .qcard h3 { margin-top: 0; }
+  .qcard label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: 10px; margin: 8px 0; cursor: pointer; font-size: 14px; background: var(--panel-2); }
+  .qcard label:hover { border-color: var(--blue); }
+  .qcard input[type=radio] { margin-top: 3px; accent-color: var(--blue); }
+  .qcard .opt-t { font-weight: 600; } .qcard .opt-d { color: var(--muted); font-size: 13px; }
+  .qcard button { margin-top: 6px; background: var(--blue); color: #fff; border: none; border-radius: 9px;
+    padding: 9px 16px; font: 600 13px var(--sans); cursor: pointer; }
+  .qcard button:hover { filter: brightness(1.08); }
+  .rec { font: 600 10.5px/1 var(--mono); color: var(--green); background: var(--green-soft);
+    border-radius: 5px; padding: 3px 6px; margin-left: 6px; }
+  .foot { color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 18px; margin-top: 44px; }
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">s16 · Golden Examples builder</div>
+    <h1>Editing one object should update <span class="accent">SQL → sandbox → presentation</span> together — not destroy the rest</h1>
+    <p class="lede">In the Golden builder, “✎ edit object → describe → Generate &amp; run” currently rewrites the whole <code>golden_sandbox</code> for a single object, silently deleting the pipeline for every other object in the golden. This plan makes the edit a coordinated, non-destructive cascade that keeps the four stored stages consistent.</p>
+    <span class="decision-chip">✓ Scope chosen: SQL + sandbox + presentation (full cascade)</span>
+  </header>
+
+  <!-- ===================== THE BREAK ===================== -->
+  <section>
+    <h2><span class="num">01</span> The break — reproduced</h2>
+    <p>I authored a 2-object golden (a KPI “Peak median” + a Line&nbsp;+&nbsp;Bar chart) whose <code>run_analysis</code> builds <em>both</em> — <code>skills.latest_value(…)</code>&nbsp;+&nbsp;<code>headlines=[…]</code> for the KPI and <code>skills.dual_axis_chart(…)</code> for the chart — then edited <em>only the chart</em> via the AI box and pressed <b>Generate &amp; run</b>.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Stored stage</th><th>Before the edit</th><th>After editing just the chart</th></tr></thead>
+        <tbody>
+          <tr><td><code>golden_report</code><div class="muted">presentation / layout</div></td><td>KPI + chart</td><td class="good">KPI + chart &nbsp;<span class="pill ok">kept</span></td></tr>
+          <tr><td><code>golden_sandbox</code><div class="muted">the run_analysis “runbook”</div></td><td>KPI code + chart code</td><td class="bad">chart code only — <code>latest_value</code>/<code>headlines</code> <b>wiped</b> &nbsp;<span class="pill bad">destroyed</span></td></tr>
+          <tr><td><code>golden_data</code><div class="muted">sandbox output JSON</div></td><td>full report (headlines + chart)</td><td class="bad">chart-only report &nbsp;<span class="pill bad">destroyed</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <b>Why it “breaks”:</b> every <code>/admin/eval-goldens/object</code> call returns <span class="pill ok">200&nbsp;OK</span> and the chart re-renders — nothing throws. But the golden is now <b>internally inconsistent</b>: the presentation still shows a KPI that the sandbox can no longer produce. The next <code>▶ Run skills</code>, reload, or eval-runner regeneration drops the KPI (and any other non-edited object) because its backing pipeline is gone.
+    </div>
+
+    <h3>Root cause</h3>
+    <p>The per-object AI edit applies a <em>single-object</em> script over the <em>whole</em> golden. Two lines in the parent do the damage:</p>
+    <div id="diffhost"></div>
+    <p class="muted" style="margin-top:12px"><span class="fileref">frontend/src/features/goldens/GoldensPage.tsx</span> · <code>instructObject()</code> lines&nbsp;478–479. <code>res.code</code>/<code>res.report</code> come from <span class="fileref">services/data-agent/agent/object_codegen.py</span> · <code>scaffold_object()</code>, which by design writes a script that builds <b>only</b> this object’s <code>main_chart</code> — it has no knowledge of the golden’s other objects, and never touches the SQL extract.</p>
+  </section>
+
+  <!-- ===================== TARGET BEHAVIOR ===================== -->
+  <section>
+    <h2><span class="num">02</span> Target behavior — the cascade</h2>
+    <p>Describing a change to one object triggers a single governed pass that may touch all three upstream stages, then re-renders the object <em>in place</em> while keeping every stored stage reproducible.</p>
+    <div class="mermaid">
+flowchart TD
+  A["Curator edits ONE object<br/>+ describes the change"] --> B["AI is given: current SQL, extract columns,<br/>the full run_analysis, ALL current objects,<br/>and which object is the target"]
+  B --> C{"Is the requested data<br/>already in the extract?"}
+  C -->|yes| D["Rewrite run_analysis only<br/>(rebuild the WHOLE report,<br/>target object changed)"]
+  C -->|no| E["Propose revised SQL<br/>that adds the needed columns"]
+  E --> F["Re-run governed extract()<br/>RLS + UnsafeSQL validated"]
+  F -->|extract fails| X["Return error<br/>golden left untouched"]
+  F -->|ok| D
+  D --> G["Run sandbox → full report"]
+  G --> H["compose_pages → objects keyed<br/>by stable element_id"]
+  H --> I["Refresh matched objects' data in place<br/>(layout preserved) · replace the target"]
+  I --> J["golden_sql · golden_sandbox · golden_data ·<br/>golden_report — all in sync"]
+    </div>
+    <div class="callout">
+      <b>Non-destructive by construction.</b> The AI is handed the <em>current</em> <code>run_analysis</code> and asked to modify it minimally — so the other objects’ code (and data) survive. The presentation keeps the curator’s layout: only the <em>data</em> of matched objects is refreshed, and only the edited object is fully replaced.
+    </div>
+  </section>
+
+  <!-- ===================== APPROACH ===================== -->
+  <section>
+    <h2><span class="num">03</span> Proposed approach</h2>
+
+    <h3 style="margin-top:0">Engine: an agentic authoring loop, not a blind one-shot call</h3>
+    <p>The current path is a single structured LLM call that writes code <em>without running it</em> — so a wrong column or bad skill call surfaces as an error the curator has to retry. We give the model <b>tools</b> and let it close the loop: verify the extract, test the run_analysis, self-correct, then finalize.</p>
+    <div class="grid2">
+      <div class="card">
+        <div class="pill warn" style="margin-bottom:8px">Rejected · one-shot</div>
+        <h3 style="margin-top:0;font-size:15px">Single structured LLM call</h3>
+        <p class="muted" style="margin:0">Fast (~8s) &amp; cheap, but blind: guesses column availability from a name list, can’t see sandbox errors, no self-correction. Weak fit for “understand what it needs to do”.</p>
+      </div>
+      <div class="card" style="border-color:rgba(120,200,120,0.5)">
+        <div class="pill ok" style="margin-bottom:8px">Chosen · agentic loop</div>
+        <h3 style="margin-top:0;font-size:15px">pydantic-ai agent + tools</h3>
+        <p class="muted" style="margin:0">The existing <code>pydantic_ai.Agent</code> gets two tools — <code>run_extract(sql)</code> and <code>run_sandbox(code)</code> (thin wraps of the in-process <code>extract()</code>/<code>run_code()</code>). It inspects real columns, tests the chart, fixes errors, then returns verified <code>{sql, code}</code>. Bounded by a turn cap.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <b>Why not the Claude Agent SDK?</b> It’s Anthropic-only, and this env’s live provider is <b>DeepSeek</b> (<code>choose_provider(settings.llm_provider, …)</code>). The whole codegen stack already runs on <b>pydantic-ai</b>, which tool-calls across both providers — so we stay provider-agnostic and don’t fork the agent stack. <b>Cost note:</b> a loop adds turns (the turn-dominated dimension), acceptable for an occasional authoring action and capped.
+    </div>
+
+    <h3>File by file</h3>
+    <div class="filechange">
+      <div class="fh"><span class="path">services/data-agent/agent/<b>object_codegen.py</b></span><span class="pill info">agentic authoring loop</span></div>
+      <div class="body"><ul>
+        <li><code>scaffold_object</code> becomes a short <b>tool-using agent run</b>: system prompt describes the goal; it is handed the <b>current SQL</b>, <b>current run_analysis</b>, and a digest of <b>all current objects</b>, plus tools <code>run_extract(sql)</code> → columns/rows/error and <code>run_sandbox(code)</code> → report/skills/error (both RLS-scoped to the curator).</li>
+        <li>It must return a run_analysis that rebuilds the <b>whole report</b> (KPIs via <code>headlines</code>, charts via <code>main_chart</code>/insight charts), changing only the target — and a revised <code>sql</code> <em>only</em> when the data isn’t in the extract (else <code>null</code>). It <em>tests</em> both via the tools before finalizing.</li>
+        <li>Turn cap + graceful fallback: on tool failure or cap, return the best code with an <code>error</code> note. Offline stub (no LLM key) stays a runnable, no-clobber one-shot with <code>sql=None</code>.</li>
+      </ul></div>
+    </div>
+
+    <div class="filechange">
+      <div class="fh"><span class="path">services/data-agent/agent/<b>main.py</b> · <code>/agent/analysis/object</code></span><span class="pill info">re-extract + full pages</span></div>
+      <div class="body"><ul>
+        <li>If codegen returned a new <code>sql</code>: re-run <code>extract(new_sql)</code> (already RLS-scoped and <code>UnsafeSQLError</code>-guarded). On failure → return <code>error</code> and the original stages untouched (never a partial write).</li>
+        <li>Run the sandbox on the new code, <code>compose_pages(report)</code> → full pages, and lift the <b>target</b> object as today.</li>
+        <li>Response gains <code>sql</code> (echo/new) and <code>pages</code> (the full recomposed report) next to the existing <code>object</code>/<code>report</code>/<code>code</code>.</li>
+      </ul></div>
+    </div>
+
+    <div class="grid2">
+      <div class="filechange" style="margin:0">
+        <div class="fh"><span class="path">backend-api · <b>agent_client.py</b> + <b>routers/goldens.py</b></span></div>
+        <div class="body"><ul><li>Pass <code>object_context</code> through; surface the new <code>sql</code> + <code>pages</code> fields in the <code>ObjectIn</code>/response models. Pure plumbing.</li></ul></div>
+      </div>
+      <div class="filechange" style="margin:0">
+        <div class="fh"><span class="path">frontend · <b>lib/api.ts</b></span></div>
+        <div class="body"><ul><li><code>AuthorObjectResult</code> gains <code>sql: string | null</code> and <code>pages: Page[] | null</code>; <code>authorObject()</code> body gains the object-context digest.</li></ul></div>
+      </div>
+    </div>
+
+    <div class="filechange">
+      <div class="fh"><span class="path">frontend · <b>GoldensPage.tsx</b> · <code>instructObject()</code></span><span class="pill info">apply the cascade, in sync</span></div>
+      <div class="body"><ul>
+        <li>If <code>res.sql</code> differs from the current SQL → <code>patch("golden_sql", formatSql(res.sql))</code> and show a <span class="pill warn">SQL changed</span> banner (see decision Q1).</li>
+        <li><code>patch("golden_sandbox", res.code)</code> + <code>patch("golden_data", res.report)</code> — now safe, because <code>res.code</code> rebuilds the whole report.</li>
+        <li>Refresh presentation: replace the <b>target</b> object (as today) <em>and</em>, when the SQL changed, refresh the <code>rows</code> of every other object whose <code>element_id</code> matches a recomposed object from <code>res.pages</code> — layout untouched.</li>
+      </ul></div>
+    </div>
+
+    <div class="filechange">
+      <div class="fh"><span class="path">frontend · <b>ReportEditor.tsx</b></span><span class="pill info">whole-report apply hook</span></div>
+      <div class="body"><ul>
+        <li><code>onInstruct</code> resolves with the target’s <code>{type,data}</code> <b>plus</b> an optional <code>refresh: Page[]</code>; <code>runInstruct</code> applies the target via <code>applyObject</code> and merges refreshed rows into matched cards by <code>element_id</code>. Non-chart / hand-added <code>edit:*</code> objects with no sandbox counterpart are left as-is.</li>
+      </ul></div>
+    </div>
+
+    <h3>The fix, at the point of damage</h3>
+    <div id="filehost"></div>
+  </section>
+
+  <!-- ===================== RISKS ===================== -->
+  <section>
+    <h2><span class="num">04</span> Risks &amp; failure modes</h2>
+    <div class="grid2">
+      <div class="card"><h3 style="margin-top:0">🔒 Auto-editing the golden’s SQL</h3><p class="muted" style="margin:0">The SQL is a hand-curated stage. An AI rewrite could subtly change the extract (filters, joins) and shift <em>all</em> objects. Mitigation: the agent <em>verifies</em> the new SQL via <code>run_extract</code> before returning; it runs through governed <code>extract()</code> (RLS + safety); the old SQL is kept on failure and behind a one-click <span class="pill warn">revert</span> banner (Q1).</p></div>
+      <div class="card"><h3 style="margin-top:0">🧩 Objects the sandbox can’t represent</h3><p class="muted" style="margin:0">A hand-composed golden with multiple charts beyond <code>main_chart</code> + one insight chart can’t all be reproduced by a single run. Those keep their existing rows (no refresh); only matched ids update. Documented as a known limit, not a crash.</p></div>
+      <div class="card"><h3 style="margin-top:0">🆔 element_id matching</h3><p class="muted" style="margin:0"><code>compose_pages</code> emits stable ids (<code>headline:i</code>, <code>report:chart</code>, <code>insight:i:chart</code>). Drafted goldens match cleanly; curator-added <code>edit:*</code> objects don’t and are skipped by design.</p></div>
+      <div class="card"><h3 style="margin-top:0">↩️ No partial writes</h3><p class="muted" style="margin:0">Any failure (bad SQL, sandbox error, no chart) returns <code>error</code> with the stored stages unchanged — the current clobber is replaced by an all-or-nothing apply.</p></div>
+    </div>
+  </section>
+
+  <!-- ===================== DECISIONS (RESOLVED) ===================== -->
+  <section>
+    <h2><span class="num">05</span> Decisions — resolved</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th style="width:20%">Decision</th><th style="width:30%">Chosen</th><th>How it lands in the build</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Codegen engine</b></td>
+            <td><span class="pill ok">Agentic loop</span> — pydantic-ai + tools</td>
+            <td>The edit agent runs <code>run_extract</code>/<code>run_sandbox</code> to verify before finalizing. Provider-agnostic (DeepSeek/Anthropic); <b>not</b> the Anthropic-only Claude Agent SDK. Turn-capped.</td>
+          </tr>
+          <tr>
+            <td><b>Q1 · New-SQL apply</b></td>
+            <td><span class="pill ok">Auto-apply + revert banner</span></td>
+            <td>When the agent’s verified SQL differs, it’s applied and the cascade completes in one click; a <span class="pill warn">SQL changed — review / revert</span> banner in the ① SQL card lets the curator roll back the prior SQL.</td>
+          </tr>
+          <tr>
+            <td><b>Q2 · Refresh scope</b></td>
+            <td><span class="pill ok">Target-only when SQL unchanged</span></td>
+            <td>Same-extract edit moves only the object you touched. A SQL change refreshes every <code>element_id</code>-matched object’s rows (their data really did shift), layout untouched.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== TEST PLAN ===================== -->
+  <section>
+    <h2><span class="num">06</span> Verification</h2>
+    <div class="steps">
+      <div class="step"><span class="b"></span><div><b>Unit (data-agent):</b> the edit agent (with stubbed <code>run_extract</code>/<code>run_sandbox</code> tools) returns <code>sql=None</code> when columns suffice, a verified new SQL when they don’t; the whole-report code still builds every object; turn cap + tool-failure fall back gracefully. Endpoint leaves stages untouched on extract/sandbox failure.</div></div>
+      <div class="step"><span class="b"></span><div><b>Regression:</b> the exact repro above — a KPI + chart golden, edit the chart — now leaves <code>golden_sandbox</code> still containing <code>latest_value</code>/<code>headlines</code>. (Currently: gone.)</div></div>
+      <div class="step"><span class="b"></span><div><b>Cascade:</b> an instruction needing a column not in the extract triggers a SQL rewrite, re-extract, and a consistent 4-stage result.</div></div>
+      <div class="step"><span class="b"></span><div><b>Browser (real flow):</b> drive Golden Examples end-to-end and confirm all four stored stages stay consistent after an edit — then <code>/no-mistakes</code> to gate.</div></div>
+    </div>
+  </section>
+
+  <div class="foot">
+    Design source: matched the Datapilot app’s own palette (dark base, <span style="color:var(--blue)">blue</span> accent, <span style="color:var(--green)">green</span> success) — design-priority step 2 (inspect the subject project), since no external design system was requested. Claims verified against the running stack + source at <code>services/data-agent</code> and <code>frontend/src/features/goldens</code>.
+  </div>
+</div>
+
+<script type="module">
+  import mermaid from "https://esm.sh/mermaid@11?bundle";
+  const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: dark ? "dark" : "default",
+    themeVariables: {
+      primaryColor: dark ? "#1a1d26" : "#eef1fb",
+      primaryBorderColor: "rgba(120,160,255,0.55)",
+      primaryTextColor: dark ? "#e7e9ee" : "#16181d",
+      lineColor: dark ? "#8c96aa" : "#5c6470",
+      fontFamily: "ui-monospace, Menlo, monospace",
+      fontSize: "13px"
+    }
+  });
+</script>
+
+<script type="module">
+  import { File, FileDiff } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const options = { theme: { light: "github-light", dark: "github-dark" }, themeType: dark ? "dark" : "light", overflow: "wrap" };
+
+  // The destructive current behavior → the coordinated fix.
+  const oldFile = {
+    name: "frontend/src/features/goldens/GoldensPage.tsx  (instructObject — current)",
+    contents:
+`const res = await authorObject({ sql, code, object_type: o.type, instruction, as_user });
+
+// Replaces the ENTIRE sandbox script + data with a ONE-object version:
+if (res.code)   patch("golden_sandbox", res.code);    // other objects' code destroyed
+if (res.report) patch("golden_data",   res.report);   // other objects' data destroyed
+
+// ...only the edited object is applied back into the presentation.
+`,
+  };
+  const newFile = {
+    name: "frontend/src/features/goldens/GoldensPage.tsx  (instructObject — proposed)",
+    contents:
+`const res = await authorObject({ sql, code, object_type: o.type, instruction,
+                                 objects: objectDigest(pendingPages), as_user });
+
+// SQL may be rewritten when the data isn't in the extract (see Q1):
+if (res.sql && res.sql !== draft.golden_sql) patch("golden_sql", formatSql(res.sql));
+
+// res.code now rebuilds the WHOLE report — every object survives:
+if (res.code)   patch("golden_sandbox", res.code);
+if (res.report) patch("golden_data",   res.report);
+
+// Return the target's new data + the recomposed pages so the editor can
+// refresh matched objects' rows in place (layout preserved), replace target.
+return { type: res.object.type, data: res.object.data, refresh: res.pages };
+`,
+  };
+
+  new FileDiff({ ...options, diffStyle: "unified" }).render({
+    containerWrapper: document.querySelector("#diffhost"), oldFile, newFile,
+  });
+
+  new File(options).render({
+    containerWrapper: document.querySelector("#filehost"),
+    file: {
+      name: "services/data-agent/agent/main.py  ·  /agent/analysis/object (new SQL branch)",
+      contents:
+`gen = await scaffold_object(instruction=..., object_type=..., columns=columns,
+                            code=body.code, objects=body.objects)
+
+# NEW: the model may propose a revised extract when the data isn't present.
+new_sql = str(gen.get("sql") or "").strip()
+if new_sql and new_sql != body.sql:
+    try:
+        frame, meta = await extract(new_sql, user_id=body.user.id)  # RLS + safety
+        columns, rows = meta["columns"], meta["rows"]
+    except (UnsafeSQLError, Exception) as exc:
+        return AnalysisObjectResponse(error=f"revised extract failed: {exc}")  # no partial write
+
+outcome = run_code(gen["code"], df=frame, frames={"extract": frame})
+pages, _ = compose_pages(outcome.report)   # full report -> pages, stable ids
+# ... lift target object as today; return sql=new_sql or body.sql, pages=pages
+`,
+    },
+  });
+</script>

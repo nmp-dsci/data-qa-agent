@@ -153,6 +153,7 @@ export function ReportEditor({
   pages,
   onChange,
   onInstruct,
+  sandboxObjects = [],
 }: {
   pages: Page[];
   onChange: (pages: Page[]) => void;
@@ -160,6 +161,9 @@ export function ReportEditor({
    *  rewrites + reruns the sandbox and resolves with the object's new type+data
    *  (or an error). When absent, the AI "describe this object" box is hidden. */
   onInstruct?: (o: PageObject, instruction: string) => Promise<InstructResult>;
+  /** The objects the ② Sandbox produced — an object can be *linked* to one of
+   *  these (by element_id) to base its data on it (the "linked object" picker). */
+  sandboxObjects?: PageObject[];
 }) {
   const dragId = useRef<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -338,6 +342,46 @@ export function ReportEditor({
     emit(next);
   }
 
+  /** Move the open/selected state from one element_id to another (used when a
+   *  bind/unlink changes an object's id, so its edit panel stays put). */
+  function reidState(oldId: string, newId: string) {
+    setOpen((prev) => {
+      if (!prev.has(oldId)) return prev;
+      const n = new Set(prev);
+      n.delete(oldId);
+      n.add(newId);
+      return n;
+    });
+    setSelectedId((prev) => (prev === oldId ? newId : prev));
+  }
+
+  /** Link an object to a ② Sandbox object: it takes that object's type + data +
+   *  element_id, so it renders (and reproduces) the sandbox visualisation. The
+   *  shared element_id IS the link the sandbox view + coverage read. */
+  function bindLinked(id: string, src: PageObject) {
+    const loc = locate(pages, id);
+    if (!loc) return;
+    const next = clone(pages);
+    next[loc.pi].columns[loc.ci][loc.oi] = JSON.parse(JSON.stringify(src)) as PageObject;
+    reidState(id, src.element_id);
+    emit(next);
+  }
+
+  /** Unlink an object: give it a fresh unique element_id (keeps its current data),
+   *  so it no longer matches a sandbox object. */
+  function unlink(id: string) {
+    const loc = locate(pages, id);
+    if (!loc) return;
+    const next = clone(pages);
+    const obj = next[loc.pi].columns[loc.ci][loc.oi];
+    const newId = `edit:${obj.type}:${Date.now().toString(36)}:${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
+    obj.element_id = newId;
+    reidState(id, newId);
+    emit(next);
+  }
+
   /** Apply an AI object-edit (s16): replace the edited (target) object's type +
    *  data AND — when the extract changed (`refresh` present) — re-sync the OTHER
    *  objects from the recomposed pages (matched by element_id). Their rows AND
@@ -461,25 +505,58 @@ export function ReportEditor({
           gap: 6,
         }}
       >
-        {/* The object's unique id — the same element_id names this object in the
-            ② Sandbox ③ objects view, so the curator can see the visualisation it's
-            built on. */}
+        {/* Link this object to a ② Sandbox object — pick one to base its data on.
+            The shared element_id ties the two views together and drives the sandbox
+            coverage. Only unlinked sandbox objects (+ the current one) are offered,
+            so each sandbox object backs at most one report object. */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <span style={label}>linked object</span>
-          <code
-            title="the visualisation this object is built on — the same element_id appears in the ② Sandbox ③ objects view"
-            style={{
-              fontSize: 11,
-              fontFamily: "var(--font-mono, ui-monospace, Menlo, monospace)",
-              border: "1px solid rgba(120,160,255,0.4)",
-              background: "rgba(120,160,255,0.08)",
-              color: "rgb(120,160,255)",
-              borderRadius: 4,
-              padding: "1px 6px",
-            }}
-          >
-            {o.element_id}
-          </code>
+          {(() => {
+            const usedIds = new Set(pages.flatMap((p) => p.columns.flat()).map((x) => x.element_id));
+            const linked = sandboxObjects.some((s) => s.element_id === o.element_id);
+            const options = sandboxObjects.filter(
+              (s) => s.element_id === o.element_id || !usedIds.has(s.element_id),
+            );
+            const objTitle = (x: PageObject) => {
+              const dd = x.data as Record<string, unknown>;
+              return String(dd["title"] ?? dd["label"] ?? dd["heading"] ?? x.type);
+            };
+            if (sandboxObjects.length === 0) {
+              return (
+                <span style={{ ...label, opacity: 0.55, textTransform: "none", letterSpacing: 0 }}>
+                  run ② Sandbox to produce objects to link to · id {o.element_id}
+                </span>
+              );
+            }
+            return (
+              <>
+                <select
+                  value={linked ? o.element_id : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) unlink(o.element_id);
+                    else {
+                      const src = sandboxObjects.find((s) => s.element_id === v);
+                      if (src) bindLinked(o.element_id, src);
+                    }
+                  }}
+                  style={{ fontSize: 12, maxWidth: 340 }}
+                >
+                  <option value="">— unlinked / custom —</option>
+                  {options.map((s) => (
+                    <option key={s.element_id} value={s.element_id}>
+                      {s.type} · {objTitle(s)} ({s.element_id})
+                    </option>
+                  ))}
+                </select>
+                <span style={{ ...label, opacity: 0.5, textTransform: "none", letterSpacing: 0 }}>
+                  {linked
+                    ? "✓ data from this sandbox object"
+                    : "not linked — pick one to base its data on"}
+                </span>
+              </>
+            );
+          })()}
         </div>
         {isChart && onInstruct && (
           <div

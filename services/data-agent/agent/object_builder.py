@@ -100,6 +100,30 @@ def needed_columns(spec: dict[str, Any]) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
+# A WHERE-clause fragment should never itself contain a nested statement — an
+# admin-authored `filter` string that could, e.g., correlate a subquery into an
+# RLS-exempt table (app.users) would let a single-table extract read data it
+# has no business seeing. Same posture as sql_guardrails._FORBIDDEN, plus a ban
+# on nested SELECTs/CTEs, since a predicate fragment never legitimately needs one.
+_FILTER_FORBIDDEN = re.compile(
+    r"\b(select|union|insert|update|delete|drop|alter|truncate|create|grant|revoke|"
+    r"copy|merge|call|into|with)\b",
+    re.IGNORECASE,
+)
+
+
+def validate_where_override(where_override: str) -> str:
+    """Reject anything beyond a simple predicate fragment (no statement
+    separators, comments, or nested statements) so a builder `filter` field
+    can't reach outside the object's own extract."""
+    frag = where_override.strip()
+    if ";" in frag or "--" in frag or "/*" in frag:
+        raise ValueError("filter may not contain statement separators or comments")
+    if _FILTER_FORBIDDEN.search(frag):
+        raise ValueError("filter may not contain SQL keywords beyond a predicate")
+    return frag
+
+
 def _carry_filters(base_sql: str) -> list[str]:
     """Best-effort WHERE predicates lifted from the golden's current extract:
     the suburb IN/= list and a property_type = '…' filter (verbatim values)."""
@@ -144,7 +168,11 @@ def canonical_extract_sql(
         select.append(
             "round((sum(total_sale_value) / NULLIF(sum(n_sold), 0))::numeric) AS avg_sale_price"
         )
-    where = [where_override.strip()] if where_override.strip() else _carry_filters(base_sql)
+    where = (
+        [validate_where_override(where_override)]
+        if where_override.strip()
+        else _carry_filters(base_sql)
+    )
     where_sql = ("\nWHERE " + "\n  AND ".join(where)) if where else ""
     return (
         "SELECT\n  "

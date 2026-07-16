@@ -695,9 +695,7 @@ def _run_named_objects(objects: list[dict[str, Any]], frame: Any) -> list[dict[s
         try:
             outcome = run_code(code, df=frame, frames={"extract": frame})
             obj = _lift_object(outcome.report, element_id=eid, object_type=otype)
-            out.append(
-                {"element_id": eid, "object": obj, "error": None if obj else outcome.error}
-            )
+            out.append({"element_id": eid, "object": obj, "error": None if obj else outcome.error})
         except Exception as exc:  # noqa: BLE001 — one bad object must not fail the prep
             out.append({"element_id": eid, "object": None, "error": str(exc)})
     return out
@@ -1018,12 +1016,15 @@ async def agent_analysis_build_object(
     must_rewrite = bool(body.spec) and (base_error is not None or not need.issubset(set(columns)))
     if must_rewrite:
         grain = body.spec.get("grain") or ["suburb", "area_band", "month"]
-        new_sql = canonical_extract_sql(
-            body.sql,
-            grain=grain,
-            measure_source_cols=need,
-            where_override=str(body.spec.get("filter") or ""),
-        )
+        try:
+            new_sql = canonical_extract_sql(
+                body.sql,
+                grain=grain,
+                measure_source_cols=need,
+                where_override=str(body.spec.get("filter") or ""),
+            )
+        except ValueError as exc:
+            return _err(f"invalid filter: {exc}", sql=body.sql)
         try:
             frame, meta = await extract(new_sql, user_id=body.user.id)
             columns = meta.get("columns", [])

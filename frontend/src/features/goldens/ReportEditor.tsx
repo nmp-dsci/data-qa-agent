@@ -23,7 +23,10 @@ import {
 } from "../../report-engine/registry";
 
 const TEMPLATE_IDS: TemplateId[] = ["one-col", "two-col", "three-col"];
-const OBJECT_TYPES: PageObjectType[] = ["kpi", "trend", "breakdown", "compare", "insight", "text"];
+// Derived from the registry's Record<PageObjectType, ...> so a newly added
+// object type can't silently miss the picker — TS won't compile
+// OBJECT_TYPE_LABELS without every PageObjectType key.
+const OBJECT_TYPES: PageObjectType[] = Object.keys(OBJECT_TYPE_LABELS) as PageObjectType[];
 const HEIGHTS = ["sm", "md", "lg", "fill"] as const;
 
 // Glyph per object type for the visual add-object picker — 16-viewBox line icons
@@ -1042,27 +1045,37 @@ export function ReportEditor({
                               </span>
                             </button>
                           ))}
-                          {sandboxObjects.length > 0 && (
-                            <div className="obj-picker-linkgroup">
-                              <div className="obj-picker-foot">↳ link a ② Sandbox output</div>
-                              {sandboxObjects.map((s) => (
-                                <button
-                                  key={s.element_id}
-                                  type="button"
-                                  role="menuitem"
-                                  className="obj-row obj-row-link"
-                                  data-testid={`add-link-${pi}-${ci}-${s.element_id}`}
-                                  onClick={() => addLinked(pi, ci, s)}
-                                >
-                                  <span className="obj-row-glyph">{OBJECT_GLYPHS[s.type]}</span>
-                                  <span className="obj-row-text">
-                                    <b>{objectTitle(s) || OBJECT_TYPE_LABELS[s.type]}</b>
-                                    <span>linked · carries real data</span>
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                          {(() => {
+                            // Only offer sandbox objects not already placed anywhere in the
+                            // page — mirrors the edit-panel's linked-object-select guard, so
+                            // linking never creates two PageObjects sharing one element_id.
+                            const usedIds = new Set(
+                              pages.flatMap((p) => p.columns.flat()).map((x) => x.element_id),
+                            );
+                            const linkable = sandboxObjects.filter((s) => !usedIds.has(s.element_id));
+                            if (linkable.length === 0) return null;
+                            return (
+                              <div className="obj-picker-linkgroup">
+                                <div className="obj-picker-foot">↳ link a ② Sandbox output</div>
+                                {linkable.map((s) => (
+                                  <button
+                                    key={s.element_id}
+                                    type="button"
+                                    role="menuitem"
+                                    className="obj-row obj-row-link"
+                                    data-testid={`add-link-${pi}-${ci}-${s.element_id}`}
+                                    onClick={() => addLinked(pi, ci, s)}
+                                  >
+                                    <span className="obj-row-glyph">{OBJECT_GLYPHS[s.type]}</span>
+                                    <span className="obj-row-text">
+                                      <b>{objectTitle(s) || OBJECT_TYPE_LABELS[s.type]}</b>
+                                      <span>linked · carries real data</span>
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>

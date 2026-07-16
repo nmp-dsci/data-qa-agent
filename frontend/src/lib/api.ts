@@ -532,8 +532,16 @@ async function adminGet<T>(path: string): Promise<T> {
   return resp.json();
 }
 
-export function getAdminEvents(): Promise<AdminEvent[]> {
-  return adminGet<AdminEvent[]>("/admin/events");
+function adminListQuery(params?: { limit?: number; since?: string }): string {
+  const qs = new URLSearchParams();
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.since) qs.set("since", params.since);
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
+export function getAdminEvents(params?: { limit?: number; since?: string }): Promise<AdminEvent[]> {
+  return adminGet<AdminEvent[]>(`/admin/events${adminListQuery(params)}`);
 }
 
 export function getAdminUsers(): Promise<AdminUser[]> {
@@ -544,8 +552,11 @@ export function getAdminDatasets(): Promise<AdminDataset[]> {
   return adminGet<AdminDataset[]>("/admin/datasets");
 }
 
-export function getAdminQueryRuns(): Promise<AdminQueryRun[]> {
-  return adminGet<AdminQueryRun[]>("/admin/query-runs");
+export function getAdminQueryRuns(params?: {
+  limit?: number;
+  since?: string;
+}): Promise<AdminQueryRun[]> {
+  return adminGet<AdminQueryRun[]>(`/admin/query-runs${adminListQuery(params)}`);
 }
 
 export function getAdminConfig(): Promise<AdminConfig> {

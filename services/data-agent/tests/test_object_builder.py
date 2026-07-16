@@ -18,6 +18,7 @@ deterministic.
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from agent.object_builder import (
     build_object_code,
@@ -91,6 +92,26 @@ def test_canonical_extract_uses_explicit_filter() -> None:
     assert "sum(n_sold) AS n_sold" in sql
     assert "sum(total_sale_value) AS total_sale_value" in sql
     assert "WHERE property_type = 'house' AND suburb IN ('Hornsby', 'Normanhurst')" in sql
+
+
+def test_canonical_extract_rejects_filter_with_nested_select() -> None:
+    with pytest.raises(ValueError):
+        canonical_extract_sql(
+            "SELECT ... growth query with no suburb name",
+            grain=["month", "suburb", "area_band"],
+            measure_source_cols={"n_sold", "total_sale_value"},
+            where_override="1=1 AND suburb IN (SELECT username FROM app.users)",
+        )
+
+
+def test_canonical_extract_rejects_filter_with_statement_separator() -> None:
+    with pytest.raises(ValueError):
+        canonical_extract_sql(
+            "SELECT ... growth query with no suburb name",
+            grain=["month", "suburb", "area_band"],
+            measure_source_cols={"n_sold", "total_sale_value"},
+            where_override="1=1; DROP TABLE marts.property_sales",
+        )
 
 
 def test_canonical_extract_carries_suburb_filter_when_no_override() -> None:

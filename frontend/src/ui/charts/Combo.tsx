@@ -90,6 +90,7 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
   }, [rows, innerH]);
   const yRight = useMemo(() => {
     const vals = rows.map((d) => d.line).filter((v): v is number => v != null);
+    if (vals.length === 0) return scaleLinear({ domain: [0, 1], range: [innerH, 0], nice: true });
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
     const pad = (hi - lo || Math.abs(hi) || 1) * 0.1;
@@ -98,8 +99,14 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
 
   if (rows.length === 0) return <p className="muted">No chartable rows.</p>;
 
-  const color = (g: string) =>
+  // Grouped: bar + line share one color per series, so a viewer matches a line
+  // back to its bar cluster. Ungrouped: bar and line are distinct series on
+  // their own axes, so they get distinct palette slots instead of collapsing
+  // to the same color (issue: ungrouped compare charts were monochrome).
+  const barColor = (g: string) =>
     grouped ? palette[Math.max(0, groups.indexOf(g)) % palette.length] : palette[0];
+  const lineColor = (g: string) =>
+    grouped ? palette[Math.max(0, groups.indexOf(g)) % palette.length] : palette[1 % palette.length];
   const centerX = (category: string) => (xScale(category) ?? 0) + xScale.bandwidth() / 2;
 
   // One line path per series over the categories that have a line value.
@@ -125,11 +132,12 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
           {
             label: `${label} · ${data.measure}`,
             value: d.bar != null ? formatValue(d.bar, data.measure) : "—",
-            color: color(g),
+            color: barColor(g),
           },
           {
             label: `${label} · ${data.line_measure}`,
             value: d.line != null ? formatValue(d.line, data.line_measure) : "—",
+            color: lineColor(g),
           },
         ];
       }),
@@ -161,7 +169,7 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
                 width={groupScale.bandwidth()}
                 height={Math.abs(yLeft(d.bar) - yLeft(0))}
                 rx={2}
-                fill={color(d.group)}
+                fill={barColor(d.group)}
                 fillOpacity={0.85}
               />
             ),
@@ -172,14 +180,20 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
             if (pts.length === 0) return null;
             return (
               <g key={`l${g}`}>
-                <LinePath data={pts} x={(p) => p.x} y={(p) => p.y} stroke={color(g)} strokeWidth={2.5} />
+                <LinePath
+                  data={pts}
+                  x={(p) => p.x}
+                  y={(p) => p.y}
+                  stroke={lineColor(g)}
+                  strokeWidth={2.5}
+                />
                 {pts.map((p, i) => (
                   <circle
                     key={i}
                     cx={p.x}
                     cy={p.y}
                     r={3.5}
-                    fill={color(g)}
+                    fill={lineColor(g)}
                     stroke={cssVar("--panel", "#0e0f13")}
                     strokeWidth={1.5}
                   />
@@ -231,14 +245,21 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
             tickLabelProps={() => ({ fill: theme.label, fontSize: 10, textAnchor: "start", dx: 4, dy: 3 })}
           />
         </Group>
-        {/* Legend above the plot (series, or the two measures when ungrouped) —
-            series order matches the bar/line coloring. */}
+        {/* Legend above the plot: series (grouped, bar+line share a color per
+            series) or the two measures — bar and line — when ungrouped, so a
+            single-series compare chart's line is still identifiable. */}
         <Group left={MARGIN.left} top={18}>
-          {(grouped ? groups : [data.measure]).map((g, i) => (
-            <g key={g} transform={`translate(${i * 120}, 0)`}>
-              <rect width={9} height={9} y={-8} rx={2} fill={color(grouped ? g : "")} />
+          {(grouped
+            ? groups.map((g) => ({ key: g, label: g, color: barColor(g) }))
+            : [
+                { key: "bar", label: data.measure, color: barColor("") },
+                { key: "line", label: data.line_measure, color: lineColor("") },
+              ]
+          ).map((item, i) => (
+            <g key={item.key} transform={`translate(${i * 120}, 0)`}>
+              <rect width={9} height={9} y={-8} rx={2} fill={item.color} />
               <text x={13} fill={theme.label} fontSize={10}>
-                {g}
+                {item.label}
               </text>
             </g>
           ))}

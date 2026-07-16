@@ -1,4 +1,4 @@
-# Dev seed users (production uses Microsoft Entra External ID instead).
+# Dev seed users (production uses Google Sign-in instead).
 # The local dev-auth stub lets you log in as any of these without a password.
 users:
   - username: admin

@@ -81,7 +81,8 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 
 ### How a question flows
 
-1. Sign in → backend issues a signed JWT (dev-auth stub locally; Microsoft Entra in production).
+1. Sign in → the client holds a signed JWT (minted by the local dev-auth stub, or a Google-issued ID token
+   with real Google Sign-in).
 2. Frontend calls `POST /ask` with the bearer token.
 3. Backend sets `app.current_user_id` on the DB session → **RLS scopes every query to that user**.
 4. Backend delegates to the data-agent, which runs a governed `SELECT` (read-only role, SELECT-only
@@ -104,7 +105,7 @@ services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin + /
 services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails; eval graders
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
-frontend/               React + Vite: login (dev stub or MSAL) + chat + golden authoring + event tracking
+frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + golden authoring + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
 data/                   full NSW CSVs (gitignored) + data/samples/ (small committed samples)
@@ -155,22 +156,23 @@ data-agent's `/agent/analysis*` and `/agent/skills*` helpers). Deterministic gra
 shape against a `ready` golden; every `/ask` is stamped with an `agent_versions` build fingerprint, and
 batch scores land in `eval_runs`/`eval_results`.
 
-## Authentication (dev stub → Microsoft Entra External ID)
+## Authentication (dev stub → Google Sign-in)
 
 Auth runs in one of two modes, chosen at runtime — the frontend reads `GET /auth/config` and adapts, so
 **flipping to real auth needs no rebuild**:
 
 - **`dev` (default)** — a local dev-auth stub. The login screen shows the three seeded users; the backend
   mints a signed HS256 token. Everything runs offline.
-- **`entra`** — real **Microsoft Entra External ID** (OIDC). The frontend signs in via MSAL
-  (`@azure/msal-browser`); the backend validates the RS256 token against the tenant's public **JWKS**
-  (no client secret needed), then **just-in-time provisions** the user into `app.users` keyed by their Entra
-  `oid`, so RLS and the admin role stay driven by our own database. An app role (default value `admin`) in the
-  token maps to the admin role.
+- **`google`** — real **Google Sign-in** (OIDC). The frontend renders the official Google Identity Services
+  button, which hands back a Google-signed RS256 ID token; the backend validates it against Google's public
+  **JWKS** (no client secret needed), then **just-in-time provisions** the user into `app.users` keyed by
+  their Google `sub`, so RLS and the admin role stay driven by our own database. Emails listed in
+  `ADMIN_EMAILS` map to the admin role; everyone else is a `user`.
 
-To switch, set `AUTH_MODE=entra` and the `ENTRA_*` values in `.env` (see `.env.example`), then restart
-backend-api. A real Entra External ID tenant + two app registrations (SPA + API) are required for live login;
-until then, `dev` mode is the working local experience.
+To switch, set `AUTH_MODE=google`, `GOOGLE_CLIENT_ID`, and `ADMIN_EMAILS` in `.env` (see `.env.example`),
+then restart backend-api. The OAuth client must be a **Web** client with the frontend origin
+(http://localhost:5230 locally) as an authorized JavaScript origin; until then, `dev` mode is the working
+local experience.
 
 The `/me` endpoint returns the current user's profile in both modes.
 

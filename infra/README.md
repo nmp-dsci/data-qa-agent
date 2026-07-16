@@ -66,7 +66,7 @@ Same `APP_ENV=dev`; only *where config comes from* differs.
 | Setting | local (`.env` / compose) | cloud (Container Apps) |
 |---|---|---|
 | `APP_ENV` | `dev` | `dev` |
-| `AUTH_MODE` | `dev` (stub) | `dev` → `entra` later |
+| `AUTH_MODE` | `dev` (stub) | `dev` → `google` later |
 | `DATABASE_URL` | inline to local `db` | Key Vault `backend-database-url` |
 | `AGENT_DATABASE_URL` | inline to local `db` | Key Vault `agent-database-url` |
 | `DB_SSL` | unset | `require` |

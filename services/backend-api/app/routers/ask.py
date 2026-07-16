@@ -56,7 +56,9 @@ class AskResponse(BaseModel):
     pages: list[dict[str, Any]] | None = None
 
 
-async def _log_event(conn: Any, user_id: str, event_type: str, payload: dict | None = None) -> None:
+async def _log_event(
+    conn: Any, user_id: str, event_type: str, payload: dict[str, Any] | None = None
+) -> None:
     await conn.execute(
         text(
             "INSERT INTO app.events (user_id, event_type, payload) "

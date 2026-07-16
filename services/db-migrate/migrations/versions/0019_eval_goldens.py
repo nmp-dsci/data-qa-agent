@@ -52,9 +52,7 @@ def upgrade() -> None:
     op.execute("ALTER TABLE app.eval_cases ALTER COLUMN knowledge_version DROP NOT NULL")
 
     # Speeds up the per-dataset browse in the Builder / Evaluations tabs.
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS eval_cases_dataset_idx ON app.eval_cases (dataset)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS eval_cases_dataset_idx ON app.eval_cases (dataset)")
 
     op.execute(
         "INSERT INTO app.schema_migrations (version) VALUES ('0019_eval_goldens') "

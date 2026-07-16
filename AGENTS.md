@@ -15,7 +15,7 @@ authorized to see, returning insights and charts.
 The goal is a **v1 end-to-end system that is built to evolve** — a learning-oriented, iteratively improved
 reference implementation, not a throwaway prototype.
 
-The product's UI display name is **Datapilot**; the repo and services keep the `data-qa-agent` name.
+The product's UI display name is **Data Pilot**; the repo and services keep the `data-qa-agent` name.
 
 Current branch: `init-ds-app`. The full architecture proposal lives in
 `.lavish/s00_data-qa-agent-architecture.html` (open with `npx -y lavish-axi .lavish/s00_data-qa-agent-architecture.html`).
@@ -201,6 +201,12 @@ col)` is **deferred** — not yet implemented.
 **Guardrails (non-negotiable):** read-only DB role · RLS always applies · `SELECT`-only allowlist with parse
 validation and statement timeout · token + row caps to bound cost and blast radius.
 
+A second, deliberately isolated micro-agent lives beside it: `agent/titles.py` (`POST /agent/title`)
+summarises a conversation's first question into a 3–5 word sidebar title. The backend calls it best-effort
+from a background task after the first answer (and `app/backfill_titles.py` reuses it to retitle old
+conversations), so titling can never slow down or break answering; without a provider key it falls back to
+an offline heuristic.
+
 When building or changing the agent, consult the `ai:building-pydantic-ai-agents` skill and instrument with
 the `logfire` skills.
 
@@ -220,6 +226,9 @@ All capabilities live in one Postgres, all under RLS.
 | `query_runs` | Q&A | Audit of every SQL the agent executed (guardrail trail) | via owner; admin audits |
 | `user_memories` | Memory | Learned per-user preferences + `pgvector` embedding | owner only |
 | `events` | Analytics | Frontend + backend event stream for the admin dashboard | insert own; admin reads all |
+| `eval_cases` | Evals | Golden answers — feedback-promoted or hand-authored stages (`golden_sql`, `golden_sandbox`, `golden_objects`, `golden_report`) | admin/CI-curated; no RLS |
+| `agent_versions` | Evals | Fingerprint of the agent build (provider, model, prompt/skills hashes); stamps every `query_runs` row | admin/CI-curated; no RLS |
+| `eval_runs` / `eval_results` | Evals | Batch grading: one row per pack run + per-case pillar scores (G1–G4), linked back to `query_runs` | admin/CI-curated; no RLS |
 | `marts.*` (e.g. `housing`) | Domain | dbt-built, documented tables questions run against | via `dataset_access` |
 
 ## Datasets, config & the CSV drop-folder
@@ -254,6 +263,17 @@ datasets table (row counts, access — count of `dataset_access` grants), and Q&
 `evals/journeys.yaml` defines journeys (`as_user`, `question`, `expect`) that a **pytest** harness runs against
 the real `/ask` flow, scored with **pydantic_evals**. Journeys double as RLS isolation tests (user2 must never
 see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failure.
+
+The **eval loop** (s14–s18) builds on this with **golden examples**: the admin-only **Golden Examples** tab
+authors a golden answer stage by stage — ① SQL extract, ② sandbox analysis (named presentation objects built
+from the tested skill library), ③ the presentation report — starting from an agent-drafted first pass.
+Goldens are stored on `app.eval_cases` (CRUD via the backend's `/admin/eval-goldens` endpoints, which proxy
+draft/build actions to the data-agent's `/agent/analysis*` and `/agent/skills*` helpers; the object-type
+picker is generated from the report-engine registry so it can't drift from what the renderer supports).
+Deterministic graders (`agent/eval_graders.py`) score G1 extraction values, G2 sandbox metrics, and the
+structural half of G3 presentation against a `ready` golden — the LLM insight half of G3 is a judge, not
+code. Every `/ask` is stamped with an `agent_versions` build fingerprint, and batch scores land in
+`eval_runs`/`eval_results` (migrations 0019–0024).
 
 ---
 

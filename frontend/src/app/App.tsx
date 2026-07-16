@@ -20,6 +20,7 @@ import { getTheme, setTheme } from "../lib/theme";
 import { MOBILE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { ChatMsg, ChatPage, ConversationList } from "../features/chat/ChatPage";
 import { AdminPage } from "../features/admin/AdminPage";
+import { GoldensPage } from "../features/goldens/GoldensPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { NavRail, View } from "./NavRail";
 import { BottomNav, MobileTopBar } from "./MobileNav";
@@ -102,19 +103,26 @@ export default function App() {
   const navigate = useNavigate();
   const view: View = location.pathname.startsWith("/sql")
     ? "sql"
-    : location.pathname.startsWith("/admin")
-      ? "admin"
-      : location.pathname.startsWith("/settings")
-        ? "settings"
-        : "chat";
+    : location.pathname.startsWith("/goldens")
+      ? "goldens"
+      : location.pathname.startsWith("/admin")
+        ? "admin"
+        : location.pathname.startsWith("/settings")
+          ? "settings"
+          : "chat";
   const setView = useCallback((v: View) => navigate(`/${v}`), [navigate]);
 
   // Normalize unknown paths and guard the admin route by role.
   useEffect(() => {
-    const known = ["/chat", "/sql", "/admin", "/settings"];
+    const known = ["/chat", "/sql", "/goldens", "/admin", "/settings"];
+    const adminOnly = ["/goldens", "/admin"];
     if (!known.some((p) => location.pathname.startsWith(p))) {
       navigate("/chat", { replace: true });
-    } else if (user && location.pathname.startsWith("/admin") && user.role !== "admin") {
+    } else if (
+      user &&
+      adminOnly.some((p) => location.pathname.startsWith(p)) &&
+      user.role !== "admin"
+    ) {
       navigate("/chat", { replace: true });
     }
   }, [location.pathname, user, navigate]);
@@ -215,6 +223,11 @@ export default function App() {
       setMessages((m) => [...m, { role: "assistant", content: result.answer, result }]);
       if (isNewConversation) {
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        // The agent summarises the sidebar title in the background just after the
+        // stream closes (s17 E1); refetch once more to swap in the real title.
+        window.setTimeout(() => {
+          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        }, 2500);
       }
     } catch (e) {
       if (ctrl.signal.aborted) {
@@ -328,6 +341,7 @@ export default function App() {
         )}
         <div className="view-host" key={view}>
           {view === "admin" && <AdminPage />}
+          {view === "goldens" && <GoldensPage />}
           {view === "settings" && <SettingsPage user={user} />}
           {view === "sql" && (
             <Suspense

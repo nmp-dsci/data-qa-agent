@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,11 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import engine
-from .routers import admin_config, ask, auth, events, feedback, profile, sql
+from .routers import admin_config, ask, auth, events, feedback, goldens, profile, sql
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     await engine.dispose()
 
@@ -31,6 +32,7 @@ app.include_router(ask.router)
 app.include_router(events.router)
 app.include_router(sql.router)
 app.include_router(feedback.router)
+app.include_router(goldens.router)
 app.include_router(admin_config.router)
 app.include_router(profile.router)
 

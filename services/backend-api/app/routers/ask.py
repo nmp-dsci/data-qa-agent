@@ -6,12 +6,13 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
+from starlette.background import BackgroundTask
 
-from ..agent_client import ask_agent, ask_agent_stream
+from ..agent_client import ask_agent, ask_agent_stream, title_agent
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
 from ..db import jsonable, rls_connection
@@ -55,7 +56,9 @@ class AskResponse(BaseModel):
     pages: list[dict[str, Any]] | None = None
 
 
-async def _log_event(conn: Any, user_id: str, event_type: str, payload: dict | None = None) -> None:
+async def _log_event(
+    conn: Any, user_id: str, event_type: str, payload: dict[str, Any] | None = None
+) -> None:
     await conn.execute(
         text(
             "INSERT INTO app.events (user_id, event_type, payload) "
@@ -257,6 +260,27 @@ async def _persist_answer(
     return message_id, run_id
 
 
+async def _retitle_conversation(user: CurrentUser, conversation_id: str, question: str) -> None:
+    """Replace a new conversation's raw-question placeholder title with a short
+    agent-generated summary (s17 E1). Best-effort and off the answer's critical
+    path (runs as a background task) — any failure just keeps the fallback title."""
+    try:
+        title = (await title_agent(question)).strip()
+    except Exception as exc:  # noqa: BLE001 — titling is cosmetic, never surface it
+        print(f"[backend-api] conversation retitle skipped: {exc}")
+        return
+    if not title:
+        return
+    try:
+        async with rls_connection(user.id) as conn:
+            await conn.execute(
+                text("UPDATE app.conversations SET title = :t WHERE id = :cid"),
+                {"t": title[:120], "cid": conversation_id},
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[backend-api] conversation retitle write failed: {exc}")
+
+
 def _build_response(
     conversation_id: str,
     message_id: str,
@@ -289,6 +313,7 @@ def _build_response(
 @router.post("/ask", response_model=AskResponse)
 async def ask(
     body: AskRequest,
+    background_tasks: BackgroundTasks,
     user: CurrentUser = Depends(get_current_user),
     channel: str = Depends(get_channel),
 ) -> AskResponse:
@@ -297,6 +322,7 @@ async def ask(
         raise HTTPException(status_code=400, detail="Question must not be empty")
     await check_daily_llm_cap(user)
 
+    is_new = body.conversation_id is None
     conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
     # Delegate to the agent (its own connection enforces the same RLS).
     started = time.perf_counter()
@@ -317,6 +343,10 @@ async def ask(
     message_id, run_id = await _persist_answer(
         user, channel, conversation_id, question, result, latency_ms
     )
+    # Summarise the first question into a short sidebar title after the response
+    # is sent, so it never adds to the answer's latency (s17 E1).
+    if is_new:
+        background_tasks.add_task(_retitle_conversation, user, conversation_id, question)
     return _build_response(
         conversation_id, message_id, run_id, result, latency_ms, user.role == "admin"
     )
@@ -340,6 +370,10 @@ async def ask_stream(
     """
     # Enforce the cap before the stream opens so the client gets a clean 429.
     await check_daily_llm_cap(user)
+
+    # Populated by gen() for a new conversation; the background task below retitles
+    # it once the stream has closed (never delays the streamed answer, s17 E1).
+    retitle: dict[str, str] = {}
 
     async def gen() -> AsyncIterator[str]:
         question = body.question.strip()
@@ -392,13 +426,21 @@ async def ask_stream(
         message_id, run_id = await _persist_answer(
             user, channel, conversation_id, question, result, latency_ms
         )
+        if body.conversation_id is None:
+            retitle["cid"] = conversation_id
+            retitle["q"] = question
         response = _build_response(
             conversation_id, message_id, run_id, result, latency_ms, user.role == "admin"
         )
         yield _sse("result", response.model_dump_json())
 
+    async def _bg_retitle() -> None:
+        if retitle:
+            await _retitle_conversation(user, retitle["cid"], retitle["q"])
+
     return StreamingResponse(
         gen(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        background=BackgroundTask(_bg_retitle),
     )

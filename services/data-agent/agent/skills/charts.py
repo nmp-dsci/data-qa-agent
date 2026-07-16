@@ -85,38 +85,43 @@ def dual_axis_chart(
     left_title: str | None = None,
     right_title: str | None = None,
     x_type: str = "temporal",
+    series_col: str | None = None,
 ) -> dict[str, Any]:
     """Bars plus a secondary-axis line for two metrics with different scales.
 
     Use when the question compares two measures on the same x-axis but one scale
     would flatten the other, such as sales volume vs price or rent vs sale price.
     The only allowed independent scale is y, enforced by ``validate_chart_spec``.
+
+    ``series_col`` adds a grouped/colour dimension (e.g. suburb): the bars cluster
+    by series (``xOffset``) and one line is drawn per series, so two entities can
+    be compared bars-and-line on the same x-axis (e.g. volume + price per suburb).
     """
     values = df.to_dict("records")
+    bar_enc: dict[str, Any] = {
+        "x": {"field": x_col, "type": x_type, "title": None},
+        "y": {
+            "field": left_value_col,
+            "type": "quantitative",
+            "title": left_title or left_value_col,
+        },
+    }
+    line_enc: dict[str, Any] = {
+        "x": {"field": x_col, "type": x_type, "title": None},
+        "y": {
+            "field": right_value_col,
+            "type": "quantitative",
+            "title": right_title or right_value_col,
+        },
+    }
+    if series_col:
+        bar_enc["color"] = {"field": series_col, "type": "nominal", "title": None}
+        bar_enc["xOffset"] = {"field": series_col, "type": "nominal"}
+        line_enc["color"] = {"field": series_col, "type": "nominal", "title": None}
     spec: dict[str, Any] = {
         "layer": [
-            {
-                "mark": "bar",
-                "encoding": {
-                    "x": {"field": x_col, "type": x_type, "title": None},
-                    "y": {
-                        "field": left_value_col,
-                        "type": "quantitative",
-                        "title": left_title or left_value_col,
-                    },
-                },
-            },
-            {
-                "mark": {"type": "line", "point": True},
-                "encoding": {
-                    "x": {"field": x_col, "type": x_type, "title": None},
-                    "y": {
-                        "field": right_value_col,
-                        "type": "quantitative",
-                        "title": right_title or right_value_col,
-                    },
-                },
-            },
+            {"mark": "bar", "encoding": bar_enc},
+            {"mark": {"type": "line", "point": True}, "encoding": line_enc},
         ],
         "resolve": {"scale": {"y": "independent"}},
     }

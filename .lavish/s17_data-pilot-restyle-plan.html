@@ -1,0 +1,1757 @@
+<!doctype html>
+<html lang="en" data-candidate="A">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Pilot — Frontend Restyle Plan (s17)</title>
+<style>
+/* ============ artifact chrome (matches the app's own token system) ============ */
+:root {
+  --bg:#0b0d12; --panel:#12151c; --panel-2:#181c25; --panel-3:#1f2430;
+  --border:#232834; --border-2:#333a48; --text:#e7e9ee; --muted:#98a2b6; --faint:#79839a;
+  --accent:#b48a3f; --accent-soft:#f0c674; --accent-2:#6ea8fe;
+  --good:#9ece6a; --warn:#e0af68; --bad:#f2777a; --purple:#c58fff; --info:#7dcfff;
+  --sans:"Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px; --r-lg:14px;
+}
+* { box-sizing:border-box; min-width:0; }
+html,body { margin:0; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14.5px;
+  line-height:1.55; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+.wrap { max-width:1240px; margin:0 auto; padding:28px 22px 120px; }
+h1 { font-size:27px; letter-spacing:-.02em; margin:6px 0 4px; }
+h2 { font-size:19px; letter-spacing:-.01em; margin:0 0 4px; }
+h3 { font-size:15px; margin:0 0 6px; }
+p { margin:6px 0; }
+.sub { color:var(--muted); }
+.small { font-size:12.5px; }
+.tiny { font-size:11px; }
+code, .mono { font-family:var(--mono); font-size:.92em; }
+code { background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:0 5px; }
+p code, li code { line-height:1.3; }
+section.band { margin-top:42px; }
+.band-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.band-num { font-family:var(--mono); font-size:11px; color:var(--accent-soft); border:1px solid var(--border-2);
+  border-radius:999px; padding:2px 10px; letter-spacing:.08em; }
+.chips { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
+.chip { font-size:11.5px; border:1px solid var(--border-2); border-radius:999px; padding:3px 11px; color:var(--muted); }
+.chip b { color:var(--text); font-weight:650; }
+.chip.gold { color:var(--accent-soft); border-color:#6b5a2a; }
+.chip.red { color:var(--bad); border-color:#6b2a2a; }
+.chip.green { color:var(--good); border-color:#33502f; }
+.chip.blue { color:var(--info); border-color:#2f5a7a; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px 18px; }
+.grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+@media (max-width:960px){ .grid2,.grid3 { grid-template-columns:1fr; } }
+
+/* issue table */
+table.issues { width:100%; border-collapse:collapse; font-size:12.8px; }
+.issues th,.issues td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+.issues thead th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  background:var(--panel-2); position:sticky; top:0; }
+.issues tr:last-child td { border-bottom:none; }
+.sev { font-size:10px; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:999px; border:1px solid; white-space:nowrap; }
+.sev.p0 { color:var(--bad); border-color:#6b2a2a; }
+.sev.p1 { color:var(--warn); border-color:#6b5a2a; }
+.sev.p2 { color:var(--info); border-color:#2f5a7a; }
+.mode-tag { font-family:var(--mono); font-size:10.5px; color:var(--faint); white-space:nowrap; }
+.tbl-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:var(--r); }
+
+/* ===================== candidate picker ===================== */
+.picker { position:sticky; top:0; z-index:40; background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--border); padding:10px 22px; }
+.picker-in { max-width:1240px; margin:0 auto; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.picker-label { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+.cand-btn { border:1px solid var(--border-2); background:var(--panel); color:var(--muted); font:inherit;
+  font-size:12.5px; padding:6px 14px; border-radius:999px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
+.cand-btn .dot { width:10px; height:10px; border-radius:3px; }
+.cand-btn[data-c="A"] .dot { background:linear-gradient(135deg,#f0c674,#b48a3f); }
+.cand-btn[data-c="B"] .dot { background:linear-gradient(135deg,#7dd3fc,#2563eb); }
+.cand-btn[data-c="C"] .dot { background:linear-gradient(135deg,#6ee7a0,#0f7d43); }
+html[data-candidate="A"] .cand-btn[data-c="A"], html[data-candidate="B"] .cand-btn[data-c="B"],
+html[data-candidate="C"] .cand-btn[data-c="C"] { color:var(--text); border-color:var(--accent-soft); background:var(--panel-3); }
+.cand-current { font-size:12px; color:var(--accent-soft); }
+
+/* ===================== theme candidate option cards ===================== */
+.opt { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--panel); overflow:hidden; cursor:pointer; }
+.opt.sel { border-color:var(--accent-soft); box-shadow:0 0 0 1px var(--accent-soft); }
+.opt-head { padding:13px 16px 10px; display:flex; align-items:center; gap:10px; }
+.opt-head h3 { margin:0; font-size:15px; }
+.opt-tag { margin-left:auto; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); }
+.opt-body { padding:0 16px 14px; color:var(--muted); font-size:12.8px; }
+.swatches { display:flex; gap:4px; padding:0 16px 10px; }
+.swatches i { height:22px; flex:1; border-radius:5px; border:1px solid rgba(255,255,255,.08); }
+.opt-trade { border-top:1px solid var(--border); padding:10px 16px 12px; font-size:12px; }
+.opt-trade b { font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+.opt-trade .plus { color:var(--good); } .opt-trade .minus { color:var(--warn); }
+.opt-trade ul { margin:4px 0 0 16px; padding:0; }
+
+/* ===================== decision forms (input playbook) ===================== */
+.decision { border:1px solid var(--border-2); border-left:3px solid var(--accent); border-radius:var(--r);
+  background:var(--panel); padding:14px 16px; }
+.decision h4 { margin:0 0 4px; font-size:13.5px; }
+.decision .why { color:var(--muted); font-size:12.3px; margin:0 0 10px; }
+.decision label { display:flex; gap:9px; align-items:baseline; padding:5px 0; font-size:13px; cursor:pointer; }
+.decision input { accent-color:var(--accent-soft); }
+.queue-btn { margin-top:10px; background:linear-gradient(135deg,var(--accent-soft),var(--accent)); color:#1a1206;
+  border:none; font:inherit; font-size:12.5px; font-weight:650; padding:7px 16px; border-radius:8px; cursor:pointer; }
+.queue-btn:disabled { opacity:.45; cursor:default; }
+.queued-note { display:none; margin-left:10px; color:var(--good); font-size:12px; }
+.queued .queued-note { display:inline; }
+
+/* ===================== sidebar icon picker ===================== */
+.iconpick { display:grid; grid-template-columns:repeat(auto-fit,minmax(232px,1fr)); gap:12px; margin:4px 0 14px; }
+.iconpick-tab { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--panel); padding:12px 13px; min-width:0; }
+.iconpick-tab h4 { margin:0 0 2px; font-size:13px; }
+.iconpick-tab h4 span { color:var(--faint); font-weight:500; font-size:11px; }
+.iconpick-tab .cur { margin:0 0 9px; font-size:11px; color:var(--muted); }
+.icon-opts { display:flex; gap:7px; }
+.icon-opt { flex:1; min-width:0; display:block; cursor:pointer; position:relative; }
+.icon-opt input { position:absolute; opacity:0; width:0; height:0; }
+.icon-tile { display:flex; flex-direction:column; align-items:center; gap:6px; padding:11px 4px 7px;
+  border:1px solid var(--border-2); border-radius:10px; color:var(--muted); background:var(--panel-2); }
+.icon-tile svg { width:22px; height:22px; flex:none; }
+.icon-tile small { display:block; font-size:9px; letter-spacing:.02em; text-align:center; line-height:1.2;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.icon-opt input:checked + .icon-tile { border-color:var(--accent-soft); color:var(--accent-soft);
+  background:var(--panel-3); box-shadow:inset 0 0 0 1px var(--accent-soft); }
+.icon-opt:hover .icon-tile { color:var(--text); border-color:var(--border-2); }
+.icon-opt input:focus-visible + .icon-tile { outline:2px solid var(--accent-2); outline-offset:2px; }
+
+/* ===================== pre/post frames ===================== */
+.prepost { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; align-items:start; }
+@media (max-width:980px){ .prepost { grid-template-columns:1fr; } }
+figure.shot { margin:0; }
+figure.shot img { width:100%; display:block; border-radius:10px; border:1px solid var(--border-2); }
+.cap { display:flex; align-items:center; gap:8px; font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--faint); margin:0 0 6px; }
+.cap b { color:var(--muted); }
+.cap .pre-pill { color:var(--bad); border:1px solid #6b2a2a; border-radius:999px; padding:1px 8px; font-weight:700; }
+.cap .post-pill { color:var(--good); border:1px solid #33502f; border-radius:999px; padding:1px 8px; font-weight:700; }
+.cap .cand-name::before { content:"Night Flight"; }
+html[data-candidate="B"] .cap .cand-name::before { content:"Jetstream"; }
+html[data-candidate="C"] .cap .cand-name::before { content:"Flightdeck"; }
+.fixnotes { margin:10px 0 0; padding:0 0 0 18px; color:var(--muted); font-size:12.5px; }
+.fixnotes li { margin:3px 0; }
+.fixnotes b { color:var(--text); font-weight:600; }
+.screen-band { margin-top:34px; padding-top:18px; border-top:1px dashed var(--border-2); }
+
+/* =====================================================================
+   MOCKUPS — every .mock reads only --m-* vars. Six token sets:
+   3 candidates (html[data-candidate]) × 2 modes (.mock[data-mode]).
+   ===================================================================== */
+.mock { border-radius:10px; border:1px solid var(--border-2); overflow:hidden; background:var(--m-bg);
+  color:var(--m-text); font-size:11.5px; line-height:1.45; --m-hole:#33c0cd; }
+/* ---- A · Night Flight ---- */
+html[data-candidate="A"] .mock[data-mode="dark"] {
+  --m-bg:#0a0d15; --m-panel:#111522; --m-panel2:#171c2b; --m-panel3:#1e2434; --m-border:#242b3d; --m-border2:#333d55;
+  --m-text:#eaecf3; --m-muted:#9aa4bb; --m-faint:#7a84a0; --m-accent:#d9a84e; --m-accent-ink:#1a1204; --m-accent-soft:#f2ca79;
+  --m-accent2:#7fb0ff; --m-good:#9ece6a; --m-warn:#e0af68; --m-bad:#f2777a;
+  --m-c1:#d9a84e; --m-c2:#7fb0ff; --m-c3:#9ece6a; --m-c4:#c58fff; --m-c5:#7dcfff;
+  --m-grid:#1d2434; --m-code:#0a0d13; --m-code-k:#d9a84e; --m-code-t:#7fb0ff; --m-code-s:#9ece6a; --m-code-c:#67718c;
+  --m-user:#22304a; --m-glow:radial-gradient(420px 200px at 70% -40px, rgba(217,168,78,.14), transparent 65%);
+}
+html[data-candidate="A"] .mock[data-mode="light"] {
+  --m-bg:#f6f4ee; --m-panel:#ffffff; --m-panel2:#efece2; --m-panel3:#e7e2d4; --m-border:#ddd7c7; --m-border2:#c9c1ac;
+  --m-text:#23293a; --m-muted:#67604e; --m-faint:#7d7663; --m-accent:#9a7328; --m-accent-ink:#fffaf0; --m-accent-soft:#7a5c22;
+  --m-accent2:#2456c9; --m-good:#35803f; --m-warn:#8f6a12; --m-bad:#c03535;
+  --m-c1:#9a7328; --m-c2:#2456c9; --m-c3:#35803f; --m-c4:#7137c8; --m-c5:#0d6e8c;
+  --m-grid:#e6e0d0; --m-code:#f3f0e6; --m-code-k:#9a7328; --m-code-t:#2456c9; --m-code-s:#35803f; --m-code-c:#8b8471;
+  --m-user:#e3ddcb; --m-glow:radial-gradient(420px 200px at 70% -40px, rgba(154,115,40,.10), transparent 65%);
+}
+/* ---- B · Jetstream ---- */
+html[data-candidate="B"] .mock[data-mode="dark"] {
+  --m-bg:#070d18; --m-panel:#0d1523; --m-panel2:#121c2f; --m-panel3:#18253c; --m-border:#1e2c46; --m-border2:#2d4066;
+  --m-text:#e7eef9; --m-muted:#93a5c2; --m-faint:#7488aa; --m-accent:#38bdf8; --m-accent-ink:#03121d; --m-accent-soft:#7dd3fc;
+  --m-accent2:#8b9dff; --m-good:#34d399; --m-warn:#fbbf24; --m-bad:#fb7185;
+  --m-c1:#38bdf8; --m-c2:#8b9dff; --m-c3:#34d399; --m-c4:#f472b6; --m-c5:#fbbf24;
+  --m-grid:#152238; --m-code:#060b14; --m-code-k:#38bdf8; --m-code-t:#8b9dff; --m-code-s:#34d399; --m-code-c:#5e7396;
+  --m-user:#173154; --m-glow:radial-gradient(420px 200px at 70% -40px, rgba(56,189,248,.15), transparent 65%);
+}
+html[data-candidate="B"] .mock[data-mode="light"] {
+  --m-bg:#f4f8fd; --m-panel:#ffffff; --m-panel2:#e9f1fa; --m-panel3:#dde9f6; --m-border:#d0deee; --m-border2:#b3c8e0;
+  --m-text:#152238; --m-muted:#54677f; --m-faint:#6b7f99; --m-accent:#0b6fd6; --m-accent-ink:#f4f9ff; --m-accent-soft:#0a5cb0;
+  --m-accent2:#4f46e5; --m-good:#0d9668; --m-warn:#946300; --m-bad:#cc3355;
+  --m-c1:#0b6fd6; --m-c2:#4f46e5; --m-c3:#0d9668; --m-c4:#d6409f; --m-c5:#946300;
+  --m-grid:#e2ebf5; --m-code:#eef4fb; --m-code-k:#0b6fd6; --m-code-t:#4f46e5; --m-code-s:#0d9668; --m-code-c:#8296ad;
+  --m-user:#dbeafd; --m-glow:radial-gradient(420px 200px at 70% -40px, rgba(11,111,214,.10), transparent 65%);
+}
+/* ---- C · Flightdeck ---- */
+html[data-candidate="C"] .mock[data-mode="dark"] {
+  --m-bg:#090f0c; --m-panel:#0f1613; --m-panel2:#141e19; --m-panel3:#1a2721; --m-border:#22322a; --m-border2:#31473c;
+  --m-text:#e4ece7; --m-muted:#93a69c; --m-faint:#75887d; --m-accent:#45d483; --m-accent-ink:#04170c; --m-accent-soft:#6ee7a0;
+  --m-accent2:#7dcfff; --m-good:#6ee7a0; --m-warn:#e0af68; --m-bad:#f2777a;
+  --m-c1:#45d483; --m-c2:#7dcfff; --m-c3:#e0af68; --m-c4:#c58fff; --m-c5:#f2777a;
+  --m-grid:#182420; --m-code:#070c0a; --m-code-k:#45d483; --m-code-t:#7dcfff; --m-code-s:#e0af68; --m-code-c:#5e7168;
+  --m-user:#173328; --m-glow:radial-gradient(420px 200px at 70% -40px, rgba(69,212,131,.13), transparent 65%);
+}
+html[data-candidate="C"] .mock[data-mode="light"] {
+  --m-bg:#f3f4ec; --m-panel:#ffffff; --m-panel2:#e9ebdd; --m-panel3:#dfe2d0; --m-border:#d5d8c2; --m-border2:#bcc1a4;
+  --m-text:#1d241f; --m-muted:#5c685f; --m-faint:#6e7a70; --m-accent:#0f7d43; --m-accent-ink:#f2fff7; --m-accent-soft:#0a6335;
+  --m-accent2:#0d6e8c; --m-good:#0f7d43; --m-warn:#8f6a12; --m-bad:#c03535;
+  --m-c1:#0f7d43; --m-c2:#0d6e8c; --m-c3:#8f6a12; --m-c4:#7137c8; --m-c5:#c03535;
+  --m-grid:#e2e4d4; --m-code:#eef0e3; --m-code-k:#0f7d43; --m-code-t:#0d6e8c; --m-code-s:#8f6a12; --m-code-c:#88907e;
+  --m-user:#dfe7d8; --m-glow:radial-gradient(420px 200px at 70% -40px, rgba(15,125,67,.09), transparent 65%);
+}
+
+/* ---- mock building blocks ---- */
+.m-shell { display:flex; min-height:230px; }
+.m-rail { width:34px; flex:none; background:var(--m-panel); border-right:1px solid var(--m-border);
+  display:flex; flex-direction:column; align-items:center; gap:5px; padding:8px 0; }
+.m-mark { display:block; width:18px; height:18px; border-radius:5px;
+  background:linear-gradient(135deg,var(--m-accent-soft),var(--m-accent));
+  position:relative; margin-bottom:4px; }
+/* Plane icon — a flat filled airliner (swept wings, wing engines, tail stabilisers),
+   angled 45deg to match the referenced flat-style airplane icon, as an SVG-mask ink
+   shape on the accent tile. */
+.m-mark::before { content:""; position:absolute; inset:2px; background:var(--m-accent-ink);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%20100%20100%27%3E%3Cg%20transform=%27rotate(45%2050%2050)%27%3E%3Cpath%20fill=%27black%27%20d=%27M50%2015C51.5%2015%2053%2018%2053%2024L53%2046L52%2070L51.5%2082L50%2086L48.5%2082L48%2070L47%2046L47%2024C47%2018%2048.5%2015%2050%2015Z%20M52.5%2040L82%2060L82%2065L53.5%2052Z%20M47.5%2040L18%2060L18%2065L46.5%2052Z%20M51.5%2072L64%2080L64%2084L51%2078Z%20M48.5%2072L36%2080L36%2084L49%2078Z%20M63%2050L68%2053L66.5%2057L61.5%2054Z%20M37%2050L32%2053L33.5%2057L38.5%2054Z%27/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; mask:url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%20100%20100%27%3E%3Cg%20transform=%27rotate(45%2050%2050)%27%3E%3Cpath%20fill=%27black%27%20d=%27M50%2015C51.5%2015%2053%2018%2053%2024L53%2046L52%2070L51.5%2082L50%2086L48.5%2082L48%2070L47%2046L47%2024C47%2018%2048.5%2015%2050%2015Z%20M52.5%2040L82%2060L82%2065L53.5%2052Z%20M47.5%2040L18%2060L18%2065L46.5%2052Z%20M51.5%2072L64%2080L64%2084L51%2078Z%20M48.5%2072L36%2080L36%2084L49%2078Z%20M63%2050L68%2053L66.5%2057L61.5%2054Z%20M37%2050L32%2053L33.5%2057L38.5%2054Z%27/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; }
+.m-mark::after { content:none; }
+.m-ic { width:20px; height:20px; border-radius:6px; border:1.4px solid var(--m-faint); opacity:.55; }
+.m-ic.on { border-color:var(--m-accent); opacity:1; background:var(--m-panel3); box-shadow:inset 0 0 0 1px var(--m-border2); }
+.m-body { flex:1; min-width:0; display:flex; flex-direction:column; }
+.m-side { width:132px; flex:none; border-right:1px solid var(--m-border); background:var(--m-panel); padding:8px; }
+.m-side .new { border:1px dashed var(--m-border2); color:var(--m-accent-soft); border-radius:7px; padding:4px 7px;
+  font-size:10px; margin-bottom:7px; }
+.m-side .grp { font-size:8.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--m-faint); margin:7px 0 3px; }
+.m-side .cv { padding:4px 6px; border-radius:6px; color:var(--m-text); font-size:10.5px; }
+.m-side .cv span { display:block; font-size:8.5px; color:var(--m-faint); }
+.m-side .cv.on { background:var(--m-panel2); box-shadow:inset 2px 0 0 var(--m-accent); }
+/* App-wide "cockpit canvas": canopy horizon glow (top) + faint radar dot-field,
+   layered as backgrounds so they always sit BEHIND panels — data surfaces
+   (tables, charts, code) keep their solid fills and stay high-contrast. */
+.m-main { flex:1; min-width:0; padding:12px 14px; position:relative; background:var(--m-bg);
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--m-accent) 8%, transparent), transparent 46px),
+    var(--m-glow),
+    radial-gradient(var(--m-grid) 1px, transparent 1.6px);
+  background-size:100% 46px, auto, 21px 21px;
+  background-repeat:no-repeat, no-repeat, repeat;
+  background-position:top, center top, left top; }
+/* Radar-scope watermark for the empty/hero canvas — painted as a z-index:-1
+   layer so it sits above the dot-field but BEHIND all text (never a text-overlap). */
+.m-main.hero::before { content:""; position:absolute; top:9px; right:11px; width:42px; height:42px;
+  z-index:-1; pointer-events:none; border-radius:50%;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 18px, color-mix(in srgb, var(--m-accent) 30%, transparent) 18px 19px, transparent 19px),
+    radial-gradient(circle at 50% 50%, transparent 11px, color-mix(in srgb, var(--m-accent) 22%, transparent) 11px 12px, transparent 12px),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--m-accent) 55%, transparent) 0 1.4px, transparent 1.6px); }
+.m-h1 { font-size:15px; font-weight:750; letter-spacing:-.01em; }
+.m-sub { color:var(--m-muted); font-size:10.5px; margin-top:2px; }
+.m-composer { margin-top:10px; background:var(--m-panel); border:1px solid var(--m-border2); border-radius:10px;
+  padding:8px 10px; display:flex; align-items:center; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,.18); }
+.m-composer .ph { color:var(--m-faint); flex:1; }
+.m-composer .send { width:20px; height:20px; border-radius:6px; flex:none;
+  background:linear-gradient(135deg,var(--m-accent-soft),var(--m-accent)); position:relative; }
+.m-composer .send::after { content:""; position:absolute; left:6.5px; top:5px; width:6px; height:6px;
+  border-top:2px solid var(--m-accent-ink); border-right:2px solid var(--m-accent-ink); transform:rotate(-45deg); }
+.m-composer.focus { border-color:var(--m-accent2); box-shadow:0 0 0 1px var(--m-accent2); }
+.m-sugs { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
+.m-sug { background:var(--m-panel); border:1px solid var(--m-border); border-radius:8px; padding:7px 9px; display:flex; gap:8px; }
+.m-sug svg { width:14px; height:14px; flex:none; stroke:var(--m-accent); fill:none; stroke-width:1.8; margin-top:1px; }
+.m-sug b { display:block; font-size:10.5px; }
+.m-sug span { color:var(--m-muted); font-size:9.5px; }
+.m-bubble { margin-left:auto; width:max-content; max-width:78%; background:var(--m-user); border-radius:10px 10px 3px 10px;
+  padding:6px 9px; font-size:10.5px; }
+.m-agent { display:flex; align-items:center; gap:6px; margin:9px 0 5px; font-size:10.5px; }
+.m-agent .m-mark { width:13px; height:13px; margin:0; border-radius:4px; }
+.m-agent .m-mark::before, .m-agent .m-mark::after { inset:1.5px; }
+.m-agent b { font-weight:650; }
+.m-meta { display:flex; gap:6px; align-items:center; color:var(--m-faint); font-size:9px; margin-top:6px; flex-wrap:wrap; }
+.m-badge { font-size:8px; letter-spacing:.05em; text-transform:uppercase; border:1px solid var(--m-border2);
+  border-radius:4px; padding:1px 5px; color:var(--m-muted); }
+.m-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:8px; }
+.m-kpi { background:var(--m-panel); border:1px solid var(--m-border); border-radius:8px; padding:7px 9px; }
+.m-kpi .l { color:var(--m-muted); font-size:9px; }
+.m-kpi .v { font-size:14px; font-weight:750; margin-top:1px; font-variant-numeric:tabular-nums; }
+.m-kpi .d { font-size:9px; font-weight:650; }
+.m-kpi .d.up { color:var(--m-good); } .m-kpi .d.down { color:var(--m-bad); }
+.m-chart { background:var(--m-panel); border:1px solid var(--m-border); border-radius:8px; padding:8px 9px; margin-top:8px; }
+.m-chart .t { font-size:8.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--m-muted); }
+.m-legend { display:flex; gap:10px; margin:4px 0 2px; font-size:8.5px; color:var(--m-muted); }
+.m-legend i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+.m-chart svg { width:100%; height:auto; display:block; }
+.m-grid-l { stroke:var(--m-grid); stroke-width:1; }
+.m-ax { fill:var(--m-faint); font-size:6.5px; font-family:var(--mono); }
+.m-s1 { stroke:var(--m-c1); } .m-s2 { stroke:var(--m-c2); } .m-s3 { stroke:var(--m-c3); }
+.m-bars { display:grid; gap:5px; margin-top:6px; }
+.m-bar-row { display:grid; grid-template-columns:60px minmax(0,1fr) 42px; gap:7px; align-items:center; font-size:8.5px; }
+.m-bar-l { color:var(--m-muted); }
+.m-bar-t { background:var(--m-grid); border-radius:3px; height:8px; }
+.m-bar { display:block; height:100%; border-radius:3px; background:var(--m-c1); }
+.m-bar-v { color:var(--m-text); font-variant-numeric:tabular-nums; text-align:right; font-family:var(--mono); font-size:8px; }
+.m-plot { display:grid; grid-template-columns:auto minmax(0,1fr); gap:6px; align-items:stretch; margin-top:2px; }
+.m-plot svg { height:64px; width:100%; }
+.m-plot-y { display:flex; flex-direction:column; justify-content:space-between; color:var(--m-faint);
+  font-size:7.5px; font-family:var(--mono); text-align:right; padding:1px 0; }
+.m-plot-x { display:flex; justify-content:space-between; color:var(--m-faint); font-size:7.5px;
+  font-family:var(--mono); margin-top:3px; padding-left:36px; }
+.m-f1 { fill:var(--m-c1); } .m-f2 { fill:var(--m-c2); } .m-f3 { fill:var(--m-c3); } .m-f4 { fill:var(--m-c4); }
+.m-qrefs { margin-top:8px; border:1px solid var(--m-border); border-radius:8px; background:var(--m-panel);
+  padding:6px 9px; display:flex; align-items:center; gap:8px; font-size:9.5px; color:var(--m-muted); flex-wrap:wrap; }
+.m-qrefs b { color:var(--m-accent-soft); font-size:9px; letter-spacing:.05em; }
+.m-qrefs .act { margin-left:auto; color:var(--m-accent2); }
+.m-btn { display:inline-block; background:var(--m-accent); color:var(--m-accent-ink); border-radius:7px;
+  padding:4px 11px; font-size:10px; font-weight:650; }
+.m-btn.ghost { background:transparent; color:var(--m-muted); border:1px solid var(--m-border2); font-weight:500; }
+.m-input { background:var(--m-panel); border:1px solid var(--m-border2); border-radius:7px; color:var(--m-faint);
+  padding:5px 8px; font-size:10px; }
+.m-tbl { width:100%; border-collapse:collapse; font-size:9.5px; }
+.m-tbl th { text-align:left; color:var(--m-muted); font-size:8.5px; text-transform:uppercase; letter-spacing:.05em;
+  background:var(--m-panel2); padding:4px 7px; border-bottom:1px solid var(--m-border); white-space:nowrap; }
+.m-tbl td { padding:4px 7px; border-bottom:1px solid var(--m-border); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.m-tbl tr:last-child td { border-bottom:none; }
+.m-pill { font-size:8px; font-weight:700; letter-spacing:.04em; border:1px solid; border-radius:999px; padding:1px 6px; }
+.m-pill.new { color:var(--m-warn); border-color:color-mix(in srgb, var(--m-warn) 45%, transparent); }
+.m-pill.ok { color:var(--m-good); border-color:color-mix(in srgb, var(--m-good) 45%, transparent); }
+.m-code { background:var(--m-code); border:1px solid var(--m-border); border-radius:8px; padding:8px 10px;
+  font-family:var(--mono); font-size:9.3px; line-height:1.55; overflow-x:auto; color:var(--m-text); }
+.m-code .k { color:var(--m-code-k); } .m-code .t { color:var(--m-code-t); } .m-code .s { color:var(--m-code-s); }
+.m-code .c { color:var(--m-code-c); font-style:italic; }
+.m-steps { display:flex; gap:6px; margin:8px 0; flex-wrap:wrap; }
+.m-step { display:flex; align-items:center; gap:5px; font-size:9px; color:var(--m-muted);
+  border:1px solid var(--m-border); border-radius:999px; padding:2px 9px 2px 3px; background:var(--m-panel); }
+.m-step i { width:13px; height:13px; border-radius:50%; background:var(--m-panel3); color:var(--m-accent-soft);
+  display:grid; place-items:center; font-style:normal; font-size:7.5px; font-weight:700; }
+.m-step.on { border-color:var(--m-accent); color:var(--m-text); }
+.m-step.on i { background:var(--m-accent); color:var(--m-accent-ink); }
+.m-skills { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.m-skill { font-family:var(--mono); font-size:8.5px; border:1px solid var(--m-border2); border-radius:999px;
+  padding:2px 8px; color:var(--m-muted); }
+.m-skill.on { color:var(--m-accent-soft); border-color:var(--m-accent); background:var(--m-panel3); }
+.m-sec { font-size:8.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--m-accent-soft);
+  font-weight:700; margin:10px 0 5px; }
+.m-panel-box { background:var(--m-panel); border:1px solid var(--m-border); border-radius:9px; padding:9px 11px; }
+.m-insight { background:var(--m-panel); border:1px solid var(--m-border); border-left:3px solid var(--m-c1);
+  border-radius:7px; padding:6px 9px; margin-top:6px; font-size:10px; }
+.m-insight b { display:block; font-size:10px; }
+.m-insight span { color:var(--m-muted); font-size:9.5px; }
+.m-seg { display:inline-flex; border:1px solid var(--m-border2); border-radius:7px; overflow:hidden; font-size:9.5px; }
+.m-seg i { padding:3px 10px; font-style:normal; color:var(--m-muted); background:var(--m-panel2); border-right:1px solid var(--m-border2); }
+.m-seg i:last-child { border-right:none; }
+.m-seg i.on { background:var(--m-accent); color:var(--m-accent-ink); font-weight:700; }
+
+/* ---- Goldens: "add presentation object" picker mock ---- */
+.m-editcol { flex:1; min-width:0; border:1px dashed var(--m-border2); border-radius:8px; padding:7px;
+  display:flex; flex-direction:column; gap:6px; }
+.m-editcol .cl { font-size:8px; text-transform:uppercase; letter-spacing:.06em; color:var(--m-faint); }
+.m-objcard { border:1px solid var(--m-border); border-left:3px solid var(--m-c1); border-radius:6px;
+  background:var(--m-panel); padding:6px 8px; }
+.m-objcard.chart { border-left-color:var(--m-c2); }
+.m-objcard .t { font-size:8px; color:var(--m-muted); }
+.m-objcard .v { font-size:12px; font-weight:750; }
+.m-addbtn { display:inline-flex; align-items:center; gap:5px; align-self:flex-start; font-size:9px; font-weight:650;
+  color:var(--m-accent-ink); background:linear-gradient(135deg,var(--m-accent-soft),var(--m-accent));
+  border-radius:6px; padding:4px 9px; }
+.m-addbtn.ghost { background:var(--m-panel3); color:var(--m-accent-soft); box-shadow:inset 0 0 0 1px var(--m-border2); }
+.m-objpicker { width:200px; background:var(--m-panel); border:1px solid var(--m-border2); border-radius:10px;
+  box-shadow:0 14px 34px rgba(0,0,0,.4); overflow:hidden; }
+.m-objpicker-head { padding:7px 10px; font-size:8px; text-transform:uppercase; letter-spacing:.07em;
+  color:var(--m-faint); border-bottom:1px solid var(--m-border); background:var(--m-panel2);
+  display:flex; align-items:center; gap:6px; }
+.m-objpicker-head b { color:var(--m-accent-soft); }
+.m-objrow { display:flex; gap:8px; align-items:center; padding:6px 10px; cursor:pointer; }
+.m-objrow + .m-objrow { border-top:1px solid color-mix(in srgb, var(--m-border) 60%, transparent); }
+.m-objrow:hover, .m-objrow.on { background:var(--m-panel2); }
+.m-objrow.on { box-shadow:inset 2px 0 0 var(--m-accent); }
+.m-objrow .oi { width:24px; height:24px; border-radius:7px; background:var(--m-panel3); flex:none;
+  display:grid; place-items:center; }
+.m-objrow .oi svg { width:15px; height:15px; stroke:var(--m-accent); fill:none; stroke-width:1.6;
+  stroke-linecap:round; stroke-linejoin:round; }
+.m-objrow.on .oi { background:var(--m-accent); }
+.m-objrow.on .oi svg { stroke:var(--m-accent-ink); }
+.m-objrow b { display:block; font-size:10px; line-height:1.25; }
+.m-objrow span { display:block; font-size:8.3px; line-height:1.3; color:var(--m-muted); }
+.m-objpicker-foot { padding:6px 10px; border-top:1px solid var(--m-border); background:var(--m-panel2);
+  display:flex; align-items:center; gap:6px; font-size:8px; color:var(--m-faint); }
+.m-objpicker-foot .lk { color:var(--m-accent2); }
+.m-oldadd { display:inline-flex; align-items:center; gap:4px; }
+.m-oldadd .sel { border:1px solid var(--m-border2); background:var(--m-panel); border-radius:4px;
+  padding:2px 6px; font-size:9px; color:var(--m-text); display:inline-flex; gap:8px; align-items:center; }
+.m-oldadd .sel::after { content:"▾"; color:var(--m-faint); font-size:8px; }
+.m-oldadd .ab { border:1px solid var(--m-border2); background:var(--m-panel3); border-radius:4px;
+  padding:2px 6px; font-size:9px; color:var(--m-muted); }
+
+/* ---- login mock (the centerpiece) ---- */
+.m-login { display:grid; grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); min-height:320px; }
+@media (max-width:760px){ .m-login { grid-template-columns:1fr; } }
+.m-login-left { display:grid; place-items:center; background:var(--m-bg); background-image:var(--m-glow); position:relative; }
+.m-login-left::before { content:""; position:absolute; inset:0; opacity:.4; pointer-events:none;
+  background-image:linear-gradient(var(--m-grid) 1px, transparent 1px),linear-gradient(90deg,var(--m-grid) 1px,transparent 1px);
+  background-size:34px 34px; mask-image:radial-gradient(300px 220px at 50% 42%, rgba(0,0,0,.6), transparent 75%);
+  -webkit-mask-image:radial-gradient(300px 220px at 50% 42%, rgba(0,0,0,.6), transparent 75%); }
+.m-login-card { position:relative; width:min(230px,100%); background:color-mix(in srgb, var(--m-panel) 96%, transparent);
+  border:1px solid var(--m-border2); border-radius:13px; padding:16px 15px 12px; margin:22px 16px 30px; text-align:center;
+  box-shadow:0 8px 24px rgba(0,0,0,.22); }
+.m-login-card .m-mark { width:26px; height:26px; margin:0 auto 7px; border-radius:8px; }
+.m-login-card .m-mark::before, .m-login-card .m-mark::after { inset:3.5px; }
+.m-login-card h4 { margin:0; font-size:14px; letter-spacing:-.01em; }
+.m-login-card h4 em { font-style:normal; color:var(--m-accent-soft); }
+.m-login-card .tag { color:var(--m-muted); font-size:9.5px; margin:3px 0 10px; }
+.m-guser { display:flex; align-items:center; gap:7px; background:var(--m-panel2); border:1px solid var(--m-border);
+  border-radius:9px; padding:6px 8px; margin-bottom:5px; text-align:left; }
+.m-guser i { width:16px; height:16px; border-radius:50%; flex:none; display:grid; place-items:center;
+  font-style:normal; font-size:7px; font-weight:800; color:#14100a; }
+.m-guser b { font-size:9.5px; display:block; } .m-guser span { font-size:8px; color:var(--m-muted); }
+.m-login-foot { color:var(--m-faint); font-size:7.5px; margin-top:8px; }
+.m-login-right { position:relative; border-left:1px solid var(--m-border); background:var(--m-panel);
+  padding:18px 20px; overflow:hidden; }
+@media (max-width:760px){ .m-login-right { border-left:none; border-top:1px solid var(--m-border); } }
+.m-login-right::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+  background-image:radial-gradient(var(--m-grid) 1px, transparent 1.4px); background-size:26px 26px; }
+.m-fp { position:relative; }
+.m-fp svg { width:100%; height:auto; display:block; }
+.m-wl { position:absolute; font-family:var(--mono); font-size:6.8px; letter-spacing:.04em;
+  color:var(--m-muted); white-space:nowrap; pointer-events:none; }
+.m-fp .path { stroke:var(--m-accent); stroke-width:1.6; fill:none; stroke-dasharray:5 4; opacity:.9; }
+.m-fp .wp { fill:var(--m-panel); stroke:var(--m-accent); stroke-width:1.6; }
+.m-fp .wp.lit { fill:var(--m-accent); }
+.m-fp .plane { fill:var(--m-accent-soft); }
+.m-fp .wl { fill:var(--m-muted); font-size:6.8px; font-family:var(--mono); letter-spacing:.04em; }
+.m-story { position:relative; margin-top:10px; }
+.m-story h5 { margin:0; font-size:13px; letter-spacing:-.01em; }
+.m-story p { margin:3px 0 0; color:var(--m-muted); font-size:10px; }
+.m-props { position:relative; display:grid; gap:6px; margin-top:10px; }
+.m-prop { display:flex; gap:9px; align-items:flex-start; background:color-mix(in srgb, var(--m-panel2) 80%, transparent);
+  border:1px solid var(--m-border); border-radius:9px; padding:7px 9px; }
+.m-prop.lit { border-color:var(--m-accent); }
+.m-prop i { width:18px; height:18px; flex:none; border-radius:6px; display:grid; place-items:center;
+  background:var(--m-panel3); color:var(--m-accent-soft); font-style:normal; font-size:9px; font-weight:800; }
+.m-prop.lit i { background:var(--m-accent); color:var(--m-accent-ink); }
+.m-prop b { display:block; font-size:10.5px; line-height:1.3; }
+.m-prop span { display:block; color:var(--m-muted); font-size:9.3px; line-height:1.35; }
+.m-dots { display:flex; gap:5px; margin-top:10px; justify-content:center; }
+.m-dots i { width:5px; height:5px; border-radius:50%; background:var(--m-border2); }
+.m-dots i.on { background:var(--m-accent); width:16px; border-radius:3px; }
+
+/* cockpit scene behind the sign-in card: drifting data glyphs, jet + contrail,
+   curved instrument dash at the base (all CSS/SVG — mirrors the real phase-B build) */
+.m-cockpit { position:absolute; inset:0; pointer-events:none; overflow:hidden;
+  /* canopy pillars: angled windshield-frame slabs in the top corners */
+  background-image:
+    linear-gradient(112deg, var(--m-panel3) 57%, var(--m-border2) 57.5% 59.5%, transparent 60.5%),
+    linear-gradient(-112deg, var(--m-panel3) 57%, var(--m-border2) 57.5% 59.5%, transparent 60.5%);
+  background-size:54px 92px, 54px 92px;
+  background-position:top left, top right; background-repeat:no-repeat; }
+/* HUD: heading tape + flight-path reticle at the top center of the canopy */
+.m-htape { position:absolute; top:2.5%; left:50%; transform:translateX(-50%);
+  font-family:var(--mono); font-size:6.5px; letter-spacing:.08em; color:var(--m-muted);
+  opacity:.8; white-space:nowrap; }
+.m-hud { position:absolute; top:8%; left:50%; width:34px; height:15px; transform:translateX(-50%); opacity:.9; }
+.m-hud::before { content:""; position:absolute; top:1px; bottom:1px; left:50%; width:12px;
+  transform:translateX(-50%); border:1.2px solid var(--m-accent); border-radius:50%; }
+.m-hud::after { content:""; position:absolute; top:50%; left:0; right:0; height:1.2px;
+  background:linear-gradient(90deg, var(--m-accent) 0 9px, transparent 9px calc(100% - 9px), var(--m-accent) calc(100% - 9px)); }
+.m-chunk { position:absolute; font-family:var(--mono); font-size:7.5px; color:var(--m-accent-soft);
+  opacity:.28; white-space:nowrap; }
+.m-chunk.big { font-size:10.5px; opacity:.2; }
+.m-chunk.dim { color:var(--m-accent2); opacity:.22; }
+.m-jetfly { position:absolute; top:12%; left:5%; width:76%; height:auto; opacity:.9; }
+.m-jetfly .trail { stroke:var(--m-accent); stroke-width:1.3; fill:none; stroke-dasharray:4 4; opacity:.6; }
+.m-jetfly .body { fill:var(--m-accent-soft); }
+.m-dash { position:absolute; left:0; right:0; bottom:0; height:24px;
+  background:var(--m-panel3); border-top:1px solid var(--m-border2); opacity:.85;
+  border-radius:55% 55% 0 0 / 90% 90% 0 0;
+  display:flex; gap:12px; align-items:center; justify-content:center; }
+.m-dash i { width:24px; height:5px; border-radius:3px; background:var(--m-panel);
+  box-shadow:inset 0 0 0 1px var(--m-border2); position:relative; }
+.m-dash i::after { content:""; position:absolute; left:62%; top:-2px; width:2px; height:9px;
+  background:var(--m-accent); border-radius:1px; }
+/* round instruments with needles flank the slit indicators */
+.m-dash b { width:14px; height:14px; border-radius:50%; background:var(--m-panel);
+  box-shadow:inset 0 0 0 1px var(--m-border2); position:relative; }
+.m-dash b::after { content:""; position:absolute; left:50%; top:50%; width:1.6px; height:5.5px;
+  background:var(--m-accent); border-radius:1px; transform-origin:50% 0; transform:rotate(48deg); }
+.m-dash b:last-of-type::after { transform:rotate(-35deg); }
+
+/* Slow cockpit motion — data glyphs drift, contrail marches, HUD pulses.
+   All decorative; disabled under prefers-reduced-motion. */
+@keyframes dp-drift-a { 0%{transform:translate(0,0)} 33%{transform:translate(5px,-5px)} 66%{transform:translate(-4px,-3px)} 100%{transform:translate(0,0)} }
+@keyframes dp-drift-b { 0%{transform:translate(0,0)} 33%{transform:translate(-5px,4px)} 66%{transform:translate(3px,5px)} 100%{transform:translate(0,0)} }
+@keyframes dp-drift-c { 0%{transform:translate(0,0)} 50%{transform:translate(4px,-4px)} 100%{transform:translate(0,0)} }
+@keyframes dp-march { to { stroke-dashoffset:-16; } }
+@keyframes dp-hud { 0%,100%{opacity:.9; transform:translateX(-50%) scale(1)} 50%{opacity:.55; transform:translateX(-50%) scale(1.06)} }
+@keyframes dp-tape { 0%,100%{transform:translateX(-53%)} 50%{transform:translateX(-47%)} }
+@keyframes dp-sweep { to { transform:rotate(360deg); } }
+/* Every number/formula in the backdrop drifts slowly; per-glyph delay set inline. */
+.m-chunk { animation:dp-drift-a 10s ease-in-out infinite; }
+.m-chunk.dim { animation:dp-drift-b 12s ease-in-out infinite; }
+.m-chunk.big { animation:dp-drift-c 14s ease-in-out infinite; }
+.m-htape { animation:dp-tape 8s ease-in-out infinite; }
+.m-jetfly .trail, .m-fp .path { animation:dp-march 1.8s linear infinite; }
+.m-hud { animation:dp-hud 4s ease-in-out infinite; }
+/* radar-scope sweep hand on the hero canvas */
+.m-main.hero::after { content:""; position:absolute; top:9px; right:11px; width:42px; height:42px; z-index:-1;
+  pointer-events:none; border-radius:50%; transform-origin:50% 50%; animation:dp-sweep 6s linear infinite;
+  background:conic-gradient(from 0deg, color-mix(in srgb, var(--m-accent) 24%, transparent), transparent 34%); }
+@media (prefers-reduced-motion: reduce) {
+  .m-chunk, .m-htape, .m-jetfly .trail, .m-fp .path, .m-hud, .m-main.hero::after { animation:none; }
+}
+
+/* walkthrough slide strip */
+.slides { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-top:14px; }
+@media (max-width:980px){ .slides { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.slide { background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:11px 12px; font-size:12px; }
+.slide i { display:grid; place-items:center; width:22px; height:22px; border-radius:7px; font-style:normal;
+  font-weight:800; font-size:11px; color:#1a1206; background:linear-gradient(135deg,var(--accent-soft),var(--accent)); margin-bottom:7px; }
+.slide b { display:block; margin-bottom:5px; line-height:1.35; }
+.slide span { display:block; color:var(--muted); font-size:11.5px; line-height:1.45; }
+
+/* phases */
+.phase { display:grid; grid-template-columns:56px minmax(0,1fr); gap:14px; padding:14px 0; border-bottom:1px solid var(--border); }
+.phase:last-child { border-bottom:none; }
+.phase-id { font-family:var(--mono); font-size:13px; color:var(--accent-soft); font-weight:700; }
+.phase-id small { display:block; color:var(--faint); font-size:10px; margin-top:3px; }
+.phase h4 { margin:0 0 3px; font-size:14px; }
+.phase p { margin:0 0 6px; color:var(--muted); font-size:12.8px; }
+.files { display:flex; flex-wrap:wrap; gap:5px; }
+.files code { font-size:10.5px; }
+.risk { border-left:3px solid var(--warn); background:var(--panel); border-radius:0 var(--r) var(--r) 0;
+  padding:10px 14px; margin-top:10px; font-size:13px; }
+.risk b { color:var(--warn); }
+footer.done { margin-top:56px; border-top:1px solid var(--border); padding-top:18px; color:var(--muted); font-size:12.5px; }
+</style>
+</head>
+<body>
+
+<div class="picker">
+  <div class="picker-in">
+    <span class="picker-label">Preview theme</span>
+    <button class="cand-btn" data-c="A" onclick="pick('A')"><span class="dot"></span>A · Night Flight</button>
+    <button class="cand-btn" data-c="B" onclick="pick('B')"><span class="dot"></span>B · Jetstream</button>
+    <button class="cand-btn" data-c="C" onclick="pick('C')"><span class="dot"></span>C · Flightdeck</button>
+    <span class="cand-current">every POST mockup below re-skins live</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ================= 0 · header ================= -->
+<header>
+  <div class="chips" style="margin:0 0 8px">
+    <span class="chip">s17 · restyle plan</span>
+    <span class="chip">branch <b>eval-loop</b></span>
+    <span class="chip">app audited live · 9 screens × dark/light</span>
+  </div>
+  <h1>Data Pilot — full frontend restyle</h1>
+  <p class="sub" style="max-width:860px">The app becomes <b style="color:var(--text)">Data Pilot</b>: your data,
+  flown right. This plan covers a new sign-in experience that introduces the product with a data-+-flight walkthrough,
+  a complete theme redesign (3 candidates below — pick one), a fix list from testing every screen in both
+  modes, and data-consumption upgrades across the app. Nothing is executed yet — review, annotate, choose.</p>
+  <div class="chips">
+    <span class="chip red"><b>2</b> broken surfaces (theme-blind)</span>
+    <span class="chip gold"><b>14</b> issues logged</span>
+    <span class="chip green"><b>3</b> theme candidates</span>
+    <span class="chip blue"><b>6</b> execution phases</span>
+  </div>
+
+  <div class="card" style="margin-top:16px; border-color:var(--good-border)">
+    <h3 style="margin-bottom:8px">Decisions so far</h3>
+    <div class="chips">
+      <span class="chip green"><b>Walkthrough ✓</b> auto-advancing flight path (4s, pausable)</span>
+      <span class="chip green"><b>Scope ✓</b> all phases A → F, in order</span>
+      <span class="chip green"><b>Icons ✓</b> Bubble · Terminal · Reticle · Gauge · Sliders</span>
+      <span class="chip green"><b>Logo ✓</b> flat airplane icon (45°)</span>
+      <span class="chip green"><b>Titles ✓</b> agent 3–5 word summary (E1)</span>
+      <span class="chip green"><b>Theme ✓</b> A · Night Flight (gold-on-navy)</span>
+    </div>
+    <p class="sub small" style="margin:9px 0 0"><b style="color:var(--good)">All decisions locked.</b> Building now, starting with
+    phase A (rename → Data Pilot, Night Flight token sets, flat-airplane BrandMark, theme-color/favicon) in the codebase on the <code>eval-loop</code> branch.</p>
+  </div>
+</header>
+
+<!-- ================= 1 · current state ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">01</span><h2>Where the frontend stands today</h2></div>
+  <div class="grid3">
+    <div class="card">
+      <h3>Solid foundation</h3>
+      <p class="sub small">A real two-layer token system already exists in <code>styles.css</code> (primitives →
+      semantic tokens, switched by <code>&lt;html data-theme&gt;</code>). Charts read tokens via
+      <code>ui/charts/tokens.ts</code>. The restyle is a <b style="color:var(--text)">token swap + component adoption</b>,
+      not a rebuild.</p>
+    </div>
+    <div class="card">
+      <h3>Two surfaces never joined the system</h3>
+      <p class="sub small"><b style="color:var(--bad)">Golden Examples</b> is ~1,300 lines of inline styles
+      (<code>rgba(128,128,128,…)</code> grays, native white inputs) — it renders as a white page inside dark mode.
+      <b style="color:var(--bad)">SQL editor</b> hardcodes the <code>oneDark</code> CodeMirror theme — a dark island
+      in light mode.</p>
+    </div>
+    <div class="card">
+      <h3>Brand is a placeholder</h3>
+      <p class="sub small">"Datapilot" (one word), a bare 400px card at sign-in, no product story, emoji icons in
+      suggestion cards, a brand mark hardcoded to a dark tile. The name becomes
+      <b style="color:var(--text)">Data Pilot</b> and the login becomes the product's front door.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2 · issue log ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">02</span><h2>Everything found in dark/light testing</h2>
+    <span class="sub small">annotate any row to re-prioritise</span></div>
+  <div class="tbl-scroll">
+  <table class="issues">
+    <thead><tr><th>#</th><th>Sev</th><th>Screen</th><th>Mode</th><th>Issue</th><th>Fix in phase</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><span class="sev p0">P0</span></td><td>Goldens</td><td class="mode-tag">dark</td>
+        <td>Entire work area renders white-on-white: 95 inline <code>style</code> objects, unstyled native inputs/selects/buttons, hardcoded <code>#c0392b</code> error red, and <code>var(--font-mono)</code> which doesn't exist (token is <code>--mono</code>).</td><td>C1</td></tr>
+      <tr><td>2</td><td><span class="sev p0">P0</span></td><td>SQL editor</td><td class="mode-tag">light</td>
+        <td>CodeMirror is hardcoded to <code>oneDark</code> + <code>#0b0d11</code> background — a full-width dark slab on the light page (<code>SqlEditor.tsx:383,403</code>).</td><td>C2</td></tr>
+      <tr><td>3</td><td><span class="sev p1">P1</span></td><td>Admin · Quality</td><td class="mode-tag">both</td>
+        <td>Feedback table clips its last columns at the viewport edge ("Status", triage actions cut off) — no scroll container around the wide table.</td><td>C3</td></tr>
+      <tr><td>4</td><td><span class="sev p1">P1</span></td><td>Report charts</td><td class="mode-tag">both</td>
+        <td>Combo-chart legend row overlaps the first x-axis tick labels ("1 bd / 2 bd / 3 bd" collides with "April") — visible in Template Studio and chat reports.</td><td>C4</td></tr>
+      <tr><td>5</td><td><span class="sev p1">P1</span></td><td>Login</td><td class="mode-tag">both</td>
+        <td>No product story: a lone card with two lines of copy. No walkthrough of what Data Pilot does. This is the redesign centerpiece (§04).</td><td>B</td></tr>
+      <tr><td>6</td><td><span class="sev p1">P1</span></td><td>Chat sidebar</td><td class="mode-tag">both</td>
+        <td>Dozens of visually identical truncated titles ("show me trend of sale price f…" ×15). No smart titling, no timestamps visible, grouping is only "Previous 7 days / Older".</td><td>E1</td></tr>
+      <tr><td>7</td><td><span class="sev p2">P2</span></td><td>SQL editor</td><td class="mode-tag">both</td>
+        <td>Result-chart mark color hardcoded <code>#b48a3f</code> (<code>SqlEditor.tsx:275</code>) — ignores theme + chosen candidate palette.</td><td>C2</td></tr>
+      <tr><td>8</td><td><span class="sev p2">P2</span></td><td>Chat empty</td><td class="mode-tag">both</td>
+        <td>Suggestion cards use emoji (📈🏆🎢⚖) while the rest of the app uses line icons — inconsistent icon language.</td><td>E2</td></tr>
+      <tr><td>9</td><td><span class="sev p2">P2</span></td><td>Chat empty</td><td class="mode-tag">both</td>
+        <td>Double focus ring on the composer: the textarea's a11y outline draws a second blue box inside the already-highlighted composer card.</td><td>E2</td></tr>
+      <tr><td>10</td><td><span class="sev p2">P2</span></td><td>Chat answer</td><td class="mode-tag">both</td>
+        <td>Meta row is noisy for users: "STUB · 0 rows · run 2b0a09fe · agent run (37 steps)" leads with internals, not the answer. Demote run internals behind the trace expander; show tokens/latency on hover.</td><td>E3</td></tr>
+      <tr><td>11</td><td><span class="sev p2">P2</span></td><td>Login</td><td class="mode-tag">light</td>
+        <td>Brand mark is hardcoded to a dark tile (<code>icons.tsx</code> BrandMark <code>fill=#0b0d12</code>) — floats as a black square on the white card.</td><td>A</td></tr>
+      <tr><td>12</td><td><span class="sev p2">P2</span></td><td>Admin · Observability</td><td class="mode-tag">both</td>
+        <td>Config values wrap mid-word (<code>DATABASE_URL</code>, Google client id); metric tiles are plain numbers — no trend context or sparkline.</td><td>E4</td></tr>
+      <tr><td>13</td><td><span class="sev p2">P2</span></td><td>Settings</td><td class="mode-tag">both</td>
+        <td>Remembered preferences render as a dense wall-of-text table; long memory strings deserve cards with a fade + "forget" affordance.</td><td>E5</td></tr>
+      <tr><td>14</td><td><span class="sev p2">P2</span></td><td>Charts</td><td class="mode-tag">both</td>
+        <td>PNG export button only appears on hover (undiscoverable on touch); no CSV affordance on report charts.</td><td>E6</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ================= 3 · theme candidates ================= -->
+<section class="band" id="themes">
+  <div class="band-head"><span class="band-num">03</span><h2>Pick the Data Pilot theme</h2>
+    <span class="sub small">click a card to preview — every POST mockup on this page re-skins</span></div>
+
+  <div class="grid3">
+    <div class="opt" id="opt-A" onclick="pick('A')">
+      <div class="opt-head"><h3>A · Night Flight</h3><span class="opt-tag">evolution</span></div>
+      <div class="swatches">
+        <i style="background:#0a0d15"></i><i style="background:#111522"></i><i style="background:#d9a84e"></i>
+        <i style="background:#7fb0ff"></i><i style="background:#f6f4ee"></i><i style="background:#9a7328"></i>
+      </div>
+      <div class="opt-body">Cockpit-at-night. Keeps the gold identity but moves the canvas from neutral gray to a
+        deep navy-ink, brightens the gold for instrument-panel warmth, light mode becomes warm chart-paper.
+        The safest brand continuity.</div>
+      <div class="opt-trade">
+        <b class="plus">Wins</b><ul><li>Zero re-learning — current users see "the same app, sharpened"</li><li>Gold reads premium; warm light mode is distinctive vs generic SaaS white</li></ul>
+        <b class="minus">Costs</b><ul><li>Least "new product" impact; gold-on-navy needs care for AA on small text</li></ul>
+      </div>
+    </div>
+    <div class="opt" id="opt-B" onclick="pick('B')">
+      <div class="opt-head"><h3>B · Jetstream</h3><span class="opt-tag">recommended</span></div>
+      <div class="swatches">
+        <i style="background:#070d18"></i><i style="background:#0d1523"></i><i style="background:#38bdf8"></i>
+        <i style="background:#8b9dff"></i><i style="background:#f4f8fd"></i><i style="background:#0b6fd6"></i>
+      </div>
+      <div class="opt-body">Sky and contrails. Stratosphere-navy dark mode with an electric cyan accent; cloud-white
+        light mode with an aviation blue. The strongest literal fit for "data + flying", and blue is the
+        native color of trust + data tools.</div>
+      <div class="opt-trade">
+        <b class="plus">Wins</b><ul><li>Best brand-name fit; both modes feel equally first-class</li><li>Cyan/blue chart ramps are the most legible categorical family</li></ul>
+        <b class="minus">Costs</b><ul><li>Biggest visual break from today's gold; blue is a crowded SaaS space</li></ul>
+      </div>
+    </div>
+    <div class="opt" id="opt-C" onclick="pick('C')">
+      <div class="opt-head"><h3>C · Flightdeck</h3><span class="opt-tag">distinctive</span></div>
+      <div class="swatches">
+        <i style="background:#090f0c"></i><i style="background:#0f1613"></i><i style="background:#45d483"></i>
+        <i style="background:#7dcfff"></i><i style="background:#f3f4ec"></i><i style="background:#0f7d43"></i>
+      </div>
+      <div class="opt-body">Avionics + radar. Phosphor-green HUD accent on graphite, mono-spaced micro-labels,
+        amber for warnings; light mode is sectional-chart cream. The most memorable and most "instrument panel"
+        of the three.</div>
+      <div class="opt-trade">
+        <b class="plus">Wins</b><ul><li>Instantly recognisable; terminal-green flatters SQL/code surfaces</li><li>Radar motifs give the login walkthrough a strong visual device</li></ul>
+        <b class="minus">Costs</b><ul><li>Green accents can read "success" in data UIs; niche taste for business users</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <form class="decision" style="margin-top:14px" data-lavish-question="theme"
+    onsubmit="event.preventDefault(); var c=document.documentElement.dataset.candidate;
+      var names={A:'Night Flight',B:'Jetstream',C:'Flightdeck'};
+      if(window.lavish){ window.lavish.queuePrompt('Theme decision: build Data Pilot with candidate '+c+' — '+names[c]+'. Apply its dark+light token sets exactly as previewed in s17.', {tag:'choice', text:'Theme: '+c+' · '+names[c], element:event.currentTarget, data:{question:'theme', answer:c}}); this.classList.add('queued'); }">
+    <h4>Decision 1 — theme</h4>
+    <p class="why">The picker above is a live preview (local only). When you've settled, queue the choice —
+    it sends exactly one prompt with the selected candidate.</p>
+    <button type="submit" class="queue-btn">Queue selected theme (<span class="cand-name" style="font-weight:700"></span>)</button>
+    <span class="queued-note">queued ✓ — press Send to Agent when done reviewing</span>
+  </form>
+</section>
+
+<!-- ================= 4 · login centerpiece ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">04</span><h2>The new front door — sign-in + product walkthrough</h2></div>
+  <p class="sub" style="max-width:880px">Login splits into two panels. Left: the sign-in card sits in a <b style="color:var(--text)">cockpit scene</b> — canopy pillars and a HUD (heading tape + reticle) frame the view, a curved instrument dash with gauges sits at the base, and a jet traces a contrail past drifting chunks of data and algebra (&Sigma;x&sup2;, SELECT *, y&nbsp;=&nbsp;mx&nbsp;+&nbsp;b…) over the faint nav-grid. Right: a self-advancing walkthrough — a dashed <b style="color:var(--text)">flight
+  path</b> arcs across a dotted map, and each waypoint lights up one of the five product promises as the plane
+  reaches it (4s per stop, pausable, <code>prefers-reduced-motion</code> renders it static). The five slides:</p>
+
+  <div class="slides">
+    <div class="slide"><i>1</i><b>All your data, one spot</b><span>Every source landed, modelled and served from a single governed warehouse.</span></div>
+    <div class="slide"><i>2</i><b>Ask. Answer. Share.</b><span>Plain-English questions become high-quality reports you can share instantly.</span></div>
+    <div class="slide"><i>3</i><b>Governed access</b><span>Row-level security — everyone sees exactly what they should. Every query audited.</span></div>
+    <div class="slide"><i>4</i><b>Train it your way</b><span>Author golden examples so answers arrive the way your business reads data.</span></div>
+    <div class="slide"><i>5</i><b>Remembers each user</b><span>Per-user memory tailors how answers are computed and presented over time.</span></div>
+  </div>
+
+  <div class="screen-band" style="border-top:none; margin-top:22px; padding-top:0">
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>login · dark</b></p>
+        <figure class="shot"><img src="s17_shot_login_dark.png" alt="Current login, dark mode"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>login · dark</b> · <span class="cand-name"></span></p>
+        <div class="mock" data-mode="dark">
+          <div class="m-login">
+            <div class="m-login-left">
+              <div class="m-cockpit">
+                <span class="m-htape">&#8249; 020 &middot; 030 &middot; 040 &#8250;</span>
+                <span class="m-hud"></span>
+                <span class="m-chunk big" style="top:3.5%; left:5%; animation-delay:-2s">42%</span>
+                <span class="m-chunk dim" style="top:3.5%; right:5%; animation-delay:-5s">SELECT *</span>
+                <svg class="m-jetfly" viewBox="0 0 240 60">
+                  <path class="trail" d="M4 52 C 70 46, 150 32, 200 18"/>
+                  <path class="body" d="M200 18 l 24 -7 l -17 13 l -3 -4 z"/>
+                </svg>
+                <div class="m-dash"><b></b><i></i><i></i><i></i><b></b></div>
+              </div>
+              <div class="m-login-card">
+                <span class="m-mark"></span>
+                <h4>Data <em>Pilot</em></h4>
+                <p class="tag">Your data, flown right.</p>
+                <div class="m-guser"><i style="background:#f0c674">AD</i><div><b>Continue with Google</b><span>Workspace SSO · secured</span></div></div>
+                <div class="m-guser" style="opacity:.75"><i style="background:#9ece6a">U1</i><div><b>Demo profile</b><span>dev-auth only</span></div></div>
+                <p class="m-login-foot">row-level security · every query audited</p>
+              </div>
+            </div>
+            <div class="m-login-right">
+              <div class="m-fp">
+                <svg viewBox="0 0 340 96">
+                  <path class="path" d="M12 78 C 70 22, 130 20, 172 44 S 290 74, 328 18"/>
+                  <circle class="wp lit" cx="12" cy="78" r="4"/>
+                  <circle class="wp lit" cx="103" cy="27" r="4"/>
+                  <circle class="wp lit" cx="172" cy="44" r="4"/>
+                  <circle class="wp" cx="255" cy="66" r="4"/>
+                  <circle class="wp" cx="328" cy="18" r="4"/>
+                  <path class="plane" d="M172 44 l 12 -3 l -9 7 l -1 -2 z"/>
+                </svg>
+                <span class="m-wl" style="left:2%; top:82%">DATA</span>
+                <span class="m-wl" style="left:27%; top:12%">ASK</span>
+                <span class="m-wl" style="left:47%; top:50%">GOVERN</span>
+                <span class="m-wl" style="left:70%; top:72%">TRAIN</span>
+                <span class="m-wl" style="right:2%; top:4%">TAILOR</span>
+              </div>
+              <div class="m-story">
+                <h5>Governed access, by design</h5>
+                <p>Row-level security means every user sees exactly the data they're allowed to — and every query is audited.</p>
+              </div>
+              <div class="m-props">
+                <div class="m-prop"><i>1</i><div><b>All your data, one spot</b><span>landed · modelled · served</span></div></div>
+                <div class="m-prop lit"><i>3</i><div><b>Governed access</b><span>RLS + full audit trail</span></div></div>
+                <div class="m-prop"><i>4</i><div><b>Train it your way</b><span>golden examples steer answers</span></div></div>
+              </div>
+              <div class="m-dots"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>login · light</b></p>
+        <figure class="shot"><img src="s17_shot_login_light.png" alt="Current login, light mode"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>login · light</b> · <span class="cand-name"></span></p>
+        <div class="mock" data-mode="light">
+          <div class="m-login">
+            <div class="m-login-left">
+              <div class="m-cockpit">
+                <span class="m-htape">&#8249; 020 &middot; 030 &middot; 040 &#8250;</span>
+                <span class="m-hud"></span>
+                <span class="m-chunk big" style="top:3.5%; left:5%; animation-delay:-2s">42%</span>
+                <span class="m-chunk dim" style="top:3.5%; right:5%; animation-delay:-5s">SELECT *</span>
+                <svg class="m-jetfly" viewBox="0 0 240 60">
+                  <path class="trail" d="M4 52 C 70 46, 150 32, 200 18"/>
+                  <path class="body" d="M200 18 l 24 -7 l -17 13 l -3 -4 z"/>
+                </svg>
+                <div class="m-dash"><b></b><i></i><i></i><i></i><b></b></div>
+              </div>
+              <div class="m-login-card">
+                <span class="m-mark"></span>
+                <h4>Data <em>Pilot</em></h4>
+                <p class="tag">Your data, flown right.</p>
+                <div class="m-guser"><i style="background:#f0c674">AD</i><div><b>Continue with Google</b><span>Workspace SSO · secured</span></div></div>
+                <div class="m-guser" style="opacity:.75"><i style="background:#9ece6a">U1</i><div><b>Demo profile</b><span>dev-auth only</span></div></div>
+                <p class="m-login-foot">row-level security · every query audited</p>
+              </div>
+            </div>
+            <div class="m-login-right">
+              <div class="m-fp">
+                <svg viewBox="0 0 340 96">
+                  <path class="path" d="M12 78 C 70 22, 130 20, 172 44 S 290 74, 328 18"/>
+                  <circle class="wp lit" cx="12" cy="78" r="4"/>
+                  <circle class="wp lit" cx="103" cy="27" r="4"/>
+                  <circle class="wp" cx="172" cy="44" r="4"/>
+                  <circle class="wp" cx="255" cy="66" r="4"/>
+                  <circle class="wp" cx="328" cy="18" r="4"/>
+                  <path class="plane" d="M103 27 l 12 -3 l -9 7 l -1 -2 z"/>
+                </svg>
+                <span class="m-wl" style="left:2%; top:82%">DATA</span>
+                <span class="m-wl" style="left:27%; top:12%">ASK</span>
+                <span class="m-wl" style="left:47%; top:50%">GOVERN</span>
+                <span class="m-wl" style="left:70%; top:72%">TRAIN</span>
+                <span class="m-wl" style="right:2%; top:4%">TAILOR</span>
+              </div>
+              <div class="m-story">
+                <h5>Ask. Answer. Share.</h5>
+                <p>Plain-English questions become governed SQL and high-quality shareable reports — in seconds.</p>
+              </div>
+              <div class="m-props">
+                <div class="m-prop"><i>1</i><div><b>All your data, one spot</b><span>landed · modelled · served</span></div></div>
+                <div class="m-prop lit"><i>2</i><div><b>Ask. Answer. Share.</b><span>NL → governed SQL → report</span></div></div>
+                <div class="m-prop"><i>5</i><div><b>Remembers each user</b><span>per-user memory tailors answers</span></div></div>
+              </div>
+              <div class="m-dots"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Rename:</b> "Datapilot" → <b>Data Pilot</b> across <code>index.html</code> title/meta, login h1, rail tooltip, README screenshots.</li>
+      <li><b>Brand mark v2 — flat airplane icon:</b> the diamond becomes a flat filled airliner (swept wings, wing engines, tail stabilisers) angled 45°, matching the flat-style airplane icon you referenced, on a theme-aware accent tile (no more hardcoded dark square on light cards — issue #11); previewed in every mock's rail, login card, and agent row. Real build: an inline SVG in <code>ui/icons.tsx</code>.</li>
+      <li><b>Cockpit backdrop:</b> canopy pillars frame the top corners, a HUD reticle + heading tape sit at center, the curved dash carries round gauges with needles, and a jet traces a contrail past drifting data/algebra glyphs. Glyphs drift slowly (CSS keyframes); everything static under reduced motion.</li>
+      <li><b>Walkthrough is real UI, not an image:</b> pure CSS/SVG, ~0 asset weight, auto-advances, keyboard/dots navigable; static under <code>prefers-reduced-motion</code>.</li>
+      <li><b>Google mode:</b> GIS button replaces the demo profiles in the same card slot (as today).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= 5 · per-screen pre/post ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">05</span><h2>Every screen — pre / post, dark / light</h2>
+    <span class="sub small">PRE = live screenshots from today's app · POST = selected candidate (<span class="cand-name"></span>)</span></div>
+
+  <!-- ---- chat empty ---- -->
+  <div class="screen-band">
+    <h3>Chat — first-run hero</h3>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark</b></p>
+        <figure class="shot"><img src="s17_shot_chat_empty_dark.png" alt="Chat empty state, dark"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark</b></p>
+        <div class="mock" data-mode="dark"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic on"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i></div>
+          <div class="m-body"><div style="display:flex; min-height:0; flex:1">
+            <div class="m-side">
+              <div class="new">+ New conversation</div>
+              <div class="grp">Today</div>
+              <div class="cv on">Normanhurst vs Hornsby prices<span>2 charts · 9:41 am</span></div>
+              <div class="cv">Suburb coverage count<span>table · 8:15 am</span></div>
+              <div class="grp">This week</div>
+              <div class="cv">Top rent-growth suburbs<span>report · Tue</span></div>
+              <div class="cv">Sale price by area band<span>report · Mon</span></div>
+            </div>
+            <div class="m-main hero">
+              <div class="m-h1">Good morning, Admin</div>
+              <div class="m-sub">Sales &amp; rents across NSW suburbs · 2010 → 2026 · governed SQL over your data</div>
+              <div class="m-composer focus"><span class="ph">Ask about your data…</span><span class="send"></span></div>
+              <div class="m-sugs">
+                <div class="m-sug"><svg viewBox="0 0 16 16"><polyline points="1,13 5,8 9,10 15,3"/></svg><div><b>Price trend</b><span>Sale price for houses, 2010→2026</span></div></div>
+                <div class="m-sug"><svg viewBox="0 0 16 16"><rect x="2" y="8" width="3" height="6"/><rect x="7" y="4" width="3" height="10"/><rect x="12" y="1" width="3" height="13"/></svg><div><b>Top movers</b><span>Top growth suburbs, price + rent</span></div></div>
+              </div>
+            </div>
+          </div></div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light</b></p>
+        <figure class="shot"><img src="s17_shot_chat_empty_light.png" alt="Chat empty state, light"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light</b></p>
+        <div class="mock" data-mode="light"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic on"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i></div>
+          <div class="m-body"><div style="display:flex; min-height:0; flex:1">
+            <div class="m-side">
+              <div class="new">+ New conversation</div>
+              <div class="grp">Today</div>
+              <div class="cv on">Normanhurst vs Hornsby prices<span>2 charts · 9:41 am</span></div>
+              <div class="cv">Suburb coverage count<span>table · 8:15 am</span></div>
+              <div class="grp">This week</div>
+              <div class="cv">Top rent-growth suburbs<span>report · Tue</span></div>
+              <div class="cv">Sale price by area band<span>report · Mon</span></div>
+            </div>
+            <div class="m-main hero">
+              <div class="m-h1">Good morning, Admin</div>
+              <div class="m-sub">Sales &amp; rents across NSW suburbs · 2010 → 2026 · governed SQL over your data</div>
+              <div class="m-composer focus"><span class="ph">Ask about your data…</span><span class="send"></span></div>
+              <div class="m-sugs">
+                <div class="m-sug"><svg viewBox="0 0 16 16"><polyline points="1,13 5,8 9,10 15,3"/></svg><div><b>Price trend</b><span>Sale price for houses, 2010→2026</span></div></div>
+                <div class="m-sug"><svg viewBox="0 0 16 16"><rect x="2" y="8" width="3" height="6"/><rect x="7" y="4" width="3" height="10"/><rect x="12" y="1" width="3" height="13"/></svg><div><b>Top movers</b><span>Top growth suburbs, price + rent</span></div></div>
+              </div>
+            </div>
+          </div></div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Conversation titles = data-agent 3–5 word summary</b> (issue #6, your call): on the first answer the data-agent emits a short summary of the question ("Normanhurst vs Hornsby prices") that becomes the sidebar title instead of the raw question, with an object-count + time meta line and Today/This week/Older grouping. Applies to historical conversations too (backfilled).</li>
+      <li><b>Line-icon suggestion cards</b> replace emoji (#8); <b>single focus ring</b> on the composer card (#9).</li>
+      <li><b>Cockpit canvas carries through:</b> the login's radar dot-field + canopy horizon glow become a faint app-wide backdrop (behind every panel), with a radar-sweep watermark on the empty hero — the ask-moment matches the login, and because it lives in the canvas gutters, tables/charts/code stay full-contrast.</li>
+    </ul>
+  </div>
+
+  <!-- ---- chat answer ---- -->
+  <div class="screen-band">
+    <h3>Chat — answer with report</h3>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark</b></p>
+        <figure class="shot"><img src="s17_shot_chat_report_dark.png" alt="Chat answer, dark"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark</b></p>
+        <div class="mock" data-mode="dark"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic on"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-bubble">Which suburbs have the highest rent growth?</div>
+            <div class="m-agent"><span class="m-mark"></span><b>Data Pilot</b><span style="color:var(--m-faint)">· 6s</span></div>
+            <div style="font-size:11px">Wollongong leads rent growth at <b>+158%</b> since 2010; Bondi Beach and Penrith follow.</div>
+            <div class="m-kpis">
+              <div class="m-kpi"><div class="l">Top suburb</div><div class="v">Wollongong</div><div class="d up">+158.3%</div></div>
+              <div class="m-kpi"><div class="l">Median now</div><div class="v">$465/wk</div><div class="d up">+6.1% YoY</div></div>
+              <div class="m-kpi"><div class="l">Suburbs up</div><div class="v">22 / 24</div><div class="d">since 2010</div></div>
+            </div>
+            <div class="m-chart">
+              <div class="t">Rent growth by suburb · 2010 → 2026</div>
+              <div class="m-legend"><span><i style="background:var(--m-c1)"></i>growth %</span></div>
+              <div class="m-bars">
+                <div class="m-bar-row"><span class="m-bar-l">Wollongong</span><span class="m-bar-t"><i class="m-bar" style="width:92%"></i></span><span class="m-bar-v">+158%</span></div>
+                <div class="m-bar-row"><span class="m-bar-l">Bondi Bch</span><span class="m-bar-t"><i class="m-bar" style="width:72%; opacity:.85"></i></span><span class="m-bar-v">+121%</span></div>
+                <div class="m-bar-row"><span class="m-bar-l">Penrith</span><span class="m-bar-t"><i class="m-bar" style="width:55%; opacity:.7"></i></span><span class="m-bar-v">+93%</span></div>
+                <div class="m-bar-row"><span class="m-bar-l">Rouse Hill</span><span class="m-bar-t"><i class="m-bar" style="width:50%; opacity:.55"></i></span><span class="m-bar-v">+84%</span></div>
+              </div>
+            </div>
+            <div class="m-qrefs"><b>4 QUERIES</b><span>governed SQL · RLS-scoped</span><span class="act">view SQL ▸</span></div>
+            <div class="m-meta"><span class="m-badge">deepseek</span><span>run trace</span><span>·</span><span>csv</span><span>·</span><span>share</span></div>
+          </div></div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light</b></p>
+        <figure class="shot"><img src="s17_shot_chat_report_light.png" alt="Chat answer, light"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light</b></p>
+        <div class="mock" data-mode="light"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic on"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-bubble">Which suburbs have the highest rent growth?</div>
+            <div class="m-agent"><span class="m-mark"></span><b>Data Pilot</b><span style="color:var(--m-faint)">· 6s</span></div>
+            <div style="font-size:11px">Wollongong leads rent growth at <b>+158%</b> since 2010; Bondi Beach and Penrith follow.</div>
+            <div class="m-kpis">
+              <div class="m-kpi"><div class="l">Top suburb</div><div class="v">Wollongong</div><div class="d up">+158.3%</div></div>
+              <div class="m-kpi"><div class="l">Median now</div><div class="v">$465/wk</div><div class="d up">+6.1% YoY</div></div>
+              <div class="m-kpi"><div class="l">Suburbs up</div><div class="v">22 / 24</div><div class="d">since 2010</div></div>
+            </div>
+            <div class="m-chart">
+              <div class="t">Rent growth by suburb · 2010 → 2026</div>
+              <div class="m-legend"><span><i style="background:var(--m-c1)"></i>growth %</span></div>
+              <div class="m-bars">
+                <div class="m-bar-row"><span class="m-bar-l">Wollongong</span><span class="m-bar-t"><i class="m-bar" style="width:92%"></i></span><span class="m-bar-v">+158%</span></div>
+                <div class="m-bar-row"><span class="m-bar-l">Bondi Bch</span><span class="m-bar-t"><i class="m-bar" style="width:72%; opacity:.85"></i></span><span class="m-bar-v">+121%</span></div>
+                <div class="m-bar-row"><span class="m-bar-l">Penrith</span><span class="m-bar-t"><i class="m-bar" style="width:55%; opacity:.7"></i></span><span class="m-bar-v">+93%</span></div>
+                <div class="m-bar-row"><span class="m-bar-l">Rouse Hill</span><span class="m-bar-t"><i class="m-bar" style="width:50%; opacity:.55"></i></span><span class="m-bar-v">+84%</span></div>
+              </div>
+            </div>
+            <div class="m-qrefs"><b>4 QUERIES</b><span>governed SQL · RLS-scoped</span><span class="act">view SQL ▸</span></div>
+            <div class="m-meta"><span class="m-badge">deepseek</span><span>run trace</span><span>·</span><span>csv</span><span>·</span><span>share</span></div>
+          </div></div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Answer-first hierarchy</b> (#10): identity row + one-line takeaway, then KPIs → chart → collapsed query references ("4 queries · view SQL"). Run internals (engine, run id, step count, tokens) move inside the trace expander.</li>
+      <li><b>Text answers get structure:</b> even a 0-row answer (like the PRE) leads with its conclusion; SQL evidence is collapsed by default instead of four open code blocks.</li>
+      <li><b>Share affordance</b> lands in the meta row — "share instantly" is a login promise; copy-link/PNG/CSV live together.</li>
+    </ul>
+  </div>
+
+  <!-- ---- sql editor ---- -->
+  <div class="screen-band">
+    <h3>SQL editor</h3>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark</b></p>
+        <figure class="shot"><img src="s17_shot_sql_dark.png" alt="SQL editor, dark"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark</b></p>
+        <div class="mock" data-mode="dark"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic on"></i><i class="m-ic"></i><i class="m-ic"></i></div>
+          <div class="m-body">
+            <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; border-bottom:1px solid var(--m-border); background:var(--m-panel); flex-wrap:wrap">
+              <span style="color:var(--m-accent)">✦</span><span class="m-input" style="flex:1; min-width:80px">Ask AI to write SQL…</span>
+              <span class="m-btn">Ask AI</span><span class="m-btn ghost">Explain</span><span class="m-btn ghost">Fix</span>
+              <span class="m-btn" style="margin-left:8px">▶ Run</span>
+            </div>
+            <div style="display:flex; flex:1; min-height:0">
+              <div class="m-side" style="width:110px">
+                <div class="grp">Data catalog</div>
+                <div class="cv on">▸ marts <span>2 tables</span></div>
+                <div class="cv">▸ staging <span>3</span></div>
+                <div class="cv">▸ app <span>15</span></div>
+              </div>
+              <div style="flex:1; min-width:0; padding:10px 12px">
+                <div class="m-code"><span class="c">-- read-only · RLS-scoped · audited</span><br><span class="k">SELECT</span> suburb, <span class="t">round</span>(<span class="t">sum</span>(total_sale_value)<br>&nbsp;&nbsp;/ <span class="t">nullif</span>(<span class="t">sum</span>(n_sold),0)) <span class="k">AS</span> avg_price<br><span class="k">FROM</span> marts.property_sales<br><span class="k">WHERE</span> property_type = <span class="s">'house'</span><br><span class="k">GROUP BY</span> suburb <span class="k">ORDER BY</span> avg_price <span class="k">DESC</span>;</div>
+                <div style="overflow-x:auto"><table class="m-tbl" style="margin-top:8px">
+                  <thead><tr><th>suburb</th><th>avg_price</th><th>n_sold</th></tr></thead>
+                  <tbody>
+                    <tr><td>Bondi Beach</td><td>$2,073,803</td><td>412</td></tr>
+                    <tr><td>Chatswood</td><td>$1,741,220</td><td>388</td></tr>
+                    <tr><td>Parramatta</td><td>$1,102,540</td><td>1,204</td></tr>
+                  </tbody>
+                </table></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light — the P0: dark slab editor</b></p>
+        <figure class="shot"><img src="s17_shot_sql_light.png" alt="SQL editor, light — dark CodeMirror island"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light — editor follows the theme</b></p>
+        <div class="mock" data-mode="light"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic on"></i><i class="m-ic"></i><i class="m-ic"></i></div>
+          <div class="m-body">
+            <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; border-bottom:1px solid var(--m-border); background:var(--m-panel); flex-wrap:wrap">
+              <span style="color:var(--m-accent)">✦</span><span class="m-input" style="flex:1; min-width:80px">Ask AI to write SQL…</span>
+              <span class="m-btn">Ask AI</span><span class="m-btn ghost">Explain</span><span class="m-btn ghost">Fix</span>
+              <span class="m-btn" style="margin-left:8px">▶ Run</span>
+            </div>
+            <div style="display:flex; flex:1; min-height:0">
+              <div class="m-side" style="width:110px">
+                <div class="grp">Data catalog</div>
+                <div class="cv on">▸ marts <span>2 tables</span></div>
+                <div class="cv">▸ staging <span>3</span></div>
+                <div class="cv">▸ app <span>15</span></div>
+              </div>
+              <div style="flex:1; min-width:0; padding:10px 12px">
+                <div class="m-code"><span class="c">-- read-only · RLS-scoped · audited</span><br><span class="k">SELECT</span> suburb, <span class="t">round</span>(<span class="t">sum</span>(total_sale_value)<br>&nbsp;&nbsp;/ <span class="t">nullif</span>(<span class="t">sum</span>(n_sold),0)) <span class="k">AS</span> avg_price<br><span class="k">FROM</span> marts.property_sales<br><span class="k">WHERE</span> property_type = <span class="s">'house'</span><br><span class="k">GROUP BY</span> suburb <span class="k">ORDER BY</span> avg_price <span class="k">DESC</span>;</div>
+                <div style="overflow-x:auto"><table class="m-tbl" style="margin-top:8px">
+                  <thead><tr><th>suburb</th><th>avg_price</th><th>n_sold</th></tr></thead>
+                  <tbody>
+                    <tr><td>Bondi Beach</td><td>$2,073,803</td><td>412</td></tr>
+                    <tr><td>Chatswood</td><td>$1,741,220</td><td>388</td></tr>
+                    <tr><td>Parramatta</td><td>$1,102,540</td><td>1,204</td></tr>
+                  </tbody>
+                </table></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Theme-aware CodeMirror</b> (#2): swap the hardcoded <code>oneDark</code> for a Compartment that reconfigures a light/dark highlight style + <code>EditorView.theme</code> built from the design tokens, reacting to <code>useTheme()</code>.</li>
+      <li><b>Chart colors from the palette</b> (#7): <code>mark.color</code> reads <code>--chart-1</code> instead of the hardcoded gold hex.</li>
+      <li>Catalog panel gets result counts + collapsed-by-default schemas so the tree doesn't dead-space the column.</li>
+    </ul>
+  </div>
+
+  <!-- ---- goldens ---- -->
+  <div class="screen-band">
+    <h3>Golden Examples (admin)</h3>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark — the P0: white page in dark mode</b></p>
+        <figure class="shot"><img src="s17_shot_goldens_dark.png" alt="Goldens, dark — renders white"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark — on the token system</b></p>
+        <div class="mock" data-mode="dark"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i><i class="m-ic"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-steps">
+              <span class="m-step on"><i>1</i>Question</span><span class="m-step on"><i>2</i>SQL extract</span>
+              <span class="m-step on"><i>3</i>Sandbox</span><span class="m-step"><i>4</i>Report</span>
+            </div>
+            <div class="m-panel-box">
+              <div class="m-sec">1 · Question</div>
+              <div class="m-input" style="display:block">Which suburbs have the best rental yield?</div>
+              <div style="display:flex; gap:6px; margin-top:6px">
+                <span class="m-btn">✦ Draft with agent</span><span class="m-btn ghost">holdout</span><span class="m-btn ghost">tags</span>
+              </div>
+            </div>
+            <div class="m-panel-box" style="margin-top:8px">
+              <div class="m-sec">3 · Sandbox — skills</div>
+              <div class="m-skills">
+                <span class="m-skill on">trend_series</span><span class="m-skill on">growth_rate</span>
+                <span class="m-skill">rolling_average</span><span class="m-skill on">gross_yield</span>
+                <span class="m-skill">top_growth</span><span class="m-skill">driver_analysis</span>
+              </div>
+              <div class="m-code" style="margin-top:7px"><span class="c"># df is your extract</span><br>result = skills.<span class="t">build_report</span>(<br>&nbsp;&nbsp;main_chart=skills.<span class="t">trend_chart</span>(df))</div>
+              <div style="margin-top:6px"><span class="m-btn">▶ Run skills</span></div>
+            </div>
+          </div></div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light — native controls, no hierarchy</b></p>
+        <figure class="shot"><img src="s17_shot_goldens_light.png" alt="Goldens, light"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light</b></p>
+        <div class="mock" data-mode="light"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i><i class="m-ic"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-steps">
+              <span class="m-step on"><i>1</i>Question</span><span class="m-step on"><i>2</i>SQL extract</span>
+              <span class="m-step on"><i>3</i>Sandbox</span><span class="m-step"><i>4</i>Report</span>
+            </div>
+            <div class="m-panel-box">
+              <div class="m-sec">1 · Question</div>
+              <div class="m-input" style="display:block">Which suburbs have the best rental yield?</div>
+              <div style="display:flex; gap:6px; margin-top:6px">
+                <span class="m-btn">✦ Draft with agent</span><span class="m-btn ghost">holdout</span><span class="m-btn ghost">tags</span>
+              </div>
+            </div>
+            <div class="m-panel-box" style="margin-top:8px">
+              <div class="m-sec">3 · Sandbox — skills</div>
+              <div class="m-skills">
+                <span class="m-skill on">trend_series</span><span class="m-skill on">growth_rate</span>
+                <span class="m-skill">rolling_average</span><span class="m-skill on">gross_yield</span>
+                <span class="m-skill">top_growth</span><span class="m-skill">driver_analysis</span>
+              </div>
+              <div class="m-code" style="margin-top:7px"><span class="c"># df is your extract</span><br>result = skills.<span class="t">build_report</span>(<br>&nbsp;&nbsp;main_chart=skills.<span class="t">trend_chart</span>(df))</div>
+              <div style="margin-top:6px"><span class="m-btn">▶ Run skills</span></div>
+            </div>
+          </div></div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Adopt the token system</b> (#1): replace the 95 inline-style objects + <code>btn()</code>/<code>box</code>/<code>label</code> helpers with shared classes in <code>styles.css</code>; kill <code>#c0392b</code> (→ <code>--bad</code>) and <code>--font-mono</code> (→ <code>--mono</code>).</li>
+      <li><b>Stage stepper:</b> the authoring flow (Question → SQL → Sandbox → Report) becomes a visible 4-step pipeline with per-stage status, replacing uppercase micro-caption soup.</li>
+      <li><b>Skills as toggle chips</b> instead of a cramped checkbox list — the multi-select reads at a glance.</li>
+      <li>Coordination: this page is actively changing on <code>eval-loop</code> — restyle lands as its own pass after the current goldens work merges (see risks).</li>
+    </ul>
+  </div>
+
+  <!-- ---- goldens: add presentation object ---- -->
+  <div class="screen-band">
+    <h3>Golden Examples — add a presentation object</h3>
+    <p class="sub small" style="max-width:880px; margin:0 0 12px">When a curator adds an object to a report column, today they use a bare native dropdown
+    (<code>ReportEditor.tsx</code>: <code>&lt;select&gt;</code> of Tile / Line chart / Bar chart / Line + bar / Insight / Text + "＋ add").
+    The redesign replaces it with a <b style="color:var(--text)">visual object picker</b> — each of the six object types with its own glyph, plain-English name and
+    one-line "what it is", so the curator picks by recognition, and can optionally bind the new object to a ② Sandbox output in the same step.</p>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark — bare native select + add</b></p>
+        <div class="mock" data-mode="dark"><div class="m-main" style="min-height:210px">
+          <div class="m-sec">Report · page 1 · add object</div>
+          <div style="display:flex; gap:8px">
+            <div class="m-editcol">
+              <span class="cl">column 1</span>
+              <div class="m-objcard"><div class="t">2 bd median rent</div><div class="v">$671/wk</div></div>
+              <div class="m-oldadd" style="margin-top:auto"><span class="sel">Tile</span><span class="ab">＋ add</span></div>
+            </div>
+            <div class="m-editcol">
+              <span class="cl">column 2</span>
+              <div class="m-objcard chart"><div class="t">rent by month</div><div style="height:26px; background:linear-gradient(180deg,var(--m-panel3),transparent); border-radius:4px; margin-top:3px"></div></div>
+              <div class="m-oldadd" style="margin-top:auto"><span class="sel">Tile</span><span class="ab">＋ add</span></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark — visual object picker</b></p>
+        <div class="mock" data-mode="dark"><div class="m-main" style="min-height:210px">
+          <div class="m-sec">Report · page 1 · add object</div>
+          <div style="display:flex; gap:8px; align-items:flex-start">
+            <div class="m-editcol">
+              <span class="cl">column 1</span>
+              <div class="m-objcard"><div class="t">2 bd median rent</div><div class="v">$671/wk</div></div>
+              <span class="m-addbtn" style="margin-top:4px">＋ Add object</span>
+              <div class="m-objpicker" style="margin-top:6px">
+                <div class="m-objpicker-head">Add to <b>column 1</b></div>
+                <div class="m-objrow on"><span class="oi"><svg viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5"/><path d="M5 7.5h6M5 10h3.5"/></svg></span><div><b>Tile</b><span>Headline metric — big number + change</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><polyline points="2,12 6,7 9,9 14,3"/></svg></span><div><b>Line chart</b><span>A trend over time</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><path d="M3 13V8M8 13V4M13 13V10"/></svg></span><div><b>Bar chart</b><span>Compare categories</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><path d="M3 13V9M7.5 13V6M12 13V10"/><polyline points="2.5,7 7.5,5 13.5,3"/></svg></span><div><b>Line + bar</b><span>Two measures overlaid</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><circle cx="8" cy="6.5" r="3.6"/><path d="M6.5 11.5h3M7 13.5h2"/></svg></span><div><b>Insight</b><span>Written takeaway + query refs</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg></span><div><b>Text</b><span>A note or caption</span></div></div>
+                <div class="m-objpicker-foot">↳ optionally <span class="lk">link a Sandbox output</span></div>
+              </div>
+            </div>
+            <div class="m-editcol">
+              <span class="cl">column 2</span>
+              <div class="m-objcard chart"><div class="t">rent by month</div><div style="height:26px; background:linear-gradient(180deg,var(--m-panel3),transparent); border-radius:4px; margin-top:3px"></div></div>
+              <span class="m-addbtn ghost" style="margin-top:4px">＋ Add object</span>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light</b></p>
+        <div class="mock" data-mode="light"><div class="m-main" style="min-height:210px">
+          <div class="m-sec">Report · page 1 · add object</div>
+          <div style="display:flex; gap:8px">
+            <div class="m-editcol">
+              <span class="cl">column 1</span>
+              <div class="m-objcard"><div class="t">2 bd median rent</div><div class="v">$671/wk</div></div>
+              <div class="m-oldadd" style="margin-top:auto"><span class="sel">Tile</span><span class="ab">＋ add</span></div>
+            </div>
+            <div class="m-editcol">
+              <span class="cl">column 2</span>
+              <div class="m-objcard chart"><div class="t">rent by month</div><div style="height:26px; background:linear-gradient(180deg,var(--m-panel3),transparent); border-radius:4px; margin-top:3px"></div></div>
+              <div class="m-oldadd" style="margin-top:auto"><span class="sel">Tile</span><span class="ab">＋ add</span></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light — visual object picker</b></p>
+        <div class="mock" data-mode="light"><div class="m-main" style="min-height:210px">
+          <div class="m-sec">Report · page 1 · add object</div>
+          <div style="display:flex; gap:8px; align-items:flex-start">
+            <div class="m-editcol">
+              <span class="cl">column 1</span>
+              <div class="m-objcard"><div class="t">2 bd median rent</div><div class="v">$671/wk</div></div>
+              <span class="m-addbtn" style="margin-top:4px">＋ Add object</span>
+              <div class="m-objpicker" style="margin-top:6px">
+                <div class="m-objpicker-head">Add to <b>column 1</b></div>
+                <div class="m-objrow on"><span class="oi"><svg viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5"/><path d="M5 7.5h6M5 10h3.5"/></svg></span><div><b>Tile</b><span>Headline metric — big number + change</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><polyline points="2,12 6,7 9,9 14,3"/></svg></span><div><b>Line chart</b><span>A trend over time</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><path d="M3 13V8M8 13V4M13 13V10"/></svg></span><div><b>Bar chart</b><span>Compare categories</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><path d="M3 13V9M7.5 13V6M12 13V10"/><polyline points="2.5,7 7.5,5 13.5,3"/></svg></span><div><b>Line + bar</b><span>Two measures overlaid</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><circle cx="8" cy="6.5" r="3.6"/><path d="M6.5 11.5h3M7 13.5h2"/></svg></span><div><b>Insight</b><span>Written takeaway + query refs</span></div></div>
+                <div class="m-objrow"><span class="oi"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg></span><div><b>Text</b><span>A note or caption</span></div></div>
+                <div class="m-objpicker-foot">↳ optionally <span class="lk">link a Sandbox output</span></div>
+              </div>
+            </div>
+            <div class="m-editcol">
+              <span class="cl">column 2</span>
+              <div class="m-objcard chart"><div class="t">rent by month</div><div style="height:26px; background:linear-gradient(180deg,var(--m-panel3),transparent); border-radius:4px; margin-top:3px"></div></div>
+              <span class="m-addbtn ghost" style="margin-top:4px">＋ Add object</span>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Visual picker replaces the native <code>&lt;select&gt;</code></b>: a popover anchored to each column's "＋ Add object" button, listing the six real object types from <code>OBJECT_TYPE_LABELS</code> (Tile · Line chart · Bar chart · Line + bar · Insight · Text) with a glyph + one-line description — no more decoding a bare dropdown.</li>
+      <li><b>Types stay 1:1 with the report engine</b> — the picker is generated from the same registry the renderer + Template Studio use, so it can never drift from what the agent can actually emit (<code>report-engine/registry.ts</code>).</li>
+      <li><b>Optional link-to-Sandbox in the same step</b>: the picker footer offers binding the new object to an existing ② Sandbox output by <code>element_id</code> (the existing "linked object" mechanism), so a curated tile/chart carries real data instead of a blank stub.</li>
+      <li>Part of phase C1 (Goldens onto tokens) — this whole surface moves off inline styles at the same time.</li>
+    </ul>
+  </div>
+
+  <!-- ---- admin observability ---- -->
+  <div class="screen-band">
+    <h3>Admin — Observability</h3>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark</b></p>
+        <figure class="shot"><img src="s17_shot_admin_observability_dark.png" alt="Admin observability, dark"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark</b></p>
+        <div class="mock" data-mode="dark"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-h1" style="font-size:13px">Admin</div>
+            <div class="m-seg" style="margin-top:6px"><i class="on">Observability</i><i>Quality</i><i>Template Studio</i></div>
+            <div class="m-kpis" style="grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:10px">
+              <div class="m-kpi"><div class="l">Users</div><div class="v">5</div>
+                <svg viewBox="0 0 60 14" style="width:100%"><polyline class="m-s1" fill="none" stroke-width="1.5" points="0,10 15,9 30,9 45,6 60,5"/></svg></div>
+              <div class="m-kpi"><div class="l">Query runs · 7d</div><div class="v">50</div>
+                <svg viewBox="0 0 60 14" style="width:100%"><polyline class="m-s2" fill="none" stroke-width="1.5" points="0,12 15,8 30,10 45,4 60,3"/></svg></div>
+              <div class="m-kpi"><div class="l">p50 latency</div><div class="v">6.2s</div>
+                <svg viewBox="0 0 60 14" style="width:100%"><polyline class="m-s3" fill="none" stroke-width="1.5" points="0,4 15,6 30,5 45,8 60,9"/></svg></div>
+              <div class="m-kpi"><div class="l">Feedback new</div><div class="v">6</div><div class="d up">↑ 2 today</div></div>
+            </div>
+            <div class="m-panel-box" style="margin-top:8px">
+              <div class="m-sec">Configuration</div>
+              <table class="m-tbl">
+                <tbody>
+                <tr><td style="color:var(--m-muted)">LLM_PROVIDER</td><td class="mono">deepseek-chat</td><td><span class="m-pill ok">live</span></td></tr>
+                <tr><td style="color:var(--m-muted)">SANDBOX_RUNTIME</td><td class="mono">pyodide · WASM</td><td><span class="m-pill ok">hardened</span></td></tr>
+                <tr><td style="color:var(--m-muted)">DEEPSEEK_API_KEY</td><td class="mono">••••••••</td><td><span class="m-pill new">secret</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div></div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light</b></p>
+        <figure class="shot"><img src="s17_shot_admin_observability_light.png" alt="Admin observability, light"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light</b></p>
+        <div class="mock" data-mode="light"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-h1" style="font-size:13px">Admin</div>
+            <div class="m-seg" style="margin-top:6px"><i class="on">Observability</i><i>Quality</i><i>Template Studio</i></div>
+            <div class="m-kpis" style="grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:10px">
+              <div class="m-kpi"><div class="l">Users</div><div class="v">5</div>
+                <svg viewBox="0 0 60 14" style="width:100%"><polyline class="m-s1" fill="none" stroke-width="1.5" points="0,10 15,9 30,9 45,6 60,5"/></svg></div>
+              <div class="m-kpi"><div class="l">Query runs · 7d</div><div class="v">50</div>
+                <svg viewBox="0 0 60 14" style="width:100%"><polyline class="m-s2" fill="none" stroke-width="1.5" points="0,12 15,8 30,10 45,4 60,3"/></svg></div>
+              <div class="m-kpi"><div class="l">p50 latency</div><div class="v">6.2s</div>
+                <svg viewBox="0 0 60 14" style="width:100%"><polyline class="m-s3" fill="none" stroke-width="1.5" points="0,4 15,6 30,5 45,8 60,9"/></svg></div>
+              <div class="m-kpi"><div class="l">Feedback new</div><div class="v">6</div><div class="d up">↑ 2 today</div></div>
+            </div>
+            <div class="m-panel-box" style="margin-top:8px">
+              <div class="m-sec">Configuration</div>
+              <table class="m-tbl">
+                <tbody>
+                <tr><td style="color:var(--m-muted)">LLM_PROVIDER</td><td class="mono">deepseek-chat</td><td><span class="m-pill ok">live</span></td></tr>
+                <tr><td style="color:var(--m-muted)">SANDBOX_RUNTIME</td><td class="mono">pyodide · WASM</td><td><span class="m-pill ok">hardened</span></td></tr>
+                <tr><td style="color:var(--m-muted)">DEEPSEEK_API_KEY</td><td class="mono">••••••••</td><td><span class="m-pill new">secret</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div></div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Metrics become sparklined KPI tiles</b> (#12): counts gain 7-day context using the same KPITile the report engine already ships.</li>
+      <li><b>Config values stop wrapping mid-word:</b> long URLs/ids get <code>overflow-wrap:anywhere</code> + copy buttons in a fixed-width mono column.</li>
+    </ul>
+  </div>
+
+  <!-- ---- admin quality ---- -->
+  <div class="screen-band">
+    <h3>Admin — Quality (feedback triage)</h3>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark — last columns clipped at viewport edge</b></p>
+        <figure class="shot"><img src="s17_shot_admin_quality_dark.png" alt="Admin quality, dark"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark</b></p>
+        <div class="mock" data-mode="dark"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-seg"><i>Observability</i><i class="on">Quality</i><i>Template Studio</i></div>
+            <div class="m-panel-box" style="margin-top:8px; padding:0; overflow:hidden">
+              <div style="overflow-x:auto">
+              <table class="m-tbl">
+                <thead><tr><th>When</th><th>Element</th><th>Comment</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td>7/7 6:36p</td><td><span class="m-badge">chart</span></td><td style="white-space:normal; max-width:150px">"should chart be grouped by bedrooms"</td><td><span class="m-pill new">NEW</span></td><td style="color:var(--m-accent2)">review ▸</td></tr>
+                  <tr><td>7/4 8:46p</td><td><span class="m-badge">headline</span></td><td style="white-space:normal; max-width:150px">"headlines compare rows vs columns…"</td><td><span class="m-pill new">NEW</span></td><td style="color:var(--m-accent2)">review ▸</td></tr>
+                  <tr><td>7/4 8:38p</td><td><span class="m-badge">chart</span></td><td style="white-space:normal; max-width:150px">"trend chart appears twice"</td><td><span class="m-pill ok">EVAL</span></td><td style="color:var(--m-accent2)">review ▸</td></tr>
+                </tbody>
+              </table>
+              </div>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:7px"><span class="m-btn">Promote 2 → evals</span><span class="m-btn ghost">Dismiss</span></div>
+          </div></div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light</b></p>
+        <figure class="shot"><img src="s17_shot_admin_quality_light.png" alt="Admin quality, light"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light</b></p>
+        <div class="mock" data-mode="light"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-seg"><i>Observability</i><i class="on">Quality</i><i>Template Studio</i></div>
+            <div class="m-panel-box" style="margin-top:8px; padding:0; overflow:hidden">
+              <div style="overflow-x:auto">
+              <table class="m-tbl">
+                <thead><tr><th>When</th><th>Element</th><th>Comment</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td>7/7 6:36p</td><td><span class="m-badge">chart</span></td><td style="white-space:normal; max-width:150px">"should chart be grouped by bedrooms"</td><td><span class="m-pill new">NEW</span></td><td style="color:var(--m-accent2)">review ▸</td></tr>
+                  <tr><td>7/4 8:46p</td><td><span class="m-badge">headline</span></td><td style="white-space:normal; max-width:150px">"headlines compare rows vs columns…"</td><td><span class="m-pill new">NEW</span></td><td style="color:var(--m-accent2)">review ▸</td></tr>
+                  <tr><td>7/4 8:38p</td><td><span class="m-badge">chart</span></td><td style="white-space:normal; max-width:150px">"trend chart appears twice"</td><td><span class="m-pill ok">EVAL</span></td><td style="color:var(--m-accent2)">review ▸</td></tr>
+                </tbody>
+              </table>
+              </div>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:7px"><span class="m-btn">Promote 2 → evals</span><span class="m-btn ghost">Dismiss</span></div>
+          </div></div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Contained, scrollable table</b> (#3): the feedback grid lives in a card with its own <code>overflow-x</code>; question + comment merge into one wrapping evidence column so Status/actions are always visible.</li>
+      <li><b>Bulk triage moves to a footer bar</b> ("Promote 2 → evals") instead of a disabled header button.</li>
+    </ul>
+  </div>
+
+  <!-- ---- admin studio ---- -->
+  <div class="screen-band">
+    <h3>Admin — Template Studio (report engine)</h3>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark — legend collides with axis labels</b></p>
+        <figure class="shot"><img src="s17_shot_admin_studio_dark.png" alt="Template studio, dark"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark</b></p>
+        <div class="mock" data-mode="dark"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-kpis" style="grid-template-columns:1fr">
+              <div class="m-kpi"><div class="l">2 bd unit median rent</div><div class="v">$671/wk <span class="d up">▲ +6.1% YoY</span></div></div>
+            </div>
+            <div class="m-chart">
+              <div class="t">Median weekly rent by month · postcode 2077</div>
+              <div class="m-legend"><span><i style="background:var(--m-c1)"></i>1 bd</span><span><i style="background:var(--m-c2)"></i>2 bd</span><span><i style="background:var(--m-c3)"></i>3 bd</span></div>
+              <div class="m-plot">
+                <div class="m-plot-y"><span>$800</span><span>$650</span><span>$500</span></div>
+                <svg viewBox="0 0 300 70" preserveAspectRatio="none">
+                  <line class="m-grid-l" x1="0" y1="8" x2="300" y2="8"/><line class="m-grid-l" x1="0" y1="35" x2="300" y2="35"/><line class="m-grid-l" x1="0" y1="62" x2="300" y2="62"/>
+                  <polyline class="m-s3" fill="none" stroke-width="1.6" points="0,22 75,20 150,17 225,13 300,8"/>
+                  <polyline class="m-s2" fill="none" stroke-width="1.6" points="0,42 75,40 150,38 225,36 300,32"/>
+                  <polyline class="m-s1" fill="none" stroke-width="1.6" points="0,62 75,61 150,59 225,58 300,55"/>
+                </svg>
+              </div>
+              <div class="m-plot-x"><span>2024</span><span>2025</span><span>2026</span></div>
+            </div>
+            <div class="m-insight"><b>Steady climb</b><span>Median rent rose every quarter across all bedroom bands. <span style="color:var(--m-accent2)">[Q1]</span></span></div>
+          </div></div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light</b></p>
+        <figure class="shot"><img src="s17_shot_admin_studio_light.png" alt="Template studio, light"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light</b></p>
+        <div class="mock" data-mode="light"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-kpis" style="grid-template-columns:1fr">
+              <div class="m-kpi"><div class="l">2 bd unit median rent</div><div class="v">$671/wk <span class="d up">▲ +6.1% YoY</span></div></div>
+            </div>
+            <div class="m-chart">
+              <div class="t">Median weekly rent by month · postcode 2077</div>
+              <div class="m-legend"><span><i style="background:var(--m-c1)"></i>1 bd</span><span><i style="background:var(--m-c2)"></i>2 bd</span><span><i style="background:var(--m-c3)"></i>3 bd</span></div>
+              <div class="m-plot">
+                <div class="m-plot-y"><span>$800</span><span>$650</span><span>$500</span></div>
+                <svg viewBox="0 0 300 70" preserveAspectRatio="none">
+                  <line class="m-grid-l" x1="0" y1="8" x2="300" y2="8"/><line class="m-grid-l" x1="0" y1="35" x2="300" y2="35"/><line class="m-grid-l" x1="0" y1="62" x2="300" y2="62"/>
+                  <polyline class="m-s3" fill="none" stroke-width="1.6" points="0,22 75,20 150,17 225,13 300,8"/>
+                  <polyline class="m-s2" fill="none" stroke-width="1.6" points="0,42 75,40 150,38 225,36 300,32"/>
+                  <polyline class="m-s1" fill="none" stroke-width="1.6" points="0,62 75,61 150,59 225,58 300,55"/>
+                </svg>
+              </div>
+              <div class="m-plot-x"><span>2024</span><span>2025</span><span>2026</span></div>
+            </div>
+            <div class="m-insight"><b>Steady climb</b><span>Median rent rose every quarter across all bedroom bands. <span style="color:var(--m-accent2)">[Q1]</span></span></div>
+          </div></div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Legend moves above the plot</b> (#4) in <code>Combo.tsx</code>/<code>Trend.tsx</code> — no more collision with the first x-tick; series order matches visual stacking.</li>
+      <li>Chart palette re-maps to the chosen candidate (<code>--chart-1…5</code>) — this preview is exactly that swap.</li>
+    </ul>
+  </div>
+
+  <!-- ---- settings ---- -->
+  <div class="screen-band">
+    <h3>Settings</h3>
+    <div class="prepost">
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>dark</b></p>
+        <figure class="shot"><img src="s17_shot_settings_dark.png" alt="Settings, dark"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>dark</b></p>
+        <div class="mock" data-mode="dark"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-h1" style="font-size:13px">Settings</div>
+            <div class="m-panel-box" style="margin-top:8px; display:flex; align-items:center; gap:10px">
+              <div style="flex:1"><b style="font-size:10.5px">Appearance</b><div style="color:var(--m-muted); font-size:9.5px">charts + panels follow the tokens</div></div>
+              <div class="m-seg"><i class="on">Dark</i><i>Light</i><i>System</i></div>
+            </div>
+            <div class="m-sec">Remembered preferences · 10</div>
+            <div class="m-panel-box" style="display:flex; gap:9px; align-items:flex-start">
+              <div style="flex:1; min-width:0"><div style="font-size:10px">Suburbs are stored in Title Case (e.g. 'Hornsby'), not UPPERCASE as the knowledge page states.</div>
+              <div style="color:var(--m-faint); font-size:8.5px; margin-top:3px">learned 7/9 · used 3×</div></div>
+              <span class="m-btn ghost">forget</span>
+            </div>
+            <div class="m-panel-box" style="display:flex; gap:9px; align-items:flex-start; margin-top:6px">
+              <div style="flex:1; min-width:0"><div style="font-size:10px">For suburb-vs-area-band comparisons: aggregate by suburb × area_band, use profile_chart for composition skew.</div>
+              <div style="color:var(--m-faint); font-size:8.5px; margin-top:3px">learned 7/14 · used 1×</div></div>
+              <span class="m-btn ghost">forget</span>
+            </div>
+          </div></div>
+        </div></div>
+      </div>
+      <div>
+        <p class="cap"><span class="pre-pill">PRE</span><b>light</b></p>
+        <figure class="shot"><img src="s17_shot_settings_light.png" alt="Settings, light"></figure>
+      </div>
+      <div>
+        <p class="cap"><span class="post-pill">POST</span><b>light</b></p>
+        <div class="mock" data-mode="light"><div class="m-shell">
+          <div class="m-rail"><span class="m-mark"></span><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic"></i><i class="m-ic on"></i></div>
+          <div class="m-body"><div class="m-main">
+            <div class="m-h1" style="font-size:13px">Settings</div>
+            <div class="m-panel-box" style="margin-top:8px; display:flex; align-items:center; gap:10px">
+              <div style="flex:1"><b style="font-size:10.5px">Appearance</b><div style="color:var(--m-muted); font-size:9.5px">charts + panels follow the tokens</div></div>
+              <div class="m-seg"><i>Dark</i><i class="on">Light</i><i>System</i></div>
+            </div>
+            <div class="m-sec">Remembered preferences · 10</div>
+            <div class="m-panel-box" style="display:flex; gap:9px; align-items:flex-start">
+              <div style="flex:1; min-width:0"><div style="font-size:10px">Suburbs are stored in Title Case (e.g. 'Hornsby'), not UPPERCASE as the knowledge page states.</div>
+              <div style="color:var(--m-faint); font-size:8.5px; margin-top:3px">learned 7/9 · used 3×</div></div>
+              <span class="m-btn ghost">forget</span>
+            </div>
+            <div class="m-panel-box" style="display:flex; gap:9px; align-items:flex-start; margin-top:6px">
+              <div style="flex:1; min-width:0"><div style="font-size:10px">For suburb-vs-area-band comparisons: aggregate by suburb × area_band, use profile_chart for composition skew.</div>
+              <div style="color:var(--m-faint); font-size:8.5px; margin-top:3px">learned 7/14 · used 1×</div></div>
+              <span class="m-btn ghost">forget</span>
+            </div>
+          </div></div>
+        </div></div>
+      </div>
+    </div>
+    <ul class="fixnotes">
+      <li><b>Memory cards</b> (#13): each remembered preference becomes a card with learned-date + usage count and a quiet "forget" button — the memory promise from the login walkthrough, made visible.</li>
+      <li><b>System theme option</b> joins Dark/Light (the resolver already supports it — the UI just never exposed it).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= 6 · sidebar icon picker ================= -->
+<section class="band" id="icons">
+  <div class="band-head"><span class="band-num">06</span><h2>Rethink the sidebar icons</h2>
+    <span class="sub small">pick one per tab — the highlighted tile is the current app icon</span></div>
+  <p class="sub" style="max-width:860px; margin-bottom:4px">Three options per rail tab: a <b style="color:var(--text)">conventional</b> choice,
+  a <b style="color:var(--text)">cockpit/aviation</b>-flavoured one that leans into the Data Pilot theme, and a third alternative.
+  Selections are local until you queue them.</p>
+
+  <form id="icon-form" onsubmit="event.preventDefault();
+    var f=new FormData(this);
+    var labels={
+      chat:{bubble:'Bubble',ask:'Ask ✦',comms:'Comms tower'},
+      sql:{terminal:'Terminal',database:'Database',table:'Table grid'},
+      gold:{trophy:'Trophy',star:'Star',reticle:'Reticle (current)'},
+      admin:{shield:'Shield (current)',gauge:'Cockpit gauge',controls:'Control sliders'},
+      set:{gear:'Gear',sliders:'Sliders (current)',wrench:'Wrench'}};
+    var tabs={Chat:['chat',f.get('ic_chat')],SQL:['sql',f.get('ic_sql')],Goldens:['gold',f.get('ic_gold')],Admin:['admin',f.get('ic_admin')],Settings:['set',f.get('ic_set')]};
+    var summary=Object.entries(tabs).map(function(e){return e[0]+' → '+labels[e[1][0]][e[1][1]];}).join(', ');
+    if(window.lavish){ window.lavish.queuePrompt('Sidebar icon choices for the Data Pilot nav rail + mobile bottom nav: '+summary+'. Draw these as line icons matching ui/icons.tsx.', {tag:'choice', text:'Icons — '+summary, element:this, data:{question:'icons'}}); this.classList.add('queued'); }">
+    <div class="iconpick">
+
+      <div class="iconpick-tab">
+        <h4>Chat <span>· ask your data</span></h4>
+        <p class="cur">Today: speech bubble</p>
+        <div class="icon-opts">
+          <label class="icon-opt"><input type="radio" name="ic_chat" value="bubble" checked>
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a7.5 7.5 0 0 1-10.7 6.8L4 20l1.7-4.3A7.5 7.5 0 1 1 20.5 11.5Z"/></svg><small>Bubble</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_chat" value="ask">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a7.5 7.5 0 0 1-10.7 6.8L4 20l1.7-4.3A7.5 7.5 0 1 1 20.5 11.5Z"/><path d="M12 8l1.1 2.4 2.4 1.1-2.4 1.1L12 15l-1.1-2.4L8.5 11.5l2.4-1.1z"/></svg><small>Ask ✦</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_chat" value="comms">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="2"/><path d="M12 10v9M8 19h8"/><path d="M7.8 4.2a6 6 0 0 0 0 8.5M16.2 4.2a6 6 0 0 1 0 8.5"/></svg><small>Comms</small></span></label>
+        </div>
+      </div>
+
+      <div class="iconpick-tab">
+        <h4>SQL editor <span>· write queries</span></h4>
+        <p class="cur">Today: terminal glyph</p>
+        <div class="icon-opts">
+          <label class="icon-opt"><input type="radio" name="ic_sql" value="terminal" checked>
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 10l3 2.5-3 2.5M13 15h4"/></svg><small>Terminal</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_sql" value="database">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg><small>Database</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_sql" value="table">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 9.5h18M3 14.5h18M9.5 4.5v15"/></svg><small>Table</small></span></label>
+        </div>
+      </div>
+
+      <div class="iconpick-tab">
+        <h4>Golden Examples <span>· train the agent</span></h4>
+        <p class="cur">Today: reticle target</p>
+        <div class="icon-opts">
+          <label class="icon-opt"><input type="radio" name="ic_gold" value="trophy">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a2 2 0 0 0 0 4H7M16 6h2.5a2 2 0 0 1 0 4H17M9.5 13v2h5v-2M9 20h6M12 15v5"/></svg><small>Trophy</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_gold" value="star">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8 6.8 19.5l1-5.8L3.6 9.6l5.8-.8z"/></svg><small>Star</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_gold" value="reticle" checked>
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><small>Reticle</small></span></label>
+        </div>
+      </div>
+
+      <div class="iconpick-tab">
+        <h4>Admin <span>· observability</span></h4>
+        <p class="cur">Today: shield</p>
+        <div class="icon-opts">
+          <label class="icon-opt"><input type="radio" name="ic_admin" value="shield">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.4-3 7.4-7 8.5-4-1.1-7-4.1-7-8.5V6z"/></svg><small>Shield</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_admin" value="gauge" checked>
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4.5-3.5"/><circle cx="12" cy="16" r="1.2"/><path d="M4.5 16h1.2M18.3 16h1.2M12 8v1.2"/></svg><small>Gauge</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_admin" value="controls">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/></svg><small>Controls</small></span></label>
+        </div>
+      </div>
+
+      <div class="iconpick-tab">
+        <h4>Settings <span>· preferences</span></h4>
+        <p class="cur">Today: sliders</p>
+        <div class="icon-opts">
+          <label class="icon-opt"><input type="radio" name="ic_set" value="gear">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.5 4.5l2 2M17.5 17.5l2 2M2.5 12h3M18.5 12h3M4.5 19.5l2-2M17.5 6.5l2-2"/></svg><small>Gear</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_set" value="sliders" checked>
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><small>Sliders</small></span></label>
+          <label class="icon-opt"><input type="radio" name="ic_set" value="wrench">
+            <span class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 4.5a5 5 0 0 0-6.2 6.2l-5 5a1.5 1.5 0 0 0 0 2.1l.9.9a1.5 1.5 0 0 0 2.1 0l5-5a5 5 0 0 0 6.2-6.2l-2.7 2.7-2.8-.6-.6-2.8z"/></svg><small>Wrench</small></span></label>
+        </div>
+      </div>
+
+    </div>
+    <button type="submit" class="queue-btn">Queue icon set</button>
+    <span class="queued-note">queued ✓ — press Send to Agent when done</span>
+    <p class="sub tiny" style="margin-top:8px"><b class="chip green" style="padding:2px 9px">✓ locked</b>
+    Your selection: Chat <b style="color:var(--accent-soft)">Bubble</b> ·
+    SQL <b style="color:var(--accent-soft)">Terminal</b> · Goldens <b style="color:var(--accent-soft)">Reticle</b> ·
+    Admin <b style="color:var(--accent-soft)">Cockpit gauge</b> · Settings <b style="color:var(--accent-soft)">Sliders</b> — pre-selected above. Re-queue to change.</p>
+  </form>
+</section>
+
+<!-- ================= 7 · execution plan ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">07</span><h2>Execution plan</h2>
+    <span class="sub small">one PR per phase · every phase ends with a dark/light Playwright sweep</span></div>
+  <div class="card" style="padding:4px 18px">
+    <div class="phase">
+      <div class="phase-id">A<small>~½ day</small></div>
+      <div>
+        <h4>Brand + token foundation</h4>
+        <p>Rename to <b>Data Pilot</b>; land the chosen candidate's dark+light token sets (semantic layer only — component CSS untouched); add the app-wide <b>cockpit canvas</b> (fixed pointer-events-none layer behind <code>view-host</code>: radar dot-field + canopy horizon glow, hero-only reticle) sized so panels stay solid and data stays legible; BrandMark v2 (theme-aware accent tile, flat filled airplane icon at 45°); update <code>THEME_COLORS</code>, favicon, meta.</p>
+        <div class="files"><code>styles.css</code><code>index.html</code><code>lib/theme.ts</code><code>ui/icons.tsx</code><code>app/Login.tsx</code><code>app/NavRail.tsx</code></div>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-id">B<small>~1 day</small></div>
+      <div>
+        <h4>Sign-in + walkthrough (§04)</h4>
+        <p>Split login layout; cockpit backdrop (instrument dash, jet contrail, drifting data glyphs); flight-path SVG walkthrough with 5 waypoints, 4s auto-advance, dots + keyboard nav, reduced-motion static render; dev/google modes share the card slot; track slide-view events.</p>
+        <div class="files"><code>app/Login.tsx</code><code>styles.css (login section)</code><code>lib/api.ts (track)</code></div>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-id">C<small>~1½ days</small></div>
+      <div>
+        <h4>Broken-surface fixes (P0/P1)</h4>
+        <p><b>C1</b> Goldens onto tokens (classes replace inline styles; stage stepper; skill chips). <b>C2</b> theme-aware CodeMirror + SpecChart palette. <b>C3</b> Quality table containment. <b>C4</b> chart legend above plot.</p>
+        <div class="files"><code>features/goldens/GoldensPage.tsx</code><code>features/goldens/ReportEditor.tsx</code><code>features/sql/SqlEditor.tsx</code><code>features/admin/AdminPage.tsx</code><code>ui/charts/Combo.tsx</code><code>ui/charts/Trend.tsx</code></div>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-id">D<small>~½ day</small></div>
+      <div>
+        <h4>Shell + navigation polish</h4>
+        <p>Redraw the rail + bottom-nav icons to the locked set (Chat=Bubble, SQL=Terminal, Goldens=Reticle, Admin=Cockpit gauge, Settings=Sliders) in <code>ui/icons.tsx</code>; rail active-state uses the accent edge; brand tooltip "Data Pilot"; mobile top bar + bottom nav re-tinted; command palette + sheets adopt new elevation/glow.</p>
+        <div class="files"><code>app/NavRail.tsx</code><code>app/MobileNav.tsx</code><code>ui/CommandPalette.tsx</code><code>ui/Sheet.tsx</code><code>styles.css</code></div>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-id">E<small>~1½ days</small></div>
+      <div>
+        <h4>Data-consumption upgrades</h4>
+        <p><b>E1</b> conversation titles = data-agent-generated 3–5 word summary of the question (new field on the answer/query_run; sidebar shows it instead of the raw question, backfilled for history) + meta line. <b>E2</b> line-icon suggestions, single focus ring. <b>E3</b> answer-first meta row (internals → trace). <b>E4</b> sparklined admin KPIs, config wrapping. <b>E5</b> memory cards + System theme. <b>E6</b> always-visible chart export + CSV.</p>
+        <div class="files"><code>features/chat/*</code><code>features/admin/AdminPage.tsx</code><code>features/settings/SettingsPage.tsx</code><code>ui/charts/*</code><code>backend (title endpoint)</code></div>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-id">F<small>~½ day</small></div>
+      <div>
+        <h4>QA + re-baseline</h4>
+        <p>Full dark/light sweep of all 9 screens (the capture script from this plan becomes <code>e2e/theme-sweep.spec.ts</code>); update <code>visual.spec.ts</code> snapshots; axe contrast pass on both modes; mobile spot-check (chat, login, SQL).</p>
+        <div class="files"><code>e2e/visual.spec.ts-snapshots</code><code>e2e/theme-sweep.spec.ts (new)</code><code>e2e/a11y.spec.ts</code></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="risk"><b>Risks.</b>
+    (1) <code>eval-loop</code> has uncommitted work in <code>GoldensPage.tsx</code>/<code>ReportEditor.tsx</code> — phase C1 must land after that merges or it becomes a conflict farm.
+    (2) E2E selectors key off visible text ("Admin" card, tab names) — the rename touches <code>helpers.ts</code> expectations.
+    (3) Visual snapshots all churn by design — re-baseline once, in phase F, not per-phase.
+    (4) Conversation auto-titles (E1) need a small backend change (title generation on first answer) — everything else is frontend-only.</div>
+</section>
+
+<!-- ================= 8 · remaining decisions ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">08</span><h2>Remaining decisions</h2>
+    <span class="sub small">answer any subset — each queues one prompt</span></div>
+  <div class="grid2">
+    <form class="decision" data-lavish-question="walkthrough-style"
+      onsubmit="event.preventDefault(); var v=new FormData(this).get('wt'); if(v&&window.lavish){ window.lavish.queuePrompt('Login walkthrough style decision: '+v, {tag:'choice', text:'Walkthrough: '+v, element:this, data:{question:'walkthrough-style', answer:v}}); this.classList.add('queued'); }">
+      <h4>Decision 2 — walkthrough motion</h4>
+      <p class="why">How alive should the right-hand panel be?</p>
+      <label><input type="radio" name="wt" value="auto-advancing flight path (4s per waypoint, pausable) — as mocked"> Auto-advancing flight path <span class="sub">(as mocked — recommended)</span></label>
+      <label><input type="radio" name="wt" value="static panel: full path drawn, all five props listed, no motion"> Static — all five props visible, no motion</label>
+      <label><input type="radio" name="wt" value="click-through tour: user advances waypoints manually"> Click-through tour</label>
+      <button type="submit" class="queue-btn">Queue answer</button><span class="queued-note">queued ✓</span>
+    </form>
+    <form class="decision" data-lavish-question="scope"
+      onsubmit="event.preventDefault(); var f=new FormData(this); var picked=[...f.getAll('ph')]; if(picked.length&&window.lavish){ window.lavish.queuePrompt('Restyle scope: execute phases '+picked.join(', ')+' of the s17 plan (in order).', {tag:'scope', text:'Phases: '+picked.join(', '), element:this, data:{question:'scope', answer:picked.join(',')}}); this.classList.add('queued'); }">
+      <h4>Decision 3 — scope to execute</h4>
+      <p class="why">All six phases are recommended; trim if you want a faster first landing.</p>
+      <label><input type="checkbox" name="ph" value="A" checked> A · Brand + tokens</label>
+      <label><input type="checkbox" name="ph" value="B" checked> B · Sign-in + walkthrough</label>
+      <label><input type="checkbox" name="ph" value="C" checked> C · Broken-surface fixes</label>
+      <label><input type="checkbox" name="ph" value="D" checked> D · Shell polish</label>
+      <label><input type="checkbox" name="ph" value="E" checked> E · Consumption upgrades</label>
+      <label><input type="checkbox" name="ph" value="F" checked> F · QA + re-baseline</label>
+      <button type="submit" class="queue-btn">Queue answer</button><span class="queued-note">queued ✓</span>
+    </form>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>Open questions (annotate to answer)</h3>
+    <ul class="fixnotes" style="margin-top:6px">
+      <li><b>Display font:</b> keep Inter everywhere, or add a display face (e.g. Space Grotesk) for the login hero + page h1s only?</li>
+      <li><b>Hero greeting:</b> keep "Good morning, Admin" or switch to a flight-briefing tone ("Ready for departure, Admin")? Current copy is safer for business users.</li>
+    </ul>
+  </div>
+</section>
+
+<footer class="done">
+  Built from a live audit of <code>localhost:5230</code> on 2026-07-15 · 19 screenshots in <code>.lavish/s17_shot_*.png</code> ·
+  design source: the app's own token system (<code>frontend/src/styles.css</code>), extended per candidate ·
+  nothing has been changed in the codebase yet.
+</footer>
+
+</div>
+
+<script>
+function pick(c) {
+  document.documentElement.dataset.candidate = c;
+  document.querySelectorAll('.opt').forEach(function(o){ o.classList.toggle('sel', o.id === 'opt-' + c); });
+}
+pick('A');
+</script>
+</body>
+</html>

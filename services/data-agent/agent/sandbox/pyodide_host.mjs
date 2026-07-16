@@ -80,6 +80,7 @@ except Exception:
 
 _out["skills_used"] = skills.used()
 _out["skill_gaps"] = skills.gaps()
+_out["frames"] = skills.capture_frames(_g)
 _out["used_inline_math"] = skills.used_inline_math()
 json.dumps(_out, default=str)
 `;

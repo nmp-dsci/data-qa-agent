@@ -10,23 +10,33 @@ import {
   User,
 } from "../../lib/api";
 import { formatTime } from "../../lib/format";
-import { setTheme, useTheme } from "../../lib/theme";
+import { setThemePref, ThemePref, useThemePref } from "../../lib/theme";
+
+const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "system", label: "System" },
+];
 
 function ThemeSection() {
-  const theme = useTheme();
+  const pref = useThemePref();
   return (
     <section>
       <h3>Appearance</h3>
       <div className="settings-row">
-        <span className="fb-sent">
-          <button className={theme === "dark" ? "sel" : ""} onClick={() => setTheme("dark")}>
-            Dark
-          </button>
-          <button className={theme === "light" ? "sel" : ""} onClick={() => setTheme("light")}>
-            Light
-          </button>
+        <span className="seg" role="group" aria-label="Theme">
+          {THEME_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              className={pref === o.value ? "on" : ""}
+              aria-pressed={pref === o.value}
+              onClick={() => setThemePref(o.value)}
+            >
+              {o.label}
+            </button>
+          ))}
         </span>
-        <span className="muted">Charts and every panel follow the design tokens.</span>
+        <span className="muted">Charts and every panel follow the design tokens · System matches your OS.</span>
       </div>
     </section>
   );
@@ -88,35 +98,25 @@ function MemoriesSection() {
       {q.error && <p className="error">{(q.error as Error).message}</p>}
       {q.data && q.data.length === 0 && <p className="muted">Nothing remembered yet.</p>}
       {q.data && q.data.length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Preference</th>
-                <th>Stored</th>
-                <th>Last used</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {q.data.map((m) => (
-                <tr key={m.id}>
-                  <td className="wide-cell">{m.content}</td>
-                  <td>{formatTime(m.created_at)}</td>
-                  <td>{m.last_used_at ? formatTime(m.last_used_at) : "-"}</td>
-                  <td>
-                    <button
-                      className="link"
-                      disabled={busy === m.id}
-                      onClick={() => forget(m.id)}
-                    >
-                      forget
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mem-list">
+          {q.data.map((m) => (
+            <div key={m.id} className="mem-card">
+              <div className="mem-body">
+                <div className="mem-text">{m.content}</div>
+                <div className="mem-meta">
+                  learned {formatTime(m.created_at)}
+                  {m.last_used_at ? ` · last used ${formatTime(m.last_used_at)}` : ""}
+                </div>
+              </div>
+              <button
+                className="btn-ghost mem-forget"
+                disabled={busy === m.id}
+                onClick={() => forget(m.id)}
+              >
+                {busy === m.id ? "…" : "forget"}
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </section>

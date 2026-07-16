@@ -4,7 +4,7 @@ An app that automates data science through a conversational **data agent**: user
 natural language, and an AI agent turns them into governed SQL over data they're authorized to see — then
 answers with the result.
 
-The product is branded **Datapilot** in the UI; the repository and services keep the `data-qa-agent` name.
+The product is branded **Data Pilot** in the UI; the repository and services keep the `data-qa-agent` name.
 
 - 📐 **Design & architecture:** [`AGENTS.md`](./AGENTS.md) (source of truth) and the visual review at
   `.lavish/s00_data-qa-agent-architecture.html`.
@@ -67,8 +67,8 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
                                                   :5434
 ```
 
-- **frontend** — login + chat UI (responsive desktop/mobile layout, system-preference light/dark theme with a
-  persisted manual override), fires product-analytics events, includes an admin dashboard.
+- **frontend** — login + chat UI (responsive desktop/mobile layout, light/dark/system theme toggle), fires
+  product-analytics events, includes an admin dashboard and an admin-only Golden Examples authoring page.
 - **backend-api** — validates the JWT, sets the per-request RLS context, orchestrates the agent, records
   conversations/messages/events.
 - **data-pipeline** — dlt ingests the CSVs into `raw`; dbt transforms `raw → staging → marts` (tests + docs),
@@ -81,7 +81,8 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 
 ### How a question flows
 
-1. Sign in → backend issues a signed JWT (dev-auth stub locally; Microsoft Entra in production).
+1. Sign in → the client holds a signed JWT (minted by the local dev-auth stub, or a Google-issued ID token
+   with real Google Sign-in).
 2. Frontend calls `POST /ask` with the bearer token.
 3. Backend sets `app.current_user_id` on the DB session → **RLS scopes every query to that user**.
 4. Backend delegates to the data-agent, which runs a governed `SELECT` (read-only role, SELECT-only
@@ -94,17 +95,17 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 |---------|-----|-------|
 | Frontend | http://localhost:5230 | React + Vite dev server |
 | Backend API | http://localhost:8000 | `/health`, `/auth/config`, `/auth/dev-login`, `/me`, `/ask`, `/events`, `/admin/*` |
-| Data agent | http://localhost:8100 | `/health`, `/agent/ask` |
+| Data agent | http://localhost:8100 | `/health`, `/agent/config`, `/agent/ask(/stream)`, `/agent/sql(/assist)`, `/agent/title`, `/agent/analysis*`, `/agent/skills*`, `/agent/schema` |
 | Postgres | `localhost:5434` | user `postgres` / `postgres`, db `dataqa` (5432/5433 were in use) |
 
 ## Project structure
 
 ```
-services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin endpoints
-services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails
+services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin + /admin/eval-goldens endpoints
+services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails; eval graders
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
-frontend/               React + Vite: login (dev stub or MSAL) + chat + event tracking
+frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + golden authoring + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
 data/                   full NSW CSVs (gitignored) + data/samples/ (small committed samples)
@@ -144,22 +145,34 @@ Sign in as `admin` and use the **Admin** button to inspect the live events feed,
 agent query runs. Each answered question writes a `query_runs` row with the user, dataset, SQL, row count,
 latency, and engine.
 
-## Authentication (dev stub → Microsoft Entra External ID)
+## Golden Examples (the eval loop)
+
+Admins also get a **Golden Examples** tab for authoring *golden answers* — the 100/100 benchmarks the eval
+loop scores the agent against — stage by stage (① SQL extract → ② sandbox analysis objects, built from the
+tested skill library → ③ presentation report), starting from an agent-drafted first pass. Goldens live on
+`app.eval_cases` (CRUD under `/admin/eval-goldens`; the backend proxies draft/build actions to the
+data-agent's `/agent/analysis*` and `/agent/skills*` helpers). Deterministic graders
+(`services/data-agent/agent/eval_graders.py`) compare a run's extracted values, sandbox metrics, and report
+shape against a `ready` golden; every `/ask` is stamped with an `agent_versions` build fingerprint, and
+batch scores land in `eval_runs`/`eval_results`.
+
+## Authentication (dev stub → Google Sign-in)
 
 Auth runs in one of two modes, chosen at runtime — the frontend reads `GET /auth/config` and adapts, so
 **flipping to real auth needs no rebuild**:
 
 - **`dev` (default)** — a local dev-auth stub. The login screen shows the three seeded users; the backend
   mints a signed HS256 token. Everything runs offline.
-- **`entra`** — real **Microsoft Entra External ID** (OIDC). The frontend signs in via MSAL
-  (`@azure/msal-browser`); the backend validates the RS256 token against the tenant's public **JWKS**
-  (no client secret needed), then **just-in-time provisions** the user into `app.users` keyed by their Entra
-  `oid`, so RLS and the admin role stay driven by our own database. An app role (default value `admin`) in the
-  token maps to the admin role.
+- **`google`** — real **Google Sign-in** (OIDC). The frontend renders the official Google Identity Services
+  button, which hands back a Google-signed RS256 ID token; the backend validates it against Google's public
+  **JWKS** (no client secret needed), then **just-in-time provisions** the user into `app.users` keyed by
+  their Google `sub`, so RLS and the admin role stay driven by our own database. Emails listed in
+  `ADMIN_EMAILS` map to the admin role; everyone else is a `user`.
 
-To switch, set `AUTH_MODE=entra` and the `ENTRA_*` values in `.env` (see `.env.example`), then restart
-backend-api. A real Entra External ID tenant + two app registrations (SPA + API) are required for live login;
-until then, `dev` mode is the working local experience.
+To switch, set `AUTH_MODE=google`, `GOOGLE_CLIENT_ID`, and `ADMIN_EMAILS` in `.env` (see `.env.example`),
+then restart backend-api. The OAuth client must be a **Web** client with the frontend origin
+(http://localhost:5230 locally) as an authorized JavaScript origin; until then, `dev` mode is the working
+local experience.
 
 The `/me` endpoint returns the current user's profile in both modes.
 
@@ -177,6 +190,12 @@ With a real provider, the agent also gets a `make_chart` tool (renders a Vega-Li
 useful) and per-user memory: it recalls relevant past preferences (pgvector cosine search over
 `app.user_memories`, RLS-scoped — a user's memory is isolated like their data) at the start of every question,
 and calls `remember` when you state an explicit preference (e.g. "I only care about units, not houses").
+
+New conversations also get a short (3–5 word) sidebar title summarising the first question, generated by a
+small title agent kept isolated on the data-agent (`POST /agent/title`) and called from a background task —
+so titling never adds latency to the answer and can never break it. Without a provider key it falls back to
+an offline heuristic. Retitle pre-existing conversations with
+`docker compose exec backend-api python -m app.backfill_titles` (`--all` / `--dry-run`).
 
 Every agent run is traced with **Logfire** — tool calls, model requests, and (with `capture_all=True`) the raw
 HTTP payloads sent to the provider. Set `LOGFIRE_TOKEN` in `.env` to ship traces to Logfire Cloud; leave it

@@ -121,11 +121,16 @@ export interface PageObject {
   explains?: string | null;
 }
 
-export type TemplateId = "summary" | "insights" | "one-col" | "two-col" | "three-col";
+export type TemplateId = "one-col" | "two-col" | "three-col";
 
 export interface Page {
   template: TemplateId;
   columns: PageObject[][];
+  /** Optional page-level headline that summarises what the page shows. */
+  headline?: string | null;
+  /** Optional per-column relative widths (fr weights) overriding the template's
+   *  default tracks; one entry per column, left→right. */
+  widths?: number[] | null;
 }
 
 export interface AskResult {
@@ -527,8 +532,16 @@ async function adminGet<T>(path: string): Promise<T> {
   return resp.json();
 }
 
-export function getAdminEvents(): Promise<AdminEvent[]> {
-  return adminGet<AdminEvent[]>("/admin/events");
+function adminListQuery(params?: { limit?: number; since?: string }): string {
+  const qs = new URLSearchParams();
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.since) qs.set("since", params.since);
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
+export function getAdminEvents(params?: { limit?: number; since?: string }): Promise<AdminEvent[]> {
+  return adminGet<AdminEvent[]>(`/admin/events${adminListQuery(params)}`);
 }
 
 export function getAdminUsers(): Promise<AdminUser[]> {
@@ -539,8 +552,11 @@ export function getAdminDatasets(): Promise<AdminDataset[]> {
   return adminGet<AdminDataset[]>("/admin/datasets");
 }
 
-export function getAdminQueryRuns(): Promise<AdminQueryRun[]> {
-  return adminGet<AdminQueryRun[]>("/admin/query-runs");
+export function getAdminQueryRuns(params?: {
+  limit?: number;
+  since?: string;
+}): Promise<AdminQueryRun[]> {
+  return adminGet<AdminQueryRun[]>(`/admin/query-runs${adminListQuery(params)}`);
 }
 
 export function getAdminConfig(): Promise<AdminConfig> {
@@ -658,6 +674,335 @@ export function getAdminFeedback(): Promise<AdminFeedback[]> {
 
 export function getEvalCases(): Promise<EvalCase[]> {
   return adminGet<EvalCase[]>("/admin/eval-cases");
+}
+
+// --- Golden Answer (Builder) — s14 E1 --------------------------------------
+export interface GoldenListItem {
+  id: string;
+  dataset: string | null;
+  tier: string | null;
+  question: string;
+  as_user: string | null;
+  tags: string[];
+  holdout: boolean;
+  authoring_status: string;
+  has_sql: boolean;
+  has_sandbox: boolean;
+  has_data: boolean;
+  has_report: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoldenFull extends GoldenListItem {
+  source: string;
+  expectation: string | null;
+  golden_sql: string | null;
+  golden_sandbox: string | null;
+  golden_data: unknown;
+  golden_report: unknown;
+  golden_objects?: GoldenObject[] | null;
+}
+
+export interface GoldenInput {
+  question: string;
+  dataset?: string | null;
+  tier?: string | null;
+  as_user?: string | null;
+  tags?: string[];
+  holdout?: boolean;
+  authoring_status?: string;
+  golden_sql?: string | null;
+  golden_sandbox?: string | null;
+  golden_data?: unknown;
+  golden_report?: unknown;
+  golden_objects?: GoldenObject[] | null;
+  expectation?: string | null;
+}
+
+/** One measure a Presentation Object builds — either a plain agg of one column
+ *  (source + agg) or a weighted average (num / den). ``months`` windows it. */
+export interface SandboxMeasure {
+  label: string;
+  source?: string;
+  agg?: "sum" | "mean";
+  num?: string;
+  den?: string;
+  months?: number | null;
+}
+
+/** The structured form state behind a named presentation object — grain +
+ *  encoding + the bar/line measures. The deterministic builder emits code from
+ *  it, and it stays on the object so the builder can re-edit columns (lineage). */
+export interface SandboxObjectSpec {
+  grain?: string[];
+  dimension?: string;
+  group?: string | null;
+  bar_measure?: SandboxMeasure;
+  line_measure?: SandboxMeasure;
+  months?: number;
+  title?: string;
+  summary?: string;
+  /** Exact WHERE predicate scoping the object's extract (e.g.
+   *  `property_type = 'house' AND suburb IN ('Hornsby','Normanhurst')`). Blank =
+   *  carry the golden's filters from the shared extract. Editable lineage. */
+  filter?: string;
+  /** Optional natural-language instruction (routes to the LLM scaffold path). */
+  instruction?: string;
+}
+
+/** A named presentation object persisted on a golden: its stable link id, the
+ *  generating run_analysis code (lineage), and the form spec that produced it. */
+export interface GoldenObject {
+  name: string;
+  element_id: string;
+  object_type: PageObjectType;
+  code: string;
+  spec?: SandboxObjectSpec;
+}
+
+/** A derived frame the sandbox built and fed to a skill — the enrichment stage
+ *  between the SQL extract and the report objects (Golden builder Sandbox view). */
+export interface SandboxFrame {
+  name: string;
+  columns: string[];
+  rows: unknown[][];
+  shape: [number, number];
+  /** True when this frame was fed to a skill, so its data is in a chart/analysis
+   *  object; false when it's a derived frame behind a KPI/scalar. */
+  fed_object?: boolean;
+}
+
+/** A named object recomputed against the extract during prep (s18). */
+export interface PrepObjectOut {
+  element_id: string;
+  object: PageObject | null;
+  error: string | null;
+}
+
+export interface PrepResult {
+  columns: string[];
+  rows: unknown[][];
+  row_count: number;
+  report: Record<string, unknown> | null;
+  pages?: Page[] | null;
+  frames?: SandboxFrame[];
+  skills_used: string[];
+  skill_gaps: { need: string; why: string }[];
+  objects_out?: PrepObjectOut[];
+  error: string | null;
+}
+
+/** Result of deterministically building a named presentation object (s18). */
+export interface BuildObjectResult {
+  name: string;
+  element_id: string;
+  object_type: PageObjectType;
+  /** The extract that produced this — revised (extended) when the object needed
+   *  columns the shared extract lacked, else the caller's SQL unchanged. */
+  sql: string;
+  code: string;
+  object: PageObject | null;
+  columns: string[];
+  rows: unknown[][];
+  skills_used: string[];
+  skill_gaps: { need: string; why: string }[];
+  error: string | null;
+}
+
+export function buildGoldenObject(body: {
+  sql: string;
+  name: string;
+  object_type: string;
+  spec: SandboxObjectSpec;
+  instruction?: string;
+  as_user?: string | null;
+}): Promise<BuildObjectResult> {
+  return adminPost<BuildObjectResult>("/admin/eval-goldens/build-object", body);
+}
+
+async function adminSend<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const resp = await fetch(`${API}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Admin request failed (${resp.status})`);
+  return resp.json();
+}
+
+export function listGoldens(dataset?: string): Promise<GoldenListItem[]> {
+  const q = dataset ? `?dataset=${encodeURIComponent(dataset)}` : "";
+  return adminGet<GoldenListItem[]>(`/admin/eval-goldens${q}`);
+}
+
+export function getGolden(id: string): Promise<GoldenFull> {
+  return adminGet<GoldenFull>(`/admin/eval-goldens/${id}`);
+}
+
+export interface SkillInfo {
+  name: string;
+  group: string;
+  doc: string;
+  signature: string;
+}
+
+export function getGoldenSkills(): Promise<{ skills: SkillInfo[] }> {
+  return adminGet<{ skills: SkillInfo[] }>("/admin/eval-goldens/skills");
+}
+
+export interface ScaffoldResult {
+  code: string;
+  reasoning: { skill: string; why: string }[];
+  engine: string;
+  error: string | null;
+}
+
+export function scaffoldGolden(body: {
+  question: string;
+  columns: string[];
+  skills: string[];
+}): Promise<ScaffoldResult> {
+  return adminPost<ScaffoldResult>("/admin/eval-goldens/scaffold", body);
+}
+
+export function createGolden(body: GoldenInput): Promise<{ status: string; id: string }> {
+  return adminPost<{ status: string; id: string }>("/admin/eval-goldens", body);
+}
+
+export function updateGolden(
+  id: string,
+  patch: Partial<GoldenInput>,
+): Promise<{ status: string; updated: number }> {
+  return adminSend<{ status: string; updated: number }>(`/admin/eval-goldens/${id}`, "PUT", patch);
+}
+
+export function deleteGolden(id: string): Promise<{ status: string; deleted: number }> {
+  return adminSend<{ status: string; deleted: number }>(`/admin/eval-goldens/${id}`, "DELETE");
+}
+
+export function prepGolden(body: {
+  sql: string;
+  code?: string;
+  objects?: { element_id: string; object_type: string; code: string }[];
+  as_user?: string | null;
+}): Promise<PrepResult> {
+  return adminPost<PrepResult>("/admin/eval-goldens/prep", body);
+}
+
+// Author one report object from a plain-English instruction: the agent rewrites
+// run_analysis to build the described chart, runs it in the sandbox, and returns
+// the lifted object (type + data) plus the refreshed sandbox report + code.
+export interface AuthorObjectResult {
+  code: string;
+  // The extract that produced this — the revised SQL when the agent had to add
+  // columns for the requested data, else the caller's SQL unchanged (s16).
+  sql: string | null;
+  object: { type: PageObjectType; data: Record<string, unknown> } | null;
+  report: Record<string, unknown> | null;
+  // The FULL recomposed report as pages (every object with fresh data) so the
+  // builder can refresh the whole presentation in sync, not just one object.
+  pages: Page[] | null;
+  columns: string[];
+  rows: unknown[][];
+  reasoning: { skill: string; why: string }[];
+  engine: string;
+  skills_used: string[];
+  skill_gaps: { need: string; why: string }[];
+  error: string | null;
+}
+
+/** A slim digest of a presentation object (no row payload) — tells the agent what
+ *  to preserve and marks which object is being edited. */
+export interface ObjectDigest {
+  element_id: string;
+  type: string;
+  role: string | null;
+  data: Record<string, unknown>;
+  _target?: boolean;
+}
+
+export function authorObject(body: {
+  sql: string;
+  code?: string;
+  object_type: string;
+  instruction: string;
+  objects?: ObjectDigest[];
+  target_element_id?: string | null;
+  as_user?: string | null;
+}): Promise<AuthorObjectResult> {
+  return adminPost<AuthorObjectResult>("/admin/eval-goldens/object", body);
+}
+
+export interface DraftResult {
+  sql: string | null;
+  sandbox: string;
+  columns: string[];
+  rows: unknown[][];
+  report: Record<string, unknown> | null;
+  pages: Page[] | null;
+  summary: string | null;
+}
+
+export function draftGolden(body: {
+  question: string;
+  as_user?: string | null;
+  dataset?: string;
+}): Promise<DraftResult> {
+  return adminPost<DraftResult>("/admin/eval-goldens/draft", body);
+}
+
+/** Streaming draft: onStatus fires once per streamed agent object (a single
+ *  updating line); resolves with the final shaped golden. */
+export async function draftGoldenStream(
+  body: { question: string; as_user?: string | null; dataset?: string },
+  onStatus: (label: string) => void,
+): Promise<DraftResult> {
+  const resp = await fetch(`${API}/admin/eval-goldens/draft/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok || !resp.body) throw new Error(`Draft failed (${resp.status})`);
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let draft: DraftResult | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    for (;;) {
+      const sep = buffer.indexOf("\n\n");
+      if (sep === -1) break;
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const eventLine = frame.split("\n").find((l) => l.startsWith("event: "));
+      const dataLine = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!eventLine || !dataLine) continue;
+      const event = eventLine.slice(7).trim();
+      const raw = dataLine.slice(6);
+      if (event === "status") {
+        try {
+          onStatus(String((JSON.parse(raw) as { label?: string }).label ?? ""));
+        } catch {
+          /* ignore malformed status */
+        }
+      } else if (event === "draft") {
+        draft = JSON.parse(raw) as DraftResult;
+      } else if (event === "error") {
+        let detail = "draft error";
+        try {
+          detail = String((JSON.parse(raw) as { detail?: string }).detail ?? detail);
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+    }
+  }
+  if (!draft) throw new Error("Draft stream ended without a result");
+  return draft;
 }
 
 async function adminPost<T>(path: string, body: unknown): Promise<T> {

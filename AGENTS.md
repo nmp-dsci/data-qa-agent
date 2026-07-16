@@ -15,7 +15,7 @@ authorized to see, returning insights and charts.
 The goal is a **v1 end-to-end system that is built to evolve** — a learning-oriented, iteratively improved
 reference implementation, not a throwaway prototype.
 
-The product's UI display name is **Datapilot**; the repo and services keep the `data-qa-agent` name.
+The product's UI display name is **Data Pilot**; the repo and services keep the `data-qa-agent` name.
 
 Current branch: `init-ds-app`. The full architecture proposal lives in
 `.lavish/s00_data-qa-agent-architecture.html` (open with `npx -y lavish-axi .lavish/s00_data-qa-agent-architecture.html`).
@@ -31,7 +31,7 @@ Confirmed via the Lavish architecture review — these drive the build:
 | A | RLS visibility | **Isolation by default**; `admin` role sees across users |
 | B | Compute | **Azure Container Apps** (serverless, scale-to-zero) — superseded in s12: shipped on **AWS App Runner** (see Phase 4 + Environments) |
 | C | Service granularity | **3 services**: frontend, backend-api, data-agent |
-| D | Identity | **Microsoft Entra External ID** (OIDC) |
+| D | Identity | **Google Sign-in** (OIDC) — ID tokens verified server-side against Google's JWKS (s11) |
 | E | Starting point | **Phase 0 local scaffold** first |
 | F | Agent framework | **Pydantic AI** (native tool-calling loop) |
 | G | Model provider | **Abstracted** — default Claude, DeepSeek as a config-swappable cost option |
@@ -46,20 +46,21 @@ Secrets Manager, S3+CloudFront — via `infra/terraform/`; this table remains th
 
 | Service | Tech | Azure resource | Owns |
 |---------|------|----------------|------|
-| **frontend** | React + Vite (TypeScript), MSAL | Container App (or Static Web App) | Chat UI, auth redirect, event tracking, admin dashboard, charts |
+| **frontend** | React + Vite (TypeScript), Google Identity Services | Container App (or Static Web App) | Chat UI, sign-in, event tracking, admin dashboard, charts |
 | **backend-api** | FastAPI, SQLAlchemy, asyncpg | Container App (internal ingress) | JWT validation, RLS context, `/ask` + `/events`, orchestration |
 | **data-agent** | Pydantic AI, pluggable LLM, Logfire | Container App (no public ingress) | NL→SQL, analysis tools, memory, structured answers, guardrails |
 | **data-pipeline** | dbt-core (Postgres) + dlt | Container Apps Job (scheduled/triggered) | CSV→raw ingest, raw→marts transforms, tests, docs/manifest the agent reads |
 | **database** | PostgreSQL 16 + RLS + pgvector | PostgreSQL Flexible Server | Source of truth, per-user isolation, agent memory |
-| **identity** | OIDC / OAuth2 | Microsoft Entra External ID | Login, MFA, token issuance |
+| **identity** | OIDC / OAuth2 | Google Sign-in (external IdP, cloud-neutral) | Login, MFA, token issuance |
 | **secrets** | Managed Identity | Key Vault | DB creds, model API keys |
 | **delivery** | Bicep + GitHub Actions | Container Registry | Build, push, deploy, IaC |
 
 ### Request flow (one question, end to end)
 
-1. User logs in via Entra External ID → frontend receives a signed JWT.
+1. User signs in with Google → frontend receives a signed ID token (JWT).
 2. Frontend calls `backend-api` with a `Bearer` token.
-3. API verifies the token against Entra's JWKS and reads `sub` + roles.
+3. API verifies the token against Google's public JWKS and reads `sub` + verified email (the
+   `ADMIN_EMAILS` allowlist decides the admin role).
 4. API opens a transaction and sets the RLS context: `SET LOCAL app.current_user_id = '<sub>'`.
 5. API delegates the question to `data-agent`.
 6. Agent plans, calls `run_sql` (read-only, under RLS) and analysis tools, reasons over results with Claude.
@@ -83,11 +84,13 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
   `alembic upgrade head` runs locally and as the Azure Container Apps job. Migrations run as a privileged
   connection so tables are owned by the admin role — which is what makes RLS apply to `app_user`/`agent_ro`.
 
-- **Auth (Phase 1):** two runtime-selected modes — `dev` (default) mints a signed HS256 token for
-  `admin`/`user1`/`user2`; `entra` validates real **Microsoft Entra External ID** RS256 tokens against the
-  tenant JWKS (`app/auth.py`) and just-in-time provisions users into `app.users` by `oid`. The frontend reads
-  `GET /auth/config` and uses MSAL (`@azure/msal-browser`) in `entra` mode — flipping needs **no rebuild**, only
-  `AUTH_MODE=entra` + `ENTRA_*` config. A live tenant + SPA/API app registrations are needed for real login.
+- **Auth (Phase 1; real sign-in in s11):** two runtime-selected modes — `dev` (default) mints a signed HS256
+  token for `admin`/`user1`/`user2`; `google` validates real **Google Sign-in** RS256 ID tokens against
+  Google's public JWKS (`app/auth.py`) and just-in-time provisions users into `app.users` by their Google
+  `sub`, with the `ADMIN_EMAILS` allowlist mapping emails to the admin role. The frontend reads
+  `GET /auth/config` and renders the Google Identity Services button in `google` mode — flipping needs
+  **no rebuild**, only `AUTH_MODE=google` + `GOOGLE_CLIENT_ID` + `ADMIN_EMAILS`. A Google OAuth **Web**
+  client with the frontend origin authorized is needed for real login.
   Protected `/me` returns the current user in both modes.
 - **Agent (Phase 3):** answers offline via a deterministic NL→SQL stub (`agent/nl2sql.py`) when no provider
   key is set; otherwise the real Pydantic AI agent (`agent/llm_agent.py`) runs — DeepSeek by default
@@ -114,11 +117,11 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
 ### Repo layout (as built)
 
 ```
-services/backend-api/   FastAPI: dev-auth + Entra JWT validation, RLS context, /ask, /events, admin
+services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS context, /ask, /events, admin
 services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
-frontend/               React + Vite: login (dev stub or MSAL) + chat + event tracking
+frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 data/samples/           small committed NSW sample CSVs (full data is gitignored)
 evals/                  journeys.yaml — user-journey evals (auth + RLS + growth; grows every phase)
@@ -151,19 +154,20 @@ in [`infra/`](./infra/README.md) stays as a reference.
   `agent_memory` is a `pgvector` table in that same DB, not a separate server.
 - **One image per service** — v1 is 3 service images + 1 pipeline job image.
 - **Cloud portability:** app code is portable; use **Terraform** (not Bicep) if you may move clouds.
-  Container Apps ↔ Cloud Run ↔ App Runner/Fargate; Flexible Server ↔ Cloud SQL ↔ RDS; Entra ↔ Cognito ↔
-  Identity Platform; Key Vault ↔ Secret Manager ↔ Secrets Manager.
+  Container Apps ↔ Cloud Run ↔ App Runner/Fargate; Flexible Server ↔ Cloud SQL ↔ RDS; Key Vault ↔
+  Secret Manager ↔ Secrets Manager. Identity (Google Sign-in) is an external IdP, already cloud-neutral.
 - **LLM portability** comes from the model abstraction (Decision G), not a cloud LLM service. Reach Claude via
   the direct Anthropic API (cloud-neutral), Bedrock, or Vertex. Avoid coupling to Azure AI Foundry.
 - **DB tools:** in-process typed tools (asyncpg/SQLAlchemy) for v1; MCP Postgres only later if the tool must
   be shared out-of-process.
 - **API-first / multi-surface:** backend-api + data-agent are headless (`/ask` behind a JWT), so future
-  surfaces (Android via Entra native OIDC+PKCE, a Slack bot via Bolt) are new clients reusing the same agent,
+  surfaces (Android via native Google Sign-in OIDC+PKCE, a Slack bot via Bolt) are new clients reusing the same agent,
   RLS, and memory. The only per-surface work is mapping that surface's identity to a `users` row.
 
 ## Security model — three stacked layers
 
-1. **AuthN** — Entra issues a JWT; the API verifies signature/claims on every request.
+1. **AuthN** — Google issues an ID token (JWT; the dev stub mints one locally); the API verifies
+   signature/claims on every request.
 2. **AuthZ** — FastAPI dependencies gate endpoints by role (e.g. `analyst` vs `admin`).
 3. **Row-Level Security** — Postgres policies filter rows by `app.current_user_id`, enforced by the database
    itself so isolation holds even if app code has a bug.
@@ -201,6 +205,12 @@ col)` is **deferred** — not yet implemented.
 **Guardrails (non-negotiable):** read-only DB role · RLS always applies · `SELECT`-only allowlist with parse
 validation and statement timeout · token + row caps to bound cost and blast radius.
 
+A second, deliberately isolated micro-agent lives beside it: `agent/titles.py` (`POST /agent/title`)
+summarises a conversation's first question into a 3–5 word sidebar title. The backend calls it best-effort
+from a background task after the first answer (and `app/backfill_titles.py` reuses it to retitle old
+conversations), so titling can never slow down or break answering; without a provider key it falls back to
+an offline heuristic.
+
 When building or changing the agent, consult the `ai:building-pydantic-ai-agents` skill and instrument with
 the `logfire` skills.
 
@@ -212,7 +222,7 @@ All capabilities live in one Postgres, all under RLS.
 
 | Table | Group | Purpose | RLS |
 |-------|-------|---------|-----|
-| `users` | Identity | Local mirror of Entra users + role (`admin`/`user`) | self; admin sees all |
+| `users` | Identity | Local mirror of signed-in users (Google or dev-seeded) + role (`admin`/`user`) | self; admin sees all |
 | `datasets` | Datasets | Registry of ingested datasets the agent can answer over | readable if access granted |
 | `dataset_access` | Datasets | Which users/roles may query which dataset | self; admin manages |
 | `conversations` | Q&A | A user's chat sessions | owner; admin sees all |
@@ -220,6 +230,9 @@ All capabilities live in one Postgres, all under RLS.
 | `query_runs` | Q&A | Audit of every SQL the agent executed (guardrail trail) | via owner; admin audits |
 | `user_memories` | Memory | Learned per-user preferences + `pgvector` embedding | owner only |
 | `events` | Analytics | Frontend + backend event stream for the admin dashboard | insert own; admin reads all |
+| `eval_cases` | Evals | Golden answers — feedback-promoted or hand-authored stages (`golden_sql`, `golden_sandbox`, `golden_objects`, `golden_report`) | admin/CI-curated; no RLS |
+| `agent_versions` | Evals | Fingerprint of the agent build (provider, model, prompt/skills hashes); stamps every `query_runs` row | admin/CI-curated; no RLS |
+| `eval_runs` / `eval_results` | Evals | Batch grading: one row per pack run + per-case pillar scores (G1–G4), linked back to `query_runs` | admin/CI-curated; no RLS |
 | `marts.*` (e.g. `housing`) | Domain | dbt-built, documented tables questions run against | via `dataset_access` |
 
 ## Datasets, config & the CSV drop-folder
@@ -254,6 +267,17 @@ datasets table (row counts, access — count of `dataset_access` grants), and Q&
 `evals/journeys.yaml` defines journeys (`as_user`, `question`, `expect`) that a **pytest** harness runs against
 the real `/ask` flow, scored with **pydantic_evals**. Journeys double as RLS isolation tests (user2 must never
 see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failure.
+
+The **eval loop** (s14–s18) builds on this with **golden examples**: the admin-only **Golden Examples** tab
+authors a golden answer stage by stage — ① SQL extract, ② sandbox analysis (named presentation objects built
+from the tested skill library), ③ the presentation report — starting from an agent-drafted first pass.
+Goldens are stored on `app.eval_cases` (CRUD via the backend's `/admin/eval-goldens` endpoints, which proxy
+draft/build actions to the data-agent's `/agent/analysis*` and `/agent/skills*` helpers; the object-type
+picker is generated from the report-engine registry so it can't drift from what the renderer supports).
+Deterministic graders (`agent/eval_graders.py`) score G1 extraction values, G2 sandbox metrics, and the
+structural half of G3 presentation against a `ready` golden — the LLM insight half of G3 is a judge, not
+code. Every `/ask` is stamped with an `agent_versions` build fingerprint, and batch scores land in
+`eval_runs`/`eval_results` (migrations 0019–0024).
 
 ---
 
@@ -292,7 +316,7 @@ see user1's rows). Extend by adding YAML; runs in CI and blocks deploy on failur
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
 | **0 · Scaffold** | uv monorepo (api + agent), FastAPI hello, React Vite, Postgres via docker-compose — all on localhost | ✅ done |
-| **1 · Auth** | Entra JWT validation + JIT provisioning, MSAL login (dev stub fallback), protected `/me`, `/auth/config`, journey evals; 3 seeded users | ✅ done (live tenant pending) |
+| **1 · Auth** | Google ID-token validation + JIT provisioning, Google Sign-in (dev stub fallback), protected `/me`, `/auth/config`, journey evals; 3 seeded users | ✅ done (real Google Sign-in shipped in s11) |
 | **2 · Data + RLS** | Schema + Alembic migrations (all tables above), RLS policies, session-variable middleware, isolation tests | ✅ done |
 | **2b · Pipeline** | dlt CSV→raw; dbt raw→staging→marts with tests/docs; suburb-keyed growth marts; `datasets`/`dataset_access` populated | ✅ done |
 | **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ✅ done (DeepSeek default, Claude via `LLM_PROVIDER=anthropic`, pgvector memory, Logfire; streaming `/ask` deferred — HTTP contract stays request/response, Logfire gives step tracing instead) |

@@ -159,6 +159,7 @@ def _child(  # pragma: no cover - subprocess
                 "report": result,
                 "skills_used": skills.used(),
                 "skill_gaps": skills.gaps(),
+                "frames": skills.capture_frames(sandbox_globals),
                 "used_inline_math": skills.used_inline_math(),
             }
         )
@@ -225,6 +226,7 @@ def run_code(
         report=payload.get("report"),
         skills_used=payload.get("skills_used", []),
         skill_gaps=gaps,
+        frames=payload.get("frames", []),
         used_inline_math=payload.get("used_inline_math", False),
         error=payload.get("error"),
     )

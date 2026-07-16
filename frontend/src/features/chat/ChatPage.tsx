@@ -4,7 +4,7 @@
 // keeps a bubble; assistant answers get an identity row and the report pages
 // directly on a ~768px reading column (960px when a report is present).
 // Conversation state lives in the app shell so it survives tab switches.
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AskProgress,
@@ -27,15 +27,43 @@ export interface ChatMsg {
   result?: AskResult;
 }
 
-/** Suggestion cards: short verb-first label + the real question as preview. */
-const SUGGESTIONS: { title: string; q: string }[] = [
+// Line-icon suggestion glyphs (issue #8 — emoji clashed with the app's line-icon
+// language). 16-viewBox, colored by the parent (--accent).
+const SugTrend = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="1,13 5,8 9,10 15,3" />
+  </svg>
+);
+const SugBars = () => (
+  <svg viewBox="0 0 16 16" fill="currentColor">
+    <rect x="2" y="8" width="3" height="6" rx="1" />
+    <rect x="6.5" y="4" width="3" height="10" rx="1" />
+    <rect x="11" y="1" width="3" height="13" rx="1" />
+  </svg>
+);
+const SugGrowth = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 11l4-4 3 3 5-6" />
+    <path d="M11 4h3v3" />
+  </svg>
+);
+const SugCompare = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2.5" y="4" width="4" height="10" rx="1" />
+    <rect x="9.5" y="7" width="4" height="7" rx="1" />
+  </svg>
+);
+
+/** Suggestion cards: a line glyph + short verb-first label + the real question. */
+const SUGGESTIONS: { title: string; q: string; icon: ReactNode }[] = [
   {
-    title: "📈 Price trend",
+    title: "Price trend",
     q: "show me trend of sale price for houses for Normanhurst vs Hornsby for all time 2010 to 2026",
+    icon: <SugTrend />,
   },
-  { title: "🏆 Top movers", q: "What are the top growth suburbs for sale price and rent?" },
-  { title: "📊 Rent growth", q: "Which suburbs have the highest rent growth?" },
-  { title: "⚖️ Compare", q: "Top suburbs by sale price growth?" },
+  { title: "Top movers", q: "What are the top growth suburbs for sale price and rent?", icon: <SugBars /> },
+  { title: "Rent growth", q: "Which suburbs have the highest rent growth?", icon: <SugGrowth /> },
+  { title: "Compare", q: "Top suburbs by sale price growth?", icon: <SugCompare /> },
 ];
 
 function greeting(name: string): string {
@@ -56,6 +84,21 @@ function groupFor(iso: string): string {
 }
 
 const GROUP_ORDER = ["Today", "Yesterday", "Previous 7 days", "Older"];
+
+/** Sidebar meta line (issue #6): a timestamp + turn count under each title, so
+ *  otherwise-similar conversations are distinguishable at a glance. */
+function convMeta(c: ConversationSummary): string {
+  const when = c.last_at ?? c.created_at;
+  const d = new Date(when);
+  const timeStr = Number.isNaN(d.getTime())
+    ? ""
+    : d.toDateString() === new Date().toDateString()
+      ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+      : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const turns = Math.max(1, Math.round((c.message_count || 0) / 2));
+  const turnStr = `${turns} ${turns === 1 ? "turn" : "turns"}`;
+  return timeStr ? `${turnStr} · ${timeStr}` : turnStr;
+}
 
 export function ConversationList({
   activeId,
@@ -111,6 +154,7 @@ export function ConversationList({
               title={c.title ?? ""}
             >
               <span className="conv-title">{c.title || "Untitled"}</span>
+              <span className="conv-meta">{convMeta(c)}</span>
             </button>
           ))}
         </div>
@@ -342,8 +386,11 @@ export function ChatPage({
               <div className="sugs">
                 {SUGGESTIONS.map((s) => (
                   <button key={s.title} className="sug" onClick={() => onSend(s.q)}>
-                    <b>{s.title}</b>
-                    <span>{s.q}</span>
+                    <span className="sug-icon">{s.icon}</span>
+                    <span className="sug-text">
+                      <b>{s.title}</b>
+                      <span>{s.q}</span>
+                    </span>
                   </button>
                 ))}
               </div>

@@ -24,7 +24,7 @@ async function expectNoSeriousViolations(page: import("@playwright/test").Page) 
 
 test("login is axe-clean", async ({ page }) => {
   await page.goto("/");
-  await page.getByText("Datapilot").waitFor();
+  await page.getByText("Data Pilot").first().waitFor();
   await expectNoSeriousViolations(page);
 });
 

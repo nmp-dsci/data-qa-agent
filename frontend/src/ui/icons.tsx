@@ -22,10 +22,18 @@ function I({ children, title }: { children: ReactNode; title?: string }) {
   );
 }
 
+// Chat — a rounded speech bubble (s17 locked nav set).
 export const IconChat = () => (
   <I>
-    <path d="M4 5.5h16v11.5H9.5L5 21v-4H4z" />
-    <path d="M8.5 11h.01M12 11h.01M15.5 11h.01" strokeWidth="2.4" />
+    <path d="M20.5 11.5a7.5 7.5 0 0 1-10.7 6.8L4 20l1.7-4.3A7.5 7.5 0 1 1 20.5 11.5Z" />
+  </I>
+);
+
+export const IconGolden = () => (
+  <I>
+    <circle cx="12" cy="12" r="8" />
+    <circle cx="12" cy="12" r="3.2" />
+    <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22" />
   </I>
 );
 
@@ -37,10 +45,13 @@ export const IconSql = () => (
   </I>
 );
 
+// Admin — a cockpit gauge with a needle (s17 locked nav set).
 export const IconAdmin = () => (
   <I>
-    <path d="M12 3l7 2.8v5.6c0 4.2-2.9 7.2-7 9.6-4.1-2.4-7-5.4-7-9.6V5.8z" />
-    <path d="M9 11.8l2.2 2.2L15.4 9.6" />
+    <path d="M4 16a8 8 0 1 1 16 0" />
+    <path d="M12 16l4.5-3.5" />
+    <circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none" />
+    <path d="M4.5 16h1.2M18.3 16h1.2M12 8v1.2" />
   </I>
 );
 
@@ -91,24 +102,30 @@ export const IconSend = () => (
   </I>
 );
 
-/** The Datapilot mark: gold diamond on a dark rounded square (favicon twin). */
+/** The Data Pilot mark (s17): a flat filled airliner — swept wings, wing
+ *  engines, tail stabilisers — angled 45° (nose upper-right), cut from the
+ *  accent-ink over the accent gradient tile. Theme-aware: the tile + plane read
+ *  the live --accent-soft / --accent / --accent-ink tokens, so it never floats
+ *  as a hardcoded dark square on a light card (issue #11). Favicon twin lives
+ *  in public/favicon.svg (standalone, hardcoded Night Flight hexes). */
 export function BrandMark({ size = 30 }: { size?: number }) {
   const gid = `dp-mark-g-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      <rect width="64" height="64" rx="16" fill="#0b0d12" />
-      <path
-        d="M32 12 L48 32 L32 52 L16 32 Z"
-        fill="none"
-        stroke={`url(#${gid})`}
-        strokeWidth="5"
-        strokeLinejoin="round"
-      />
-      <circle cx="32" cy="32" r="4" fill="#f0c674" />
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
+      <rect width="100" height="100" rx="25" fill={`url(#${gid})`} />
+      <g transform="rotate(45 50 50)" fill="var(--accent-ink, #1a1204)">
+        <path d="M50 15C51.5 15 53 18 53 24L53 46L52 70L51.5 82L50 86L48.5 82L48 70L47 46L47 24C47 18 48.5 15 50 15Z" />
+        <path d="M52.5 40L82 60L82 65L53.5 52Z" />
+        <path d="M47.5 40L18 60L18 65L46.5 52Z" />
+        <path d="M51.5 72L64 80L64 84L51 78Z" />
+        <path d="M48.5 72L36 80L36 84L49 78Z" />
+        <path d="M63 50L68 53L66.5 57L61.5 54Z" />
+        <path d="M37 50L32 53L33.5 57L38.5 54Z" />
+      </g>
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#f0c674" />
-          <stop offset="1" stopColor="#b48a3f" />
+          <stop offset="0" stopColor="var(--accent-soft, #f2ca79)" />
+          <stop offset="1" stopColor="var(--accent, #d9a84e)" />
         </linearGradient>
       </defs>
     </svg>

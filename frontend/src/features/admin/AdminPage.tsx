@@ -1,7 +1,7 @@
 // Admin dashboard: metrics band, config, datasets/users/query-runs tables,
 // feedback triage + eval cases, event stream. Data comes through react-query
 // so mutations refresh by invalidation instead of hand-rolled reload loops.
-import { Fragment, useCallback, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getAdminConfig,
@@ -18,11 +18,42 @@ import { AgentConfigView } from "./AgentConfigView";
 import { ConfigView } from "./ConfigView";
 import { FeedbackAdmin } from "./FeedbackAdmin";
 
-function Metric({ label, value }: { label: string; value: number }) {
+/** Bucket ISO timestamps into per-day counts over the last `days` (oldest→newest)
+ *  — a real 7-day series for the metric sparklines, no fabricated data. */
+function dailyCounts(times: string[], days = 7): number[] {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const today = startOfDay(new Date());
+  const buckets = new Array(days).fill(0);
+  for (const iso of times) {
+    const t = new Date(iso);
+    if (Number.isNaN(t.getTime())) continue;
+    const idx = days - 1 - Math.round((today - startOfDay(t)) / 86_400_000);
+    if (idx >= 0 && idx < days) buckets[idx] += 1;
+  }
+  return buckets;
+}
+
+function Sparkline({ data }: { data: number[] }) {
+  if (data.length < 2 || data.every((v) => v === 0)) return null;
+  const max = Math.max(1, ...data);
+  const w = 64;
+  const h = 16;
+  const pts = data
+    .map((v, i) => `${((i / (data.length - 1)) * w).toFixed(1)},${(h - 1 - (v / max) * (h - 2)).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg className="metric-spark" viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={pts} fill="none" stroke="var(--chart-2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Metric({ label, value, series }: { label: string; value: number; series?: number[] }) {
   return (
     <div className="metric">
       <span>{label}</span>
       <strong>{value}</strong>
+      {series && <Sparkline data={series} />}
     </div>
   );
 }
@@ -42,13 +73,29 @@ export function AdminPage() {
   const [eventUserFilter, setEventUserFilter] = useState("");
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
 
-  const eventsQ = useQuery({ queryKey: ["admin", "events"], queryFn: getAdminEvents });
+  const eventsQ = useQuery({ queryKey: ["admin", "events"], queryFn: () => getAdminEvents() });
   const usersQ = useQuery({ queryKey: ["admin", "users"], queryFn: getAdminUsers });
   const datasetsQ = useQuery({ queryKey: ["admin", "datasets"], queryFn: getAdminDatasets });
-  const queryRunsQ = useQuery({ queryKey: ["admin", "query-runs"], queryFn: getAdminQueryRuns });
+  const queryRunsQ = useQuery({
+    queryKey: ["admin", "query-runs"],
+    queryFn: () => getAdminQueryRuns(),
+  });
   const feedbackQ = useQuery({ queryKey: ["admin", "feedback"], queryFn: getAdminFeedback });
   const evalCasesQ = useQuery({ queryKey: ["admin", "eval-cases"], queryFn: getEvalCases });
   const configQ = useQuery({ queryKey: ["admin", "config"], queryFn: getAdminConfig });
+
+  // A true "last 7 days" fetch for the metrics band — independent of the
+  // most-recent-50 lists above, so the "7d" headline + sparkline can't
+  // undercount once event/run volume exceeds that display cap.
+  const since7d = useMemo(() => new Date(Date.now() - 7 * 86_400_000).toISOString(), []);
+  const events7dQ = useQuery({
+    queryKey: ["admin", "events", "7d"],
+    queryFn: () => getAdminEvents({ since: since7d, limit: 2000 }),
+  });
+  const queryRuns7dQ = useQuery({
+    queryKey: ["admin", "query-runs", "7d"],
+    queryFn: () => getAdminQueryRuns({ since: since7d, limit: 2000 }),
+  });
 
   const refreshLoop = useCallback(async () => {
     await Promise.all([
@@ -57,7 +104,17 @@ export function AdminPage() {
     ]);
   }, [queryClient]);
 
-  const queries = [eventsQ, usersQ, datasetsQ, queryRunsQ, feedbackQ, evalCasesQ, configQ];
+  const queries = [
+    eventsQ,
+    usersQ,
+    datasetsQ,
+    queryRunsQ,
+    feedbackQ,
+    evalCasesQ,
+    configQ,
+    events7dQ,
+    queryRuns7dQ,
+  ];
   const loading = queries.some((q) => q.isLoading);
   const error = queries.find((q) => q.error)?.error as Error | undefined;
 
@@ -68,6 +125,8 @@ export function AdminPage() {
   const feedback = feedbackQ.data ?? [];
   const evalCases = evalCasesQ.data ?? [];
   const config = configQ.data ?? null;
+  const events7d = events7dQ.data ?? [];
+  const queryRuns7d = queryRuns7dQ.data ?? [];
 
   return (
     <main className="admin">
@@ -88,8 +147,16 @@ export function AdminPage() {
           <div className="metrics">
             <Metric label="Users" value={users.length} />
             <Metric label="Datasets" value={datasets.length} />
-            <Metric label="Events" value={events.length} />
-            <Metric label="Query runs" value={queryRuns.length} />
+            <Metric
+              label="Events · 7d"
+              value={events7d.length}
+              series={dailyCounts(events7d.map((e) => e.created_at))}
+            />
+            <Metric
+              label="Query runs · 7d"
+              value={queryRuns7d.length}
+              series={dailyCounts(queryRuns7d.map((r) => r.created_at))}
+            />
           </div>
         )}
       </section>

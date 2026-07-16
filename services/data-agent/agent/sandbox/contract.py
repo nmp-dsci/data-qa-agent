@@ -29,6 +29,11 @@ class AnalysisResult(BaseModel):
     )
     skills_used: list[str] = Field(default_factory=list)
     skill_gaps: list[SkillGap] = Field(default_factory=list)
+    frames: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="named derived frames the run built + fed to a skill (the "
+        "enrichment stage: {name, columns, rows, shape}); for the Golden builder",
+    )
     used_inline_math: bool = False
     error: str | None = Field(default=None, description="traceback summary when the run failed")
 

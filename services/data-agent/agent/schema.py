@@ -390,10 +390,11 @@ APP_CATALOG: list[dict[str, Any]] = [
     {
         "schema": "app",
         "table": "users",
-        "description": "Local identity mirror for dev-auth and Entra users.",
+        "description": "Local identity mirror for dev-auth and Google Sign-in users.",
         "columns": _cols(
             ("id", "uuid"),
-            ("entra_oid", "text"),
+            ("auth_provider", "text"),
+            ("external_id", "text"),
             ("username", "text"),
             ("email", "text"),
             ("display_name", "text"),

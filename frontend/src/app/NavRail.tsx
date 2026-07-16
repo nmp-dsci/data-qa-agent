@@ -9,17 +9,19 @@ import {
   IconAdmin,
   IconChat,
   IconExit,
+  IconGolden,
   IconMoon,
   IconSettings,
   IconSql,
   IconSun,
 } from "../ui/icons";
 
-export type View = "chat" | "sql" | "admin" | "settings";
+export type View = "chat" | "sql" | "goldens" | "admin" | "settings";
 
 const ITEMS: { view: View; label: string; icon: () => ReactElement; adminOnly?: boolean }[] = [
   { view: "chat", label: "Chat", icon: IconChat },
   { view: "sql", label: "SQL Editor", icon: IconSql },
+  { view: "goldens", label: "Golden Examples", icon: IconGolden, adminOnly: true },
   { view: "admin", label: "Admin", icon: IconAdmin, adminOnly: true },
   { view: "settings", label: "Settings", icon: IconSettings },
 ];
@@ -61,7 +63,7 @@ export function NavRail({
 }) {
   return (
     <nav className="rail">
-      <div className="rail-brand" title="Datapilot">
+      <div className="rail-brand" title="Data Pilot">
         <BrandMark size={30} />
       </div>
       <div className="rail-tabs" role="tablist" aria-orientation="vertical" aria-label="App sections">

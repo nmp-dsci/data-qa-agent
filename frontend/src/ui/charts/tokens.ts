@@ -10,20 +10,20 @@ export function cssVar(name: string, fallback: string): string {
 /** The categorical palette (--chart-1..5), in series order. */
 export function chartPalette(): string[] {
   return [
-    cssVar("--chart-1", "#b48a3f"),
-    cssVar("--chart-2", "#6ea8fe"),
+    cssVar("--chart-1", "#d9a84e"),
+    cssVar("--chart-2", "#7fb0ff"),
     cssVar("--chart-3", "#9ece6a"),
     cssVar("--chart-4", "#c58fff"),
-    cssVar("--chart-5", "#e0af68"),
+    cssVar("--chart-5", "#7dcfff"),
   ];
 }
 
 export function chartTheme() {
   return {
-    grid: cssVar("--chart-grid", "#20242e"),
-    axis: cssVar("--chart-axis", "#2a2f3a"),
-    label: cssVar("--chart-label", "#9aa3b2"),
-    text: cssVar("--text", "#e7e9ee"),
+    grid: cssVar("--chart-grid", "#1d2434"),
+    axis: cssVar("--chart-axis", "#242b3d"),
+    label: cssVar("--chart-label", "#9aa4bb"),
+    text: cssVar("--text", "#eaecf3"),
     good: cssVar("--good", "#9ece6a"),
     bad: cssVar("--bad", "#f2777a"),
   };

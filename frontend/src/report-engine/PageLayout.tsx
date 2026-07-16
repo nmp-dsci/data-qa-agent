@@ -10,9 +10,10 @@
 import { Fragment, ReactNode } from "react";
 import { Page, PageObject } from "../lib/api";
 import { Bars, BarsData } from "../ui/charts/Bars";
+import { Combo, ComboData } from "../ui/charts/Combo";
 import { KPIData, KPITile } from "../ui/charts/KPITile";
 import { Trend, TrendData } from "../ui/charts/Trend";
-import { resolveHeight, templateFor } from "./registry";
+import { columnTracks, resolveHeight, templateFor } from "./registry";
 
 export function ObjectBody({ o }: { o: PageObject }) {
   const d = o.data;
@@ -33,19 +34,26 @@ export function ObjectBody({ o }: { o: PageObject }) {
         />
       );
     case "breakdown":
-    case "compare":
-      return (
-        <Bars
-          height={resolveHeight(d["height"])}
-          data={{
-            dimension: String(d["dimension"] ?? ""),
-            measure: String(d["measure"] ?? ""),
-            group: (d["group"] as string | null) ?? null,
-            title: (d["title"] as string | null) ?? null,
-            rows: (d["rows"] as Record<string, unknown>[]) ?? [],
-          } satisfies BarsData}
-        />
-      );
+    case "compare": {
+      const barsData: BarsData = {
+        dimension: String(d["dimension"] ?? ""),
+        measure: String(d["measure"] ?? ""),
+        group: (d["group"] as string | null) ?? null,
+        title: (d["title"] as string | null) ?? null,
+        rows: (d["rows"] as Record<string, unknown>[]) ?? [],
+      };
+      // A `compare` carrying a second measure is a line+bar combo (dual axis):
+      // grouped bars for `measure` + a per-series line for `line_measure`.
+      if (o.type === "compare" && d["line_measure"]) {
+        return (
+          <Combo
+            height={resolveHeight(d["height"])}
+            data={{ ...barsData, line_measure: String(d["line_measure"]) } satisfies ComboData}
+          />
+        );
+      }
+      return <Bars height={resolveHeight(d["height"])} data={barsData} />;
+    }
     case "insight":
       return (
         <div className="i-body">
@@ -106,9 +114,20 @@ export function PageLayout({
   renderObject?: (o: PageObject) => ReactNode;
 }) {
   const template = templateFor(page);
-  const cols = (page.columns ?? []).filter((c) => c.length > 0).slice(0, template.tracks.length);
-  if (cols.length === 0) return null;
-  const tracks = cols.map((_, i) => template.tracks[i] ?? "minmax(0, 1fr)");
+  const kept = (page.columns ?? [])
+    .map((col, index) => ({ col, index }))
+    .filter((c) => c.col.length > 0)
+    .slice(0, template.tracks.length);
+  if (kept.length === 0) return null;
+  // Authored pages may carry custom column widths — size those by the column's
+  // ORIGINAL index (so a width set for column 2 still applies when column 1 is
+  // empty). Without widths, keep the classic track-by-position fallback so live
+  // agent answers render exactly as before.
+  const trackList = columnTracks(page);
+  const hasWidths = Array.isArray(page.widths) && page.widths.length > 0;
+  const tracks = kept.map(({ index }, pos) =>
+    hasWidths ? (trackList[index] ?? "minmax(0, 1fr)") : (template.tracks[pos] ?? "minmax(0, 1fr)"),
+  );
   const render = renderObject ?? ((o: PageObject) => <DefaultCard key={o.element_id} o={o} />);
 
   return (
@@ -116,9 +135,9 @@ export function PageLayout({
       className="page-cols"
       style={{ gridTemplateColumns: tracks.join(" ") }}
       data-template={page.template}
-      data-col-count={cols.length}
+      data-col-count={kept.length}
     >
-      {cols.map((col, i) => (
+      {kept.map(({ col }, i) => (
         <div className="page-col" key={i} data-col={i}>
           {chunkColumn(col).map((chunk, j) =>
             chunk.length > 1 && chunk[0].type === "kpi" ? (

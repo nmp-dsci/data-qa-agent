@@ -23,32 +23,96 @@ tests.
 from __future__ import annotations
 
 import functools
+import json
 from collections.abc import Callable
 from typing import Any
+
+import pandas as pd
 
 # Per-run telemetry. A sandbox run is its own (spawned) process, so these are
 # fresh each run; reset() is for in-process unit tests that call skills directly.
 _USED: list[str] = []
 _GAPS: list[dict[str, str]] = []
 _INLINE_MATH = [False]
+# id() of every DataFrame passed into a skill this run — the signal for "this
+# derived frame fed a report object", so the Golden builder's Sandbox view can
+# show the enrichment stage (extract → derived frames → objects) and skip the
+# scratch frames that never reached a skill. See :func:`capture_frames`.
+_CONSUMED: list[int] = []
 
 
 def reset() -> None:
     _USED.clear()
     _GAPS.clear()
+    _CONSUMED.clear()
     _INLINE_MATH[0] = False
 
 
 def skill[F: Callable[..., Any]](fn: F) -> F:
-    """Mark a callable as a skill and record each call for per-run telemetry."""
+    """Mark a callable as a skill and record each call for per-run telemetry.
+
+    Also records the id() of any DataFrame argument, so a run knows which derived
+    frames actually fed a report object (charts/analysis) vs pure scratch frames.
+    """
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         if fn.__name__ not in _USED:
             _USED.append(fn.__name__)
+        for value in (*args, *kwargs.values()):
+            if isinstance(value, pd.DataFrame) and id(value) not in _CONSUMED:
+                _CONSUMED.append(id(value))
         return fn(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
+
+
+def capture_frames(
+    namespace: dict[str, Any], *, max_frames: int = 8, max_rows: int = 20
+) -> list[dict[str, Any]]:
+    """Serialise the named derived DataFrames a run built to feed report objects.
+
+    Called after the model code runs, with the sandbox namespace. A frame counts
+    as *enrichment* (vs throwaway scratch) when it either fed a skill — so its data
+    is in a chart/analysis object (``fed_object``) — OR it added/changed columns vs
+    the raw extract, which is how the frames behind the KPI headlines (e.g. a
+    per-entity aggregate with a computed ``avg_price``) show up even though their
+    figures reach the report as plain scalars. A plain re-slice of the extract that
+    no object used is skipped. Frames keep definition order (the compute sequence);
+    each is ``{name, columns, rows (head), shape, fed_object}``, JSON-safe (NaN →
+    null, numpy/dates coerced) and capped so the payload stays small.
+    """
+    consumed = set(_CONSUMED)
+    extract_cols: list[str] | None = None
+    for base in ("df", "extract"):
+        base_df = namespace.get(base)
+        if isinstance(base_df, pd.DataFrame):
+            extract_cols = [str(c) for c in base_df.columns]
+            break
+    out: list[dict[str, Any]] = []
+    for name, value in namespace.items():
+        if name.startswith("_") or name in ("df", "extract", "pd", "skills"):
+            continue
+        if not isinstance(value, pd.DataFrame):
+            continue
+        cols = [str(c) for c in value.columns]
+        fed_object = id(value) in consumed
+        # A plain re-slice of the extract that no object used is scratch — skip it.
+        if not fed_object and extract_cols is not None and cols == extract_cols:
+            continue
+        head = value.head(max_rows)
+        out.append(
+            {
+                "name": name,
+                "columns": cols,
+                "rows": json.loads(head.to_json(orient="values", date_format="iso")),
+                "shape": [int(value.shape[0]), int(value.shape[1])],
+                "fed_object": fed_object,
+            }
+        )
+        if len(out) >= max_frames:
+            break
+    return out
 
 
 def skill_gap(need: str, why: str = "") -> None:
@@ -119,4 +183,5 @@ __all__ = [
     "used",
     "gaps",
     "used_inline_math",
+    "capture_frames",
 ]

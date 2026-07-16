@@ -20,7 +20,7 @@ export function MobileTopBar({
     <header className="mobile-top">
       <div className="mobile-brand">
         <BrandMark size={24} />
-        <strong>Datapilot</strong>
+        <strong>Data Pilot</strong>
       </div>
       <div className="mobile-top-actions">
         {action}

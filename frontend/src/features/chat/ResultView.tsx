@@ -42,30 +42,36 @@ export function ResultView({
     });
   }
   if (!hasReport && result.row_count === 0 && !result.sql) return null;
+  const totalTokens = (result.input_tokens ?? 0) + (result.output_tokens ?? 0);
+  const detailTitle = [
+    `engine: ${result.engine}`,
+    `${result.row_count} rows`,
+    result.latency_ms != null ? `${(result.latency_ms / 1000).toFixed(1)}s` : null,
+    totalTokens ? `${totalTokens.toLocaleString()} tokens` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const body =
+    result.report && result.pages && result.pages.length > 0 ? (
+      <PagesView
+        pages={result.pages}
+        report={result.report}
+        messageId={result.message_id}
+        onOpenSql={onOpenSql}
+      />
+    ) : result.report ? (
+      <ReportView report={result.report} messageId={result.message_id} onOpenSql={onOpenSql} />
+    ) : (
+      <LegacyResult result={result} />
+    );
   return (
     <div className="result">
-      <div className="meta">
-        <span className={`badge ${result.engine}`}>{result.engine}</span>
-        <span>{result.row_count} rows</span>
-        {result.report && (
-          <span className="muted" title="knowledge tree version that produced this report">
-            knowledge @ {result.report.knowledge_version.slice(0, 7)}
-          </span>
-        )}
-        {isAdmin && result.run_id && <RunId id={result.run_id} />}
-        {hasTrace && (
-          <button className="link" onClick={() => setShowTrace((s) => !s)}>
-            {showTrace ? "hide agent run" : `agent run (${result.steps.length} steps)`}
-          </button>
-        )}
-        {renderPages.length > 0 && (
-          <button className="link" onClick={() => setShowRenderJson((s) => !s)}>
-            {showRenderJson
-              ? "hide render JSON"
-              : `render JSON (${renderPages.length} page${renderPages.length === 1 ? "" : "s"})`}
-          </button>
-        )}
-        <span className="results-actions">
+      {body}
+      {/* Answer-first (issue #10): the report leads; the user actions come first,
+          run internals sit quiet in a demoted hover-revealed cluster on the right
+          and the full agent trace hides behind the "trace" expander. */}
+      <div className="meta answer-meta">
+        <span className="answer-actions">
           <button className="chip" onClick={copyAnswer} title="Copy the answer text">
             {copied ? "copied ✓" : "copy"}
           </button>
@@ -77,13 +83,35 @@ export function ResultView({
                 downloadCsv(
                   csvSource.columns,
                   csvSource.rows,
-                  `datapilot-${result.run_id || "answer"}.csv`,
+                  `data-pilot-${result.run_id || "answer"}.csv`,
                 )
               }
             >
               csv
             </button>
           )}
+          {hasTrace && (
+            <button className="link" onClick={() => setShowTrace((s) => !s)}>
+              {showTrace ? "hide trace" : `trace · ${result.steps.length} steps`}
+            </button>
+          )}
+          {renderPages.length > 0 && (
+            <button className="link" onClick={() => setShowRenderJson((s) => !s)}>
+              {showRenderJson
+                ? "hide render JSON"
+                : `render JSON (${renderPages.length} page${renderPages.length === 1 ? "" : "s"})`}
+            </button>
+          )}
+        </span>
+        <span className="answer-meta-details" title={detailTitle}>
+          <span className={`badge ${result.engine}`}>{result.engine}</span>
+          <span>{result.row_count} rows</span>
+          {result.report && (
+            <span title="knowledge tree version that produced this report">
+              knowledge @ {result.report.knowledge_version.slice(0, 7)}
+            </span>
+          )}
+          {isAdmin && result.run_id && <RunId id={result.run_id} />}
         </span>
       </div>
       {showTrace && hasTrace && (
@@ -109,18 +137,6 @@ export function ResultView({
             />
           ))}
         </div>
-      )}
-      {result.report && result.pages && result.pages.length > 0 ? (
-        <PagesView
-          pages={result.pages}
-          report={result.report}
-          messageId={result.message_id}
-          onOpenSql={onOpenSql}
-        />
-      ) : result.report ? (
-        <ReportView report={result.report} messageId={result.message_id} onOpenSql={onOpenSql} />
-      ) : (
-        <LegacyResult result={result} />
       )}
     </div>
   );

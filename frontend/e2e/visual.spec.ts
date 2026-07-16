@@ -19,7 +19,7 @@ for (const tier of TIERS) {
 
     test(`login (${tier.name})`, async ({ page }) => {
       await page.goto("/");
-      await page.getByText("Datapilot").waitFor();
+      await page.getByText("Data Pilot").first().waitFor();
       await expect(page).toHaveScreenshot(`login-${tier.name}.png`, {
         maxDiffPixelRatio: 0.02,
         animations: "disabled",

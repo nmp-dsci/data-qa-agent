@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -43,8 +44,11 @@ async def track_event(
 
 @router.get("/admin/events")
 async def list_events(
-    limit: int = 50, admin: CurrentUser = Depends(require_admin)
+    limit: int = 50, since: datetime | None = None, admin: CurrentUser = Depends(require_admin)
 ) -> list[dict[str, Any]]:
+    """``since`` (ISO timestamp) filters to events at/after that time — used by the
+    admin dashboard's 7d metric so the headline count + sparkline reflect the
+    actual window instead of silently truncating at ``limit`` most-recent rows."""
     async with rls_connection(admin.id) as conn:
         rows = (
             (
@@ -52,9 +56,11 @@ async def list_events(
                     text(
                         "SELECT e.id, e.event_type, e.created_at, e.payload, u.username "
                         "FROM app.events e LEFT JOIN app.users u ON u.id = e.user_id "
+                        "WHERE (CAST(:since AS timestamptz) IS NULL "
+                        "OR e.created_at >= CAST(:since AS timestamptz)) "
                         "ORDER BY e.created_at DESC LIMIT :lim"
                     ),
-                    {"lim": limit},
+                    {"lim": limit, "since": since},
                 )
             )
             .mappings()
@@ -105,8 +111,10 @@ async def list_datasets(admin: CurrentUser = Depends(require_admin)) -> list[dic
 
 @router.get("/admin/query-runs")
 async def list_query_runs(
-    limit: int = 50, admin: CurrentUser = Depends(require_admin)
+    limit: int = 50, since: datetime | None = None, admin: CurrentUser = Depends(require_admin)
 ) -> list[dict[str, Any]]:
+    """``since`` (ISO timestamp) filters to runs at/after that time — see
+    list_events for why the admin dashboard's 7d metric needs this."""
     async with rls_connection(admin.id) as conn:
         rows = (
             (
@@ -119,9 +127,11 @@ async def list_query_runs(
                         "FROM app.query_runs qr "
                         "JOIN app.users u ON u.id = qr.user_id "
                         "LEFT JOIN app.datasets d ON d.id = qr.dataset_id "
+                        "WHERE (CAST(:since AS timestamptz) IS NULL "
+                        "OR qr.created_at >= CAST(:since AS timestamptz)) "
                         "ORDER BY qr.created_at DESC LIMIT :lim"
                     ),
-                    {"lim": limit},
+                    {"lim": limit, "since": since},
                 )
             )
             .mappings()

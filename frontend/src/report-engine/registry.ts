@@ -14,16 +14,6 @@ export interface TemplateDef {
 }
 
 export const TEMPLATES: Record<TemplateId, TemplateDef> = {
-  summary: {
-    id: "summary",
-    label: "Summary",
-    tracks: ["minmax(0, 0.9fr)", "minmax(0, 1.1fr)"],
-  },
-  insights: {
-    id: "insights",
-    label: "Insights",
-    tracks: ["minmax(0, 0.9fr)", "minmax(0, 1.1fr)"],
-  },
   "one-col": {
     id: "one-col",
     label: "Report",
@@ -44,6 +34,43 @@ export const TEMPLATES: Record<TemplateId, TemplateDef> = {
 export function templateFor(page: Page): TemplateDef {
   return TEMPLATES[page.template] ?? TEMPLATES["one-col"];
 }
+
+/** The CSS grid tracks for a page's columns, honouring an optional per-page
+ *  `widths` override (relative fr weights, one per column) and falling back to
+ *  the template's default tracks. Returns one track per template column
+ *  (left→right) so both the renderer and the editor can index into it. A
+ *  non-positive / missing weight keeps that column's template default. */
+export function columnTracks(page: Page): string[] {
+  const tracks = templateFor(page).tracks;
+  const widths = page.widths;
+  if (!Array.isArray(widths) || widths.length === 0) return tracks;
+  return tracks.map((track, i) => {
+    const w = widths[i];
+    return typeof w === "number" && Number.isFinite(w) && w > 0 ? `minmax(0, ${w}fr)` : track;
+  });
+}
+
+/** Plain-English name per object type — what the object *is* on screen — so the
+ *  Report editor reads to a curator at a glance instead of the internal ids. */
+export const OBJECT_TYPE_LABELS: Record<PageObjectType, string> = {
+  kpi: "Tile",
+  trend: "Line chart",
+  breakdown: "Bar chart",
+  compare: "Line + bar chart",
+  insight: "Insight",
+  text: "Text",
+};
+
+/** One-line "what it is" per object type — the visual object picker reads these
+ *  so a curator chooses by recognition instead of decoding a bare dropdown. */
+export const OBJECT_TYPE_DESCRIPTIONS: Record<PageObjectType, string> = {
+  kpi: "Headline metric — big number + change",
+  trend: "A trend over time",
+  breakdown: "Compare categories",
+  compare: "Two measures overlaid",
+  insight: "Written takeaway + query refs",
+  text: "A note or caption",
+};
 
 /** Semantic chart heights (px). "fill" stretches to the column instead. */
 export const HEIGHTS = { sm: 180, md: 280, lg: 400 } as const;

@@ -14,6 +14,9 @@ import pandas as pd
 
 from agent.pages import (
     PagesEnvelope,
+    _insights_headline,
+    _one_line,
+    _summary_headline,
     chart_object_from_spec,
     compose_insights_page,
     compose_pages,
@@ -119,7 +122,10 @@ def _objects(page: dict[str, Any]) -> list[dict[str, Any]]:
 
 def test_compose_pages_summary_then_insights() -> None:
     pages, steps = compose_pages(_report(), question="hornsby rent by bedrooms")
-    assert [p["template"] for p in pages] == ["summary", "insights"]
+    # Only column layouts exist now — both pages render two-col; their semantic
+    # role travels as ``kind`` (what the streaming plan gates on).
+    assert [p["template"] for p in pages] == ["two-col", "two-col"]
+    assert [p["kind"] for p in pages] == ["summary", "insights"]
 
     # Column model: placement is positional — column 1 = KPIs + note,
     # column 2 = the main chart (height: fill).
@@ -149,6 +155,11 @@ def test_compose_pages_summary_then_insights() -> None:
     assert note["element_id"] == "insight:0"
     assert note["data"]["refs"] == ["Q1"]
 
+    # The agent now composes a page headline for every report (curators may
+    # override): summary → the answer's key takeaway, insights → what explains it.
+    assert summary["headline"] == "Hornsby (2077) 2br unit median rent is $671/wk, up 6.1% YoY."
+    assert insights["headline"] == "3-bed units drove the rise"
+
     # Whole output re-validates against the schema (what the frontend consumes).
     PagesEnvelope(pages=pages)  # does not raise
 
@@ -158,7 +169,26 @@ def test_compose_pages_summary_then_insights() -> None:
     assert "template_pick" in kinds
     assert kinds[-1] == "page_compose"
     assert steps[-1]["status"] == "success"
-    assert steps[-1]["templates"] == ["summary", "insights"]
+    assert steps[-1]["templates"] == ["two-col", "two-col"]
+
+
+def test_page_headline_helpers() -> None:
+    # First sentence only, and an abbreviation's dot ("6.1%") is not a break.
+    assert _one_line("Rents rose 6.1% YoY. A second sentence.") == "Rents rose 6.1% YoY."
+    # Prose with no terminator is used whole; newlines flattened.
+    assert _one_line("no terminator\nhere") == "no terminator here"
+    # Over-long headlines are truncated with an ellipsis.
+    long = "word " * 40
+    trimmed = _one_line(long)
+    assert trimmed is not None and len(trimmed) <= 120 and trimmed.endswith("…")
+    # Empty / whitespace-only report prose → no headline (falls back to None).
+    assert _one_line("   ") is None
+    assert _summary_headline({"summary": ""}) is None
+    assert _insights_headline({"insights": [], "profiles": []}) is None
+    # Insights headline prefers the first insight heading, else a profile heading.
+    assert _insights_headline({"profiles": [{"heading": "Prices cluster east"}]}) == (
+        "Prices cluster east"
+    )
 
 
 def test_compose_pages_empty_report_yields_no_pages() -> None:
@@ -203,6 +233,75 @@ def test_chart_object_grouped_bar_becomes_compare() -> None:
     assert obj.role == "chart"
     assert obj.data["group"] == "property_type"
     assert obj.data["intent"] == "grouped-bar"
+
+
+def test_dual_axis_chart_series_adds_grouped_layers() -> None:
+    """dual_axis_chart(series_col=...) groups the bars + draws a line per series."""
+    from agent.skills.charts import dual_axis_chart
+
+    df = pd.DataFrame(
+        [
+            {"sqm_band": "0-50", "volume": 12, "price": 800, "suburb": "Normanhurst"},
+            {"sqm_band": "0-50", "volume": 20, "price": 750, "suburb": "Hornsby"},
+            {"sqm_band": "50-100", "volume": 8, "price": 950, "suburb": "Normanhurst"},
+        ]
+    )
+    spec = dual_axis_chart(
+        df,
+        x_col="sqm_band",
+        left_value_col="volume",
+        right_value_col="price",
+        series_col="suburb",
+        x_type="nominal",
+    )
+    layers = spec["layer"]
+    marks = [ly["mark"] if isinstance(ly["mark"], str) else ly["mark"]["type"] for ly in layers]
+    assert marks == ["bar", "line"]
+    assert layers[0]["encoding"]["color"]["field"] == "suburb"
+    assert layers[0]["encoding"]["xOffset"]["field"] == "suburb"
+    assert layers[1]["encoding"]["color"]["field"] == "suburb"
+    assert spec["resolve"]["scale"]["y"] == "independent"
+    assert spec["data"]["values"][0]["sqm_band"] == "0-50"
+
+
+def test_chart_object_combo_from_dual_axis_spec() -> None:
+    """A layered bar+line spec lifts into a compare object carrying BOTH measures
+    (bar `measure` + secondary-axis `line_measure`) so the frontend renders the combo."""
+    spec = {
+        "layer": [
+            {
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "sqm_band", "type": "nominal"},
+                    "y": {"field": "volume", "type": "quantitative"},
+                    "color": {"field": "suburb", "type": "nominal"},
+                    "xOffset": {"field": "suburb", "type": "nominal"},
+                },
+            },
+            {
+                "mark": {"type": "line", "point": True},
+                "encoding": {
+                    "x": {"field": "sqm_band", "type": "nominal"},
+                    "y": {"field": "price", "type": "quantitative"},
+                    "color": {"field": "suburb", "type": "nominal"},
+                },
+            },
+        ],
+        "resolve": {"scale": {"y": "independent"}},
+        "data": {
+            "values": [{"sqm_band": "0-50", "volume": 12, "price": 800, "suburb": "Normanhurst"}]
+        },
+    }
+    obj = chart_object_from_spec(spec, element_id="authored:chart", role="chart", height="md")
+    assert obj is not None
+    assert obj.type == "compare"
+    assert obj.data["intent"] == "combo"
+    assert obj.data["dimension"] == "sqm_band"
+    assert obj.data["measure"] == "volume"
+    assert obj.data["line_measure"] == "price"
+    assert obj.data["group"] == "suburb"
+    assert obj.data["height"] == "md"
+    assert len(obj.data["rows"]) == 1
 
 
 def test_page_rejects_more_columns_than_template_allows() -> None:
@@ -254,7 +353,7 @@ def test_compose_summary_page_needs_only_pass1_fields() -> None:
     report = _report()
     report["insights"] = []
     page, steps = compose_summary_page(report)
-    assert page is not None and page["template"] == "summary"
+    assert page is not None and page["template"] == "two-col" and page["kind"] == "summary"
     assert [s["kind"] for s in steps] == ["object_build", "template_pick"]
     # And the insights page is honestly absent at that point (chart-less notes).
     ins, _ = compose_insights_page(report)
@@ -290,10 +389,11 @@ def test_page_plan_gates_by_user_plan() -> None:
 
     # Unknown/missing plans degrade to free — cheapest, least-revealing.
     assert planned_kinds("enterprise-typo") == ["summary"]
-    # Every non-locked slot names a real template the frontend registry has.
+    # Every non-locked slot names a real template the frontend registry has —
+    # summary/insights kinds now compose with the generic two-col layout.
     for slot in [*free, *plus, *pro]:
         if slot["status"] != "locked":
-            assert slot["template"] in ("summary", "insights", "two-col")
+            assert slot["template"] == "two-col"
 
 
 def test_driver_analysis_ranks_percent_contribution() -> None:

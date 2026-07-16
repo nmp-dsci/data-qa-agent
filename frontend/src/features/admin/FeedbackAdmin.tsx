@@ -100,8 +100,6 @@ export function FeedbackAdmin({
                 <th></th>
                 <th>When</th>
                 <th>User</th>
-                <th>Rating</th>
-                <th>Accuracy</th>
                 <th>Element</th>
                 <th>Question / comment</th>
                 <th>Status</th>
@@ -122,11 +120,17 @@ export function FeedbackAdmin({
                       )}
                     </td>
                     <td>{formatTime(f.created_at)}</td>
-                    <td>{f.username}</td>
-                    <td>{f.rating === 1 ? "👍" : "👎"}</td>
                     <td>
-                      {f.issue_flag && <span className="issue-icon">!</span>}{" "}
-                      {f.accurate == null ? "-" : f.accurate ? "accurate" : "questioned"}
+                      <div className="fb-user">
+                        <span>{f.username}</span>
+                        <span className="fb-user-meta">
+                          <span>{f.rating === 1 ? "👍" : "👎"}</span>
+                          {f.issue_flag && <span className="issue-icon">!</span>}
+                          {f.accurate != null && (
+                            <span>{f.accurate ? "accurate" : "questioned"}</span>
+                          )}
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <span className="badge">{f.target_kind}</span> {f.target_ref}
@@ -176,7 +180,7 @@ export function FeedbackAdmin({
                   </tr>
                   {previewId === f.id && (f.report_snapshot ?? f.report) && (
                     <tr className="fb-preview-row">
-                      <td colSpan={9}>
+                      <td colSpan={7}>
                         <div className="fb-preview-note">
                           Feedback pinned to <strong>{f.target_ref}</strong>
                           {f.comment ? `: "${f.comment}"` : ""}
@@ -193,7 +197,7 @@ export function FeedbackAdmin({
               ))}
               {filteredFeedback.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="muted">
+                  <td colSpan={7} className="muted">
                     No feedback yet.
                   </td>
                 </tr>

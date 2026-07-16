@@ -132,8 +132,11 @@ def main() -> int:
     print(f"     answer: {rt['answer'][:90]}")
     pages1 = rt.get("pages") or []
     check(
+        # s08 column-templates-only (migration 0022): the old "summary"/"insights"
+        # template ids were retired in favor of one-col/two-col/three-col; the
+        # summary-equivalent first page is composed as "two-col" (see pages.py).
         "answer carries pages (summary first)",
-        bool(pages1) and pages1[0].get("template") == "summary",
+        bool(pages1) and pages1[0].get("template") == "two-col",
         f"(templates={[p.get('template') for p in pages1]}, engine={rt.get('engine')})",
     )
     # s08 column model: each page is columns[i][j] of typed objects.

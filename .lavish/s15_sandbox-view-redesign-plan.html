@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Golden Tab · ② Sandbox — data-pipeline view</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --surface: #ffffff; --surface-2: #fafbfc;
+    --text: #1a1a1e; --muted: #6b6b73; --border: rgba(120,120,128,0.28);
+    --accent: rgb(86,120,220); --accent-soft: rgba(120,160,255,0.12); --accent-bd: rgba(120,160,255,0.5);
+    --green: rgb(52,140,72); --green-soft: rgba(120,200,120,0.14); --green-bd: rgba(120,200,120,0.5);
+    --amber: rgb(180,110,30); --amber-soft: rgba(210,140,60,0.12);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1012; --surface: #17181b; --surface-2: #1c1d21;
+      --text: #e6e6ea; --muted: #9a9aa2; --border: rgba(140,140,150,0.24);
+      --accent: rgb(130,168,255); --green: rgb(120,200,120); --amber: rgb(220,160,80);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1012; --surface: #17181b; --surface-2: #1c1d21;
+    --text: #e6e6ea; --muted: #9a9aa2; --border: rgba(140,140,150,0.24);
+    --accent: rgb(130,168,255); --green: rgb(120,200,120); --amber: rgb(220,160,80);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6f8; --surface: #ffffff; --surface-2: #fafbfc;
+    --text: #1a1a1e; --muted: #6b6b73; --border: rgba(120,120,128,0.28);
+    --accent: rgb(86,120,220); --green: rgb(52,140,72); --amber: rgb(180,110,30);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
+    line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 22px 80px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.2px; }
+  h2 { font-size: 15px; margin: 0; letter-spacing: -0.1px; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 0 0 26px; max-width: 76ch; }
+  .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 600; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  section { margin-top: 26px; }
+  .sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .sec-num { font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 700; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .muted { color: var(--muted); }
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--mono);
+    border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; color: var(--muted); white-space: nowrap; }
+  .pill.accent { color: var(--accent); border-color: var(--accent-bd); background: var(--accent-soft); }
+  .pill.green { color: var(--green); border-color: var(--green-bd); background: var(--green-soft); }
+
+  /* current-state comparison */
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .cmp .card h3 { margin: 0 0 8px; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+  .cmp ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--text); }
+  .cmp li { margin: 3px 0; }
+  .x { color: var(--amber); font-weight: 700; }
+  .ok { color: var(--green); font-weight: 700; }
+
+  /* pipeline */
+  .pipe { display: grid; grid-template-columns: minmax(0,1fr) 26px minmax(0,1.15fr) 26px minmax(0,1.1fr); gap: 0; align-items: stretch; }
+  .stage { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 13px 13px 15px; display: flex; flex-direction: column; }
+  .stage-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+  .stage-badge { font-family: var(--mono); font-weight: 700; font-size: 12px; width: 20px; height: 20px; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .b1 { background: var(--border); color: var(--text); }
+  .b2 { background: var(--green-soft); color: var(--green); border: 1px solid var(--green-bd); }
+  .b3 { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-bd); }
+  .stage h3 { margin: 0; font-size: 13.5px; }
+  .stage .caption { font-size: 11.5px; color: var(--muted); margin: 2px 0 10px; min-height: 30px; }
+  .arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 20px; }
+  .arrow span { transform: translateY(-1px); }
+
+  /* data tables */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+  table.dt { border-collapse: collapse; font-family: var(--mono); font-size: 11px; width: 100%; }
+  table.dt th { text-align: left; padding: 4px 8px; color: var(--muted); font-weight: 600; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  table.dt td { padding: 3px 8px; white-space: nowrap; border-bottom: 1px solid rgba(128,128,128,0.12); }
+  table.dt tr:last-child td { border-bottom: none; }
+  .calc { color: var(--green); font-weight: 600; }
+  .calc-h { color: var(--green); }
+  .frame-name { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .frame { margin-top: 10px; }
+  .frame .meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+  .tag-new { font-size: 9.5px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--green); border: 1px solid var(--green-bd);
+    background: var(--green-soft); border-radius: 4px; padding: 1px 5px; font-weight: 700; }
+
+  /* presentation objects */
+  .obj { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; margin-top: 9px; background: var(--surface-2); }
+  .obj-hd { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+  .type-chip { font-family: var(--mono); font-size: 10px; text-transform: lowercase; border-radius: 5px; padding: 1px 6px; font-weight: 600; }
+  .t-kpi { background: var(--accent-soft); color: var(--accent); }
+  .t-chart { background: var(--green-soft); color: var(--green); }
+  .t-text { background: var(--border); color: var(--muted); }
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface-2); }
+  .kpi .v { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+  .kpi .l { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+  .prov { font-size: 10.5px; color: var(--muted); margin-top: 6px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .prov code { font-family: var(--mono); color: var(--accent); font-size: 10.5px; }
+
+  /* mini bar chart */
+  .bars { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+  .bar-row { display: grid; grid-template-columns: 62px minmax(0,1fr) 66px; gap: 7px; align-items: center; font-family: var(--mono); font-size: 10.5px; }
+  .bar-track { height: 13px; background: rgba(128,128,128,0.12); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--green); border-radius: 3px; opacity: 0.85; }
+  .bar-val { text-align: right; color: var(--muted); }
+  .bar-lbl { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* code sketch */
+  pre.code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 12px 14px;
+    overflow-x: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.55; margin: 10px 0 0; }
+  pre.code .c { color: var(--muted); }
+  pre.code .k { color: var(--accent); }
+  pre.code .g { color: var(--green); }
+
+  .flow-map { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 4px; }
+  .fm { border: 1px dashed var(--border); border-radius: 9px; padding: 10px 12px; font-size: 12.5px; }
+  .fm .n { font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 700; }
+
+  .risks { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .risk { border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; }
+  .risk .h { font-size: 12.5px; font-weight: 600; margin-bottom: 3px; }
+  .risk .b { font-size: 12.5px; color: var(--muted); }
+
+  /* input */
+  .qform { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-top: 14px; }
+  .qform h3 { margin: 0 0 3px; font-size: 14px; }
+  .q { margin: 16px 0 0; }
+  .q .qt { font-size: 13px; font-weight: 600; margin-bottom: 7px; }
+  .opts { display: flex; flex-direction: column; gap: 6px; }
+  .opts label { display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 11px; cursor: pointer; font-size: 13px; transition: border-color .12s, background .12s; }
+  .opts label:hover { border-color: var(--accent-bd); }
+  .opts input { margin-top: 2px; accent-color: var(--accent); }
+  .opts .d { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+  .qbtn { margin-top: 11px; font: inherit; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--accent);
+    border: none; border-radius: 8px; padding: 8px 15px; cursor: pointer; }
+  .qbtn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent-bd); }
+  .qstate { font-size: 11.5px; color: var(--green); margin-left: 10px; }
+  .foot-note { font-size: 11.5px; color: var(--muted); margin-top: 22px; border-top: 1px solid var(--border); padding-top: 12px; }
+  @media (max-width: 860px) {
+    .pipe { grid-template-columns: 1fr; }
+    .arrow { padding: 6px 0; }
+    .arrow span { transform: rotate(90deg); }
+    .cmp, .risks, .flow-map { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>② Sandbox — a "data pipeline" view for the Golden tab</h1>
+  <p class="sub">
+    The sandbox is the step that <strong>decides what's in the report</strong>: it takes the SQL extract,
+    enriches it (average price, growth, moving averages…), and emits the report JSON that feeds every
+    presentation object. Today that middle stage is invisible and hard to steer. This proposes making the
+    whole flow legible <strong>extract → enrichment → objects</strong> — grounded in your real
+    "suburbs by area band" run. <span class="muted">Matched to the Golden tab's own design system.</span>
+  </p>
+
+  <!-- ───────── current state ───────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>What you can &amp; can't see today</h2></div>
+    <div class="cmp">
+      <div class="card">
+        <h3><span class="ok">✓</span> Visible now</h3>
+        <ul>
+          <li>The <span class="mono">run_analysis</span> script (editable textarea)</li>
+          <li>The input <span class="mono">df</span> (SQL extract rows)</li>
+          <li>One "augmented output" table — only <span class="mono">main_chart.data</span></li>
+          <li>Skills used · the raw report JSON blob</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="x">✕</span> Invisible today — the important part</h3>
+        <ul>
+          <li>The <strong>derived tables</strong> the code built (<span class="mono">band_agg</span>,
+              <span class="mono">suburb_total</span>…) — where <span class="calc">avg_price</span> is calculated</li>
+          <li>Which enrichment feeds <strong>which</strong> report object</li>
+          <li>Every object it produced, side-by-side with the data behind it</li>
+        </ul>
+        <p class="mono" style="margin:9px 0 0;color:var(--muted);font-size:11px">
+          root cause: sandbox <code>exec(code)</code> then reads only <code>result</code> — every derived
+          frame in the namespace is dropped (runner.py:144).
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── proposed view ───────── -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">02</span><h2>Proposed: the three-stage pipeline, in one view</h2>
+      <span class="pill accent">live mockup · real data from your run</span>
+    </div>
+
+    <div class="pipe">
+      <!-- STAGE 1 -->
+      <div class="stage">
+        <div class="stage-hd"><span class="stage-badge b1">df</span><h3>SQL extract</h3></div>
+        <div class="caption">The governed rows from ① — the sandbox input, untouched.</div>
+        <div class="tbl-wrap">
+          <table class="dt">
+            <thead><tr><th>suburb</th><th>area_band</th><th>n_sold</th><th>total_sale_value</th></tr></thead>
+            <tbody>
+              <tr><td>Aarons Pass</td><td>5000+</td><td>8</td><td>5,228,090</td></tr>
+              <tr><td>Abbotsbury</td><td>1000-5000</td><td>50</td><td>76,560,500</td></tr>
+              <tr><td>Abbotsbury</td><td>&lt;400</td><td>4</td><td>2,744,000</td></tr>
+              <tr><td>Abbotsbury</td><td>400-700</td><td>283</td><td>301,753,077</td></tr>
+              <tr><td>Abbotsbury</td><td>700-1000</td><td>200</td><td>241,549,680</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="prov" style="margin-top:8px"><span class="pill">5,000 rows · 4 cols</span></div>
+      </div>
+
+      <div class="arrow"><span>→</span></div>
+
+      <!-- STAGE 2 -->
+      <div class="stage">
+        <div class="stage-hd"><span class="stage-badge b2">fx</span><h3>Enrichment</h3></div>
+        <div class="caption">The derived frames <span class="mono">run_analysis</span> built — captured from
+          the sandbox namespace. <span class="tag-new">new</span></div>
+
+        <div class="frame">
+          <div class="meta"><span class="frame-name">band_agg</span><span class="lbl">groupby area_band</span></div>
+          <div class="tbl-wrap">
+            <table class="dt">
+              <thead><tr><th>area_band</th><th>n_sold</th><th class="calc-h">avg_price ✦</th><th class="calc-h">pct ✦</th></tr></thead>
+              <tbody>
+                <tr><td>&lt;400</td><td>89,816</td><td class="calc">$1,187,096</td><td class="calc">14.1%</td></tr>
+                <tr><td>400-700</td><td>269,069</td><td class="calc">$950,484</td><td class="calc">42.2%</td></tr>
+                <tr><td>700-1000</td><td>148,688</td><td class="calc">$954,299</td><td class="calc">23.3%</td></tr>
+                <tr><td>1000-5000</td><td>83,029</td><td class="calc">$894,988</td><td class="calc">13.0%</td></tr>
+                <tr><td>5000+</td><td>45,630</td><td class="calc">$1,126,837</td><td class="calc">7.2%</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="frame">
+          <div class="meta"><span class="frame-name">suburb_total</span><span class="lbl">groupby suburb</span></div>
+          <div class="tbl-wrap">
+            <table class="dt">
+              <thead><tr><th>suburb</th><th>total_n_sold</th><th class="calc-h">avg_price ✦</th></tr></thead>
+              <tbody>
+                <tr><td>Abbotsbury</td><td>541</td><td class="calc">$1,150,264</td></tr>
+                <tr><td>Aarons Pass</td><td>8</td><td class="calc">$653,511</td></tr>
+                <tr><td class="muted">… 1,742 more</td><td></td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="prov"><span class="calc-h mono">✦</span> = calculated column, not in the extract</div>
+      </div>
+
+      <div class="arrow"><span>→</span></div>
+
+      <!-- STAGE 3 -->
+      <div class="stage">
+        <div class="stage-hd"><span class="stage-badge b3">◧</span><h3>Presentation objects</h3></div>
+        <div class="caption">Every object the report built — each shown with the enriched data feeding it.</div>
+
+        <div class="obj">
+          <div class="obj-hd"><span class="type-chip t-kpi">kpi ×4</span><span class="lbl">headline tiles</span></div>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="v">$989,523</div><div class="l">Overall avg house price</div></div>
+            <div class="kpi"><div class="v">637,969</div><div class="l">Total house sales</div></div>
+            <div class="kpi"><div class="v">1,744</div><div class="l">Suburbs with data</div></div>
+            <div class="kpi"><div class="v">400-700</div><div class="l">Largest band by volume</div></div>
+          </div>
+          <div class="prov">← <code>suburb_total</code>, <code>band_agg.n_sold.idxmax()</code></div>
+        </div>
+
+        <div class="obj">
+          <div class="obj-hd"><span class="type-chip t-chart">breakdown</span><span class="lbl">Avg House Price by Lot-Size Band</span></div>
+          <div class="bars">
+            <div class="bar-row"><span class="bar-lbl">&lt;400</span><span class="bar-track"><span class="bar-fill" style="width:100%"></span></span><span class="bar-val">$1.19M</span></div>
+            <div class="bar-row"><span class="bar-lbl">5000+</span><span class="bar-track"><span class="bar-fill" style="width:94.9%"></span></span><span class="bar-val">$1.13M</span></div>
+            <div class="bar-row"><span class="bar-lbl">700-1000</span><span class="bar-track"><span class="bar-fill" style="width:80.4%"></span></span><span class="bar-val">$954k</span></div>
+            <div class="bar-row"><span class="bar-lbl">400-700</span><span class="bar-track"><span class="bar-fill" style="width:80.1%"></span></span><span class="bar-val">$950k</span></div>
+            <div class="bar-row"><span class="bar-lbl">1000-5000</span><span class="bar-track"><span class="bar-fill" style="width:75.4%"></span></span><span class="bar-val">$895k</span></div>
+          </div>
+          <div class="prov">← <code>band_agg</code> · dim <code>area_band</code> · measure <code>avg_price</code>
+            <span class="pill amber" style="color:var(--amber);border-color:var(--amber-soft)">volume not plotted</span></div>
+        </div>
+
+        <div class="obj">
+          <div class="obj-hd"><span class="type-chip t-text">text</span><span class="lbl">note + page headline</span></div>
+          <div class="prov" style="margin-top:2px">← <code>report.summary</code> → auto-headline</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="muted" style="font-size:12.5px;margin-top:12px">
+      The value: you can trace a number from <strong>raw row → derived column → the object that renders it</strong>
+      in one glance, and see at a glance that <span class="mono">band_agg</span> already carried
+      <span class="mono">n_sold</span> — so the volume side you asked for was one field away from the chart.
+    </p>
+  </section>
+
+  <!-- ───────── editability ───────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>How it becomes editable — steering the report</h2></div>
+    <div class="flow-map">
+      <div class="fm"><div class="n">A · edit the script</div>run_analysis stays the source of truth. The pipeline
+        re-renders on ▶ Run, so a code change instantly shows its new derived frames <em>and</em> new objects.</div>
+      <div class="fm"><div class="n">B · promote a frame → object</div>Each derived frame gets a "＋ add as object"
+        action (pick chart type + columns), so you build a presentation object from enriched data without hand-writing spec code.</div>
+      <div class="fm"><div class="n">C · per-object provenance</div>Every object shows its source frame + fields,
+        so "change what's in the report" starts from a visible mapping rather than reverse-engineering JSON.</div>
+    </div>
+  </section>
+
+  <!-- ───────── backend change ───────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>The one backend change this needs</h2>
+      <span class="pill">data-agent · small</span></div>
+    <div class="card">
+      <p style="margin:0 0 2px;font-size:13px">Capture the namespace's DataFrames after <span class="mono">exec</span>, serialize each to
+        <span class="mono">{columns, rows, shape}</span>, and return them on the analysis response so the frontend can render Stage&nbsp;2.</p>
+      <pre class="code"><span class="c"># agent/sandbox/runner.py — after exec(code, sandbox_globals)</span>
+<span class="k">result</span> = sandbox_globals.get(<span class="g">"result"</span>)
+<span class="c"># NEW: harvest derived frames (skip the input df), capped + truncated</span>
+<span class="k">frames</span> = {
+    name: {<span class="g">"columns"</span>: list(v.columns), <span class="g">"rows"</span>: v.head(<span class="k">20</span>).values.tolist(),
+           <span class="g">"shape"</span>: list(v.shape)}
+    <span class="k">for</span> name, v <span class="k">in</span> sandbox_globals.items()
+    <span class="k">if</span> isinstance(v, pd.DataFrame) <span class="k">and</span> name <span class="k">not in</span> (<span class="g">"df"</span>, <span class="g">"extract"</span>)
+}</pre>
+      <div class="flow-map" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px">
+        <div class="fm"><div class="n">contract.py</div>add <span class="mono">frames: dict = {}</span> to <span class="mono">AnalysisResult</span></div>
+        <div class="fm"><div class="n">main.py</div><span class="mono">AnalysisResponse.frames</span> passes them through</div>
+        <div class="fm"><div class="n">api.ts + GoldensPage</div><span class="mono">PrepResult.frames</span> → render Stage 2 (reuses <span class="mono">DataTable</span>)</div>
+      </div>
+      <p class="muted" style="font-size:11.5px;margin:12px 0 0">
+        Guardrails: cap total frames (e.g. 8) &amp; rows (20/frame), truncate wide cells, skip non-tabular
+        globals. Pure addition — no change to how run_analysis executes or what the agent produces.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────── risks / open questions ───────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><h2>Risks &amp; things to decide</h2></div>
+    <div class="risks">
+      <div class="risk"><div class="h">Frame noise</div><div class="b">Scratch/temp frames (<span class="mono">band_detail</span>,
+        pivots) can clutter Stage 2. Decide: show <em>all</em> frames, or only ones referenced by an object?</div></div>
+      <div class="risk"><div class="h">Payload size</div><div class="b">Big enriched frames → truncate to head(20) + a
+        "N rows" badge (same as the extract table today). No full-frame transport.</div></div>
+      <div class="risk"><div class="h">Serialization edges</div><div class="b">Datetime / NaN / MultiIndex columns need
+        safe coercion (reuse the extract's jsonable path).</div></div>
+      <div class="risk"><div class="h">Scope of "editable"</div><div class="b">A/B/C above are increasing effort.
+        Start with A+view only, or include B ("add frame as object") in v1?</div></div>
+    </div>
+  </section>
+
+  <!-- ───────── input ───────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><h2>Your call</h2></div>
+    <form class="qform" data-lavish-question="direction"
+      onsubmit="event.preventDefault(); const f=new FormData(event.currentTarget);
+        const go=f.get('go'), frames=f.get('frames'), edit=f.get('edit');
+        if(!go){return;}
+        const msg='Sandbox redesign — '+go+'. Stage-2 frames: '+(frames||'default(only-referenced)')+
+          '. Editability in v1: '+(edit||'default(A: view only)')+'.';
+        const q=this.querySelector('.qstate');
+        if(window.lavish&&window.lavish.queuePrompt){window.lavish.queuePrompt(msg,{tag:'decision',text:msg,element:event.currentTarget});
+          if(q){q.textContent='✓ queued — press Send to Agent';}}
+        else if(q){q.textContent='(open via lavish-axi to send) — '+msg;}">
+      <h3>Build this?</h3>
+      <p class="muted" style="margin:0;font-size:12.5px">Pick a direction and any scope preferences, then queue your answer.</p>
+
+      <div class="q">
+        <div class="qt">1 · Go / no-go</div>
+        <div class="opts">
+          <label><input type="radio" name="go" value="build it as proposed" />
+            <span><strong>Build it as proposed</strong><div class="d">Backend frame-capture + the 3-stage view.</div></span></label>
+          <label><input type="radio" name="go" value="build after I annotate this mockup" />
+            <span><strong>Let me annotate first</strong><div class="d">I'll mark up this page; you adjust the design, then build.</div></span></label>
+          <label><input type="radio" name="go" value="rethink the approach" />
+            <span><strong>Rethink the approach</strong><div class="d">This isn't quite the view I meant.</div></span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <div class="qt">2 · Stage 2 — which derived frames to show</div>
+        <div class="opts">
+          <label><input type="radio" name="frames" value="only frames referenced by an object" />
+            <span><strong>Only frames that feed an object</strong><div class="d">Cleaner; hides scratch frames.</div></span></label>
+          <label><input type="radio" name="frames" value="all dataframes in the namespace" />
+            <span><strong>All frames in the namespace</strong><div class="d">Full transparency; may be noisier.</div></span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <div class="qt">3 · Editability in v1</div>
+        <div class="opts">
+          <label><input type="radio" name="edit" value="A only — legible view, edit via run_analysis" />
+            <span><strong>A — view only</strong><div class="d">Make it legible; edit stays via the script.</div></span></label>
+          <label><input type="radio" name="edit" value="A + B — also add-frame-as-object" />
+            <span><strong>A + B — add frame as object</strong><div class="d">Promote a derived frame into a report object from the view.</div></span></label>
+        </div>
+      </div>
+
+      <button type="submit" class="qbtn">Queue my answer</button>
+      <span class="qstate"></span>
+    </form>
+    <p class="foot-note">
+      Design source: matched the Golden tab's own design system (inline-styled React — subtle gray borders,
+      mono data tables, blue/green accents, light + dark). Data: your live "suburbs by area band" run
+      (deepseek, 5,000-row extract).
+    </p>
+  </section>
+
+</div>
+</body>
+</html>

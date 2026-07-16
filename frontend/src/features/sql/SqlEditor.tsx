@@ -3,7 +3,8 @@ import { EditorView, basicSetup } from "codemirror";
 import { Compartment, Prec } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
-import { oneDark } from "@codemirror/theme-one-dark";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import {
   getCatalog,
   getSqlHistory,
@@ -17,6 +18,61 @@ import {
   type User,
 } from "../../lib/api";
 import { SpecChart } from "../../ui/SpecChart";
+import { useTheme, type Theme } from "../../lib/theme";
+import { cssVar } from "../../ui/charts/tokens";
+
+// Theme-aware CodeMirror (C2): the editor chrome + syntax highlight are built
+// from the live design tokens and swapped via a Compartment on theme change —
+// no more hardcoded oneDark dark slab sitting on the light page.
+function cmEditorTheme(theme: Theme) {
+  const bg = cssVar("--code-bg", theme === "dark" ? "#0a0d13" : "#f3f0e6");
+  const text = cssVar("--text", theme === "dark" ? "#eaecf3" : "#23293a");
+  const panel2 = cssVar("--panel-2", theme === "dark" ? "#171c2b" : "#efece2");
+  const panel3 = cssVar("--panel-3", theme === "dark" ? "#1e2434" : "#e7e2d4");
+  const border = cssVar("--border", theme === "dark" ? "#242b3d" : "#ddd7c7");
+  const muted = cssVar("--muted", theme === "dark" ? "#9aa4bb" : "#67604e");
+  const accent2 = cssVar("--accent-2", theme === "dark" ? "#7fb0ff" : "#2456c9");
+  return EditorView.theme(
+    {
+      "&": { fontSize: "12.5px", backgroundColor: bg, color: text },
+      ".cm-content": { caretColor: accent2 },
+      ".cm-cursor, .cm-dropCursor": { borderLeftColor: accent2 },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+        backgroundColor: panel3,
+      },
+      ".cm-gutters": { backgroundColor: bg, color: muted, border: "none", borderRight: `1px solid ${border}` },
+      ".cm-activeLine": { backgroundColor: panel2 },
+      ".cm-activeLineGutter": { backgroundColor: panel2 },
+      ".cm-selectionMatch": { backgroundColor: panel3 },
+      "&.cm-focused": { outline: "none" },
+    },
+    { dark: theme === "dark" },
+  );
+}
+
+function cmHighlightStyle(theme: Theme) {
+  const kw = cssVar("--accent", theme === "dark" ? "#d9a84e" : "#9a7328");
+  const fn = cssVar("--accent-2", theme === "dark" ? "#7fb0ff" : "#2456c9");
+  const str = cssVar("--good", theme === "dark" ? "#9ece6a" : "#35803f");
+  const num = cssVar("--purple", theme === "dark" ? "#c58fff" : "#7137c8");
+  const comment = cssVar("--faint", theme === "dark" ? "#7a84a0" : "#7d7663");
+  const name = cssVar("--text", theme === "dark" ? "#eaecf3" : "#23293a");
+  const op = cssVar("--muted", theme === "dark" ? "#9aa4bb" : "#67604e");
+  return HighlightStyle.define([
+    { tag: t.keyword, color: kw, fontWeight: "600" },
+    { tag: [t.typeName, t.namespace], color: fn },
+    { tag: [t.function(t.variableName), t.function(t.propertyName)], color: fn },
+    { tag: [t.string, t.special(t.string)], color: str },
+    { tag: [t.number, t.bool, t.null], color: num },
+    { tag: [t.lineComment, t.blockComment, t.comment], color: comment, fontStyle: "italic" },
+    { tag: [t.operator, t.punctuation, t.separator], color: op },
+    { tag: [t.propertyName, t.variableName, t.name], color: name },
+  ]);
+}
+
+function cmThemeExtensions(theme: Theme) {
+  return [cmEditorTheme(theme), syntaxHighlighting(cmHighlightStyle(theme))];
+}
 
 const SAMPLE_SQL = `-- Read-only · RLS-scoped · audited. Cmd/Ctrl+Enter to run.
 -- Additive rule: derive averages from sum(total)/sum(count), never avg(avg).
@@ -272,7 +328,7 @@ function buildChartSpec(result: SqlRunResult, config: ChartConfig): Record<strin
   const yAxis = isCurrencyField(config.y) ? { title: config.y, format: "$,.0f" } : { title: config.y };
   const mark: Record<string, unknown> = { type: config.mark };
   if (config.mark === "line") mark.point = { filled: true, size: 28 };
-  if (!hasSeries) mark.color = "#b48a3f";
+  if (!hasSeries) mark.color = cssVar("--chart-1", "#d9a84e");
   const encoding: Record<string, unknown> = {
     x: {
       field: config.x,
@@ -316,8 +372,10 @@ export function SqlEditor({
   const editorRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const langCompartment = useRef(new Compartment());
+  const themeCompartment = useRef(new Compartment());
   const runRef = useRef<() => void>(() => {});
   const activeIdRef = useRef<string>("");
+  const theme = useTheme();
 
   const [tabs, setTabs] = useState<Draft[]>(loadTabs);
   const [activeId, setActiveId] = useState<string>(() => tabs[0].id);
@@ -380,7 +438,7 @@ export function SqlEditor({
       extensions: [
         basicSetup,
         langCompartment.current.of(sql({ dialect: PostgreSQL })),
-        oneDark,
+        themeCompartment.current.of(cmThemeExtensions(theme)),
         Prec.highest(
           keymap.of([
             {
@@ -397,12 +455,7 @@ export function SqlEditor({
           if (!u.docChanged) return;
           const text = u.state.doc.toString();
           const id = activeIdRef.current;
-          setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, sql: text } : t)));
-        }),
-        EditorView.theme({
-          "&": { fontSize: "12.5px", backgroundColor: "#0b0d11" },
-          ".cm-gutters": { backgroundColor: "#0b0d11", borderRight: "1px solid #2a2f3a" },
-          "&.cm-focused": { outline: "none" },
+          setTabs((prev) => prev.map((tab) => (tab.id === id ? { ...tab, sql: text } : tab)));
         }),
         EditorView.lineWrapping,
       ],
@@ -415,6 +468,13 @@ export function SqlEditor({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reconfigure the editor chrome + syntax highlight when the app theme flips.
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: themeCompartment.current.reconfigure(cmThemeExtensions(theme)),
+    });
+  }, [theme]);
 
   // Load the catalog for the browser + schema-aware autocomplete.
   useEffect(() => {

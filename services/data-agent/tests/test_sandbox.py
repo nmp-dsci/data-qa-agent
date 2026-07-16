@@ -43,6 +43,47 @@ def test_happy_path_builds_report_and_records_skills():
         assert name in res.skills_used
 
 
+_FRAMES_CODE = """
+# a derived frame that feeds a chart object → captured, fed_object=True
+band_agg = df.groupby("area_band", as_index=False)["n_sold"].sum()
+band_agg["avg_price"] = band_agg["n_sold"] * 2.0
+# a derived frame that feeds a KPI headline via scalars (never passed to a skill)
+# → still captured (it added a column vs the extract), fed_object=False
+enriched = df.assign(dbl=df["n_sold"] * 2)
+# a plain re-slice of the extract that no object uses → scratch, excluded
+scratch = df.head(3).copy()
+chart = skills.comparison_chart(band_agg, category_col="area_band", value_col="avg_price")
+result = skills.build_report(
+    summary="ok",
+    headlines=[{"label": "peak", "value": f"{enriched['dbl'].max():.0f}"}],
+    main_chart=chart,
+)
+"""
+
+
+def _band_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        {"area_band": ["<400", "400-700", "<400", "5000+"], "n_sold": [10.0, 20.0, 5.0, 3.0]}
+    )
+
+
+def test_capture_frames_includes_object_referenced_excludes_scratch():
+    """The enrichment stage: named derived frames that feed a chart (fed_object) OR
+    added columns vs the extract (e.g. a KPI's aggregate) are captured; a plain
+    re-slice of the extract that no object used is dropped (Golden Sandbox view)."""
+    res = run_code(_FRAMES_CODE, _band_df())
+    assert res.ok, res.error
+    by_name = {f["name"]: f for f in res.frames}
+    assert by_name["band_agg"]["fed_object"] is True  # in a chart object
+    assert by_name["enriched"]["fed_object"] is False  # derived, feeds a KPI scalar
+    assert "scratch" not in by_name  # plain slice of the extract → excluded
+    assert "df" not in by_name  # the input extract is never a "derived" frame
+    assert "avg_price" in by_name["band_agg"]["columns"]  # the calculated column shows
+    band = by_name["band_agg"]
+    assert band["shape"][1] == len(band["columns"])
+    assert isinstance(band["rows"], list) and band["rows"]
+
+
 def test_model_code_error_is_returned_not_raised():
     res = run_code("result = df.no_such_method()", _df())
     assert not res.ok

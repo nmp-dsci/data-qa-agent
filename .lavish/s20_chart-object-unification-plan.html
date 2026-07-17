@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Pilot — Chart Object Unification (s20)</title>
+<style>
+/* ============ artifact chrome (matches the app's own token system) ============ */
+:root {
+  --bg:#0b0d12; --panel:#12151c; --panel-2:#181c25; --panel-3:#1f2430;
+  --border:#232834; --border-2:#333a48; --text:#e7e9ee; --muted:#98a2b6; --faint:#79839a;
+  --accent:#b48a3f; --accent-soft:#f0c674; --accent-2:#6ea8fe;
+  --good:#9ece6a; --warn:#e0af68; --bad:#f2777a; --purple:#c58fff; --info:#7dcfff;
+  --sans:"Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px; --r-lg:14px;
+}
+* { box-sizing:border-box; min-width:0; }
+html,body { margin:0; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14.5px;
+  line-height:1.55; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+.wrap { max-width:1240px; margin:0 auto; padding:28px 22px 120px; }
+h1 { font-size:27px; letter-spacing:-.02em; margin:6px 0 4px; }
+h2 { font-size:19px; letter-spacing:-.01em; margin:0 0 4px; }
+h3 { font-size:15px; margin:0 0 6px; }
+h4 { margin:0 0 4px; font-size:13.5px; }
+p { margin:6px 0; }
+ul { margin:6px 0; padding-left:20px; }
+li { margin:3px 0; }
+.sub { color:var(--muted); }
+.small { font-size:12.5px; }
+.tiny { font-size:11px; }
+code, .mono { font-family:var(--mono); font-size:.92em; }
+code { background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:0 5px; white-space:nowrap; }
+p code, li code, td code { line-height:1.3; }
+section.band { margin-top:42px; }
+.band-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.band-num { font-family:var(--mono); font-size:11px; color:var(--accent-soft); border:1px solid var(--border-2);
+  border-radius:999px; padding:2px 10px; letter-spacing:.08em; }
+.chips { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
+.chip { font-size:11.5px; border:1px solid var(--border-2); border-radius:999px; padding:3px 11px; color:var(--muted); }
+.chip b { color:var(--text); font-weight:650; }
+.chip.gold { color:var(--accent-soft); border-color:#6b5a2a; }
+.chip.red { color:var(--bad); border-color:#6b2a2a; }
+.chip.green { color:var(--good); border-color:#33502f; }
+.chip.blue { color:var(--info); border-color:#2f5a7a; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px 18px; }
+.grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+@media (max-width:960px){ .grid2,.grid3 { grid-template-columns:1fr; } }
+
+table.t { width:100%; border-collapse:collapse; font-size:12.8px; }
+.t th,.t td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+.t thead th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  background:var(--panel-2); position:sticky; top:0; }
+.t tr:last-child td { border-bottom:none; }
+.tbl-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:var(--r); }
+.ok { color:var(--good); } .warn-t { color:var(--warn); } .bad-t { color:var(--bad); }
+.badge { font-size:10px; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:999px; border:1px solid; white-space:nowrap; }
+.badge.new { color:var(--good); border-color:#33502f; }
+.badge.mod { color:var(--warn); border-color:#6b5a2a; }
+.badge.reuse { color:var(--info); border-color:#2f5a7a; }
+.badge.gap { color:var(--bad); border-color:#6b2a2a; }
+
+/* verdict panel */
+.verdict { border:1px solid var(--border-2); border-left:4px solid var(--accent); background:var(--panel);
+  border-radius:var(--r-lg); padding:16px 20px; margin-top:16px; }
+.verdict .vrow { display:grid; grid-template-columns:110px minmax(0,1fr); gap:10px 16px; padding:7px 0; border-bottom:1px dashed var(--border); }
+.verdict .vrow:last-child { border-bottom:none; }
+.verdict .vtag { font-family:var(--mono); font-size:11px; letter-spacing:.06em; padding-top:2px; }
+@media (max-width:700px){ .verdict .vrow { grid-template-columns:1fr; gap:2px; } }
+
+/* phases */
+.phase { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--panel); overflow:hidden; margin-top:14px; }
+.phase-head { display:flex; align-items:baseline; gap:12px; padding:12px 16px; background:var(--panel-2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.phase-head .pnum { font-family:var(--mono); font-size:12px; color:var(--accent-soft); }
+.phase-head h3 { margin:0; }
+.phase-head .sz { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint); }
+.phase-body { padding:12px 16px 14px; }
+.phase-body .cols { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:16px; }
+@media (max-width:900px){ .phase-body .cols { grid-template-columns:1fr; } }
+.filelist { font-family:var(--mono); font-size:11.5px; color:var(--muted); line-height:1.8; overflow-wrap:anywhere; }
+.filelist b { color:var(--text); font-weight:600; }
+.accept { border-left:3px solid var(--good); background:var(--panel-2); border-radius:0 var(--r) var(--r) 0; padding:8px 12px; font-size:12.5px; margin-top:10px; }
+.accept b { color:var(--good); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+
+/* mock strips — page-object mapping */
+.mock { border:1px solid var(--border-2); border-radius:var(--r); overflow:hidden; margin-top:8px; }
+.mock-head { font-family:var(--mono); font-size:10.5px; color:var(--faint); background:var(--panel-3); padding:4px 10px; border-bottom:1px solid var(--border); }
+.mock-body { display:grid; gap:6px; padding:8px; background:var(--panel-2); }
+.mock-obj { border:1px dashed var(--border-2); border-radius:6px; padding:5px 9px; font-size:11px; color:var(--muted); background:var(--panel); }
+.mock-obj b { color:var(--accent-soft); font-family:var(--mono); font-weight:600; font-size:10.5px; }
+.mock-row { display:grid; gap:6px; }
+@media (max-width:700px){ .mock-row { grid-template-columns:1fr !important; } }
+
+/* mermaid */
+.mermaid-box { background:var(--panel); border:1px solid var(--border); border-radius:var(--r-lg); padding:14px; overflow-x:auto; }
+.mmd-src { display:flex; justify-content:center; }
+.mmd-src svg { max-width:100%; height:auto; }
+
+/* decisions (input playbook) */
+.decision { border:1px solid var(--border-2); border-left:3px solid var(--accent); border-radius:var(--r);
+  background:var(--panel); padding:14px 16px; margin-top:14px; }
+.decision h4 { display:flex; gap:10px; align-items:baseline; }
+.decision .dnum { font-family:var(--mono); font-size:11px; color:var(--accent-soft); }
+.decision label.opt { display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border:1px solid var(--border);
+  border-radius:8px; margin-top:8px; cursor:pointer; background:var(--panel-2); }
+.decision label.opt:hover { border-color:var(--border-2); }
+.decision label.opt input { margin-top:3px; flex:none; }
+.decision .opt-title { font-weight:650; font-size:13px; }
+.decision .opt-sub { color:var(--muted); font-size:12px; }
+.decision .rec { color:var(--good); font-size:10.5px; font-weight:700; letter-spacing:.05em; margin-left:6px; }
+.decision button { margin-top:10px; background:var(--panel-3); color:var(--text); border:1px solid var(--border-2);
+  border-radius:8px; padding:6px 14px; font-size:12.5px; cursor:pointer; font-family:var(--sans); }
+.decision button:hover { border-color:var(--accent); color:var(--accent-soft); }
+.decision .queued-note { display:none; margin-left:10px; color:var(--good); font-size:12px; }
+.decision.queued .queued-note { display:inline; }
+textarea.free { width:100%; background:var(--panel-2); color:var(--text); border:1px solid var(--border-2);
+  border-radius:8px; padding:8px 10px; font-family:var(--sans); font-size:13px; min-height:64px; resize:vertical; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="tiny mono sub">Data Pilot · s20 · chart-object unification · review + plan · 2026-07-17</div>
+  <h1>One chart library, one object model — everywhere</h1>
+  <p class="sub" style="max-width:900px">
+    Review of which surfaces render through the shared chart objects, why the Profile tables looked like a
+    foreign format, and the plan to put Explore · Profile / Trends on the same page-object engine as Chat,
+    Goldens and Template Studio — so any Profile output can become a golden answer or a chat page.
+  </p>
+  <div class="chips">
+    <span class="chip green"><b>components</b> — already one visx library</span>
+    <span class="chip red"><b>object model</b> — Explore bypasses it</span>
+    <span class="chip red"><b>agent</b> — can’t emit table / map</span>
+    <span class="chip gold"><b>plan</b> — 4 phases, 3 decisions</span>
+  </div>
+</header>
+
+<!-- ================================ VERDICT ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">§1</span><h2>The verdict — your statement, checked</h2></div>
+
+  <div class="verdict">
+    <div class="vrow">
+      <div class="vtag ok">TRUE</div>
+      <div><b>“Chat, Goldens and Template Studio use the chart objects.”</b>
+        All three render through the one renderer — <code>report-engine/PageLayout.tsx</code> header says it:
+        <i>“Chat answers (PagesView), the Template Studio preview, and the playground all render through this one
+        component, so the layouts can never fork again.”</i> The Golden Report editor
+        (<code>features/goldens/ReportEditor.tsx</code>) imports it too.</div>
+    </div>
+    <div class="vrow">
+      <div class="vtag warn-t">HALF-TRUE</div>
+      <div><b>“Explore Profile / Trends are not on the same chart objects.”</b>
+        At the <i>component</i> level they are: Profile imports <code>Bars</code>, <code>Choropleth</code>,
+        <code>DataTable</code>; Trends imports <code>Trend</code>, <code>Bars</code> — the same visx files Chat renders.
+        But at the <i>object-model</i> level they are not: both tools hand-assemble bespoke JSX
+        (<code>ex-grid2</code> / <code>ex-result-top</code> / <code>ex-card</code>) instead of emitting
+        <code>Page</code> objects through <code>PageLayout</code>. And Profile’s KPI tiles are raw
+        <code>ex-kpi</code> divs — a second, parallel KPI format that isn’t <code>KPITile</code> at all.</div>
+    </div>
+    <div class="vrow">
+      <div class="vtag bad-t">FOUND IT</div>
+      <div><b>“Profile has tables and I can’t see the chart template table it used.”</b>
+        Profile’s tables <i>are</i> the shared component — <code>ui/charts/DataTable.tsx</code>
+        (variants <code>comparison</code> / <code>ranked</code>, built in s19). You can’t see it as a template because
+        <code>table</code> and <code>choropleth</code> were wired into the frontend renderer but never
+        <b>published as chart objects</b>: they’re missing from the agent’s type contract
+        (<code>pages.py:54</code>), from the Studio’s chart list (<code>registry.ts CHART_OPTIONS</code>),
+        and from the goldens object builder. The component exists; the object is invisible.</div>
+    </div>
+  </div>
+
+  <p class="small sub" style="margin-top:10px">Net: there is <b>one chart library</b> but <b>two render paths</b>, and the
+  object registry is <b>two types behind</b> the renderer. Unifying = publishing <code>table</code>/<code>choropleth</code>
+  as first-class objects, then making Explore emit pages instead of bespoke JSX.</p>
+</section>
+
+<!-- ================================ MATRIX ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">§2</span><h2>Surface × chart-object matrix</h2></div>
+  <p class="small sub">Every output surface, what it draws with, and whether it speaks the object model. Evidence is the import list per file.</p>
+
+  <div class="tbl-scroll">
+    <table class="t">
+      <thead><tr>
+        <th>Surface</th><th>Renders via</th><th>Chart components used</th><th>Object model?</th><th>Portable to golden / chat?</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Chat answers</b><br><span class="tiny mono sub">PagesView → ChatPage</span></td>
+          <td><code>PageLayout</code> / <code>ObjectBody</code></td>
+          <td>KPITile · Trend · Bars · Combo · DataTable · Choropleth</td>
+          <td class="ok">✓ Page objects</td>
+          <td class="ok">✓ is the format</td>
+        </tr>
+        <tr>
+          <td><b>Golden Report editor</b><br><span class="tiny mono sub">goldens/ReportEditor.tsx</span></td>
+          <td><code>PageLayout</code> / <code>ObjectBody</code></td>
+          <td>all of the above</td>
+          <td class="ok">✓ Page objects</td>
+          <td class="ok">✓ is the format</td>
+        </tr>
+        <tr>
+          <td><b>Template Studio + playground</b><br><span class="tiny mono sub">admin/AgentConfigView · TemplatePlayground</span></td>
+          <td><code>PageLayout</code></td>
+          <td>via ObjectBody — but <code>CHART_OPTIONS</code> hides table / map / text</td>
+          <td class="ok">✓ Page objects</td>
+          <td class="warn-t">△ registry incomplete</td>
+        </tr>
+        <tr>
+          <td><b>Explore · Profile</b><br><span class="tiny mono sub">explore/ProfileTool.tsx</span></td>
+          <td class="bad-t">hand-rolled JSX<br><span class="tiny mono">ex-result-top · ex-grid2 · ex-card</span></td>
+          <td>Bars ✓ · Choropleth ✓ · DataTable ✓ · <span class="bad-t">KPI = raw <code>ex-kpi</code> divs ✗</span></td>
+          <td class="bad-t">✗ bypasses it</td>
+          <td class="bad-t">✗ not expressible</td>
+        </tr>
+        <tr>
+          <td><b>Explore · Trends</b><br><span class="tiny mono sub">explore/TrendsTool.tsx</span></td>
+          <td class="bad-t">hand-rolled JSX<br><span class="tiny mono">ex-chartapp cards</span></td>
+          <td>Trend ✓ · Bars ✓</td>
+          <td class="bad-t">✗ bypasses it</td>
+          <td class="bad-t">✗ not expressible</td>
+        </tr>
+        <tr>
+          <td><b>Explore · Dictionary</b><br><span class="tiny mono sub">explore/DictionaryTool.tsx</span></td>
+          <td class="warn-t">direct component use</td>
+          <td>DataTable ✓</td>
+          <td class="bad-t">✗</td>
+          <td class="warn-t">△ trivial to map</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================================ DIAGRAM ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">§3</span><h2>Two render paths today → one path after</h2></div>
+  <div class="mermaid-box">
+    <pre class="mmd-src">
+flowchart TB
+  subgraph NOW["TODAY — two paths into one chart library"]
+    direction TB
+    agent["data-agent pages.py<br/>6 object types only<br/>(no table, no choropleth)"] --> PAGES["Page objects"]
+    gold["Golden editor"] --> PAGES
+    studio["Template Studio<br/>(CHART_OPTIONS hides 3 types)"] --> PAGES
+    PAGES --> PL["PageLayout / ObjectBody<br/>renders all 8 types"]
+    profile["Explore ProfileTool"] -. "bespoke JSX<br/>ex-grid2 / ex-result-top" .-> RAW["hand-rolled layout<br/>+ raw ex-kpi tiles"]
+    trends["Explore TrendsTool"] -. "bespoke JSX" .-> RAW
+    PL --> LIB["ui/charts — Bars · Trend · Combo<br/>KPITile · DataTable · Choropleth"]
+    RAW --> LIB
+  end
+  NOW --> AFTER
+  subgraph AFTER["AFTER — every surface emits Page objects"]
+    direction TB
+    agent2["data-agent<br/>8 object types"] --> PAGES2["Page objects<br/>(the one contract)"]
+    gold2["Golden editor + builder"] --> PAGES2
+    studio2["Template Studio<br/>full CHART_OPTIONS"] --> PAGES2
+    explore2["Explore Profile / Trends<br/>results assembled as pages"] --> PAGES2
+    PAGES2 --> PL2["PageLayout / ObjectBody"] --> LIB2["ui/charts library"]
+  end
+    </pre>
+  </div>
+  <p class="small sub">Solid arrows = the object-model path. Dashed = the bypass that exists only inside Explore.
+  The unification is not a chart rewrite — the library is already shared — it is deleting the bypass.</p>
+</section>
+
+<!-- ================================ GAPS ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">§4</span><h2>The six concrete gaps</h2></div>
+  <div class="tbl-scroll">
+    <table class="t">
+      <thead><tr><th style="width:30px">#</th><th>Gap</th><th>Evidence</th><th>Consequence</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="mono">G1</td>
+          <td><b>Agent can’t emit <code>table</code> / <code>choropleth</code></b></td>
+          <td><code>agent/pages.py:54</code> — <code>ObjectType = Literal["kpi","trend","breakdown","compare","insight","text"]</code>
+              vs <code>lib/api.ts:114</code> which has 8 types</td>
+          <td>A chat answer can never contain a ranked table or a map — even though the renderer supports both. Kills “chat leverages Profile structure”.</td>
+        </tr>
+        <tr>
+          <td class="mono">G2</td>
+          <td><b>Studio registry hides them</b></td>
+          <td><code>registry.ts:103</code> — <code>CHART_OPTIONS</code> lists kpi/line/bar/grouped-bar/insight only</td>
+          <td>Template Studio playground + Playwright matrix never show or exercise table / map / text. <i>This is why you couldn’t find the table template.</i></td>
+        </tr>
+        <tr>
+          <td class="mono">G3</td>
+          <td><b>Goldens builder can’t author them</b></td>
+          <td><code>agent/object_builder.py:350</code> — <code>_BUILDERS = {compare, breakdown, trend, kpi}</code></td>
+          <td>A curator can’t add a table or map to a golden via the named-object builder (s18 path).</td>
+        </tr>
+        <tr>
+          <td class="mono">G4</td>
+          <td><b>Profile KPI tiles are a fork</b></td>
+          <td><code>ProfileTool.tsx:181–208</code> raw divs + <code>styles.css:1126</code> <code>.ex-kpi</code> — not <code>KPITile</code></td>
+          <td>Two visual formats for the same object; KPI styling changes won’t reach Explore.</td>
+        </tr>
+        <tr>
+          <td class="mono">G5</td>
+          <td><b>Explore results aren’t pages</b></td>
+          <td><code>ProfileTool.tsx:240–352</code>, <code>TrendsTool.tsx:141–213</code> — bespoke JSX layout, no <code>Page</code>/<code>PageLayout</code></td>
+          <td>A Profile run can’t be saved as a golden or reproduced by chat; layout logic forked from the engine.</td>
+        </tr>
+        <tr>
+          <td class="mono">G6</td>
+          <td><b>No object-type sync gate</b></td>
+          <td><code>tests/test_registry_sync.py</code> asserts template ids/columns only</td>
+          <td>Object types already drifted once (G1 happened silently in s19). Nothing stops it happening again.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small sub" style="margin-top:8px">Bonus micro-gap found on the way: <code>PageLayout.tsx:68–82</code> drops
+  <code>diverging</code> when rendering a <code>choropleth</code> object — so a page-object map can’t render the
+  Δ-centred colour ramp Profile’s selection map uses. Fixed in Phase A.</p>
+</section>
+
+<!-- ================================ PLAN ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">§5</span><h2>The plan — four phases</h2></div>
+  <p class="small sub" style="max-width:920px">Ordered so the contract is complete and CI-gated <i>before</i> Explore is
+  migrated onto it. Each phase lands independently green.</p>
+
+  <!-- Phase A -->
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE A</span><h3>Publish <code>table</code> + <code>choropleth</code> as first-class chart objects</h3><span class="sz">~½ day · closes G1 G2 G6</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li><b>Agent contract:</b> add <code>"table"</code>, <code>"choropleth"</code> to <code>ObjectType</code> in
+            <code>pages.py</code> + data-shape validation (table: <code>columns[]/rows/variant/bar_key</code>;
+            choropleth: <code>layer/key_field/value_field/rows/diverging</code>) and prompt guidance for when the agent
+            should choose them (ranked lists → table; per-postcode values → map).</li>
+          <li><b>Studio registry:</b> add table, choropleth (and text) to <code>CHART_OPTIONS</code> — they appear in the
+            playground and the Playwright chart matrix automatically (that’s the documented contract of the list).</li>
+          <li><b>Renderer fidelity:</b> pass <code>diverging</code> through the choropleth case in <code>PageLayout</code>.</li>
+          <li><b>CI gate:</b> extend <code>test_registry_sync.py</code> with an <b>object-type parity test</b>:
+            <code>pages.py ObjectType</code> ↔ <code>api.ts PageObjectType</code> ↔ <code>ObjectBody</code> switch cases ↔
+            <code>CHART_OPTIONS</code>. Any future drift fails CI — the same trick that locked templates.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>services/data-agent/agent/pages.py</b> <span class="badge mod">MOD</span><br>
+          <b>frontend/src/report-engine/registry.ts</b> <span class="badge mod">MOD</span><br>
+          <b>frontend/src/report-engine/PageLayout.tsx</b> <span class="badge mod">MOD</span><br>
+          <b>…/tests/test_registry_sync.py</b> <span class="badge mod">MOD</span>
+        </div>
+        <div class="accept"><b>Accept</b> — agent can return a page containing a ranked table and a diverging map;
+        Studio playground lists all 8 objects; deleting a type from any of the four sources fails CI.</div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Phase B -->
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE B</span><h3>Profile result becomes pages</h3><span class="sz">~1–1½ days · closes G4 G5</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li>Assemble the Profile result into <code>Page[]</code> (location = <b>Decision D1</b>) and render via
+            <code>&lt;PageLayout&gt;</code>. The setup controls (metric / cohort filters / Ask-AI) stay exactly as they are —
+            only the <i>result</i> subtree changes.</li>
+          <li>Delete the hand-rolled result JSX: <code>ex-kpi</code> tiles → <code>kpi</code> objects (KPITile),
+            map card → <code>choropleth</code> object, four tables → <code>table</code> objects,
+            per-predictor charts → <code>breakdown</code> objects with <code>group</code> = cohort.</li>
+          <li>Small <code>KPITile</code> extension for cohort colour (<b>Decision D2</b>) — the one feature
+            <code>ex-kpi</code> has that KPITile lacks (Target gold / Comparison blue / Δ up-down).</li>
+          <li>Layout parity via existing engine features: page 1 uses <code>two-col</code> + <code>widths:[1.7,1]</code>
+            (map left, KPI stack right — same as <code>ex-result-top</code>); consecutive KPIs already grid-chunk.</li>
+        </ul>
+        <div class="mock">
+          <div class="mock-head">ProfileResult → Page[] mapping (the exact objects)</div>
+          <div class="mock-body">
+            <div class="mock-row" style="grid-template-columns:1.7fr 1fr">
+              <div class="mock-obj"><b>choropleth</b> · Δ by postcode · diverging · h 340</div>
+              <div>
+                <div class="mock-obj"><b>kpi</b> · Target · tone target</div>
+                <div class="mock-obj" style="margin-top:6px"><b>kpi</b> · Comparison · tone comparison</div>
+                <div class="mock-obj" style="margin-top:6px"><b>kpi</b> · Uplift Δ + Δ%</div>
+              </div>
+            </div>
+            <div class="mock-row" style="grid-template-columns:1fr 1fr">
+              <div class="mock-obj"><b>table</b> · comparison · all-metric deltas</div>
+              <div class="mock-obj"><b>table</b> · comparison · filters applied</div>
+            </div>
+            <div class="mock-row" style="grid-template-columns:1fr 1fr">
+              <div class="mock-obj"><b>table</b> · ranked · positive uplifts (bar_key Δ)</div>
+              <div class="mock-obj"><b>table</b> · ranked · negative uplifts</div>
+            </div>
+            <div class="mock-row" style="grid-template-columns:1fr 1fr 1fr">
+              <div class="mock-obj"><b>breakdown</b> ×6 · segments, group = cohort · strongest signal first</div>
+              <div class="mock-obj sub" style="border-style:dotted">…</div>
+              <div class="mock-obj sub" style="border-style:dotted">…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>…/app/explore/pages_builder.py</b> <span class="badge new">NEW</span> <span class="tiny">(if D1 = backend)</span><br>
+          <b>…/features/explore/profilePages.ts</b> <span class="badge new">NEW</span> <span class="tiny">(if D1 = frontend)</span><br>
+          <b>frontend/src/features/explore/ProfileTool.tsx</b> <span class="badge mod">MOD −200 JSX</span><br>
+          <b>frontend/src/ui/charts/KPITile.tsx</b> <span class="badge mod">MOD +tone</span><br>
+          <b>frontend/src/styles.css</b> <span class="badge mod">MOD −ex-kpi/-ex-grid2</span>
+        </div>
+        <div class="accept"><b>Accept</b> — Profile output DOM shows <code>data-object-type</code> on every card;
+        zero <code>ex-kpi</code> / result-layout CSS remains; visual parity with today (map left, tiles right,
+        tables, 6 predictor charts); SQL-link on every chart still works.</div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Phase C -->
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE C</span><h3>Trends + Dictionary through objects</h3><span class="sz">~½ day · closes rest of G5</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li>Each Trends chart-app renders its result as a <code>trend</code> (line) or <code>breakdown</code>
+            (bar / stacked) object through <code>ObjectBody</code> — controls unchanged, the chart card becomes a
+            standard object card.</li>
+          <li>Dictionary’s table becomes a <code>table</code> object (it already uses DataTable — this is just the card chrome + <code>data-object-type</code>).</li>
+          <li>Net effect: an “Explore chart” <i>is</i> a page object, so “send this to chat / save as golden” is a
+            serialization, not a rebuild.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>frontend/src/features/explore/TrendsTool.tsx</b> <span class="badge mod">MOD</span><br>
+          <b>frontend/src/features/explore/DictionaryTool.tsx</b> <span class="badge mod">MOD</span>
+        </div>
+        <div class="accept"><b>Accept</b> — every rendered chart in the app, on every tab, is reachable as a typed
+        page object; no surface imports chart components except through ObjectBody (enforced by a lint-style grep test).</div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Phase D -->
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE D</span><h3>The payoff — Profile ↔ goldens ↔ chat</h3><span class="sz">~1 day · closes G3</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li><b>Builder parity:</b> add <code>_table_code</code> + <code>_choropleth_code</code> to
+            <code>object_builder.py</code> (+ matching sandbox skills), so curators can author tables/maps in goldens
+            the same deterministic way as charts.</li>
+          <li><b>Save as golden:</b> a Profile result is now <code>Page[]</code> — add a “Save as golden” action that
+            posts the pages + the question text into the goldens flow. This is the user’s exact ask:
+            Profile output <i>becomes</i> a golden answer.</li>
+          <li><b>Chat leverage:</b> extend <code>tools_explore.py</code> grounding so “what drove X?” answers are told to
+            present as the profile page pattern (map + KPI trio + ranked tables + per-predictor breakdowns) — now
+            expressible because Phase A gave the agent <code>table</code>/<code>choropleth</code>.</li>
+          <li><b>E2E:</b> extend <code>explore.spec.ts</code> to assert object types in Profile DOM; goldens spec matrix
+            gains table + choropleth.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>services/data-agent/agent/object_builder.py</b> <span class="badge mod">MOD</span><br>
+          <b>services/data-agent/agent/tools_explore.py</b> <span class="badge mod">MOD</span><br>
+          <b>frontend/src/features/explore/ProfileTool.tsx</b> <span class="badge mod">MOD +save</span><br>
+          <b>frontend/e2e/explore.spec.ts · goldens.spec.ts</b> <span class="badge mod">MOD</span>
+        </div>
+        <div class="accept"><b>Accept</b> — a Profile run saved as a golden renders pixel-identical in the Golden editor;
+        a “what drove rent growth?” chat answer can include a ranked table + map; builder round-trips all 8 types.</div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================ RISKS ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">§6</span><h2>Risks & things that could bite</h2></div>
+  <div class="grid2">
+    <div class="card small">
+      <h4 class="warn-t">Interactivity loss on the Profile map</h4>
+      <p>Choropleth in Profile may grow click-to-filter (<code>onSelect</code>) ambitions; page objects are data-only JSON.
+      Mitigation: <code>PageLayout</code> already accepts a <code>renderObject</code> wrapper — Explore can wrap the map
+      object with its own select handler without forking the renderer.</p>
+    </div>
+    <div class="card small">
+      <h4 class="warn-t">Agent quality, not plumbing</h4>
+      <p>Giving the agent table/map types ≠ the agent using them well. Per the goldens-are-the-training-signal rule,
+      we ship the capability + grounding and correct usage via goldens — no prompt-chasing.</p>
+    </div>
+    <div class="card small">
+      <h4 class="warn-t">Contract tests get stricter</h4>
+      <p>The new object-parity test spans two languages via regex/AST like the template test — keep the patterns
+      anchored (the s08 3-way sync test is the proven template).</p>
+    </div>
+    <div class="card small">
+      <h4 class="warn-t">Perf on the 616-shape map</h4>
+      <p>ProfileResultView is memoized today so filter keystrokes don’t repaint the map. The pages subtree must keep an
+      equivalent memo boundary (memo on the built <code>Page[]</code>, keyed by result identity).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================ DECISIONS ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">§7</span><h2>Decisions — pick, then Send to Agent</h2></div>
+  <p class="small sub">Selections stay local until you queue them. Queue each answer, then press <b>Send to Agent</b> in the Lavish bar.</p>
+
+  <!-- D1 -->
+  <form class="decision" data-lavish-question="d1-assembly" onsubmit="queueDecision(event,'d1-assembly','Profile→pages assembly location')">
+    <h4><span class="dnum">D1</span> Where does the Profile → <code>Page[]</code> assembly live?</h4>
+    <label class="opt"><input type="radio" name="d1-assembly" value="backend (app/explore/pages_builder.py)" checked>
+      <span><span class="opt-title">Backend — <code>app/explore/pages_builder.py</code><span class="rec">RECOMMENDED</span></span><br>
+      <span class="opt-sub">The API returns <code>pages</code> alongside the raw result. One assembly serves the UI,
+      Save-as-golden, evals, and any future agent tool identically — the strongest reading of “non-negotiable one format”.
+      Cost: backend-api becomes a second producer of page JSON, so add a contract test against the data-agent validator.</span></span>
+    </label>
+    <label class="opt"><input type="radio" name="d1-assembly" value="frontend mapper (features/explore/profilePages.ts)">
+      <span><span class="opt-title">Frontend — <code>profilePages.ts</code> mapper</span><br>
+      <span class="opt-sub">Smaller change, no cross-service schema sharing; Save-as-golden posts client-built pages
+      (goldens already accept editor-built pages). Cost: assembly logic lives outside Python, so the agent/evals can’t reuse it.</span></span>
+    </label>
+    <button type="submit">Queue answer</button><span class="queued-note">✓ queued</span>
+  </form>
+
+  <!-- D2 -->
+  <form class="decision" data-lavish-question="d2-kpi-tone" onsubmit="queueDecision(event,'d2-kpi-tone','KPI cohort tone')">
+    <h4><span class="dnum">D2</span> Cohort colour on KPI tiles (Target gold / Comparison blue)?</h4>
+    <label class="opt"><input type="radio" name="d2-kpi-tone" value="extend KPIData with optional tone: target|comparison|delta" checked>
+      <span><span class="opt-title">Extend <code>KPIData</code> with optional <code>tone</code><span class="rec">RECOMMENDED</span></span><br>
+      <span class="opt-sub">~15 lines in KPITile; keeps Profile’s cohort colour language (s19 tokens) and makes tone a
+      first-class, agent-usable field on every surface.</span></span>
+    </label>
+    <label class="opt"><input type="radio" name="d2-kpi-tone" value="drop cohort colouring; neutral KPITile as-is">
+      <span><span class="opt-title">Drop cohort colouring</span><br>
+      <span class="opt-sub">Zero component changes; Profile tiles go neutral. Loses the at-a-glance Target/Comparison
+      identity the s19 review locked in.</span></span>
+    </label>
+    <button type="submit">Queue answer</button><span class="queued-note">✓ queued</span>
+  </form>
+
+  <!-- D3 -->
+  <form class="decision" data-lavish-question="d3-scope" onsubmit="queueDecision(event,'d3-scope','delivery scope')">
+    <h4><span class="dnum">D3</span> Scope of this pass?</h4>
+    <label class="opt"><input type="radio" name="d3-scope" value="full A-D in one pass" checked>
+      <span><span class="opt-title">Full A–D<span class="rec">RECOMMENDED</span></span><br>
+      <span class="opt-sub">~3–3½ days. Ends with the payoff wired: Save-as-golden + chat able to answer in the Profile
+      shape. Matches the “extremely important, non-negotiable” framing.</span></span>
+    </label>
+    <label class="opt"><input type="radio" name="d3-scope" value="A+B now; C+D as follow-up">
+      <span><span class="opt-title">A + B now, C + D follow-up</span><br>
+      <span class="opt-sub">~2 days. Contract complete + Profile migrated; Trends/Dictionary and the golden/chat payoff
+      land in a second PR.</span></span>
+    </label>
+    <button type="submit">Queue answer</button><span class="queued-note">✓ queued</span>
+  </form>
+
+  <!-- free-form -->
+  <form class="decision" data-lavish-question="d4-notes" onsubmit="queueDecision(event,'d4-notes','extra notes')">
+    <h4><span class="dnum">D4</span> Anything to add or change?</h4>
+    <textarea class="free" name="d4-notes" placeholder="e.g. keep the map click-to-filter idea in scope; rename object types; different phase order…"></textarea>
+    <button type="submit">Queue notes</button><span class="queued-note">✓ queued</span>
+  </form>
+</section>
+
+<footer class="tiny sub" style="margin-top:48px">
+  s20 · sources verified in-repo 2026-07-17: PageLayout.tsx · registry.ts · api.ts · pages.py · object_builder.py ·
+  tools_explore.py · ProfileTool.tsx · TrendsTool.tsx · test_registry_sync.py · styles.css ·
+  design system = the app’s own tokens (carried from s19 artifact).
+</footer>
+
+</div>
+
+<script>
+function queueDecision(ev, name, label) {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const fd = new FormData(form);
+  const val = (fd.get(name) || "").toString().trim();
+  if (!val) return;
+  window.lavish?.queuePrompt(
+    "Decision " + label + ": " + val,
+    { tag: "decision", text: label + " = " + val, element: form,
+      queueKey: name, data: { question: name, answer: val } }
+  );
+  form.classList.add("queued");
+}
+</script>
+<script type="module">
+  // Mermaid ESM, dark theme to match the page (dark-fixed artifact, same as s19).
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict",
+    themeVariables: { fontFamily: "Inter, sans-serif", fontSize: "13px",
+      primaryColor: "#181c25", primaryBorderColor: "#333a48", primaryTextColor: "#e7e9ee",
+      lineColor: "#79839a", clusterBkg: "#12151c", clusterBorder: "#232834" } });
+  await mermaid.run({ nodes: [...document.querySelectorAll(".mmd-src")] });
+</script>
+</body>
+</html>

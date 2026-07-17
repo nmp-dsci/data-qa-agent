@@ -117,18 +117,20 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
 ### Repo layout (as built)
 
 ```
-services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS context, /ask, /events, admin
-services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails
+services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS context, /ask, /events, admin, explore
+services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails, Explore grounding
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
-frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + event tracking
+frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore tab + event tracking
+frontend/public/geo/    pre-built choropleth paths (poa_nsw.paths.json — see scripts/build_topojson.md)
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 data/samples/           small committed NSW sample CSVs (full data is gitignored)
 evals/                  journeys.yaml — user-journey evals (auth + RLS + growth; grows every phase)
 db/init/                schema + RLS + roles + seed + housing load (run on first `make up`)
 config/                 datasets.yaml, users.seed.yaml
 data/incoming/          housing.csv (generate with scripts/generate_housing.py)
-scripts/                generate_housing.py, smoke_test.py
+docs/chronicle/         vendored legacy NSW profiling tool (Explore reference — see its README)
+scripts/                generate_housing.py, smoke_test.py, build_poa_paths.py, explore_parity.py
 ```
 
 ### Environments
@@ -216,6 +218,42 @@ the `logfire` skills.
 
 ---
 
+## Explore (s19+s20)
+
+A tab (`frontend/src/features/explore/`) for browsing the property/postcode marts directly — filters,
+aggregation, a cohort profiler, and a NSW postcode choropleth — without going through the chat agent.
+`backend-api`'s `app/explore/` owns it: `manifest.py` declares three governed datasets (`nsw_sales`,
+`nsw_rent`, `nsw_yield`, backed by `marts.property_sales` / `marts.property_rent` / `marts.property_yield`),
+`service.py` + `engine.py` build and run manifest-checked aggregate/profile SQL (only allow-listed
+identifiers reach SQL; user input is bound parameters only), and `routers/explore.py` exposes
+`GET /explore/datasets`, `GET /explore/typeahead`, `POST /explore/aggregate`, `POST /explore/profile`, and
+`POST /explore/ask` (NL-assisted filter setup via `nl_setup.py`). Reads run under the same RLS connection as
+everywhere else and are audited into `app.query_runs` with `source = 'explore'` (migration 0026), so Explore
+usage shows up in the same audit trail as chat and the SQL editor — and never counts against the daily LLM
+caps.
+
+The data-agent mirrors this capability rather than duplicating it: `agent/tools_explore.py` grounds the LLM
+with the same three dataset slugs + backing tables plus the "profile comparison" pattern (Target cohort vs
+Comparison cohort, rank segment deltas) so "what drove X" questions get answered in chat the same way the
+Explore Profile tool answers them. `tests/test_explore_agent_sync.py` asserts the agent's mirror never drifts
+from the backend manifest.
+
+**Chart-object unification (s20):** Explore, chat, and Golden Examples now render page objects through one
+shared contract (`frontend/src/report-engine/PageLayout.tsx` + `registry.ts`) instead of divergent chart
+code paths. `DataTable` was promoted to a first-class, agent-emittable chart object (migration 0027); the
+NSW postcode choropleth (`ui/charts/Choropleth.tsx`, pre-built paths from `scripts/build_poa_paths.py` —
+see `scripts/build_topojson.md`) is deliberately **Explore-only** and not agent-emittable. Every chart on
+every surface deep-links to the SQL editor via a `data.sql` field (`ui/charts/sqlLink.tsx`). An object-type
+parity gate (`services/data-agent/tests/test_registry_sync.py`) cross-checks the agent's `ObjectType`, the
+frontend's `PageObjectType`/`ObjectBody`/registry, and seeded chart migrations so a type added to only one
+of them fails CI instead of silently drifting.
+
+The legacy static NSW profiling tool this feature replaces is vendored for reference at `docs/chronicle/`
+(see its README) — its heavy data files (`datafeed/`, the reduced POA geojson) are gitignored, with restore
+instructions there.
+
+---
+
 ## Data model (Postgres)
 
 All capabilities live in one Postgres, all under RLS.
@@ -227,7 +265,7 @@ All capabilities live in one Postgres, all under RLS.
 | `dataset_access` | Datasets | Which users/roles may query which dataset | self; admin manages |
 | `conversations` | Q&A | A user's chat sessions | owner; admin sees all |
 | `messages` | Q&A | Turns: question, answer, generated SQL, tokens, latency | via conversation owner |
-| `query_runs` | Q&A | Audit of every SQL the agent executed (guardrail trail) | via owner; admin audits |
+| `query_runs` | Q&A | Audit of every SQL executed (`source` = `agent` / `sql_editor` / `explore`) | via owner; admin audits |
 | `user_memories` | Memory | Learned per-user preferences + `pgvector` embedding | owner only |
 | `events` | Analytics | Frontend + backend event stream for the admin dashboard | insert own; admin reads all |
 | `eval_cases` | Evals | Golden answers — feedback-promoted or hand-authored stages (`golden_sql`, `golden_sandbox`, `golden_objects`, `golden_report`) | admin/CI-curated; no RLS |
@@ -247,7 +285,10 @@ evals/journeys.yaml    # user-journey tests
 ```
 
 Flow: pipeline reads `datasets.yaml` → dlt ingests each CSV → `raw` → dbt → `marts`; a row is upserted into
-`datasets`, and `access` populates `dataset_access` so RLS enforces who can query it. App config
+`datasets`, and `access` populates `dataset_access` so RLS enforces who can query it. The `nsw_yield` dataset
+(`marts.property_yield`, sales JOINed to rent by postcode/property_type/year, plus the `dim_postcode_geo`
+region-rollup mart) is registered directly by migration 0025 instead of the pipeline's dataset upsert, since
+it derives from the other two marts rather than its own CSV. App config
 (DB URL, model keys, provider) is one typed **pydantic-settings** `Settings` object reading `.env` locally
 and Key Vault in Azure. Seed users: `admin` (sees all), `user1` (housing access), `user2` (no housing access —
 demonstrates isolation).

@@ -31,3 +31,8 @@ frontend/playwright-report/
 
 # OS / editor
 .DS_Store
+
+# Legacy chronicle reference tool (docs/chronicle): code is committed, data is not.
+# Restore instructions: docs/chronicle/README.md (D5, .lavish/s19_chronicle-explore-plan.html)
+docs/chronicle/datafeed/
+docs/chronicle/assets/POA_2016_NSW_reduced.geojson

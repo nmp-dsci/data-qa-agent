@@ -7,13 +7,20 @@
 // (ObjectBody switches on o.type); `role` is a semantic label only. Objects may
 // carry data.height — px or sm/md/lg (resolved sizes) or "fill" (the card
 // stretches to match the tallest column, so a lone chart leaves no gap).
-import { Fragment, ReactNode } from "react";
+import { Fragment, lazy, ReactNode, Suspense } from "react";
 import { Page, PageObject } from "../lib/api";
 import { Bars, BarsData } from "../ui/charts/Bars";
 import { Combo, ComboData } from "../ui/charts/Combo";
+import { DataTable, TableData } from "../ui/charts/DataTable";
 import { KPIData, KPITile } from "../ui/charts/KPITile";
 import { Trend, TrendData } from "../ui/charts/Trend";
 import { columnTracks, resolveHeight, templateFor } from "./registry";
+
+// Choropleth carries the topojson + d3-geo, so it code-splits: only loads when a
+// page actually renders a map object.
+const Choropleth = lazy(() =>
+  import("../ui/charts/Choropleth").then((m) => ({ default: m.Choropleth })),
+);
 
 export function ObjectBody({ o }: { o: PageObject }) {
   const d = o.data;
@@ -29,6 +36,7 @@ export function ObjectBody({ o }: { o: PageObject }) {
             y: String(d["y"] ?? "value"),
             series: (d["series"] as string | null) ?? null,
             title: (d["title"] as string | null) ?? null,
+            sql: (d["sql"] as string | null) ?? null,
             rows: (d["rows"] as Record<string, unknown>[]) ?? [],
           } satisfies TrendData}
         />
@@ -40,6 +48,10 @@ export function ObjectBody({ o }: { o: PageObject }) {
         measure: String(d["measure"] ?? ""),
         group: (d["group"] as string | null) ?? null,
         title: (d["title"] as string | null) ?? null,
+        stacked: Boolean(d["stacked"]),
+        groupOrder: (d["group_order"] as string[] | undefined) ?? undefined,
+        sortX: Boolean(d["sort_x"]),
+        sql: (d["sql"] as string | null) ?? null,
         rows: (d["rows"] as Record<string, unknown>[]) ?? [],
       };
       // A `compare` carrying a second measure is a line+bar combo (dual axis):
@@ -54,6 +66,34 @@ export function ObjectBody({ o }: { o: PageObject }) {
       }
       return <Bars height={resolveHeight(d["height"])} data={barsData} />;
     }
+    case "table":
+      return (
+        <DataTable
+          data={{
+            title: (d["title"] as string | null) ?? null,
+            variant: d["variant"] as TableData["variant"],
+            columns: (d["columns"] as TableData["columns"]) ?? [],
+            rows: (d["rows"] as Record<string, unknown>[]) ?? [],
+            bar_key: (d["bar_key"] as string | null) ?? null,
+          } satisfies TableData}
+        />
+      );
+    case "choropleth":
+      return (
+        <Suspense fallback={<div className="skel" style={{ height: 220 }} />}>
+          <Choropleth
+            data={{
+              layer: String(d["layer"] ?? "poa_nsw"),
+              key_field: String(d["key_field"] ?? "postcode"),
+              value_field: String(d["value_field"] ?? "value"),
+              title: (d["title"] as string | null) ?? null,
+              rows: (d["rows"] as Record<string, unknown>[]) ?? [],
+              height: resolveHeight(d["height"]),
+              diverging: Boolean(d["diverging"]),
+            }}
+          />
+        </Suspense>
+      );
     case "insight":
       return (
         <div className="i-body">

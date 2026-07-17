@@ -315,6 +315,7 @@ const BUILDER_TYPES: { type: PageObjectType; label: string }[] = [
   { type: "breakdown", label: "Bar chart" },
   { type: "trend", label: "Line chart" },
   { type: "kpi", label: "KPI" },
+  { type: "table", label: "Table" },
 ];
 
 // The builder's flat form state (compare covers every field; simpler types read a

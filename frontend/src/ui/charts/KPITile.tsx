@@ -9,14 +9,29 @@ export interface KPIData {
   latest?: number | null;
   unit?: string | null;
   basis?: string | null;
-  growth?: { yoy?: number | null; mom?: number | null } | null;
+  /** Cohort colour for the label — the Explore profile's Target gold /
+   *  Comparison blue identity (same tokens DataTable's column tones use). */
+  tone?: "target" | "comparison" | null;
+  /** `pct` is ALWAYS a percent (no fraction heuristic) with an optional custom
+   *  `label` (e.g. "vs comparison"); yoy/mom keep the legacy heuristic. */
+  growth?: {
+    yoy?: number | null;
+    mom?: number | null;
+    pct?: number | null;
+    label?: string | null;
+  } | null;
   series?: Record<string, unknown>[] | null;
 }
 
-function fmtGrowth(g: number): string {
-  const pct = Math.abs(g) <= 1 ? g * 100 : g; // accept fraction or percent
+function fmtGrowth(g: number, alreadyPct = false): string {
+  const pct = alreadyPct || Math.abs(g) > 1 ? g : g * 100; // accept fraction or percent
   return `${pct >= 0 ? "▲ +" : "▼ "}${pct.toFixed(1)}%`;
 }
+
+const TONE_STYLE: Record<string, React.CSSProperties> = {
+  target: { color: "var(--cohort-target, #d9a84e)" },
+  comparison: { color: "var(--cohort-comparison, #7dcfff)" },
+};
 
 function Sparkline({ series }: { series: Record<string, unknown>[] }) {
   const [stroke] = chartPalette();
@@ -50,16 +65,21 @@ export function KPITile({ data }: { data: KPIData }) {
       : data.latest != null
         ? `${data.latest.toLocaleString()}${data.unit ? ` ${data.unit}` : ""}`
         : "n/a";
-  const growth = data.growth?.yoy ?? data.growth?.mom ?? null;
-  const growthLabel = data.growth?.yoy != null ? "YoY" : data.growth?.mom != null ? "MoM" : "";
+  const growth = data.growth?.yoy ?? data.growth?.mom ?? data.growth?.pct ?? null;
+  const growthLabel =
+    data.growth?.label ??
+    (data.growth?.yoy != null ? "YoY" : data.growth?.mom != null ? "MoM" : "");
+  const alreadyPct = data.growth?.yoy == null && data.growth?.mom == null;
   return (
     <div className="kpi-tile">
-      <div className="h-label">{data.label}</div>
+      <div className="h-label" style={data.tone ? TONE_STYLE[data.tone] : undefined}>
+        {data.label}
+      </div>
       <div className="h-value">
         {display}
         {growth != null && (
           <span className={`kpi-growth ${growth >= 0 ? "up" : "down"}`}>
-            {fmtGrowth(growth)} {growthLabel}
+            {fmtGrowth(growth, alreadyPct)} {growthLabel}
           </span>
         )}
       </div>

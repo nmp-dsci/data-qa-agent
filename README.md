@@ -94,7 +94,7 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 | Service | URL | Notes |
 |---------|-----|-------|
 | Frontend | http://localhost:5230 | React + Vite dev server |
-| Backend API | http://localhost:8000 | `/health`, `/auth/config`, `/auth/dev-login`, `/me`, `/ask`, `/events`, `/admin/*` |
+| Backend API | http://localhost:8000 | `/health`, `/auth/config`, `/auth/dev-login`, `/me`, `/ask`, `/events`, `/admin/*`, `/explore/*` |
 | Data agent | http://localhost:8100 | `/health`, `/agent/config`, `/agent/ask(/stream)`, `/agent/sql(/assist)`, `/agent/title`, `/agent/analysis*`, `/agent/skills*`, `/agent/schema` |
 | Postgres | `localhost:5434` | user `postgres` / `postgres`, db `dataqa` (5432/5433 were in use) |
 
@@ -105,13 +105,15 @@ services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin + /
 services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails; eval graders
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
-frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + golden authoring + event tracking
+frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore + golden authoring + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
 data/                   full NSW CSVs (gitignored) + data/samples/ (small committed samples)
 evals/                  journeys.yaml — user-journey evals (grows every phase)
-scripts/                make_samples.py, smoke_test.py + AWS deploy scripts (aws_build_push, run_job,
-                        deploy_frontend, cloud_smoke)
+scripts/                make_samples.py, smoke_test.py, build_poa_paths.py (Explore choropleth paths,
+                        see scripts/build_topojson.md), explore_parity.py + AWS deploy scripts
+                        (aws_build_push, run_job, deploy_frontend, cloud_smoke)
+docs/chronicle/         vendored legacy NSW profiling tool, kept as the Explore reference (see its README)
 infra/terraform/        AWS deployment (live) — see infra/terraform/README.md; infra/ Bicep = Azure reference
 docker-compose.yml      the local dev stack;  Makefile has the shortcuts
 ```
@@ -138,6 +140,20 @@ dbt docs UI at http://localhost:8180 — lineage graph, every model's SQL, and c
 text `get_schema()` feeds the agent) for `raw` sources through `staging`/intermediate to `marts`. To inspect
 actual rows/counts at any layer, connect to Postgres directly (`localhost:5434`, schemas `raw`/`staging`/`marts`
 — see Ports below).
+
+## Explore
+
+The **Explore** tab lets any signed-in user browse the property/postcode marts directly — filter, aggregate,
+and profile cohorts — without going through the chat agent. It covers three governed datasets: `nsw_sales`,
+`nsw_rent`, and `nsw_yield` (gross rental yield, sales joined to rent by postcode/property_type/year — its
+own dataset since it needs both grants). A NSW postcode choropleth renders from a pre-built paths file
+(`frontend/public/geo/poa_nsw.paths.json`, regenerated with `scripts/build_poa_paths.py` — see
+`scripts/build_topojson.md`) rather than a runtime geo-projection library. Reads run under the same RLS as
+everywhere else and are audited into `query_runs` with `source = 'explore'`, so caps and audit trails cover
+it too. Every chart, in Explore or chat, deep-links to the SQL editor with the query that produced it.
+
+Explore's UI is a modern port of a legacy static NSW profiling tool, vendored for reference at
+`docs/chronicle/` (see its README to run it or restore its gitignored data files).
 
 ## Admin Dashboard
 

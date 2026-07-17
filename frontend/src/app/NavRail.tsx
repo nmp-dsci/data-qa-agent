@@ -9,6 +9,7 @@ import {
   IconAdmin,
   IconChat,
   IconExit,
+  IconExplore,
   IconGolden,
   IconMoon,
   IconSettings,
@@ -16,10 +17,11 @@ import {
   IconSun,
 } from "../ui/icons";
 
-export type View = "chat" | "sql" | "goldens" | "admin" | "settings";
+export type View = "chat" | "explore" | "sql" | "goldens" | "admin" | "settings";
 
 const ITEMS: { view: View; label: string; icon: () => ReactElement; adminOnly?: boolean }[] = [
   { view: "chat", label: "Chat", icon: IconChat },
+  { view: "explore", label: "Explore", icon: IconExplore },
   { view: "sql", label: "SQL Editor", icon: IconSql },
   { view: "goldens", label: "Golden Examples", icon: IconGolden, adminOnly: true },
   { view: "admin", label: "Admin", icon: IconAdmin, adminOnly: true },

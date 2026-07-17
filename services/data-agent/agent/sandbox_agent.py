@@ -87,7 +87,12 @@ Available inside run_analysis (import-free; call as skills.<name>):
   # insight structure
   make_insight(heading, body, *, query_refs=None, chart=None) -> insight
   related_metrics([{label,value,basis}, ...]) -> related headline tiles
-  build_report(*, summary, headlines=None, insights=None, profiles=None, main_chart=None) -> report
+  data_table(df, *, columns, title=None, variant="plain", bar_key=None) -> table payload
+      -> columns=[{key,label,align?,tone?,format?}]; variant plain|comparison|ranked
+         (ranked draws inline bars sized by bar_key) — for ranked lists / side-by-side
+         comparisons that read better as rows than as a chart.
+  build_report(*, summary, headlines=None, insights=None, profiles=None,
+               main_chart=None, table=None) -> report
   build_insights(*, insights, profiles=None) -> pass-2 patch that merges insight
       cards into the report already built by build_report (never replaces it)
   # bootstrap: we start from ZERO skills — flag anything missing

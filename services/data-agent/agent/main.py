@@ -652,17 +652,33 @@ class AnalysisResponse(BaseModel):
 
 
 def _lift_object(
-    report: dict[str, Any] | None, *, element_id: str, object_type: str = "compare"
+    report: dict[str, Any] | None,
+    *,
+    element_id: str,
+    object_type: str = "compare",
+    sql: str | None = None,
 ) -> dict[str, Any] | None:
     """Lift a built object's report into ONE page object with a stable element_id.
 
     Charts lift their ``main_chart`` (combo-aware, via chart_object_from_spec);
-    kpi/headline objects carry no chart, so the first headline tile is lifted."""
+    a ``table`` object lifts the report's ``table`` payload (from
+    ``skills.data_table``) verbatim; kpi/headline objects carry no chart, so the
+    first headline tile is lifted. ``sql`` — the governed extract behind the
+    object — rides along in ``data.sql`` so golden charts get the same "open in
+    SQL editor" action as chat/Explore."""
     if not isinstance(report, dict):
         return None
+    table = report.get("table")
+    if object_type == "table" and isinstance(table, dict) and table.get("columns"):
+        data = {k: v for k, v in table.items() if v is not None}
+        if sql:
+            data["sql"] = sql
+        return {"type": "table", "element_id": element_id, "role": "table", "data": data}
     spec = report.get("main_chart")
     if spec:
-        lifted = chart_object_from_spec(spec, element_id=element_id, role="chart", height="md")
+        lifted = chart_object_from_spec(
+            spec, element_id=element_id, role="chart", height="md", sql=sql
+        )
         if lifted is not None:
             return lifted.model_dump(exclude_none=True)
     heads = report.get("headlines") or []
@@ -681,8 +697,13 @@ def _lift_object(
     return None
 
 
-def _run_named_objects(objects: list[dict[str, Any]], frame: Any) -> list[dict[str, Any]]:
-    """Run each named object's run_analysis snippet against the extract + lift it."""
+def _run_named_objects(
+    objects: list[dict[str, Any]], frame: Any, *, sql: str | None = None
+) -> list[dict[str, Any]]:
+    """Run each named object's run_analysis snippet against the extract + lift it.
+
+    ``sql`` is the shared golden extract these objects recompute against — it rides
+    into each lifted chart so its "open in SQL editor" opens the governing query."""
     out: list[dict[str, Any]] = []
     for spec in objects or []:
         if not isinstance(spec, dict):
@@ -694,7 +715,7 @@ def _run_named_objects(objects: list[dict[str, Any]], frame: Any) -> list[dict[s
             continue
         try:
             outcome = run_code(code, df=frame, frames={"extract": frame})
-            obj = _lift_object(outcome.report, element_id=eid, object_type=otype)
+            obj = _lift_object(outcome.report, element_id=eid, object_type=otype, sql=sql)
             out.append({"element_id": eid, "object": obj, "error": None if obj else outcome.error})
         except Exception as exc:  # noqa: BLE001 — one bad object must not fail the prep
             out.append({"element_id": eid, "object": None, "error": str(exc)})
@@ -721,7 +742,7 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
     rows = meta.get("rows", [])
     row_count = meta.get("row_count", len(rows))
     # Named presentation objects recompute against this same extract (s18).
-    objects_out = _run_named_objects(body.objects, frame)
+    objects_out = _run_named_objects(body.objects, frame, sql=body.sql)
     if not body.code.strip():
         return AnalysisResponse(
             columns=columns, rows=rows, row_count=row_count, objects_out=objects_out
@@ -736,6 +757,12 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
             pages, _ = compose_pages(outcome.report)
         except Exception:  # noqa: BLE001 — page composition is best-effort here
             pages = []
+    # Sandbox reports carry no `queries`, so compose_pages can't attach the source
+    # SQL. Stamp the shared extract onto each chart so preview charts link to it.
+    for p in pages:
+        for col in p.get("columns", []):
+            for o in col:
+                _with_sql(o if isinstance(o, dict) else None, body.sql)
     return AnalysisResponse(
         columns=columns,
         rows=rows,
@@ -782,7 +809,7 @@ class AnalysisObjectResponse(BaseModel):
     error: str | None = None
 
 
-_CHART_TYPES = {"trend", "breakdown", "compare"}
+_CHART_TYPES = {"trend", "breakdown", "compare", "table"}
 
 
 def _chart_sig(data: dict[str, Any]) -> tuple[str, str, str, str]:
@@ -795,11 +822,23 @@ def _chart_sig(data: dict[str, Any]) -> tuple[str, str, str, str]:
     return (dim, meas, line, grp)
 
 
+def _with_sql(obj: dict[str, Any] | None, sql: str | None) -> dict[str, Any] | None:
+    """Fill ``data.sql`` on a chart object so it links to the governing query.
+    Only sets it when missing (never clobbers a query the object already knows)."""
+    if obj and sql and obj.get("type") in _CHART_TYPES:
+        data = obj.get("data")
+        if isinstance(data, dict) and not data.get("sql"):
+            data["sql"] = sql
+    return obj
+
+
 def _lift_target(
     pages: list[dict[str, Any]],
     report: dict[str, Any] | None,
     target_element_id: str | None,
     existing: list[dict[str, Any]],
+    *,
+    sql: str | None = None,
 ) -> dict[str, Any] | None:
     """Pick the object the curator was editing out of the recomposed pages.
 
@@ -809,12 +848,15 @@ def _lift_target(
     (robust to which chart the model made ``main_chart``). Returns ``None`` when no
     new-or-changed chart was produced, so a run that failed to honour the edit
     surfaces as an error rather than silently applying a stale duplicate.
+
+    ``sql`` — the governed extract — is stamped onto the returned chart so golden
+    charts carry an "open in SQL editor" action.
     """
     flat = [o for p in pages for col in p.get("columns", []) for o in col if isinstance(o, dict)]
     if target_element_id:
         for obj in flat:
             if obj.get("element_id") == target_element_id:
-                return obj
+                return _with_sql(obj, sql)
     charts = [o for o in flat if o.get("type") in _CHART_TYPES]
     existing_sigs: set[tuple[str, str, str, str]] = set()
     for obj in existing or []:
@@ -824,14 +866,14 @@ def _lift_target(
                 existing_sigs.add(_chart_sig(data))
     for obj in charts:
         if _chart_sig(obj.get("data") or {}) not in existing_sigs:
-            return obj
+            return _with_sql(obj, sql)
     # No id match and no new/changed chart. If the golden had NO charts before,
     # this is the first-object case → lift the report's main_chart. Otherwise the
     # edit didn't take (every chart matches a pre-existing one) → None (error).
     if not existing_sigs:
         spec = report.get("main_chart") if isinstance(report, dict) else None
         lifted = chart_object_from_spec(
-            spec, element_id="authored:chart", role="chart", height="md"
+            spec, element_id="authored:chart", role="chart", height="md", sql=sql
         )
         return lifted.model_dump(exclude_none=True) if lifted is not None else None
     return None
@@ -920,7 +962,9 @@ async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectRe
             pages, _ = compose_pages(outcome.report)
         except Exception:  # noqa: BLE001 — page composition is best-effort here
             pages = []
-    obj = _lift_target(pages, outcome.report, body.target_element_id, body.objects)
+    obj = _lift_target(
+        pages, outcome.report, body.target_element_id, body.objects, sql=effective_sql
+    )
     return AnalysisObjectResponse(
         code=code,
         sql=effective_sql,
@@ -1067,7 +1111,9 @@ async def agent_analysis_build_object(
 
     # 3. Run + lift the object.
     outcome = run_code(code, df=frame, frames={"extract": frame})
-    obj = _lift_object(outcome.report, element_id=eid, object_type=body.object_type)
+    obj = _lift_object(
+        outcome.report, element_id=eid, object_type=body.object_type, sql=effective_sql
+    )
     return AnalysisBuildObjectResponse(
         name=body.name,
         element_id=eid,

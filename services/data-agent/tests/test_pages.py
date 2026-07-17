@@ -172,6 +172,32 @@ def test_compose_pages_summary_then_insights() -> None:
     assert steps[-1]["templates"] == ["two-col", "two-col"]
 
 
+def test_chart_object_carries_source_sql_when_given() -> None:
+    """`sql` rides along in data.sql (chart → open-in-SQL-editor); absent otherwise."""
+    obj = chart_object_from_spec(_trend_spec(), element_id="x", sql="SELECT 42")
+    assert obj is not None
+    assert obj.data["sql"] == "SELECT 42"
+    # No sql passed → no key (so the frontend button stays hidden).
+    bare = chart_object_from_spec(_trend_spec(), element_id="x")
+    assert bare is not None
+    assert "sql" not in bare.data
+
+
+def test_composed_charts_link_to_their_source_query() -> None:
+    """The summary main chart and the insight's chart both carry the SQL of the
+    query they cite, so chat charts get the same open-in-SQL action as Explore."""
+    report = _report()  # main chart → primary query Q1; insight cites Q1; both SELECT 1
+    summary, _ = compose_summary_page(report)
+    assert summary is not None
+    trend = next(o for o in _objects(summary) if o["type"] == "trend")
+    assert trend["data"]["sql"] == "SELECT 1"
+
+    insights, _ = compose_insights_page(report)
+    assert insights is not None
+    breakdown = next(o for o in _objects(insights) if o["type"] == "breakdown")
+    assert breakdown["data"]["sql"] == "SELECT 1"
+
+
 def test_page_headline_helpers() -> None:
     # First sentence only, and an abbreviation's dot ("6.1%") is not a break.
     assert _one_line("Rents rose 6.1% YoY. A second sentence.") == "Rents rose 6.1% YoY."

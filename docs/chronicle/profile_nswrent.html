@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- check -->
+<head>
+
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="">
+  <meta name="author" content="">
+
+  <title>Property Rental Prices</title>
+
+  <!-- external JS libraries-->
+  <script src="resources/d3.6.5.0.min.js" type="text/JavaScript"></script>
+  <script src="https://cdn.jsdelivr.net/pako/1.0.3/pako.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
+
+  <!-- Custom styles for this template-->
+  <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="tool_utils/openTab.css" rel="stylesheet">
+  <link href="tool_utils/map_format.css" rel="stylesheet">
+  <link href="tool_utils/profileFilter.css" rel="stylesheet">
+  <link href="tool_utils/profileDefaults.css" rel="stylesheet">
+
+    <!-- ancillary data -->
+  <script type="text/javascript" src="assets/POA_2016_NSW_reduced.geojson"></script>
+  <script type="text/javascript" src="tool_utils/util_dt_yyyymm.json"></script>
+  <script type="text/javascript" src="tool_utils/util_postcode.json"></script>
+  <script type="text/javascript" src="tool_utils/util_attrCols_lookup.js"></script>
+
+  <!-- Profile data -->
+  <script type="text/javascript" src="datafeed/profile_nswrent.json"></script>
+  <script type="text/javascript" src="datafeed/profile_nswrent_lookup.json"></script>
+
+  <!-- Interactive Tool Functions -->
+  <script type="text/javascript" src="tool_utils/util_ready.js"></script>
+  <script type="text/javascript" src="tool_utils/downloadData.js"></script>
+  <script type="text/javascript" src="tool_utils/downloadPng.js"></script>
+  <script type="text/javascript" src="tool_utils/color_map.js"></script>
+  <script type="text/javascript" src="tool_utils/drawTable.js"></script>
+  <script type="text/javascript" src="tool_utils/drawFilter.js"></script>
+  <script type="text/javascript" src="tool_utils/drawTopline.js"></script>
+  <script type="text/javascript" src="tool_utils/drawChartLegend_extract.js"></script>
+  <script type="text/javascript" src="tool_utils/drawChartLegend_transform.js"></script>
+  <script type="text/javascript" src="tool_utils/drawChartLegend_load.js"></script>
+  <script type="text/javascript" src="tool_utils/data_colOrder.js"></script>
+  <script type="text/javascript" src="tool_utils/data_dropdownFilter.js"></script>
+  <script type="text/javascript" src="tool_utils/data_processing.js"></script>
+  <script type="text/javascript" src="tool_utils/data_pivotData.js"></script>
+  <script type="text/javascript" src="tool_utils/dataCutID.js"></script>
+  <script type="text/javascript" src="tool_utils/dataFetch.js"></script>
+  <script type="text/javascript" src="tool_utils/dataFetchAsync.js"></script>
+  <script type="text/javascript" src="tool_utils/dataSumm.js"></script>
+  <script type="text/javascript" src="tool_utils/map_colorSubUnits.js"></script>
+  <script type="text/javascript" src="tool_utils/map_drawMaps.js"></script>
+  <script type="text/javascript" src="tool_utils/map_drawTooltip.js"></script>
+  <script type="text/javascript" src="tool_utils/map_drawLegend.js"></script>
+  <script type="text/javascript" src="tool_utils/openTab.js"></script>
+  <script type="text/javascript" src="tool_utils/initChart.js"></script>
+  <script type="text/javascript" src="tool_utils/getContextTrend.js"></script>
+  <script type="text/javascript" src="tool_utils/getContextProfile.js"></script>
+  <script type="text/javascript" src="tool_utils/profileCalc.js"></script>
+  <script type="text/javascript" src="tool_utils/profileMetrics.js"></script>
+  <script type="text/javascript" src="tool_utils/profileChart.js"></script>
+  <script type="text/javascript" src="tool_utils/profileSummary.js"></script>
+  <script type="text/javascript" src="tool_utils/varProfile.js"></script>
+  <script type="text/javascript" src="tool_utils/drawLine_multiC.js"></script>
+  <script type="text/javascript" src="tool_utils/draw_heatmap.js"></script>
+  <script type="text/javascript" src="tool_utils/draw_stackedbar.js"></script>
+
+  <!-- Load Content : HTML apps-->
+  <script type="text/javascript" src="tool_utils/initAppHTML.js"></script>
+  <script type="text/javascript" src="tool_utils/templateHTMLProfile.js"></script>
+  <script type="text/javascript" src="tool_utils/templateHTMLTrend.js"></script>
+  <script type="text/javascript" src="tool_utils/templateHTMLExtract.js"></script>
+
+</head>
+
+<body id="page-top">
+
+  <!-- Page Wrapper -->
+  <div id="wrapper">
+
+    <!-- Content Wrapper -->
+    <div id="content-wrapper" class="d-flex flex-column">
+
+      <div class="tab">
+        <button class="tablinks" onclick="openTab(event, 'template_profile')" id="defaultOpen">Profiling</button>
+        <button class="tablinks" onclick="openTab(event, 'template_trend')" >Trends</button>
+        <button class="tablinks" onclick="openTab(event, 'template_extract')" >Data Extract</button>
+      </div>
+
+      <!-- Template 1:  Profiling -->
+      <div id="template_profile" class="tabcontent"></div>
+      <div id="template_trend" class="tabcontent"></div>
+      <div id="template_extract" class='tabcontent'></div>
+    </div>  <!-- END tabcontent -->
+  </div>
+    
+    </div>
+  <!-- End of Page Wrapper -->
+
+  <!-- Scroll to Top Button-->
+  <a class="scroll-to-top rounded" href="#page-top">
+    <i class="fas fa-angle-up"></i>
+  </a>
+
+  <!-- Bootstrap core JavaScript-->
+  <script src="vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    
+    document.getElementById("defaultOpen").click();
+
+    // ######################################################
+    // Defaults
+    const profileWidth = 800; 
+    const trendWidth = 670; 
+    var xAxisLabelText_gap = 9;
+
+    const aggCols = ['agg0_c','agg1_c','agg2_c','agg3_c'];
+
+    const geoCol = 'postcode';
+    const primaryCols = {'postcode':'postcode', 'dt_yyyymm':'rent_yyyymm'}
+    
+    const appDefaults = {
+        'profile1FilterCol':'year_fy', 
+        'profile1Response':'rent_a_v', 
+        'trend1PlotType':'line',
+        'trend1Response':'rent_a_v',
+        'trend2PlotType':'stackedbar',
+        'trend2Response':'rental_n_v'
+      }
+
+    chartContext = {};
+
+    const activeMonths = undefined;
+    const dataCols = Object.keys(data_df[0]);
+
+  </script>
+
+  <!-- `attrCols` generation -->
+  <script type="text/javascript" src="tool_utils/util_attrCols_gen.js" ></script>
+
+<script>
+    //$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+    // Bespoke Aggregations to table loaded
+    const rollupFunction = function(d) {
+      aggFuncs = {} ;
+      metrics.map(metric=>{
+        aggFuncs[metric] = d3.sum(d, n=> n[metric]);
+      })
+      return aggFuncs;        
+    }
+
+    const derivedFunction = [
+      {'c':'rent_a_v' ,'f': r => r.rent_n_v/r.rental_n_v},
+    ]
+
+    derivedFunction.map(derivedY =>{
+      attrCols.push({class:"y",column:derivedY['c'],profile_y:true,trend_y:true  })
+    })
+
+    initAppHTML(appName = 'extact', appID = '' , templateHTML=templateHTMLExtract);
+
+  </script>
+
+  <!-- `attrCols` enrich -->
+  <script type="text/javascript" src="tool_utils/util_attrCols_enrich.js" ></script>
+  <script type="text/javascript" src="tool_utils/template_extract.js" ></script>
+
+  <!--  Load  templates for 'Tools' to visualise-->
+  <script type="text/javascript" src="tool_utils/profileFilter.js" ></script>
+  <script type="text/javascript" src="tool_utils/profileRun.js" ></script>
+
+  <script type="text/javascript" src="tool_utils/trendFilter.js" ></script>
+  <script type="text/javascript" src="tool_utils/trendRun.js" ></script>
+
+  <script type="text/javascript" src="tool_utils/profileApp.js" ></script>
+  <script type="text/javascript" src="tool_utils/trendApp.js" ></script>
+
+</body>
+</html>

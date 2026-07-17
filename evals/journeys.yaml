@@ -91,6 +91,28 @@ journeys:
       - skill_used: trend_chart
       - chart_used: trend_chart
 
+  # s19 Explore — the agent leverages the new yield mart + geo dimension.
+  - name: user1 asks gross rental yield by region (uses the yield mart + geo dim)
+    as_user: user1
+    question: What is the gross rental yield for houses by SA3 region in 2023?
+    expect:
+      - agent_answers_successfully
+      - sql_is_select_only
+      - mentions: [yield]
+
+  - name: admin profiles what drove rent between two years (cohort comparison)
+    as_user: admin
+    question: What drove the change in weekly rent for houses in Newcastle between 2023 and 2022?
+    expect:
+      - agent_answers_successfully
+      - sql_is_select_only
+
+  - name: user2 is isolated from the yield mart (needs the nsw_yield grant)
+    as_user: user2
+    question: What is the gross rental yield for houses by postcode in 2023?
+    expect:
+      - no_rows_or_access_denied
+
   - name: unknown user cannot sign in
     as_user: nobody
     expect:

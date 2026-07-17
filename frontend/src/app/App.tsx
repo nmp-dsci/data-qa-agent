@@ -31,7 +31,12 @@ import { IconHistory } from "../ui/icons";
 const SqlEditor = lazy(() =>
   import("../features/sql/SqlEditor").then((m) => ({ default: m.SqlEditor })),
 );
+// Explore code-splits too — visx + the map layer only load on the Explore tab.
+const ExplorePage = lazy(() =>
+  import("../features/explore/ExplorePage").then((m) => ({ default: m.ExplorePage })),
+);
 import { Command, CommandPalette } from "../ui/CommandPalette";
+import { ChartSqlContext } from "../ui/charts/sqlLink";
 import { Login } from "./Login";
 
 /** Rebuild a renderable result from a stored assistant message (history reopen).
@@ -101,20 +106,22 @@ export default function App() {
   // Tabs are real routes: /chat, /sql, /admin, /settings (deep-linkable).
   const location = useLocation();
   const navigate = useNavigate();
-  const view: View = location.pathname.startsWith("/sql")
-    ? "sql"
-    : location.pathname.startsWith("/goldens")
-      ? "goldens"
-      : location.pathname.startsWith("/admin")
-        ? "admin"
-        : location.pathname.startsWith("/settings")
-          ? "settings"
-          : "chat";
+  const view: View = location.pathname.startsWith("/explore")
+    ? "explore"
+    : location.pathname.startsWith("/sql")
+      ? "sql"
+      : location.pathname.startsWith("/goldens")
+        ? "goldens"
+        : location.pathname.startsWith("/admin")
+          ? "admin"
+          : location.pathname.startsWith("/settings")
+            ? "settings"
+            : "chat";
   const setView = useCallback((v: View) => navigate(`/${v}`), [navigate]);
 
   // Normalize unknown paths and guard the admin route by role.
   useEffect(() => {
-    const known = ["/chat", "/sql", "/goldens", "/admin", "/settings"];
+    const known = ["/chat", "/explore", "/sql", "/goldens", "/admin", "/settings"];
     const adminOnly = ["/goldens", "/admin"];
     if (!known.some((p) => location.pathname.startsWith(p))) {
       navigate("/chat", { replace: true });
@@ -279,6 +286,7 @@ export default function App() {
 
   const commands: Command[] = [
     { id: "chat", label: "Go to Chat", hint: "navigate", run: () => setView("chat") },
+    { id: "explore", label: "Go to Explore", hint: "navigate", run: () => setView("explore") },
     { id: "sql", label: "Go to SQL Editor", hint: "navigate", run: () => setView("sql") },
     ...(user?.role === "admin"
       ? [{ id: "admin", label: "Go to Admin", hint: "navigate", run: () => setView("admin") }]
@@ -315,6 +323,7 @@ export default function App() {
   }
 
   return (
+    <ChartSqlContext.Provider value={openInSqlEditor}>
     <div className="app">
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
       {!isMobile && (
@@ -343,6 +352,18 @@ export default function App() {
           {view === "admin" && <AdminPage />}
           {view === "goldens" && <GoldensPage />}
           {view === "settings" && <SettingsPage user={user} />}
+          {view === "explore" && (
+            <Suspense
+              fallback={
+                <main aria-busy="true">
+                  <div className="skel" style={{ height: 40, marginBottom: 10 }} />
+                  <div className="skel" style={{ height: 280 }} />
+                </main>
+              }
+            >
+              <ExplorePage isAdmin={user.role === "admin"} />
+            </Suspense>
+          )}
           {view === "sql" && (
             <Suspense
               fallback={
@@ -404,5 +425,6 @@ export default function App() {
         </Sheet>
       )}
     </div>
+    </ChartSqlContext.Provider>
   );
 }

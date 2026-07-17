@@ -51,8 +51,15 @@ TEMPLATE_COLUMNS: dict[str, int] = {
 # Semantic height names the frontend resolves (sm/md/lg → px, fill → stretch).
 HEIGHT_NAMES = ("sm", "md", "lg", "fill")
 
-ObjectType = Literal["kpi", "trend", "breakdown", "compare", "insight", "text"]
+# The agent-emittable object types. The frontend renders one more — "choropleth"
+# — which is deliberately NOT here: the map is an Explore-tool-only object (s20
+# decision), so the agent may never emit one. test_registry_sync.py asserts this
+# exact relationship against the frontend sources.
+ObjectType = Literal["kpi", "trend", "breakdown", "compare", "insight", "text", "table"]
 TemplateId = Literal["one-col", "two-col", "three-col"]
+
+# DataTable variants the frontend renders (see ui/charts/DataTable.tsx).
+TABLE_VARIANTS = ("plain", "comparison", "ranked")
 
 
 class PageObject(BaseModel):
@@ -83,6 +90,29 @@ class PageObject(BaseModel):
         if isinstance(height, str) and height in HEIGHT_NAMES:
             return v
         raise ValueError("data.height must be px or one of sm/md/lg/fill")
+
+    @model_validator(mode="after")
+    def _validate_table_data(self) -> PageObject:
+        """A ``table`` object's data must be the DataTable wire shape: ``columns``
+        (list of {key,label}) + ``rows`` (list of dicts), with an optional known
+        ``variant`` and a ``bar_key`` (the ranked variant's inline-bar column)."""
+        if self.type != "table":
+            return self
+        columns = self.data.get("columns")
+        if not isinstance(columns, list) or not columns:
+            raise ValueError("table data.columns must be a non-empty list")
+        for col in columns:
+            if not isinstance(col, dict) or not col.get("key") or not col.get("label"):
+                raise ValueError("each table column needs a key and a label")
+        if not isinstance(self.data.get("rows"), list):
+            raise ValueError("table data.rows must be a list")
+        variant = self.data.get("variant")
+        if variant is not None and variant not in TABLE_VARIANTS:
+            raise ValueError(f"table variant must be one of {'/'.join(TABLE_VARIANTS)}")
+        bar_key = self.data.get("bar_key")
+        if bar_key is not None and not isinstance(bar_key, str):
+            raise ValueError("table bar_key must be a column key string")
+        return self
 
 
 class Page(BaseModel):
@@ -235,8 +265,14 @@ def chart_object_from_spec(
     role: str = "chart",
     height: int | str | None = "fill",
     explains: str | None = None,
+    sql: str | None = None,
 ) -> PageObject | None:
-    """Lift a validated house chart spec into a data+intent page object."""
+    """Lift a validated house chart spec into a data+intent page object.
+
+    ``sql`` — the governed query that produced the chart's rows. When present it
+    rides along in ``data.sql`` so the frontend can offer "open in SQL editor"
+    (parity with the Explore tab; chat/golden charts become runnable too).
+    """
     if not isinstance(spec, dict):
         return None
     values = _spec_values(spec)
@@ -246,6 +282,8 @@ def chart_object_from_spec(
     encoding = _spec_encoding(spec)
     title = _spec_title(spec)
     extra: dict[str, Any] = {} if height is None else {"height": height}
+    if sql:
+        extra["sql"] = sql
     # A layered bar+line spec is a dual-axis combo — lift both measures before the
     # single-mark paths (which see only the first/bar layer) can flatten it.
     if _spec_layers(spec):
@@ -436,6 +474,41 @@ def _primary_headlines(report: dict[str, Any]) -> list[dict[str, Any]]:
     return [h for h in headlines if not h.get("related")] or headlines
 
 
+def _queries_by_ref(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Report queries indexed by their ``ref`` (e.g. ``Q1``)."""
+    out: dict[str, dict[str, Any]] = {}
+    for q in report.get("queries", []) or []:
+        if isinstance(q, dict) and q.get("ref"):
+            out[str(q["ref"])] = q
+    return out
+
+
+def _clean_sql(sql: Any) -> str | None:
+    return sql if isinstance(sql, str) and sql.strip() else None
+
+
+def _primary_sql(report: dict[str, Any]) -> str | None:
+    """SQL behind the summary's main chart — the governed domain query with the
+    most rows (mirrors ``select_primary_query``), so the chart's open-in-SQL lands
+    on the query that actually drives the answer rather than a catalog probe."""
+    from .report import select_primary_query
+
+    q = select_primary_query(_queries_by_ref(report))
+    return _clean_sql(q.get("sql")) if q else None
+
+
+def _sql_for_refs(report: dict[str, Any], refs: Any) -> str | None:
+    """SQL of the first cited ``query_refs`` entry (insight / profile charts)."""
+    if not isinstance(refs, (list, tuple)):
+        return None
+    by_ref = _queries_by_ref(report)
+    for ref in refs:
+        q = by_ref.get(str(ref))
+        if q and (sql := _clean_sql(q.get("sql"))):
+            return sql
+    return None
+
+
 def _one_line(text: str, *, limit: int = 120) -> str | None:
     """First sentence of ``text`` as a one-line headline, trimmed to ``limit``
     chars. Deterministic (no LLM): just the leading sentence of report prose."""
@@ -510,7 +583,10 @@ def compose_summary_page(
                 )
             )
         main_chart_obj = chart_object_from_spec(
-            report.get("main_chart"), element_id="report:chart", role="chart"
+            report.get("main_chart"),
+            element_id="report:chart",
+            role="chart",
+            sql=_primary_sql(report),
         )
         columns: list[list[PageObject]] = [left, [main_chart_obj] if main_chart_obj else []]
         steps.append(
@@ -557,12 +633,29 @@ def compose_insights_page(
 
         note_col: list[PageObject] = []
         chart_col: list[PageObject] = []
+        # s20: a report table (skills.data_table via build_report(table=...))
+        # renders as a first-class table object beside the insight cards.
+        table = report.get("table")
+        if isinstance(table, dict) and table.get("columns"):
+            chart_col.append(
+                PageObject(
+                    type="table",
+                    element_id="report:table",
+                    role="table",
+                    explains=first_kpi,
+                    data={k: v for k, v in table.items() if v is not None},
+                )
+            )
         for source in [*insights, *profiles]:
             chart_obj = chart_object_from_spec(
                 source.get("chart"),
                 element_id=f"{source.get('element_id', 'insight')}:chart",
                 role="chart",
                 explains=first_kpi,
+                # Prefer the query the insight cites; fall back to the answer's
+                # primary query (the insight chart is derived from the same extract),
+                # so every chat chart carries an open-in-SQL action.
+                sql=_sql_for_refs(report, source.get("query_refs")) or _primary_sql(report),
             )
             if chart_obj is not None:
                 chart_col.append(chart_obj)

@@ -15,6 +15,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .tools_explore import explore_grounding
+
 USER_VISIBLE_SCHEMAS = {"marts", "staging"}
 ADMIN_SCHEMA_ORDER = {"app": 0, "marts": 1, "staging": 2, "raw": 3}
 
@@ -23,6 +25,8 @@ RENT_MART = "marts.property_rent"
 STG_SALES = "staging.property_sales"
 STG_RENT = "staging.property_rent"
 GEO_BRIDGE = "staging.int_postcode_geo"
+YIELD_MART = "marts.property_yield"
+GEO_DIM = "marts.dim_postcode_geo"
 RAW_SALES = "raw.property_sales"
 RAW_RENT = "raw.property_rent"
 
@@ -75,6 +79,23 @@ Columns:
   median_weekly_rent (numeric) — bucket-level median; not additive
   min_weekly_rent (numeric), max_weekly_rent (numeric)
 
+Table {YIELD_MART} — gross rental yield by postcode + property_type + year
+(dataset nsw_yield). Sales JOINed to rent — the combined view neither single mart
+can answer. Keeps the additive legs (total_sale_value, n_sold, total_weekly_rent,
+n_rented) so a rollup recomputes correctly; gross_yield_pct is a
+ratio-of-averages = 52 * avg_weekly_rent / avg_sale_price * 100, NOT an average of
+per-row yields. Thin cells floored at n_sold>=5, n_rented>=5.
+Columns:
+  postcode (text), property_type (text), year (int)
+  total_sale_value, n_sold, total_weekly_rent, n_rented  — additive legs
+  avg_sale_price, avg_weekly_rent (numeric)              — cell averages
+  gross_yield_pct (numeric)                              — derived; re-derive on rollup
+
+Table {GEO_DIM} — postcode -> ABS geography rollups (dataset: any property grant).
+One row per postcode: sa2_name, sa3_name, sa4_name, gcc_name, state_name. JOIN on
+postcode to roll any mart up to a region (e.g. "rent by SA3", "top-yield SA4").
+Columns: postcode, sa2_name, sa3_name, sa4_name, gcc_name, state_name.
+
 Table {GEO_BRIDGE} — postcode<->suburb bridge (dataset nsw_sales). Every
 (postcode, suburb) pair, with n_sales. Use it to resolve a suburb name to its
 postcode(s), especially for rent questions (rent has no suburb).
@@ -113,7 +134,7 @@ def _schema_from_manifest(path: Path) -> str:
     if not blocks:
         raise ValueError("no agent_queryable models in manifest")
     header = "NSW property-market data (from dbt docs):\n"
-    return header + "\n".join(blocks) + "\n" + GENERIC_GROUNDING
+    return header + "\n".join(blocks) + "\n" + GENERIC_GROUNDING + "\n\n" + explore_grounding()
 
 
 def get_schema() -> str:
@@ -125,7 +146,7 @@ def get_schema() -> str:
                 return _schema_from_manifest(path)
             except Exception:  # noqa: BLE001 — fall back to the curated doc
                 pass
-    return CURATED_SCHEMA_DOC
+    return CURATED_SCHEMA_DOC + "\n" + explore_grounding()
 
 
 def _first_sentence(text: str, limit: int = 160) -> str:

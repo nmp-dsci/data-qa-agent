@@ -45,6 +45,14 @@ export const IconSql = () => (
   </I>
 );
 
+// Explore — a compass (dataset exploration).
+export const IconExplore = () => (
+  <I>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M15.5 8.5l-2 5-5 2 2-5 5-2z" />
+  </I>
+);
+
 // Admin — a cockpit gauge with a needle (s17 locked nav set).
 export const IconAdmin = () => (
   <I>

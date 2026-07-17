@@ -137,13 +137,51 @@ export function demoObjectOfType(type: PageObjectType, height: Height = "md"): P
       );
     case "text":
       return OBJ.note("2-bed units lead at +6.1% YoY; supply near the station stays tight.");
+    case "table":
+      return {
+        type: "table",
+        element_id: "demo:table",
+        role: null,
+        data: {
+          title: "Comparison",
+          variant: "comparison",
+          columns: [
+            { key: "label", label: "Metric" },
+            { key: "target", label: "Target", align: "right", tone: "target" },
+            { key: "comparison", label: "Comparison", align: "right", tone: "comparison" },
+            { key: "delta", label: "Δ", align: "right", tone: "delta" },
+          ],
+          rows: [
+            { label: "Avg rent", target: 483, comparison: 448, delta: 35 },
+            { label: "Bonds", target: 4860, comparison: 10110, delta: -5250 },
+          ],
+        },
+      };
+    case "choropleth":
+      return {
+        type: "choropleth",
+        element_id: "demo:choropleth",
+        role: null,
+        data: {
+          layer: "poa_nsw",
+          key_field: "postcode",
+          value_field: "value",
+          height,
+          rows: [
+            { postcode: "2000", value: 5 },
+            { postcode: "2300", value: 3 },
+          ],
+        },
+      };
   }
 }
 
 /** The single demo object for a chart-registry entry, keyed by its object_type. */
 export function chartDemoObject(entry: AgentConfigEntry): PageObject | null {
   const type = String(entry.spec["object_type"] ?? "") as PageObjectType;
-  if (!["breakdown", "compare", "kpi", "trend", "insight", "text"].includes(type)) return null;
+  if (!["breakdown", "compare", "kpi", "trend", "insight", "text", "table"].includes(type)) {
+    return null;
+  }
   return demoObjectOfType(type);
 }
 

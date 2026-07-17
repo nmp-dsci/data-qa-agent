@@ -58,6 +58,18 @@ const OBJECT_GLYPHS: Record<PageObjectType, ReactNode> = {
     </>,
   ),
   text: g(<path d="M3 4.5h10M3 8h10M3 11.5h6" />),
+  table: g(
+    <>
+      <rect x="2.5" y="3.5" width="11" height="9" rx="1" />
+      <path d="M2.5 6.5h11M6 3.5v9" />
+    </>,
+  ),
+  choropleth: g(
+    <>
+      <path d="M8 2.5c2.5 0 4 1.6 4 3.9C12 9.2 8 13.5 8 13.5S4 9.2 4 6.4C4 4.1 5.5 2.5 8 2.5z" />
+      <circle cx="8" cy="6.3" r="1.3" />
+    </>,
+  ),
 };
 
 /** A short label for a ② Sandbox output in the link picker (title/label/heading). */
@@ -133,6 +145,10 @@ const defaultData = (type: PageObjectType): Record<string, unknown> => {
       return { title: "", dimension: "", measure: "", group: null, rows: [], height: "md" };
     case "insight":
       return { heading: "New insight", text: "", refs: [] };
+    case "table":
+      return { title: "", variant: "plain", columns: [], rows: [] };
+    case "choropleth":
+      return { title: "", layer: "poa_nsw", key_field: "postcode", value_field: "value", rows: [], height: "md" };
     default:
       return { text: "New note" };
   }
@@ -161,6 +177,8 @@ const TEXT_FIELDS: Record<PageObjectType, [string, string, boolean][]> = {
     ["text", "text", true],
   ],
   text: [["text", "text", true]],
+  table: [["title", "title", false]],
+  choropleth: [["title", "title", false]],
 };
 
 const ctrl: React.CSSProperties = {

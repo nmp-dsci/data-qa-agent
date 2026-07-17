@@ -347,11 +347,65 @@ def _kpi_code(spec: dict[str, Any]) -> str:
     )
 
 
+def _table_code(spec: dict[str, Any]) -> str:
+    """A ranked/plain data table at the chart grain — the s20 ``table`` object.
+
+    Aggregates the bar measure (and, when present, the line measure as a second
+    value column) to ``dimension`` (+ optional ``group``), then emits the
+    DataTable wire shape via ``skills.data_table`` for ``build_report(table=...)``.
+    """
+    grain = spec.get("grain") or ["suburb", "area_band"]
+    dimension = str(spec.get("dimension") or "area_band")
+    group = spec.get("group") or None
+    has_month = "month" in grain
+    bar = _measure(spec.get("bar_measure"), default_label="sales_volume", default_source="n_sold")
+    measures = [bar]
+    line_raw = spec.get("line_measure")
+    if isinstance(line_raw, dict) and (line_raw.get("source") or line_raw.get("num")):
+        measures.append(
+            _measure(line_raw, default_label="avg_sale_price", default_source="avg_sale_price")
+        )
+    chart_keys = [dimension] + ([str(group)] if group else [])
+    keys_lit = json.dumps(chart_keys)
+
+    lines = _window_setup(grain, int(spec.get("months") or 12))
+    lines += _measure_block(measures[0], chart_keys, "agg", has_month)
+    if len(measures) > 1:
+        lines += _measure_block(measures[1], chart_keys, "m2", has_month)
+        lines += [f"agg = agg.merge(m2, on={keys_lit}, how='left')"]
+
+    variant = str(spec.get("variant") or "ranked")
+    if variant not in ("plain", "comparison", "ranked"):
+        variant = "ranked"
+    bar_label = measures[0]["label"]
+    if variant == "ranked":
+        lines += [f"agg = agg.sort_values({json.dumps(bar_label)}, ascending=False)"]
+
+    columns = [{"key": k, "label": k} for k in chart_keys] + [
+        {"key": m["label"], "label": m["label"], "align": "right"} for m in measures
+    ]
+    title = json.dumps(spec.get("title") or f"{bar_label} by {dimension}")
+    summary = json.dumps(spec.get("summary") or f"{bar_label} tabulated by {dimension}.")
+    bar_key = json.dumps(bar_label if variant == "ranked" else None)
+    lines += [
+        "table = skills.data_table(",
+        "    agg,",
+        f"    columns={json.dumps(columns)},",
+        f"    title={title},",
+        f"    variant={json.dumps(variant)},",
+        f"    bar_key={bar_key},",
+        ")",
+        f"result = skills.build_report(summary={summary}, table=table)",
+    ]
+    return "\n".join(lines)
+
+
 _BUILDERS = {
     "compare": _combo_code,
     "breakdown": _breakdown_code,
     "trend": _trend_code,
     "kpi": _kpi_code,
+    "table": _table_code,
 }
 
 

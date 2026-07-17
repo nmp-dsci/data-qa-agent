@@ -59,6 +59,8 @@ export const OBJECT_TYPE_LABELS: Record<PageObjectType, string> = {
   compare: "Line + bar chart",
   insight: "Insight",
   text: "Text",
+  table: "Table",
+  choropleth: "Map",
 };
 
 /** One-line "what it is" per object type — the visual object picker reads these
@@ -70,6 +72,8 @@ export const OBJECT_TYPE_DESCRIPTIONS: Record<PageObjectType, string> = {
   compare: "Two measures overlaid",
   insight: "Written takeaway + query refs",
   text: "A note or caption",
+  table: "Rows and columns — comparison or ranked",
+  choropleth: "A value shaded across a map",
 };
 
 /** Semantic chart heights (px). "fill" stretches to the column instead. */
@@ -102,4 +106,7 @@ export const CHART_OPTIONS: ChartOption[] = [
   { type: "breakdown", intent: "bar", label: "bar (breakdown)" },
   { type: "compare", intent: "grouped-bar", label: "grouped bar (compare)" },
   { type: "insight", intent: "insight", label: "insight (note)" },
+  { type: "table", intent: "table", label: "table (rows)" },
+  // Not listed: "text" (a caption, not a chart) and "choropleth" (the map is an
+  // Explore-tool-only object — s20 decision; the agent never emits it).
 ];

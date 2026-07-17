@@ -170,3 +170,44 @@ def test_breakdown_object_runs() -> None:
     outcome = run_code(code, df=_frame(), frames={"extract": _frame()})
     assert outcome.error is None
     assert "comparison_chart" in outcome.skills_used
+
+
+def test_table_object_builds_and_lifts_to_valid_page_object() -> None:
+    """s20 — the table builder emits skills.data_table + build_report(table=...),
+    and the lift produces a `table` page object that passes the pages contract."""
+    from agent.main import _lift_object
+    from agent.pages import PageObject
+
+    spec = {
+        "grain": ["suburb", "area_band"],
+        "dimension": "area_band",
+        "group": "suburb",
+        "bar_measure": {"label": "sales_volume", "source": "n_sold", "agg": "sum"},
+        "variant": "ranked",
+        "title": "Volume by band",
+    }
+    code = build_object_code(object_type="table", spec=spec)
+    outcome = run_code(code, df=_frame(), frames={"extract": _frame()})
+    assert outcome.error is None
+    assert "data_table" in outcome.skills_used
+
+    obj = _lift_object(
+        outcome.report,
+        element_id=element_id_for("volume-table"),
+        object_type="table",
+        sql="SELECT 1",
+    )
+    assert obj is not None
+    assert obj["type"] == "table"
+    assert obj["element_id"] == "obj:volume-table"
+    data = obj["data"]
+    assert data["variant"] == "ranked"
+    assert data["bar_key"] == "sales_volume"
+    assert data["sql"] == "SELECT 1"
+    keys = [c["key"] for c in data["columns"]]
+    assert keys == ["area_band", "suburb", "sales_volume"]
+    # Ranked: rows sorted by the bar measure, descending.
+    vols = [r["sales_volume"] for r in data["rows"]]
+    assert vols == sorted(vols, reverse=True)
+    # The lifted dict validates through the agent-side pages contract.
+    PageObject(**obj)

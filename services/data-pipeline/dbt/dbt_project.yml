@@ -34,3 +34,18 @@ models:
       +schema: marts
       +materialized: table
       +tags: ['agent_queryable']
+
+seeds:
+  nsw_property:
+    # Reference data lands in staging (admin-owned; the marts that ref it apply
+    # their own RLS). postcode kept as text so leading-significant codes survive
+    # dbt's type inference (a bare '2000' must not become the integer 2000).
+    postcode_geo:
+      +schema: staging
+      +column_types:
+        postcode: text
+        sa2_name: text
+        sa3_name: text
+        sa4_name: text
+        gcc_name: text
+        state_name: text

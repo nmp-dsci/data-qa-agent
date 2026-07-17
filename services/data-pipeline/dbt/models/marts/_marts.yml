@@ -86,3 +86,73 @@ models:
         description: Minimum weekly rent in the bucket.
       - name: max_weekly_rent
         description: Maximum weekly rent in the bucket.
+
+  - name: dim_postcode_geo
+    description: >
+      Postcode -> ABS geography rollups (SA2 / SA3 / SA4 / Greater-Capital /
+      state), one row per postcode, from the postcode_geo seed (ABS 2016
+      correspondences). The geo dimension the Explore profiler and the agent use
+      to roll a postcode up to a region: the sales/rent/yield marts carry only
+      postcode, so "rent by SA3" or "top-yield SA4" joins through here on
+      postcode. Shared across the property datasets (readable with ANY property
+      grant). Verified by not_null/unique on postcode.
+    columns:
+      - name: postcode
+        description: Postcode. Unique join key back to the property marts.
+        data_tests: [not_null, unique]
+      - name: sa2_name
+        description: ABS Statistical Area Level 2 name (finest rollup).
+      - name: sa3_name
+        description: ABS Statistical Area Level 3 name (e.g. 'Newcastle').
+      - name: sa4_name
+        description: ABS Statistical Area Level 4 name (e.g. 'Newcastle and Lake Macquarie').
+      - name: gcc_name
+        description: Greater Capital City Statistical Area name (e.g. 'Greater Sydney', 'Rest of NSW').
+      - name: state_name
+        description: State/territory name.
+
+  - name: mart_property_yield
+    description: >
+      Gross rental yield by (postcode, property_type, year) — sales JOIN rent,
+      the combined view neither single-source mart can answer. Physical table:
+      marts.property_yield. Ported from docs/chronicle/property_yield_20241003.py.
+      Keeps the additive components (total_sale_value, n_sold, total_weekly_rent,
+      n_rented) so a consumer re-aggregating to SA3 or across property types can
+      recompute averages and yield; gross_yield_pct is a derived
+      ratio-of-averages (52 * avg_weekly_rent / avg_sale_price * 100), not an
+      average of per-row yields. Thin cells are floored at n_sold >= 5 and
+      n_rented >= 5. Belongs to the `nsw_yield` dataset (its own RLS grant).
+      Verified by assert_property_yield_has_coverage and
+      assert_property_yield_range.
+    columns:
+      - name: postcode
+        description: Postcode. Join key to dim_postcode_geo for region rollups.
+        data_tests: [not_null]
+      - name: property_type
+        description: "'house' or 'unit', standardised the same way as the sales/rent marts."
+        data_tests: [not_null]
+      - name: year
+        description: Calendar year (both sales and rent aggregated to the year). Part of the grain.
+        data_tests: [not_null]
+      - name: total_sale_value
+        description: Additive sum of sale_price (AUD) for the cell. Use with n_sold to re-aggregate avg_sale_price.
+        data_tests: [not_null]
+      - name: n_sold
+        description: Additive count of sales in the cell (>= 5 by construction).
+        data_tests: [not_null]
+      - name: total_weekly_rent
+        description: Additive sum of weekly_rent (AUD) for the cell. Use with n_rented to re-aggregate avg_weekly_rent.
+        data_tests: [not_null]
+      - name: n_rented
+        description: Additive count of bonds in the cell (>= 5 by construction).
+        data_tests: [not_null]
+      - name: avg_sale_price
+        description: Cell-level average sale price. Re-aggregate from sum(total_sale_value)/sum(n_sold), not by averaging this.
+      - name: avg_weekly_rent
+        description: Cell-level average weekly rent. Re-aggregate from sum(total_weekly_rent)/sum(n_rented), not by averaging this.
+      - name: gross_yield_pct
+        description: >
+          Gross rental yield %: 52 * avg_weekly_rent / avg_sale_price * 100. A
+          derived ratio-of-averages — for a rollup, recompute it from the summed
+          components, don't average these.
+        data_tests: [not_null]

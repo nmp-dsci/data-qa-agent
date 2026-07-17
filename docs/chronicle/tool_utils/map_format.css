@@ -1,0 +1,29 @@
+/* insert CSS */
+.path_geo { 
+    cursor: pointer;
+    stroke: black;
+    stroke-width: .5px;
+    fill: #DCDCDC;
+}
+.path_geo:hover {
+    stroke: #555;
+    stroke-width: 2px;
+}
+div.tooltip {
+    position: absolute;
+    opacity:0.8;
+    z-index:1000;
+    text-align:right;
+    border-radius:4px;
+    padding:8px;
+    color:#fff;
+    background-color:#000;
+    font: 20px sans-serif;
+    max-width: 300px;
+}
+.legend-number { 
+    font-size: 14px;
+}
+#map {    
+border:1px solid black;
+}

@@ -87,6 +87,10 @@ ORDER BY avg_price_2024_on DESC
 LIMIT 10;`;
 
 const TABS_KEY = "sqled.tabs.v1";
+// Seed nonces already turned into a tab. Module-scoped (not a ref) so it survives
+// StrictMode's mount→unmount→mount and any editor remount — a chart's "open in
+// SQL editor" therefore creates exactly one tab per click, never a duplicate.
+const consumedSeeds = new Set<number>();
 const USER_VISIBLE_SCHEMAS = new Set(["marts", "staging"]);
 // dbt docs (lineage + model docs) — served by the pipeline-docs job locally.
 const DBT_DOCS_URL = (import.meta.env.VITE_DBT_DOCS_URL as string) ?? "http://localhost:8180";
@@ -375,6 +379,10 @@ export function SqlEditor({
   const themeCompartment = useRef(new Compartment());
   const runRef = useRef<() => void>(() => {});
   const activeIdRef = useRef<string>("");
+  // The text the editor view should currently show. Persists across StrictMode's
+  // mount→cleanup→mount cycle (and any view re-creation), so a view that is born
+  // AFTER a seed was applied still opens with the seeded SQL rather than tab 0.
+  const docRef = useRef<string>("");
   const theme = useTheme();
 
   const [tabs, setTabs] = useState<Draft[]>(loadTabs);
@@ -398,6 +406,9 @@ export function SqlEditor({
   const [aiNote, setAiNote] = useState<string | null>(null);
 
   activeIdRef.current = activeId;
+  // Seed the "current doc" ref once, before the mount effect reads it, so a
+  // plain (unseeded) open of the editor still shows the active tab.
+  if (docRef.current === "") docRef.current = (tabs.find((t) => t.id === activeId) ?? tabs[0]).sql;
   const active = results[activeId] ?? { result: null, error: null };
   const sidebarCatalog = useMemo(() => catalogForUser(catalog, user), [catalog, user]);
   const visibleCatalog = useMemo(
@@ -415,25 +426,19 @@ export function SqlEditor({
   }, [tabs]);
 
   const setEditorDoc = useCallback((text: string) => {
+    // Record intent first: even if the view doesn't exist yet (or is about to be
+    // re-created by StrictMode), the next mount opens with this text.
+    docRef.current = text;
     const view = viewRef.current;
     if (!view) return;
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
   }, []);
 
-  // Open a new tab whenever chat sends a query over ("Open in SQL editor").
-  const seedNonceRef = useRef<number>(0);
-  useEffect(() => {
-    if (!seedSql || seedSql.nonce === seedNonceRef.current) return;
-    seedNonceRef.current = seedSql.nonce;
-    addTab(seedSql.sql);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seedSql]);
-
   // Mount the editor once.
   useEffect(() => {
     if (!editorRef.current) return;
     const view = new EditorView({
-      doc: tabs[0].sql,
+      doc: docRef.current,
       parent: editorRef.current,
       extensions: [
         basicSetup,
@@ -468,6 +473,18 @@ export function SqlEditor({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Open a new tab whenever a chart/chat sends a query over ("Open in SQL
+  // editor"). Declared *after* the mount effect so that on a fresh mount the
+  // editor view already exists when addTab dispatches the seeded SQL into it —
+  // otherwise setEditorDoc no-ops against a null view and the tab renders the
+  // previous tab's content.
+  useEffect(() => {
+    if (!seedSql || consumedSeeds.has(seedSql.nonce)) return;
+    consumedSeeds.add(seedSql.nonce);
+    addTab(seedSql.sql);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedSql]);
 
   // Reconfigure the editor chrome + syntax highlight when the app theme flips.
   useEffect(() => {

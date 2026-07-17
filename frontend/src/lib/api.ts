@@ -111,7 +111,16 @@ export interface InsightReport {
 // positional (columns[i][j]); `role` is the semantic label (headline / chart /
 // insight — feedback + evals key off it) and never affects placement. Objects
 // may carry data.height (px or "sm"|"md"|"lg"|"fill").
-export type PageObjectType = "kpi" | "trend" | "breakdown" | "compare" | "insight" | "text";
+export type PageObjectType =
+  | "kpi"
+  | "trend"
+  | "breakdown"
+  | "compare"
+  | "insight"
+  | "text"
+  // s19 Explore additions to the shared chart library — usable by any surface.
+  | "table"
+  | "choropleth";
 
 export interface PageObject {
   type: PageObjectType;
@@ -524,6 +533,184 @@ export async function getCatalog(): Promise<CatalogTable[]> {
   if (!resp.ok) throw new Error(`Could not load schema (${resp.status})`);
   const data = (await resp.json()) as { tables: CatalogTable[] };
   return data.tables ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Explore (s19) — dataset profiling, trends, dictionary + NL setup.
+// ---------------------------------------------------------------------------
+export interface DomainValue {
+  value: string | number;
+  count: number;
+}
+
+export interface ExploreDimension {
+  name: string;
+  label: string;
+  kind: "categorical" | "ordinal" | "time" | "geo";
+  source: "mart" | "geo" | "computed";
+  ordinal: boolean;
+  unit: string | null;
+  domain?: DomainValue[] | null;
+  typeahead?: boolean;
+  /** Multi-selectable (IN filter) — categorical/geo dims. Year/FY are single. */
+  multi?: boolean;
+}
+
+export interface ExploreMetric {
+  name: string;
+  label: string;
+  format: "currency" | "number" | "percent";
+  kind: "additive" | "derived";
+}
+
+export interface ExploreGeo {
+  dimension: string;
+  layer: string;
+}
+
+export interface ExploreDataset {
+  slug: string;
+  name: string;
+  time_dim: string;
+  default_metric: string;
+  geo: ExploreGeo | null;
+  dimensions: ExploreDimension[];
+  metrics: ExploreMetric[];
+  time_range?: { min: string | number | null; max: string | number | null };
+}
+
+export type ExploreFilterValue =
+  | string
+  | number
+  | (string | number)[]
+  | { min?: string | number; max?: string | number };
+export type ExploreFilters = Record<string, ExploreFilterValue>;
+
+export interface AggregateResult {
+  columns: string[];
+  rows: unknown[][];
+  row_count: number;
+  truncated: boolean;
+  latency_ms: number;
+  sql?: string;
+}
+
+export interface ProfileSegment {
+  value: string;
+  target: number | null;
+  comparison: number | null;
+  delta: number | null;
+  delta_pct: number | null;
+  target_n: number | null;
+}
+
+export interface ProfilePredictor {
+  predictor: string;
+  label: string;
+  kind: string;
+  ordinal: boolean;
+  signal: number;
+  segments: ProfileSegment[];
+}
+
+export interface ProfileMetricDelta {
+  metric: string;
+  label: string;
+  fmt: string;
+  target: number | null;
+  comparison: number | null;
+  delta: number | null;
+  delta_pct: number | null;
+}
+
+export interface ProfileResult {
+  dataset: string;
+  metric: string;
+  metric_label: string;
+  metric_format: string;
+  target_total: number | null;
+  comparison_total: number | null;
+  delta: number | null;
+  delta_pct: number | null;
+  metric_deltas: ProfileMetricDelta[];
+  predictors: ProfilePredictor[];
+  positive_uplifts: Record<string, unknown>[];
+  negative_uplifts: Record<string, unknown>[];
+  target_filters: ExploreFilters;
+  comparison_filters: ExploreFilters;
+  geo: ExploreGeo | null;
+  /** The result assembled server-side as report-engine pages (s20) — the UI
+   *  renders these; Save-as-golden persists them unchanged. */
+  pages?: Page[];
+}
+
+export interface AskState {
+  mode: "profile" | "trends";
+  state: Record<string, unknown>;
+}
+
+export async function getExploreDatasets(): Promise<ExploreDataset[]> {
+  const resp = await fetch(`${API}/explore/datasets`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load datasets (${resp.status})`);
+  const data = (await resp.json()) as { datasets: ExploreDataset[] };
+  return data.datasets ?? [];
+}
+
+export async function exploreAggregate(body: {
+  dataset: string;
+  metrics: string[];
+  group_by?: string[];
+  filters?: ExploreFilters;
+  limit?: number;
+}): Promise<AggregateResult> {
+  const resp = await fetch(`${API}/explore/aggregate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ group_by: [], filters: {}, ...body }),
+  });
+  if (!resp.ok) throw new Error(`Aggregate failed (${resp.status}): ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function exploreProfile(body: {
+  dataset: string;
+  metric?: string | null;
+  target: { filters: ExploreFilters };
+  comparison: { filters: ExploreFilters };
+}): Promise<ProfileResult> {
+  const resp = await fetch(`${API}/explore/profile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Profile failed (${resp.status}): ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function exploreAsk(
+  question: string,
+  mode: "profile" | "trends",
+  dataset?: string,
+): Promise<AskState> {
+  const resp = await fetch(`${API}/explore/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ question, mode, dataset: dataset ?? null }),
+  });
+  if (!resp.ok) throw new Error(`Ask failed (${resp.status}): ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function exploreTypeahead(
+  dataset: string,
+  dimension: string,
+  q: string,
+): Promise<(string | number)[]> {
+  const params = new URLSearchParams({ dataset, dimension, q });
+  const resp = await fetch(`${API}/explore/typeahead?${params}`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Typeahead failed (${resp.status})`);
+  const data = (await resp.json()) as { values: (string | number)[] };
+  return data.values ?? [];
 }
 
 async function adminGet<T>(path: string): Promise<T> {

@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Pilot — Chronicle Explore Plan (s19)</title>
+<style>
+/* ============ artifact chrome (matches the app's own token system) ============ */
+:root {
+  --bg:#0b0d12; --panel:#12151c; --panel-2:#181c25; --panel-3:#1f2430;
+  --border:#232834; --border-2:#333a48; --text:#e7e9ee; --muted:#98a2b6; --faint:#79839a;
+  --accent:#b48a3f; --accent-soft:#f0c674; --accent-2:#6ea8fe;
+  --good:#9ece6a; --warn:#e0af68; --bad:#f2777a; --purple:#c58fff; --info:#7dcfff;
+  --sans:"Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px; --r-lg:14px;
+}
+* { box-sizing:border-box; min-width:0; }
+html,body { margin:0; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14.5px;
+  line-height:1.55; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+.wrap { max-width:1240px; margin:0 auto; padding:28px 22px 120px; }
+h1 { font-size:27px; letter-spacing:-.02em; margin:6px 0 4px; }
+h2 { font-size:19px; letter-spacing:-.01em; margin:0 0 4px; }
+h3 { font-size:15px; margin:0 0 6px; }
+h4 { margin:0 0 4px; font-size:13.5px; }
+p { margin:6px 0; }
+ul { margin:6px 0; padding-left:20px; }
+li { margin:3px 0; }
+.sub { color:var(--muted); }
+.small { font-size:12.5px; }
+.tiny { font-size:11px; }
+code, .mono { font-family:var(--mono); font-size:.92em; }
+code { background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:0 5px; }
+p code, li code, td code { line-height:1.3; }
+section.band { margin-top:42px; }
+.band-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.band-num { font-family:var(--mono); font-size:11px; color:var(--accent-soft); border:1px solid var(--border-2);
+  border-radius:999px; padding:2px 10px; letter-spacing:.08em; }
+.chips { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
+.chip { font-size:11.5px; border:1px solid var(--border-2); border-radius:999px; padding:3px 11px; color:var(--muted); }
+.chip b { color:var(--text); font-weight:650; }
+.chip.gold { color:var(--accent-soft); border-color:#6b5a2a; }
+.chip.red { color:var(--bad); border-color:#6b2a2a; }
+.chip.green { color:var(--good); border-color:#33502f; }
+.chip.blue { color:var(--info); border-color:#2f5a7a; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px 18px; }
+.grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+@media (max-width:960px){ .grid2,.grid3 { grid-template-columns:1fr; } }
+
+table.t { width:100%; border-collapse:collapse; font-size:12.8px; }
+.t th,.t td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+.t thead th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  background:var(--panel-2); position:sticky; top:0; }
+.t tr:last-child td { border-bottom:none; }
+.tbl-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:var(--r); }
+.ok { color:var(--good); } .warn-t { color:var(--warn); } .bad-t { color:var(--bad); }
+.badge { font-size:10px; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:999px; border:1px solid; white-space:nowrap; }
+.badge.new { color:var(--good); border-color:#33502f; }
+.badge.mod { color:var(--warn); border-color:#6b5a2a; }
+.badge.reuse { color:var(--info); border-color:#2f5a7a; }
+.badge.gate { color:var(--purple); border-color:#5a3a7a; }
+
+/* phases */
+.phase { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--panel); overflow:hidden; margin-top:14px; }
+.phase-head { display:flex; align-items:baseline; gap:12px; padding:12px 16px; background:var(--panel-2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.phase-head .pnum { font-family:var(--mono); font-size:12px; color:var(--accent-soft); }
+.phase-head h3 { margin:0; }
+.phase-head .sz { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint); }
+.phase-body { padding:12px 16px 14px; }
+.phase-body .cols { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:16px; }
+@media (max-width:900px){ .phase-body .cols { grid-template-columns:1fr; } }
+.filelist { font-family:var(--mono); font-size:11.5px; color:var(--muted); line-height:1.8; }
+.filelist b { color:var(--text); font-weight:600; }
+.accept { border-left:3px solid var(--good); background:var(--panel-2); border-radius:0 var(--r) var(--r) 0; padding:8px 12px; font-size:12.5px; margin-top:10px; }
+.accept b { color:var(--good); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+
+/* decisions (input playbook) */
+.decision { border:1px solid var(--border-2); border-left:3px solid var(--accent); border-radius:var(--r);
+  background:var(--panel); padding:14px 16px; }
+.decision .why { color:var(--muted); font-size:12.3px; margin:0 0 10px; }
+.decision label { display:flex; gap:9px; align-items:baseline; padding:5px 0; font-size:13px; cursor:pointer; }
+.decision input { accent-color:var(--accent-soft); }
+.decision .opt-note { color:var(--faint); font-size:11.5px; }
+.queue-btn { margin-top:10px; background:linear-gradient(135deg,var(--accent-soft),var(--accent)); color:#1a1206;
+  border:none; font:inherit; font-size:12.5px; font-weight:650; padding:7px 16px; border-radius:8px; cursor:pointer; }
+.queue-btn:disabled { opacity:.45; cursor:default; }
+.queued-note { font-size:11.5px; color:var(--good); margin-left:10px; display:none; }
+form.answered .queued-note { display:inline; }
+
+/* legacy anatomy */
+.cube { font-family:var(--mono); font-size:11.5px; background:var(--panel-2); border:1px solid var(--border);
+  border-radius:var(--r); padding:10px 14px; overflow-x:auto; white-space:pre; line-height:1.7; color:var(--muted); }
+.cube em { color:var(--accent-soft); font-style:normal; }
+.cube i { color:var(--info); font-style:normal; }
+
+/* ============ app mock ============ */
+.mockframe { border:1px solid var(--border-2); border-radius:var(--r-lg); overflow:hidden; background:#0a0d15;
+  box-shadow:0 20px 50px rgba(0,0,0,.45); }
+.mock { display:flex; min-height:520px; }
+.mock-rail { width:52px; background:#0d1019; border-right:1px solid var(--border); display:flex; flex-direction:column;
+  align-items:center; padding:12px 0; gap:6px; flex-shrink:0; }
+.mock-rail .logo { width:26px; height:26px; border-radius:7px; background:linear-gradient(135deg,var(--accent-soft),var(--accent)); margin-bottom:12px; }
+.mock-rail .ric { width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+  color:var(--faint); font-size:15px; }
+.mock-rail .ric.on { background:var(--panel-3); color:var(--accent-soft); border:1px solid var(--border-2); }
+.mock-main { flex:1; padding:16px 20px; min-width:0; }
+.mock-top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.mock-top h3 { margin:0; font-size:16px; }
+.mock-select { font-family:var(--mono); font-size:12px; background:var(--panel-2); border:1px solid var(--border-2);
+  border-radius:8px; padding:6px 12px; color:var(--text); display:inline-flex; gap:8px; align-items:center; }
+.mock-select .car { color:var(--faint); font-size:10px; }
+.mock-tabs { display:flex; gap:2px; border-bottom:1px solid var(--border); margin-bottom:14px; }
+.mock-tab { font-size:12.5px; padding:7px 14px; color:var(--muted); cursor:pointer; border:none; background:none; font-family:var(--sans);
+  border-bottom:2px solid transparent; }
+.mock-tab.on { color:var(--accent-soft); border-bottom-color:var(--accent-soft); }
+.mock-pane { display:none; }
+.mock-pane.on { display:block; }
+.mrow { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:10px; }
+.mrow2 { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:10px; }
+@media (max-width:820px){ .mrow,.mrow2 { grid-template-columns:1fr; } }
+.mcard { background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:10px 12px; }
+.mcard h5 { margin:0 0 6px; font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:650; }
+.kpi { font-size:21px; font-weight:700; letter-spacing:-.01em; }
+.kpi small { font-size:11px; font-weight:500; color:var(--muted); margin-left:6px; }
+.kpi .up { color:var(--good); } .kpi .dn { color:var(--bad); }
+.mini-t { width:100%; border-collapse:collapse; font-size:11.5px; }
+.mini-t td,.mini-t th { padding:4px 6px; border-bottom:1px solid var(--border); text-align:left; }
+.mini-t th { color:var(--faint); font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
+.mini-t tr:last-child td { border-bottom:none; }
+.mini-t .num { text-align:right; font-family:var(--mono); font-size:11px; }
+.ctrl-row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.ctrl { font-size:11.5px; background:var(--panel-2); border:1px solid var(--border-2); border-radius:7px; padding:5px 10px; color:var(--muted); }
+.ctrl b { color:var(--text); font-weight:600; }
+.ctrl.act { border-color:var(--accent); color:var(--accent-soft); }
+.askbox { display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  background:linear-gradient(135deg,rgba(240,198,116,.07),rgba(110,168,254,.05));
+  border:1px solid var(--border-2); border-radius:var(--r); padding:8px 12px; margin-bottom:10px; font-size:12px; color:var(--muted); }
+.askbox .q { flex:1; min-width:220px; background:var(--panel-2); border:1px solid var(--border-2); border-radius:7px; padding:6px 10px; color:var(--text); font-size:12px; font-style:italic; }
+.askbox .go { background:linear-gradient(135deg,var(--accent-soft),var(--accent)); color:#1a1206; font-weight:650; border-radius:7px; padding:6px 12px; font-size:11.5px; white-space:nowrap; }
+.coh-row { display:grid; grid-template-columns:110px minmax(0,1fr); gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid var(--border); }
+.coh-row:last-child { border-bottom:none; }
+.coh-label { font-size:11px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--muted); }
+.coh-label.tgt { color:var(--accent-soft); } .coh-label.cmp { color:var(--info); }
+.coh-chips { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.mock svg text { font-family:var(--sans); }
+.legend { display:flex; gap:12px; font-size:11px; color:var(--muted); margin:2px 0 6px; flex-wrap:wrap; }
+.legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+
+.callout { border:1px solid var(--border-2); border-left:3px solid var(--info); background:var(--panel); border-radius:var(--r); padding:10px 14px; font-size:12.8px; }
+.callout.warn { border-left-color:var(--warn); }
+.callout.good { border-left-color:var(--good); }
+
+.mermaid-box { background:var(--panel); border:1px solid var(--border); border-radius:var(--r-lg); padding:14px; overflow-x:auto; }
+.risk-sev { font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; border:1px solid; white-space:nowrap; }
+.risk-sev.hi { color:var(--bad); border-color:#6b2a2a; }
+.risk-sev.md { color:var(--warn); border-color:#6b5a2a; }
+.risk-sev.lo { color:var(--info); border-color:#2f5a7a; }
+footer { margin-top:60px; color:var(--faint); font-size:11.5px; border-top:1px solid var(--border); padding-top:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ================= HEADER ================= -->
+<header>
+  <div class="tiny mono" style="color:var(--faint)">.lavish/s19_chronicle-explore-plan.html · branch <b style="color:var(--accent-soft)">chronicle</b> · 2026-07-17</div>
+  <h1>Chronicle → <span style="color:var(--accent-soft)">Explore</span>: dataset profiling, trends &amp; extract in Data Pilot</h1>
+  <p class="sub" style="max-width:920px">Stage 1 (done): the legacy static profiling tool now runs self-contained from <code>docs/chronicle/</code>, verified in Chrome.
+  Stage 2 (this plan): rebuild it as a first-class <b>Explore</b> feature — users pick a dataset and get Profile / Trends / Data&nbsp;Dictionary tools over the governed marts,
+  with an LLM "set it up for me" box on each tool, and the same aggregation service becomes tooling the data-agent can call.</p>
+  <div class="chips">
+    <span class="chip green"><b>Stage 1</b> verified in Chrome — both pages, all 3 tabs, 0 console errors</span>
+    <span class="chip blue"><b>rev 3</b> — decisions locked · map in v1 &amp; moved to top · Target/Comparison color tokens · mermaid fixed</span>
+    <span class="chip gold"><b>5 decisions</b> locked (section 06)</span>
+    <span class="chip blue"><b>5 phases</b> A–E, agent leverage last</span>
+    <span class="chip"><b>Design system</b> Data Pilot tokens (visx, report-engine)</span>
+  </div>
+</header>
+
+<!-- ================= STAGE 1 ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">01 · STAGE 1 — DONE</span><h2>Legacy tool verified &amp; vendored into <code>docs/chronicle/</code></h2></div>
+  <div class="grid2">
+    <div class="card">
+      <h3>What was verified (Chrome, live)</h3>
+      <table class="t">
+        <thead><tr><th>Check</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td>Originals @ <code>nmp-dsci.github.io</code> — rent + sold pages</td><td class="ok">✓ all 3 tabs render, interactivity works</td></tr>
+          <tr><td>Console errors (fresh load, both pages)</td><td class="ok">✓ none</td></tr>
+          <tr><td><code>docs/chronicle/</code> copies — rent + sold pages</td><td class="ok">✓ identical behaviour on both</td></tr>
+          <tr><td>Network audit (chronicle serve)</td><td class="ok">✓ 60/60 assets 200 (fixed one 404: <code>ajax-loader.gif</code>)</td></tr>
+          <tr><td>Python scripts vs originals in <code>nmp-projects/chronicle</code></td><td class="ok">✓ byte-identical</td></tr>
+          <tr><td>HTML files vs originals</td><td class="ok">✓ byte-identical — no path edits needed</td></tr>
+        </tbody>
+      </table>
+      <p class="small sub" style="margin-top:8px">Run it: <code>cd docs/chronicle && python3 -m http.server 8932</code> → open <code>profile_nswrent.html</code> / <code>profile_nswsold.html</code>. CDN deps (jQuery, chroma, pako) still load remotely — works online only.</p>
+    </div>
+    <div class="card">
+      <h3>What was brought in</h3>
+      <div class="filelist">
+        docs/chronicle/<br>
+        ├── profile_nswrent.html · profile_nswsold.html <b>(unchanged)</b><br>
+        ├── profile_nswgov.py · profile_rentboard.py <b>(cube builders)</b><br>
+        ├── datafeed/ <b>(4 JSONs moved here — 9.1&nbsp;MB)</b><br>
+        ├── tool_utils/ <b>(65 JS/CSS files — 964&nbsp;KB)</b><br>
+        ├── assets/POA_2016_NSW_reduced.geojson <b>(8.5&nbsp;MB)</b> + loader gif<br>
+        ├── resources/d3.6.5.0.min.js <b>(264&nbsp;KB)</b><br>
+        └── vendor/bootstrap/ css + bundle js <b>(240&nbsp;KB)</b>
+      </div>
+      <div class="callout warn" style="margin-top:10px"><b>~19&nbsp;MB total.</b> Committing all of this bloats the repo forever (git history keeps it). Decision D5 below covers what to commit vs regenerate.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= LEGACY ANATOMY ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">02 · CONTEXT</span><h2>How the legacy tool works — and what actually needs porting</h2></div>
+  <div class="grid2">
+    <div class="card">
+      <h3>The pre-computed cube (why it exists)</h3>
+      <p class="small sub">GitHub Pages has no backend, so <code>profile_nswgov.py</code> / <code>profile_rentboard.py</code> pre-aggregate <b>every combination</b> of up to 4 dimensions into one long table, keyed by <code>cutid</code>, serialized as JS globals:</p>
+      <div class="cube">data_df  = [{ <i>cutid</i>:"7", <em>agg0_c</em>:"bedrooms", <em>agg0_v</em>:"3",
+             <em>agg1_c</em>:"postcode", <em>agg1_v</em>:"2287",
+             <em>agg2_c</em>:"rent_yyyymm", <em>agg2_v</em>:"2021-06",
+             <em>agg3_c</em>:"all", <em>agg3_v</em>:"all",
+             rental_n_v: 41, rent_n_v: 18130 }, …]
+lookup_df = [{ <i>cutid</i>:"7", value:"all___bedrooms___postcode___rent_yyyymm" }, …]</div>
+      <p class="small sub">The browser resolves the user's filter selection → sorted dim signature → <code>cutid</code> → slice of rows, then pivots/derives client-side (e.g. <code>rent_a_v = rent_n_v / rental_n_v</code>). <b>In Data Pilot none of this is needed: Postgres does the aggregation live.</b></p>
+      <p class="small sub" style="margin-top:8px">Legacy scope was deliberately tiny to keep JSON small — rent: <b>Newcastle SA3</b> only; sales: <b>North Sydney &amp; Hornsby SA4</b> only, 2012–2021, RESIDENCE, ≤$8M. The app's marts cover <b>all NSW</b>.</p>
+    </div>
+    <div class="card">
+      <h3>The three tools (what users actually get)</h3>
+      <table class="t">
+        <thead><tr><th style="width:90px">Tab</th><th>Behaviour</th></tr></thead>
+        <tbody>
+          <tr><td><b>Profiling</b></td><td>Pick a <b>Target</b> cohort vs a <b>Comparison</b> cohort (e.g. FY2022 vs FY2021). Get: topline summary, metric deltas, <b>per-predictor segment uplifts</b> ranked (which bedrooms / postcode / region moved most), per-predictor charts, and a postcode choropleth.</td></tr>
+          <tr><td><b>Trends</b></td><td>Two side-by-side chart builders: metric × month × split-dim → line or stacked bar, with dropdown filters. Instant pivot.</td></tr>
+          <tr><td><b>Data Extract</b></td><td>Data dictionary (dims, classes, unique values) + pick up to 4 dims → aggregated extract → CSV download.</td></tr>
+        </tbody>
+      </table>
+      <p class="small sub" style="margin-top:6px">The real IP to port is <b>the profile engine</b> (<code>profileCalc.js</code>/<code>profileMetrics.js</code>: cohort deltas + segment uplift ranking) and the <b>UX shape</b> — not the D3 rendering (s07 locked visx-only) and not the cube.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CURRENT APP STATE ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">03 · CURRENT STATE</span><h2>What the app already has — the marts are 90% of the data story</h2></div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Already in place <span class="badge reuse" style="margin-left:6px">REUSE</span></h3>
+      <ul class="small">
+        <li><code>marts.property_sales</code> — grain <code>postcode · suburb · property_type · area_band · zoning · month</code>, additive <code>total_sale_value / n_sold</code> (+ avg/median/min/max). Same source CSV as the legacy sales cube.</li>
+        <li><code>marts.property_rent</code> — grain <code>postcode · property_type · bedroom_band · month</code>, additive <code>total_weekly_rent / n_rented</code>. Same source as the rent cube.</li>
+        <li>Per-dataset <b>RLS + grants</b> (<code>apply_dataset_rls</code>), <code>agent_ro</code>/<code>admin_ro</code> roles, RLS-scoped connections in backend.</li>
+        <li>visx chart kit (<code>Trend</code>, <code>Bars</code>, <code>Combo</code>, <code>KPITile</code>) + report-engine page layouts + CSV helper (<code>lib/csv.ts</code>).</li>
+        <li>Governed SQL surface precedent: <code>routers/sql.py</code> (validation, history/audit, row caps) to copy patterns from.</li>
+        <li>dbt manifest grounding (<code>get_schema()</code>) the agent already reads.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Gaps this plan fills <span class="badge new" style="margin-left:6px">NEW</span></h3>
+      <ul class="small">
+        <li><b>No geo hierarchy</b> — legacy profile predictors include SA2/SA3/SA4/GCC rollups from <code>util_postcode</code>; the app only has a postcode↔suburb bridge (<code>int_postcode_geo</code>). Need a <code>dim_postcode_geo</code> seed.</li>
+        <li><b>No aggregation API</b> — nothing serves "group these metrics by these dims with these filters" without hand-written SQL.</li>
+        <li><b>No profile engine</b> — cohort vs cohort uplift ranking doesn't exist anywhere in the app.</li>
+        <li><b>No Explore UI</b> — NavRail views today: chat, sql, goldens, admin, settings.</li>
+        <li><b>No choropleth</b> — visx kit has no map component (D2 locked: build in v1).</li>
+        <li><b>Naming hazard:</b> <code>routers/profile.py</code> already exists (user self-service). The feature is <b>Explore</b>; endpoints live under <code>/explore/*</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= TARGET EXPERIENCE (MOCK) ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">04 · TARGET</span><h2>Target experience — the Explore tab</h2></div>
+  <p class="sub small" style="margin:0 0 12px">New NavRail entry between Chat and SQL Editor. One dataset picker (three datasets in v1: <code>nsw_sales</code> · <code>nsw_rent</code> · <code>nsw_yield</code>); three tools (Profile · Trends · Data Dictionary); Profile and Trends each carry an <b>Ask-AI box</b> — describe what you want in plain English and the LLM fills the controls. Mock below is clickable (tabs switch panes) — annotate anything that looks wrong.</p>
+
+  <div class="mockframe">
+    <div class="mock">
+      <div class="mock-rail">
+        <div class="logo"></div>
+        <div class="ric" title="Chat">💬</div>
+        <div class="ric on" title="Explore">🧭</div>
+        <div class="ric" title="SQL Editor">⌘</div>
+        <div class="ric" title="Golden Examples">★</div>
+        <div class="ric" title="Admin">⚙</div>
+      </div>
+      <div class="mock-main">
+        <div class="mock-top">
+          <h3>Explore</h3>
+          <span class="mock-select">nsw_rent — NSW Rental Bonds <span class="car">▼</span></span>
+          <span class="tiny" style="color:var(--faint)">datasets you're granted · from <span class="mono">/explore/datasets</span></span>
+        </div>
+        <div class="mock-tabs" id="mockTabs">
+          <button class="mock-tab on" data-pane="profile">Profile</button>
+          <button class="mock-tab" data-pane="trends">Trends</button>
+          <button class="mock-tab" data-pane="extract">Data Dictionary</button>
+        </div>
+
+        <!-- PROFILE PANE -->
+        <div class="mock-pane on" id="pane-profile">
+          <div class="askbox">🪄 <span class="q">"give me a comparison between FY2022 and FY2021 for weekly rent on houses"</span><span class="go">Set up →</span><span class="tiny" style="color:var(--faint)">LLM fills the rows below — you review, then hit Run profile</span></div>
+          <div class="mrow2" style="grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); margin-bottom:10px">
+                    <div class="mcard" style="min-width:0">
+            <h5>Selection map · every postcode in the dataset <span class="badge new" style="margin-left:4px">V1 · PER D2</span></h5>
+            <svg width="100%" height="170" viewBox="0 0 520 170">
+              <rect width="520" height="170" rx="6" fill="#181c25"/>
+              <path d="M90,110 L140,58 L215,45 L275,62 L330,42 L395,58 L415,102 L355,132 L270,142 L175,132 Z" fill="#2b3547" stroke="#333a48"/>
+              <path d="M215,45 L275,62 L292,95 L228,105 L180,82 Z" fill="#9ece6a" opacity=".75"/>
+              <path d="M292,95 L355,132 L270,142 L228,105 Z" fill="#e0af68" opacity=".7"/>
+              <path d="M275,62 L330,42 L395,58 L368,92 L292,95 Z" fill="#f2777a" opacity=".6"/>
+              <path d="M140,58 L215,45 L180,82 L150,92 Z" fill="#9ece6a" opacity=".45"/>
+              <path d="M90,110 L140,58 L150,92 L128,118 Z" fill="#e0af68" opacity=".4"/>
+              <defs><linearGradient id="penleg" x1="0" x2="1"><stop offset="0" stop-color="#f2777a"/><stop offset=".5" stop-color="#e0af68"/><stop offset="1" stop-color="#9ece6a"/></linearGradient></defs>
+              <rect x="440" y="40" width="8" height="90" rx="3" fill="url(#penleg)" transform="rotate(180 444 85)"/>
+              <text x="456" y="46" fill="#79839a" font-size="8">+$42</text>
+              <text x="456" y="130" fill="#79839a" font-size="8">−$29</text>
+            </svg>
+            <div class="tiny sub" style="text-align:center">simplified POA topojson · all dataset postcodes, colored by Δ of the response metric · hover = tooltip · click = add filter</div>
+            <div class="tiny" style="text-align:center; color:var(--faint); margin-top:4px">shown only when the dataset's manifest declares a geo binding (e.g. <span class="mono">postcode → poa_nsw</span>) — datasets without a mappable column render Profile without this card</div>
+          </div>
+          <div class="mcard" style="min-width:0">
+            <div class="coh-row">
+              <span class="coh-label tgt">Target</span>
+              <span class="coh-chips">
+                <span class="ctrl act"><b>FY</b> = 2022</span>
+                <span class="ctrl act"><b>property_type</b> = house</span>
+                <span class="ctrl" style="border-style:dashed">+ filter</span>
+              </span>
+            </div>
+            <div class="coh-row">
+              <span class="coh-label cmp">Comparison</span>
+              <span class="coh-chips">
+                <span class="ctrl act"><b>FY</b> = 2021</span>
+                <span class="ctrl act"><b>property_type</b> = house</span>
+                <span class="ctrl" style="border-style:dashed">+ filter</span>
+              </span>
+            </div>
+            <div class="coh-row">
+              <span class="coh-label">Metric</span>
+              <span class="coh-chips" style="width:100%">
+                <span class="ctrl"><b>avg weekly rent</b> ▾</span>
+                <span class="ctrl" style="margin-left:auto; background:linear-gradient(135deg,var(--accent-soft),var(--accent)); color:#1a1206; border:none; font-weight:650">Run profile</span>
+              </span>
+            </div>
+          </div>
+          </div>
+          <div class="mrow">
+            <div class="mcard"><h5 style="color:var(--accent-soft)">Target · avg weekly rent</h5><div class="kpi">$483</div><div class="tiny sub">4,860 bonds · FY 2022 · house</div></div>
+            <div class="mcard"><h5 style="color:var(--info)">Comparison · avg weekly rent</h5><div class="kpi">$448</div><div class="tiny sub">10,110 bonds · FY 2021 · house</div></div>
+            <div class="mcard"><h5>Uplift</h5><div class="kpi"><span class="up">+$35.5</span><small class="up">+7.9%</small></div><div class="tiny sub">target vs comparison</div></div>
+          </div>
+          <div class="tiny" style="color:var(--faint); margin:-4px 0 10px 2px">headline tiles = the selected <b>response metric</b> only (KPITile reuse) — a deliberate repeat of that one row for scannability; the comparison table below covers <i>all</i> metrics</div>
+          <div class="mrow2">
+            <div>
+              <div class="mcard" style="margin-bottom:10px">
+                <h5>Per-predictor comparison · bedrooms <span class="tiny" style="color:var(--faint); text-transform:none; letter-spacing:0">(one chart per predictor, <b>ordered by strongest signal</b> — bedrooms leads because +42.4 is this run's biggest |Δ|; then SA3 · postcode · property_type · …)</span></h5>
+                <div class="legend"><span><i style="background:#f0c674"></i><span style="color:var(--accent-soft)">Target FY2022</span></span><span><i style="background:#7dcfff"></i><span style="color:var(--info)">Comparison FY2021</span></span></div>
+                <svg width="100%" height="152" viewBox="0 -20 400 152">
+                  <line x1="20" y1="112" x2="390" y2="112" stroke="#232834"/>
+                  <polyline points="40,90 100,76 160,64 220,50 280,38 340,70" fill="none" stroke="#7dcfff" stroke-width="2"/>
+                  <polyline points="40,86 100,70 160,56 220,40 280,26 340,64" fill="none" stroke="#f0c674" stroke-width="2.5"/>
+                  <text x="220" y="32" fill="#9ece6a" font-size="10" text-anchor="middle">+37.8</text>
+                  <text x="280" y="22" fill="#9ece6a" font-size="10" text-anchor="middle">+42.4</text>
+                  <text x="340" y="58" fill="#f2777a" font-size="10" text-anchor="middle">−2.9</text>
+                  <text x="40" y="124" fill="#79839a" font-size="8" text-anchor="middle">0</text>
+                  <text x="100" y="124" fill="#79839a" font-size="8" text-anchor="middle">1</text>
+                  <text x="160" y="124" fill="#79839a" font-size="8" text-anchor="middle">2</text>
+                  <text x="220" y="124" fill="#79839a" font-size="8" text-anchor="middle">3</text>
+                  <text x="280" y="124" fill="#79839a" font-size="8" text-anchor="middle">4</text>
+                  <text x="340" y="124" fill="#79839a" font-size="8" text-anchor="middle">5</text>
+                </svg>
+              </div>
+            </div>
+            <div>
+              <div class="mcard" style="margin-bottom:10px">
+                <h5>Data group comparison · all metrics</h5>
+                <table class="mini-t">
+                  <thead><tr><th>Metric</th><th class="num" style="color:var(--accent-soft)">Target</th><th class="num" style="color:var(--info)">Comp.</th><th class="num">Δ</th><th class="num">Δ%</th></tr></thead>
+                  <tbody>
+                    <tr><td>n_rented</td><td class="num">4.86k</td><td class="num">10.1k</td><td class="num" style="color:var(--bad)">−5.25k</td><td class="num" style="color:var(--bad)">−51.9%</td></tr>
+                    <tr><td>total_weekly_rent</td><td class="num">$2.35M</td><td class="num">$4.53M</td><td class="num" style="color:var(--bad)">−$2.18M</td><td class="num" style="color:var(--bad)">−48.1%</td></tr>
+                    <tr><td>avg_weekly_rent</td><td class="num">$483</td><td class="num">$448</td><td class="num" style="color:var(--good)">+$35.5</td><td class="num" style="color:var(--good)">+7.9%</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="mcard" style="margin-bottom:10px">
+                <h5>Data filters applied</h5>
+                <table class="mini-t">
+                  <thead><tr><th>Group</th><th>Predictor</th><th>Filter</th></tr></thead>
+                  <tbody>
+                    <tr><td style="color:var(--accent-soft)">Target</td><td>FY</td><td>2022</td></tr>
+                    <tr><td style="color:var(--accent-soft)">Target</td><td>month</td><td>2021-07 → 2022-06</td></tr>
+                    <tr><td style="color:var(--accent-soft)">Target</td><td>property_type</td><td>house</td></tr>
+                    <tr><td style="color:var(--info)">Comparison</td><td>FY</td><td>2021</td></tr>
+                    <tr><td style="color:var(--info)">Comparison</td><td>month</td><td>2020-07 → 2021-06</td></tr>
+                    <tr><td style="color:var(--info)">Comparison</td><td>property_type</td><td>house</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="mcard" style="margin-bottom:10px">
+                <h5>Positive uplifts · ranked</h5>
+                <table class="mini-t">
+                  <thead><tr><th>Predictor</th><th>Segment</th><th class="num">Δ</th><th style="width:30%"></th></tr></thead>
+                  <tbody>
+                    <tr><td>bedrooms</td><td>4</td><td class="num" style="color:var(--good)">+42.4</td><td><svg width="100%" height="9" viewBox="0 0 100 9" preserveAspectRatio="none"><rect width="100" height="9" rx="2" fill="#1f2430"/><rect width="88" height="9" rx="2" fill="#9ece6a"/></svg></td></tr>
+                    <tr><td>SA3 region</td><td>Newcastle</td><td class="num" style="color:var(--good)">+35.5</td><td><svg width="100%" height="9" viewBox="0 0 100 9" preserveAspectRatio="none"><rect width="100" height="9" rx="2" fill="#1f2430"/><rect width="74" height="9" rx="2" fill="#9ece6a"/></svg></td></tr>
+                    <tr><td>postcode</td><td>2305</td><td class="num" style="color:var(--good)">+33.0</td><td><svg width="100%" height="9" viewBox="0 0 100 9" preserveAspectRatio="none"><rect width="100" height="9" rx="2" fill="#1f2430"/><rect width="69" height="9" rx="2" fill="#9ece6a"/></svg></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="mcard">
+                <h5>Negative uplifts · ranked</h5>
+                <table class="mini-t">
+                  <thead><tr><th>Predictor</th><th>Segment</th><th class="num">Δ</th><th style="width:30%"></th></tr></thead>
+                  <tbody>
+                    <tr><td>property_type</td><td>unit</td><td class="num" style="color:var(--bad)">−28.8</td><td><svg width="100%" height="9" viewBox="0 0 100 9" preserveAspectRatio="none"><rect width="100" height="9" rx="2" fill="#1f2430"/><rect width="60" height="9" rx="2" fill="#f2777a"/></svg></td></tr>
+                    <tr><td>bedrooms</td><td>0</td><td class="num" style="color:var(--bad)">−2.9</td><td><svg width="100%" height="9" viewBox="0 0 100 9" preserveAspectRatio="none"><rect width="100" height="9" rx="2" fill="#1f2430"/><rect width="8" height="9" rx="2" fill="#f2777a"/></svg></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TRENDS PANE -->
+        <div class="mock-pane" id="pane-trends">
+          <div class="askbox">🪄 <span class="q">"show avg rent by bedrooms for houses as a line, and bond volume stacked by postcode"</span><span class="go">Set up &amp; run →</span><span class="tiny" style="color:var(--faint)">LLM sets both charts' selections, then runs them (read-only, so autorun is safe)</span></div>
+          <div class="mrow2" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+            <div class="mcard">
+              <h5>trend 1</h5>
+              <div class="ctrl-row" style="margin-bottom:6px">
+                <span class="ctrl"><b>Chart</b> line ▾</span>
+                <span class="ctrl"><b>X</b> month ▾</span>
+                <span class="ctrl act"><b>Metric</b> avg weekly rent ▾</span>
+                <span class="ctrl act"><b>Split</b> bedrooms ▾</span>
+                <span class="ctrl"><b>Filter</b> property_type = house ▾</span>
+              </div>
+              <div class="legend"><span><i style="background:#6ea8fe"></i>2 br</span><span><i style="background:#f0c674"></i>3 br</span><span><i style="background:#9ece6a"></i>4 br</span></div>
+              <svg width="100%" height="150" viewBox="0 0 400 150">
+                <line x1="0" y1="130" x2="400" y2="130" stroke="#232834"/>
+                <line x1="0" y1="90" x2="400" y2="90" stroke="#1a1f2a"/>
+                <line x1="0" y1="50" x2="400" y2="50" stroke="#1a1f2a"/>
+                <polyline points="0,108 60,105 120,102 180,104 240,96 300,88 360,80 400,74" fill="none" stroke="#6ea8fe" stroke-width="2"/>
+                <polyline points="0,92 60,90 120,84 180,86 240,76 300,66 360,58 400,50" fill="none" stroke="#f0c674" stroke-width="2"/>
+                <polyline points="0,74 60,76 120,68 180,64 240,58 300,44 360,38 400,28" fill="none" stroke="#9ece6a" stroke-width="2"/>
+                <text x="4" y="145" fill="#79839a" font-size="8">2016-01</text>
+                <text x="360" y="145" fill="#79839a" font-size="8">2021-12</text>
+              </svg>
+              <div class="tiny sub">visx <code>Trend</code> — existing component, existing tooltip/PNG export</div>
+            </div>
+            <div class="mcard">
+              <h5>trend 2</h5>
+              <div class="ctrl-row" style="margin-bottom:6px">
+                <span class="ctrl"><b>Chart</b> stacked bar ▾</span>
+                <span class="ctrl"><b>X</b> month ▾</span>
+                <span class="ctrl act"><b>Metric</b> n_rented ▾</span>
+                <span class="ctrl act"><b>Split</b> bedrooms ▾</span>
+                <span class="ctrl"><b>Filter</b> ▾</span>
+              </div>
+              <svg width="100%" height="150" viewBox="0 0 400 150">
+                <g>
+                  <rect x="10" y="70" width="28" height="60" fill="#6ea8fe"/><rect x="10" y="45" width="28" height="25" fill="#f0c674"/><rect x="10" y="30" width="28" height="15" fill="#9ece6a"/>
+                  <rect x="58" y="76" width="28" height="54" fill="#6ea8fe"/><rect x="58" y="48" width="28" height="28" fill="#f0c674"/><rect x="58" y="36" width="28" height="12" fill="#9ece6a"/>
+                  <rect x="106" y="64" width="28" height="66" fill="#6ea8fe"/><rect x="106" y="38" width="28" height="26" fill="#f0c674"/><rect x="106" y="24" width="28" height="14" fill="#9ece6a"/>
+                  <rect x="154" y="72" width="28" height="58" fill="#6ea8fe"/><rect x="154" y="44" width="28" height="28" fill="#f0c674"/><rect x="154" y="30" width="28" height="14" fill="#9ece6a"/>
+                  <rect x="202" y="60" width="28" height="70" fill="#6ea8fe"/><rect x="202" y="34" width="28" height="26" fill="#f0c674"/><rect x="202" y="20" width="28" height="14" fill="#9ece6a"/>
+                  <rect x="250" y="68" width="28" height="62" fill="#6ea8fe"/><rect x="250" y="40" width="28" height="28" fill="#f0c674"/><rect x="250" y="26" width="28" height="14" fill="#9ece6a"/>
+                  <rect x="298" y="56" width="28" height="74" fill="#6ea8fe"/><rect x="298" y="30" width="28" height="26" fill="#f0c674"/><rect x="298" y="16" width="28" height="14" fill="#9ece6a"/>
+                  <rect x="346" y="62" width="28" height="68" fill="#6ea8fe"/><rect x="346" y="36" width="28" height="26" fill="#f0c674"/><rect x="346" y="22" width="28" height="14" fill="#9ece6a"/>
+                </g>
+                <line x1="0" y1="130" x2="400" y2="130" stroke="#232834"/>
+              </svg>
+              <div class="tiny sub">visx <code>Bars</code> stacked variant — small extension of existing component</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DATA DICTIONARY PANE -->
+        <div class="mock-pane" id="pane-extract">
+          <div class="mrow2">
+            <div class="mcard">
+              <h5>Columns &amp; values · from the explore manifest</h5>
+              <table class="mini-t">
+                <thead><tr><th>Column</th><th>Role</th><th>Values / range</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">postcode</td><td>dimension</td><td>595 values · typeahead</td></tr>
+                  <tr><td class="mono">property_type</td><td>dimension</td><td>house · unit · …</td></tr>
+                  <tr><td class="mono">bedroom_band</td><td>dimension</td><td>0–5, U</td></tr>
+                  <tr><td class="mono">month</td><td>time</td><td>2012-01 → 2024-12</td></tr>
+                  <tr><td class="mono">sa3_region / sa4_region</td><td>geo rollup</td><td>via dim_postcode_geo</td></tr>
+                  <tr><td class="mono">avg_weekly_rent</td><td>metric (derived)</td><td>total_weekly_rent / n_rented</td></tr>
+                  <tr><td class="mono">n_rented</td><td>metric (additive)</td><td>—</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="mcard">
+              <h5>Extract builder</h5>
+              <div class="ctrl-row" style="margin-bottom:6px">
+                <span class="ctrl act"><b>Group by</b> postcode</span>
+                <span class="ctrl act"><b>+</b> bedroom_band</span>
+                <span class="ctrl"><b>Months</b> 2021-01 → 2021-12</span>
+              </div>
+              <table class="mini-t">
+                <thead><tr><th>postcode</th><th>bedroom_band</th><th class="num">n_rented</th><th class="num">avg_weekly_rent</th></tr></thead>
+                <tbody>
+                  <tr><td>2287</td><td>3</td><td class="num">412</td><td class="num">$495</td></tr>
+                  <tr><td>2300</td><td>2</td><td class="num">388</td><td class="num">$470</td></tr>
+                  <tr><td>2305</td><td>3</td><td class="num">301</td><td class="num">$538</td></tr>
+                </tbody>
+              </table>
+              <div style="margin-top:8px"><span class="ctrl" style="background:linear-gradient(135deg,var(--accent-soft),var(--accent)); color:#1a1206; border:none; font-weight:650">⬇ Download CSV</span> <span class="tiny" style="color:var(--faint)">lib/csv.ts · server row-cap 50k</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ARCHITECTURE ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">05 · ARCHITECTURE</span><h2>One aggregation service, three consumers</h2></div>
+  <p class="sub small" style="margin:0 0 12px">The core idea: a single validated <b>explore service</b> in backend-api translates <i>manifest-checked</i> requests into parameterized SQL over the marts under RLS. The Explore UI, CSV extract, and (Phase E) the data-agent's tools all call the same service — so what users explore and what the agent can leverage never drift apart.</p>
+  <div class="mermaid-box">
+    <pre class="mmd-src" style="font-size:11px; color:var(--faint); white-space:pre-wrap;">
+flowchart TB
+  subgraph pipeline["data-pipeline (dlt + dbt)"]
+    CSV["data/*.csv<br/>nswgov_df · rentboard_df"] --> RAW["raw.*"] --> STG["staging.*"]
+    STG --> MS["marts.property_sales<br/>postcode·suburb·type·band·zoning·month"]
+    STG --> MR["marts.property_rent<br/>postcode·type·bedroom·month"]
+    SEED["NEW seed: postcode_geo.csv<br/>(from legacy util_postcode)"] --> DIM["NEW marts.dim_postcode_geo<br/>postcode → SA2/SA3/SA4/GCC"]
+  end
+  subgraph api["backend-api"]
+    MAN["NEW explore manifest<br/>dims·metrics·domains per dataset<br/>validated vs dbt schema at startup"]
+    SVC["NEW explore service<br/>manifest-checked → parameterized SQL<br/>RLS conn · row caps · audited"]
+    MAN --> SVC
+  end
+  MS --> SVC
+  MR --> SVC
+  DIM --> SVC
+  SVC --> EP1["GET /explore/datasets"]
+  SVC --> EP2["POST /explore/aggregate"]
+  SVC --> EP3["POST /explore/profile"]
+  MAN --> ASK["POST /explore/ask<br/>NL → validated tool state (LLM)"]
+  subgraph fe["frontend · Explore tab"]
+    T1["Profile tool"] ; T2["Trends tool"] ; T3["Data Dictionary + CSV"]
+  end
+  EP1 --> T1 & T2 & T3
+  EP2 --> T2 & T3
+  EP3 --> T1
+  ASK --> T1 & T2
+  subgraph agent["data-agent (Phase E)"]
+    AT["tools: explore_aggregate<br/>explore_profile"]
+  end
+  SVC -.same service.-> AT
+    </pre>
+  </div>
+  <div class="grid3" style="margin-top:14px">
+    <div class="callout"><b>No cube.</b> The legacy cutid cube was a workaround for having no backend. Marts are additive at the right grain; Postgres aggregates live in ms at this data size, with indexes already in place.</div>
+    <div class="callout"><b>No client SQL.</b> Unlike the SQL editor, Explore requests are structured JSON validated against the manifest — dimension and metric names are allow-listed, never interpolated from free text.</div>
+    <div class="callout good"><b>Agent-ready by construction.</b> The profile engine ports <code>profileCalc.js</code> server-side once; UI and agent both consume it. Explore answers become reproducible objects goldens can reference (s18 lineage).</div>
+  </div>
+  <div class="callout good" style="margin-top:14px"><b>One chart library (locked in review).</b> Every surface — Chat report pages, SQL editor previews, Golden Examples / Template Studio, and Explore — renders through the same shared components in <code>frontend/src/ui/charts/</code> (<code>Trend</code>, <code>Bars</code>, <code>Combo</code>, <code>KPITile</code>), wired via <code>report-engine/PageLayout.tsx</code>. Explore ships <b>no private chart code</b>: line/bar reuse the existing components, the stacked-bar variant extends <code>Bars</code>, the choropleth lands as <code>ui/charts/Choropleth.tsx</code>, the comparison/ranked-delta tables land as <code>ui/charts/DataTable.tsx</code>, and new templates register as report-engine object types (<code>table</code>, <code>choropleth</code>) — so everything added for Explore is immediately usable by Chat reports, Goldens, and the agent, and the template set keeps growing in one place. The choropleth renders only for datasets whose manifest declares a geo binding.
+  <br><br><b>The explicit rule:</b> Explore's outputs are composed of <b>report-engine objects</b> — the same object contract the Golden Examples / Template Studio tab uses (today: <code>kpi · trend · breakdown · compare · insight · text</code>). Before building any visual, check the registry: <b>if a template exists, use it; if not, add it as a new registered object type</b> — never a one-off component. The s08 three-way registry sync test extends to cover the new <code>table</code> and <code>choropleth</code> types, so registry, renderer and templates can't drift.</div>
+</section>
+
+<!-- ================= DECISIONS ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">06 · DECISIONS</span><h2>Decisions — locked 2026-07-17</h2></div>
+  <p class="sub small" style="margin:0 0 12px">All five decisions were answered in review and are folded into the mock and phases. The choropleth is <b>v1 scope</b>; D5 has been <b>applied to the repo</b>.</p>
+  <div class="tbl-scroll">
+    <table class="t">
+      <thead><tr><th style="width:36px">#</th><th>Decision</th><th>Locked choice</th><th>Consequence</th></tr></thead>
+      <tbody>
+        <tr><td><b>D1</b></td><td>Data serving</td><td>Live aggregation over existing marts + explore manifest</td><td>No cube mart; <code>/explore/aggregate</code> issues parameterized SQL under RLS at request time.</td></tr>
+        <tr><td><b>D2</b></td><td>Choropleth map</td><td><b class="ok">Ships in v1</b>, alongside the Profile tool</td><td>Phase D is core scope, not gated: simplified POA topojson + <code>Choropleth.tsx</code> land before Profile is called done; the map shows <b>every postcode in the dataset</b> and sits at the top of the Profile output.</td></tr>
+        <tr><td><b>D3</b></td><td>Placement &amp; access</td><td>New “Explore” NavRail view, all signed-in users</td><td>Datasets filtered by per-dataset grants via <code>/explore/datasets</code>.</td></tr>
+        <tr><td><b>D4</b></td><td>Agent leverage</td><td>Tools + grounding in this ticket</td><td>Phase E ships <code>explore_aggregate</code>/<code>explore_profile</code> agent tools, manifest grounding, journey evals.</td></tr>
+        <tr><td><b>D5</b></td><td><code>docs/chronicle</code> policy</td><td>Commit code; gitignore data</td><td>HTML/scripts/tool_utils/bootstrap/d3 committed (~1.5 MB); <code>datafeed/</code> + 8.5 MB geojson gitignored; <code>docs/chronicle/README.md</code> documents the restore — <b class="ok">applied</b>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid2" style="margin-top:14px">
+    <!-- free form -->
+    <div class="decision" style="border-left-color:var(--info)">
+      <h4>Anything else?</h4>
+      <p class="why">Scope cuts, dataset additions, naming, rollout order — select any text or element on this page and annotate, or drop a note here.</p>
+      <textarea id="freeform" rows="3" style="width:100%; background:var(--panel-2); border:1px solid var(--border-2); border-radius:8px; color:var(--text); font:inherit; font-size:12.5px; padding:8px 10px; resize:vertical" placeholder="e.g. v1 should also include the yield view joining sales × rent…"></textarea>
+      <button class="queue-btn" type="button" data-lavish-action onclick="queueFreeform(this)">Queue note</button><span class="queued-note">✓ queued</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PHASES ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">07 · BUILD PLAN</span><h2>Phases A–E — each independently shippable</h2></div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE A</span><h3>Pipeline: geo dimension, yield mart + explore manifest</h3><span class="sz">size M</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li>New dbt <b>seed</b> <code>postcode_geo.csv</code> — postcode → SA2/SA3/SA4/GCC/state names, sourced from legacy <code>tool_utils/util_postcode.json</code> (ABS 2016 correspondences; ~2.6k rows).</li>
+          <li>New model <code>marts.dim_postcode_geo</code> — tagged <code>agent_queryable</code>; RLS: readable under <b>either</b> dataset grant (shared dim — needs a small extension of <code>apply_dataset_rls</code> or a permissive multi-dataset policy).</li>
+          <li><b>Explore manifest</b>: per-dataset registry (dims, metrics incl. derived <code>avg_* = total/n</code>, labels, formats, geo-rollup joins, default views) as typed config in backend (<code>app/explore/manifest.py</code>), <b>validated against the live schema at startup</b> — same philosophy as dbt-tests-ground-the-agent.</li>
+          <li><b>Optional <code>geo</code> binding</b> per dataset — <code>{column: postcode, layer: poa_nsw}</code>. The map renders <b>only when the manifest declares a mappable column</b>; a dataset with no geo column simply gets no map section. Keeps Explore dataset-agnostic (s05).</li>
+          <li><b>New <code>marts.property_yield</code></b> (pulled into scope by review) — sales ⋈ rent at <b>postcode × property_type × year</b>, from the <code>property_yield_20241003.py</code> logic: additive components (<code>total_sale_value / n_sold / total_weekly_rent / n_rented</code>) with <code>gross_yield_pct</code> defined as a <b>derived ratio-of-averages</b> — <code>52 × (total_weekly_rent/n_rented) ÷ (total_sale_value/n_sold)</code> — so it re-aggregates correctly at any rollup. Registered as a <b>third explorable dataset <code>nsw_yield</code></b> with its own <code>apply_dataset_rls('nsw_yield')</code> tag and grants, its own manifest entry (geo binding: postcode), and dbt tests: minimum cell volume (<code>n_sold ≥ 5</code> and <code>n_rented ≥ 5</code>) plus a sane yield range.</li>
+          <li>dbt tests: <code>dim_postcode_geo</code> not-null/unique postcode; docs in <code>_marts.yml</code>.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>new</b>&nbsp; dbt/seeds/postcode_geo.csv<br>
+          <b>new</b>&nbsp; dbt/models/marts/dim_postcode_geo.sql<br>
+          <b>new</b>&nbsp; dbt/models/marts/mart_property_yield.sql<br>
+          <b>new</b>&nbsp; dbt/tests/assert_property_yield_*.sql<br>
+          <b>mod</b>&nbsp; dbt/macros/apply_dataset_rls.sql<br>
+          <b>mod</b>&nbsp; dbt/models/marts/_marts.yml<br>
+          <b>new</b>&nbsp; services/backend-api/app/explore/manifest.py
+        </div>
+        <div class="accept"><b>Accept:</b> <code>make pipeline</code> green incl. new tests; manifest startup-check fails loudly if a dim/metric drifts from the schema; <code>nsw_yield</code> appears as a third dataset with sane yields (thin cells filtered by minimum volume).</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE B</span><h3>Backend: /explore endpoints + profile engine</h3><span class="sz">size M</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li><code>GET /explore/datasets</code> — granted datasets + manifest (dims, metrics, month range, dim domains capped at N values with typeahead fallback).</li>
+          <li><code>POST /explore/aggregate</code> — <code>{dataset, metrics[], group_by[], filters{}, months}</code> → allow-listed identifiers only → parameterized SQL over the mart (+ geo joins) under <code>rls_connection</code>; row cap; audited like <code>/sql/history</code>.</li>
+          <li><code>POST /explore/profile</code> — target + comparison cohort filters, response metric → <b>port of <code>profileCalc.js</code>/<code>profileMetrics.js</code></b>: topline per cohort, metric deltas, per-predictor segment uplift ranking. Pure-python engine over two aggregate calls — unit-testable.</li>
+          <li>The engine also emits a <b>per-predictor signal score</b> (max |Δ| across its segments) — the UI orders the predictor charts strongest-signal-first, and within categorical predictors sorts segments by Δ (ordinal dims like bedrooms/month keep natural order, annotated).</li>
+          <li><code>POST /explore/ask</code> — <b>NL → tool state</b>: LLM structured extraction constrained to the manifest (same provider abstraction as the agent, DeepSeek default; deterministic stub offline for tests). “compare FY2022 vs FY2021 weekly rent for houses” → populated Profile cohort rows / Trends selections. Output passes the <b>same validator</b> as hand-built requests; Profile is prefill-only (user hits Run), Trends may autorun (read-only aggregates).</li>
+          <li><b>Parity harness</b>: <code>scripts/explore_parity.py</code> replays legacy cutid slices from <code>docs/chronicle/datafeed/*.json</code> against <code>/explore/aggregate</code> with the legacy region/date/purpose filters (needs <code>make pipeline-full</code>); additive metrics must match exactly.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>new</b>&nbsp; app/routers/explore.py<br>
+          <b>new</b>&nbsp; app/explore/service.py · engine.py<br>
+          <b>new</b>&nbsp; app/explore/nl_setup.py<br>
+          <b>mod</b>&nbsp; app/main.py (mount router)<br>
+          <b>new</b>&nbsp; tests: validation · RLS isolation ·<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;engine unit tests · parity script
+        </div>
+        <div class="accept"><b>Accept:</b> pytest green; a user without the <code>nsw_rent</code> grant gets an empty dataset list for it; <code>/explore/ask</code> returns valid populated state with the offline stub; parity script exact-matches sums on the Newcastle SA3 slice.</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE C</span><h3>Frontend: Explore tab (Trends + Extract, then Profile)</h3><span class="sz">size L</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li>New NavRail view <code>explore</code> (all users — per D3) + feature dir <code>features/explore/</code>: <code>DatasetPicker</code>, tool tabs, per-tool state in URL-ish local state.</li>
+          <li><b>Trends tool</b>: <b>two side-by-side chart apps</b> (parity with legacy trend1/trend2), each with chart-type / x-variable / metric / split / filter controls → <code>/explore/aggregate</code> → visx <code>Trend</code> (line) and stacked <code>Bars</code>. Reuses ChartTip + PNG export.</li>
+          <li><b>No explore-local chart code</b>: the stacking variant is added to the shared <code>ui/charts/Bars.tsx</code> and registered as a report-engine object type, so Chat / SQL / Goldens gain it too — one chart library for all surfaces.</li>
+          <li><b>New shared <code>ui/charts/DataTable.tsx</code></b> — the report engine has no <code>table</code> object type today (only kpi/trend/breakdown/compare/insight/text). Two variants: <b>comparison</b> (colored Target/Comp columns, Δ/Δ% coloring) and <b>ranked-delta</b> (inline delta bars). Registered as a report-engine <code>table</code> object; Profile's data-group comparison, filters-applied and positive/negative uplift tables all render through it, and Chat reports / Goldens / SQL results can adopt the same component.</li>
+          <li><b>Data Dictionary tool</b> (renamed from “Data Extract”): dictionary rendered from manifest; group-by builder; preview table; CSV via <code>lib/csv.ts</code>.</li>
+          <li><b>Profile tool</b>: Target + Comparison as <b>two cohort rows</b>, each with its own filter chips (FY shown as an applied filter, not a special control) + shared response metric. Output = full legacy set, <b>selection map first</b>: choropleth (all dataset postcodes) at top, then KPI tiles, data-group comparison (all metrics), filters-applied table, positive <b>and</b> negative ranked uplifts, per-predictor comparison charts.</li>
+          <li><b>Cohort color tokens</b>: Target = gold (<code>--accent-soft</code>), Comparison = blue (<code>--info</code>) — applied consistently to every title, table column, chart line, and legend so cohorts are instantly readable.</li>
+          <li><b>Template-first rendering</b>: every Explore visual is a report-engine object (same contract as Goldens / Template Studio). Registry check before building anything; missing visuals become new registered object types (<code>table</code>, <code>choropleth</code>) covered by the extended registry sync test — usable by every surface from day one.</li>
+          <li><b>Ask-AI box</b> (shared <code>AskBox.tsx</code>) on Profile and Trends: free text → <code>/explore/ask</code> → controls populate (Trends autoruns; Profile waits for Run).</li>
+          <li>Playwright e2e in the <code>goldens.spec.ts</code> pattern: pick dataset → run each tool → assert rendered numbers; mobile pass via existing Sheet/MobileNav conventions.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>mod</b>&nbsp; app/NavRail.tsx · App.tsx (view enum)<br>
+          <b>new</b>&nbsp; features/explore/ExplorePage.tsx<br>
+          <b>new</b>&nbsp; features/explore/{Profile,Trends,Dictionary}Tool.tsx<br>
+          <b>new</b>&nbsp; features/explore/AskBox.tsx<br>
+          <b>new</b>&nbsp; ui/charts/DataTable.tsx (shared)<br>
+          <b>mod</b>&nbsp; ui/charts/Bars.tsx (stacked)<br>
+          <b>new</b>&nbsp; e2e: explore.spec.ts
+        </div>
+        <div class="accept"><b>Accept:</b> e2e green desktop+mobile; a granted user reproduces the legacy “FY2022 vs FY2021 rent uplift” profile with matching topline numbers.</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE D</span><h3>Choropleth map <span class="badge new" style="vertical-align:2px">V1 · PER D2</span></h3><span class="sz">size M</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li><b>V1 scope (D2 locked):</b> ships alongside the Profile tool — Profile is not “done” without the map at the top of its output.</li>
+          <li>Offline step: simplify <code>POA_2016_NSW_reduced.geojson</code> → quantized <b>topojson</b> (target &lt;1&nbsp;MB; mapshaper), committed as a frontend static asset, lazy-loaded only when the map renders.</li>
+          <li>New <code>ui/charts/Choropleth.tsx</code> — renders <b>every postcode in the dataset</b> colored by the response metric (or Δ when a profile has run), theme-aware fill scale, hover tooltip (postcode, suburb list, value), click → adds postcode filter to the active tool.</li>
+          <li>Registered as a <b>report-engine object type</b> like every other chart — agent reports and goldens can emit maps once this lands.</li>
+          <li><b>Conditional by manifest</b>: the map renders only when the active dataset's manifest has a <code>geo</code> binding (e.g. <code>postcode → poa_nsw</code>); no binding → Profile lays out without the map card. No frontend guesswork — the manifest is the single source of truth.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>new</b>&nbsp; frontend/public/geo/poa_nsw.topo.json<br>
+          <b>new</b>&nbsp; ui/charts/Choropleth.tsx<br>
+          <b>new</b>&nbsp; scripts/build_topojson.md (recipe)
+        </div>
+        <div class="accept"><b>Accept:</b> map bundle &lt;1&nbsp;MB gzipped, first paint of Explore unaffected (lazy), every dataset postcode drawn, postcode click round-trips into filters.</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">PHASE E</span><h3>Agent leverage <span class="badge gate" style="vertical-align:2px">SCOPE BY D4</span></h3><span class="sz">size M</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li>data-agent tools <code>explore_aggregate</code> / <code>explore_profile</code> — thin wrappers over the same backend service functions (in-process import or internal HTTP, matching how <code>run_sql</code> is wired).</li>
+          <li>Manifest descriptions fold into <code>get_schema()</code> grounding — the agent knows each dataset's explorable dims/metrics and when a profile comparison beats raw SQL.</li>
+          <li>Explore results are deterministic named objects → goldens can pin them (aligns with the s18 golden_objects builder; keeps DeepSeek out of freeform codegen).</li>
+          <li>2–3 <code>evals/journeys.yaml</code> entries, e.g. “what drove rent growth in Newcastle FY22 vs FY21?” must call <code>explore_profile</code>.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>new</b>&nbsp; services/data-agent/agent/tools_explore.py<br>
+          <b>mod</b>&nbsp; agent schema grounding<br>
+          <b>mod</b>&nbsp; evals/journeys.yaml
+        </div>
+        <div class="accept"><b>Accept:</b> journey evals green with the stub and with DeepSeek; profile answers cite the same numbers the Explore UI shows for identical cohorts.</div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================= RISKS ================= -->
+<section class="band">
+  <div class="band-head"><span class="band-num">08 · RISKS</span><h2>Risks &amp; mitigations</h2></div>
+  <div class="tbl-scroll">
+    <table class="t">
+      <thead><tr><th style="width:70px">Sev</th><th>Risk</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td><span class="risk-sev hi">HIGH</span></td><td><b>Parity ≠ possible on sample data.</b> CI runs the committed sample; legacy JSONs were built from full CSVs, so parity only holds after <code>make pipeline-full</code>.</td><td>Parity script is a local/manual gate, not CI; CI asserts engine unit tests on fixtures instead.</td></tr>
+        <tr><td><span class="risk-sev hi">HIGH</span></td><td><b>Legacy vs mart semantics drift.</b> Legacy sales cube filters (RESIDENCE, ≤$8M, 2012–2021) and rent property-type codes (F/H/T/U) may not match <code>stg_sales</code>/<code>stg_rent</code> cleaning. Unverified as of this plan.</td><td>First task of Phase B: diff staging filters vs legacy script filters; encode differences in the parity script's slice definition, or accept + document them.</td></tr>
+        <tr><td><span class="risk-sev md">MED</span></td><td><b>Aggregate endpoint abuse / cost.</b> All-NSW group-bys (postcode × month × type) can return 100k+ rows; Aurora Serverless bills per work.</td><td>Manifest caps: ≤2 non-time group-bys, server row cap (5k UI / 50k CSV), month-range required for month-grain queries, per-user rate limit reusing <code>limits.py</code>.</td></tr>
+        <tr><td><span class="risk-sev md">MED</span></td><td><b>Shared-dim RLS.</b> <code>dim_postcode_geo</code> must be readable under either dataset grant; the current macro is single-dataset.</td><td>Small macro extension with a dbt test proving a rent-only user can read the dim but still not sales marts.</td></tr>
+        <tr><td><span class="risk-sev md">MED</span></td><td><b>NL setup mis-maps intent.</b> The Ask-AI box could set wrong filters (e.g. FY2020 instead of FY2021).</td><td>LLM output passes the same manifest validator as manual requests; populated controls stay visible so the user sees exactly what will run (Profile never autoruns); NL→state pairs are logged for goldens.</td></tr>
+        <tr><td><span class="risk-sev lo">LOW</span></td><td><b>Nav/route naming.</b> <code>routers/profile.py</code> (user profile) vs the Profile tool.</td><td>Feature is “Explore”; endpoints <code>/explore/*</code>; UI copy says “Profile” only inside the Explore tab.</td></tr>
+        <tr><td><span class="risk-sev md">MED</span></td><td><b>Yield join sparsity.</b> Thin postcode × type × year cells produce absurd yields (one sale ÷ one bond).</td><td>Mart filters cells below minimum volume (<code>n_sold ≥ 5</code>, <code>n_rented ≥ 5</code>); dbt range test fails the pipeline on out-of-range yields; property-type normalization (house/unit) verified against the legacy mapping (H/T → house).</td></tr>
+        <tr><td><span class="risk-sev lo">LOW</span></td><td><b>Dim domain payloads.</b> ~600–2600 postcodes in the picker.</td><td>Manifest returns top-N by volume + typeahead endpoint for the tail.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout" style="margin-top:14px"><b>Out of scope (this ticket):</b> non-NSW datasets; saved/shared explore views; scheduled extracts. <span class="ok"><b>Pulled into scope by review:</b></span> the sales×rent <b>yield</b> mart from <code>property_yield_20241003.py</code> — now Phase A, registered as its own third dataset <code>nsw_yield</code> (which sidesteps cross-dataset grant semantics: it gets its own RLS tag and grants like any dataset).</div>
+</section>
+
+<footer>
+  s19 · chronicle → explore plan · design source: the app's own token system (matches s17 house style, per Lavish design priority #2) ·
+  grounded in: <span class="mono">docs/chronicle/*</span>, <span class="mono">dbt/models/marts/*.sql</span>, <span class="mono">app/routers/{sql,profile}.py</span>, <span class="mono">frontend/src/{app,ui,features}</span>
+</footer>
+</div>
+
+
+<script type="module">
+  // Self-rendered Mermaid on a custom class (.mmd-src) so it cannot double-process
+  // with any viewer-injected mermaid handling. Page is dark-fixed; theme=dark.
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict",
+    themeVariables: { fontFamily: "Inter, system-ui, sans-serif" } });
+  try {
+    await mermaid.run({ nodes: [...document.querySelectorAll(".mmd-src")] });
+    document.querySelectorAll(".mmd-src").forEach((el) => { el.style.whiteSpace = "normal"; el.style.fontSize = ""; });
+  } catch (error) {
+    console.error("Mermaid diagram render failed:", error);
+  }
+</script>
+<script>
+  // mock tabs — local UI state only
+  document.getElementById("mockTabs").addEventListener("click", (e) => {
+    const btn = e.target.closest(".mock-tab"); if (!btn) return;
+    document.querySelectorAll(".mock-tab").forEach(t => t.classList.toggle("on", t === btn));
+    document.querySelectorAll(".mock-pane").forEach(p => p.classList.toggle("on", p.id === "pane-" + btn.dataset.pane));
+  });
+
+  // decision forms — queue exactly one prompt per submit (input playbook)
+  function queueDecision(ev, name) {
+    ev.preventDefault();
+    const form = ev.currentTarget;
+    const val = new FormData(form).values().next().value;
+    if (!val || !window.lavish) return false;
+    window.lavish.queuePrompt(`Decision ${name}: ${val}`, {
+      tag: "decision", text: `${name}: ${val}`, element: form,
+      queueKey: form.dataset.lavishQuestion,
+      data: { question: form.dataset.lavishQuestion, answer: val }
+    });
+    form.classList.add("answered");
+    return false;
+  }
+  function queueFreeform(btn) {
+    const ta = document.getElementById("freeform");
+    if (!ta.value.trim() || !window.lavish) return;
+    window.lavish.queuePrompt(`Explore plan note: ${ta.value.trim()}`, {
+      tag: "note", text: ta.value.trim(), element: ta, queueKey: "freeform-note"
+    });
+    btn.parentElement.classList.add("answered");
+  }
+  window.queueDecision = queueDecision;
+  window.queueFreeform = queueFreeform;
+</script>
+</body>
+</html>

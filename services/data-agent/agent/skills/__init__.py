@@ -154,7 +154,13 @@ from .charts import (  # noqa: E402
     profile_chart,
     trend_chart,
 )
-from .reporting import build_insights, build_report, make_insight, related_metrics  # noqa: E402
+from .reporting import (  # noqa: E402
+    build_insights,
+    build_report,
+    data_table,
+    make_insight,
+    related_metrics,
+)
 
 __all__ = [
     # analysis
@@ -174,6 +180,7 @@ __all__ = [
     # reporting
     "build_report",
     "build_insights",
+    "data_table",
     "make_insight",
     "related_metrics",
     # mechanics

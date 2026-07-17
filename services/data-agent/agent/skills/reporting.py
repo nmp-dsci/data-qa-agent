@@ -106,6 +106,31 @@ def build_insights(
 
 
 @skill
+def data_table(
+    df: Any,
+    *,
+    columns: list[dict[str, Any]],
+    title: str | None = None,
+    variant: str = "plain",
+    bar_key: str | None = None,
+) -> dict[str, Any]:
+    """A table payload from a frame: the DataTable wire shape (s20).
+
+    ``columns`` is ``[{"key","label","align"?,"tone"?,"format"?}, ...]``;
+    ``variant`` is plain | comparison | ranked (ranked draws an inline bar sized
+    by ``bar_key``). Pass the result to ``build_report(table=...)`` so the
+    object builder lifts it into a ``table`` page object.
+    """
+    return {
+        "title": title,
+        "variant": variant,
+        "columns": list(columns),
+        "rows": df.to_dict("records"),
+        "bar_key": bar_key,
+    }
+
+
+@skill
 def build_report(
     *,
     summary: str,
@@ -113,13 +138,14 @@ def build_report(
     insights: list[dict[str, Any]] | None = None,
     profiles: list[dict[str, Any]] | None = None,
     main_chart: dict[str, Any] | None = None,
+    table: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the narrative into the app's report shape (minus queries/version).
 
     Produces the same element-shape the server assembles today: a one-sentence
     ``summary``, headline tiles, 2-4 insight cards, an optional profile section,
-    and the primary ``main_chart``. The sandbox adapter adds the governed
-    ``queries`` and ``knowledge_version`` around this.
+    the primary ``main_chart``, and (s20) an optional ``table`` payload from
+    ``data_table`` — the object builder lifts it into a ``table`` page object.
     """
     headline_tiles = [_headline(h, i) for i, h in enumerate(headlines or [])]
     insight_cards = [
@@ -150,4 +176,5 @@ def build_report(
         "insights": insight_cards,
         "profiles": profile_cards,
         "main_chart": main_chart,
+        "table": table,
     }

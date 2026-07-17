@@ -23,3 +23,15 @@ datasets:
     access:
       roles: [admin]
       users: [user1]      # user1 granted both datasets, so it can JOIN them
+
+  - slug: nsw_yield
+    name: NSW rental yield
+    source: derived                       # sales JOIN rent; not its own CSV
+    description: >
+      Gross rental yield (rent vs sale price) by postcode, property type and
+      year. Powers marts.property_yield (dbt-built from property_sales +
+      property_rent). Its own dataset/grant (migration 0025) since answering
+      it needs both nsw_sales and nsw_rent semantics.
+    access:
+      roles: [admin]
+      users: [user1]      # same holder as nsw_sales/nsw_rent; user2 excluded

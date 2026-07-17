@@ -94,7 +94,7 @@ def _dp(points: list[tuple[float, float]], tol: float) -> list[tuple[float, floa
             keep[idx] = True
             stack.append((lo, idx))
             stack.append((idx, hi))
-    return [p for p, k in zip(points, keep) if k]
+    return [p for p, k in zip(points, keep, strict=True) if k]
 
 
 def main() -> int:

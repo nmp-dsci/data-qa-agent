@@ -45,15 +45,27 @@ def main() -> int:
 
     st, ds = _req("GET", "/explore/datasets", token=token)
     slugs = [d["slug"] for d in (ds or {}).get("datasets", [])]
-    check("GET /explore/datasets lists 3 datasets", st == 200 and set(slugs) >= {"nsw_sales", "nsw_rent", "nsw_yield"}, str(slugs))
+    check(
+        "GET /explore/datasets lists 3 datasets",
+        st == 200 and set(slugs) >= {"nsw_sales", "nsw_rent", "nsw_yield"},
+        str(slugs),
+    )
 
     st, agg = _req(
         "POST",
         "/explore/aggregate",
-        {"dataset": "nsw_yield", "metrics": ["gross_yield_pct", "n_sold"], "group_by": ["property_type"]},
+        {
+            "dataset": "nsw_yield",
+            "metrics": ["gross_yield_pct", "n_sold"],
+            "group_by": ["property_type"],
+        },
         token,
     )
-    check("POST /explore/aggregate (yield by type)", st == 200 and agg and agg["row_count"] > 0, str(agg and agg["rows"][:2]))
+    check(
+        "POST /explore/aggregate (yield by type)",
+        st == 200 and agg and agg["row_count"] > 0,
+        str(agg and agg["rows"][:2]),
+    )
 
     st, agg2 = _req(
         "POST",
@@ -61,7 +73,10 @@ def main() -> int:
         {"dataset": "nsw_rent", "metrics": ["avg_weekly_rent"], "group_by": ["sa3_region"]},
         token,
     )
-    check("POST /explore/aggregate (rent by SA3 geo join)", st == 200 and agg2 and agg2["row_count"] > 0)
+    check(
+        "POST /explore/aggregate (rent by SA3 geo join)",
+        st == 200 and agg2 and agg2["row_count"] > 0,
+    )
 
     st, prof = _req(
         "POST",
@@ -86,13 +101,19 @@ def main() -> int:
         token,
     )
     good = st == 200 and ask and ask["state"].get("dataset") == "nsw_rent"
-    check("POST /explore/ask (NL -> profile state)", good, json.dumps(ask.get("state") if ask else None))
+    check(
+        "POST /explore/ask (NL -> profile state)",
+        good,
+        json.dumps(ask.get("state") if ask else None),
+    )
 
     # RLS: user2 (no grants) gets an empty dataset list.
     st2, login2 = _req("POST", "/auth/dev-login", {"username": "user2"})
     if st2 == 200:
         st, ds2 = _req("GET", "/explore/datasets", token=login2["access_token"])
-        check("RLS: user2 sees no datasets", st == 200 and len((ds2 or {}).get("datasets", [])) == 0)
+        check(
+            "RLS: user2 sees no datasets", st == 200 and len((ds2 or {}).get("datasets", [])) == 0
+        )
 
     print("\n" + ("ALL EXPLORE CHECKS PASSED" if ok else "SOME EXPLORE CHECKS FAILED"))
     return 0 if ok else 1

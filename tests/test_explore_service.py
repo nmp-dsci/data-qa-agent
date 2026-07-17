@@ -114,9 +114,7 @@ def test_unknown_filter_dimension_rejected() -> None:
 def test_too_many_group_by_rejected() -> None:
     ds = _sales()
     with pytest.raises(service.ExploreValidationError):
-        service.validate_spec(
-            ds, ["n_sold"], ["postcode", "suburb", "zoning", "property_type"], {}
-        )
+        service.validate_spec(ds, ["n_sold"], ["postcode", "suburb", "zoning", "property_type"], {})
 
 
 def test_empty_metrics_rejected() -> None:

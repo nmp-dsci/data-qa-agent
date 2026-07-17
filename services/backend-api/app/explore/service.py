@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
-from .manifest import GEO_TABLE, MART_ALIAS, Dataset
+from .manifest import GEO_TABLE, MART_ALIAS, Dataset, Dimension
 
 # sqlalchemy only needed by the async runners; kept out of module scope so the SQL
 # builder + validator stay importable in the dependency-light root test venv.
@@ -65,10 +65,41 @@ def validate_spec(
     for name in group_by:
         if dataset.dimension(name) is None:
             raise ExploreValidationError(f"unknown dimension {name!r} for dataset {dataset.slug}")
-    for name in filters:
-        if dataset.dimension(name) is None:
+    for name, value in filters.items():
+        dim = dataset.dimension(name)
+        if dim is None:
             raise ExploreValidationError(f"unknown filter dimension {name!r}")
+        _validate_filter_value(dim, name, value)
     return AggregateSpec(dataset=dataset, metrics=metrics, group_by=group_by, filters=dict(filters))
+
+
+def _validate_filter_scalar(dim: Dimension, name: str, value: Any) -> None:
+    if value is None or isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        raise ExploreValidationError(f"invalid filter value for {name!r}: {value!r}")
+    if dim.filter_kind in ("month_year", "month_fy"):
+        try:
+            int(value)
+        except (TypeError, ValueError):
+            raise ExploreValidationError(
+                f"filter {name!r} requires an integer year, got {value!r}"
+            ) from None
+
+
+def _validate_filter_value(dim: Dimension, name: str, value: Any) -> None:
+    """Check a filter value's shape/type against the dimension's filter_kind
+    before it can reach _where_clause and be bound directly as a query param —
+    a bad shape there surfaces as an unhandled DB type error instead of a 400."""
+    if isinstance(value, dict):
+        if not ("min" in value or "max" in value):
+            raise ExploreValidationError(f"invalid range filter for {name!r}")
+        for key in ("min", "max"):
+            if key in value and value[key] is not None:
+                _validate_filter_scalar(dim, name, value[key])
+    elif isinstance(value, (list, tuple, set)):
+        for v in value:
+            _validate_filter_scalar(dim, name, v)
+    else:
+        _validate_filter_scalar(dim, name, value)
 
 
 def _needs_geo(spec: AggregateSpec) -> bool:
@@ -218,15 +249,19 @@ async def run_aggregate(conn: AsyncConnection, spec: AggregateSpec) -> dict[str,
 
 async def cohort_totals(
     conn: AsyncConnection, dataset: Dataset, filters: dict[str, Any]
-) -> dict[str, Any]:
-    """All metrics for a cohort at the grand-total level (group_by = [])."""
+) -> tuple[dict[str, Any], str, int]:
+    """All metrics for a cohort at the grand-total level (group_by = []).
+
+    Returns (result, sql, row_count) — the sql/row_count let the caller audit
+    this query in app.query_runs the same way the SQL editor is audited."""
     from sqlalchemy import text
 
     metrics = [m.name for m in dataset.metrics]
     spec = validate_spec(dataset, metrics, [], filters)
     sql, params = build_aggregate_sql(spec)
     row = (await conn.execute(text(sql), params)).mappings().first()
-    return dict(row) if row else {m: None for m in metrics}
+    result = dict(row) if row else {m: None for m in metrics}
+    return result, sql, 1 if row else 0
 
 
 async def cohort_by_predictor(
@@ -236,10 +271,12 @@ async def cohort_by_predictor(
     response_metric: str,
     volume_metric: str,
     filters: dict[str, Any],
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], str, int]:
     """A cohort's response metric per segment of one predictor, with a volume count.
 
-    Returns dicts shaped for the engine: {segment, <response_metric>, _n}.
+    Returns (rows, sql, row_count); rows are shaped for the engine:
+    {segment, <response_metric>, _n}. The sql/row_count let the caller audit this
+    query in app.query_runs the same way the SQL editor is audited.
     """
     from sqlalchemy import text
 
@@ -255,4 +292,4 @@ async def cohort_by_predictor(
         d["segment"] = d.pop(predictor)
         d["_n"] = d.get(volume_metric)
         out.append(d)
-    return out
+    return out, sql, len(out)

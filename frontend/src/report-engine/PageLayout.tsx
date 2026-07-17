@@ -67,7 +67,17 @@ export function ObjectBody({ o }: { o: PageObject }) {
       return <Bars height={resolveHeight(d["height"])} data={barsData} />;
     }
     case "table":
-      return <DataTable data={d as unknown as TableData} />;
+      return (
+        <DataTable
+          data={{
+            title: (d["title"] as string | null) ?? null,
+            variant: d["variant"] as TableData["variant"],
+            columns: (d["columns"] as TableData["columns"]) ?? [],
+            rows: (d["rows"] as Record<string, unknown>[]) ?? [],
+            bar_key: (d["bar_key"] as string | null) ?? null,
+          } satisfies TableData}
+        />
+      );
     case "choropleth":
       return (
         <Suspense fallback={<div className="skel" style={{ height: 220 }} />}>

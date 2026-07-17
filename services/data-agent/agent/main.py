@@ -809,7 +809,7 @@ class AnalysisObjectResponse(BaseModel):
     error: str | None = None
 
 
-_CHART_TYPES = {"trend", "breakdown", "compare"}
+_CHART_TYPES = {"trend", "breakdown", "compare", "table"}
 
 
 def _chart_sig(data: dict[str, Any]) -> tuple[str, str, str, str]:

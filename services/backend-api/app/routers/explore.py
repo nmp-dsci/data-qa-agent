@@ -3,8 +3,8 @@
 All reads run under `rls_connection`, so the mart RLS scopes rows to the caller's
 dataset grants. Requests are manifest-checked (service.validate_spec) — only
 allow-listed identifiers reach SQL; user input arrives only as bound parameters.
-Aggregate reads are audited in app.query_runs (source='explore'), like the SQL
-editor.
+Aggregate and profile reads are audited in app.query_runs (source='explore'),
+like the SQL editor.
 """
 
 from __future__ import annotations
@@ -233,6 +233,19 @@ async def aggregate(
     }
 
 
+def _sql_literal(val: Any) -> str:
+    """Render a bound param as a SQL literal, escaping embedded quotes so the
+    result is faithful, runnable SQL rather than a text fragment that could
+    change meaning (e.g. a suburb name containing an apostrophe)."""
+    if val is None:
+        return "null"
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, (int, float)):
+        return str(val)
+    return "'" + str(val).replace("'", "''") + "'"
+
+
 def _inline_sql(sql: str, spec: service.AggregateSpec) -> str:
     """Render the parameterized SQL with its filter values inlined — a readable,
     runnable query for the SQL editor. Longest param names first so ``:p1`` never
@@ -240,9 +253,7 @@ def _inline_sql(sql: str, spec: service.AggregateSpec) -> str:
     _, params = service.build_aggregate_sql(spec)
     out = sql
     for key in sorted(params, key=len, reverse=True):
-        val = params[key]
-        literal = str(val) if isinstance(val, (int, float)) else f"'{val}'"
-        out = out.replace(f":{key}", literal)
+        out = out.replace(f":{key}", _sql_literal(params[key]))
     return out
 
 
@@ -275,7 +286,9 @@ class ProfileBody(BaseModel):
 
 @router.post("/profile")
 async def profile(
-    body: ProfileBody, user: CurrentUser = Depends(get_current_user)
+    body: ProfileBody,
+    user: CurrentUser = Depends(get_current_user),
+    channel: str = Depends(get_channel),
 ) -> dict[str, Any]:
     async with rls_connection(user.id) as conn:
         dataset = await _require_dataset(conn, body.dataset)
@@ -290,18 +303,31 @@ async def profile(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         count_metric = _count_metric(dataset)
-        target_totals = await service.cohort_totals(conn, dataset, body.target.filters)
-        comparison_totals = await service.cohort_totals(conn, dataset, body.comparison.filters)
+
+        async def _totals(filters: dict[str, Any]) -> dict[str, Any]:
+            started = time.perf_counter()
+            result, sql, row_count = await service.cohort_totals(conn, dataset, filters)
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            await _audit(conn, user.id, sql, row_count, latency_ms, channel)
+            return result
+
+        async def _by_predictor(dim_name: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
+            started = time.perf_counter()
+            result, sql, row_count = await service.cohort_by_predictor(
+                conn, dataset, dim_name, response_metric, count_metric, filters
+            )
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            await _audit(conn, user.id, sql, row_count, latency_ms, channel)
+            return result
+
+        target_totals = await _totals(body.target.filters)
+        comparison_totals = await _totals(body.comparison.filters)
 
         target_by: dict[str, list[dict[str, Any]]] = {}
         comparison_by: dict[str, list[dict[str, Any]]] = {}
         for dim in dataset.predictor_dimensions:
-            target_by[dim.name] = await service.cohort_by_predictor(
-                conn, dataset, dim.name, response_metric, count_metric, body.target.filters
-            )
-            comparison_by[dim.name] = await service.cohort_by_predictor(
-                conn, dataset, dim.name, response_metric, count_metric, body.comparison.filters
-            )
+            target_by[dim.name] = await _by_predictor(dim.name, body.target.filters)
+            comparison_by[dim.name] = await _by_predictor(dim.name, body.comparison.filters)
 
         await _log_event(
             conn,

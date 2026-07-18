@@ -475,7 +475,13 @@ function DataTable({
   );
 }
 
-export function GoldensPage() {
+export function GoldensPage({
+  seed,
+}: {
+  // Deep-link from a promoted chat answer: {id, nonce}. The nonce makes the
+  // effect re-fire even when the same golden is promoted twice in a row.
+  seed?: { id: string; nonce: number } | null;
+}) {
   const [dataset, setDataset] = useState<string>("nsw_sales");
   const [list, setList] = useState<GoldenListItem[]>([]);
   const [draft, setDraft] = useState<Draft>(() => emptyDraft("nsw_sales"));
@@ -566,6 +572,15 @@ export function GoldensPage() {
       .then((r) => setSkills(r.skills))
       .catch(() => {});
   }, []);
+
+  // Deep-link: when a chat answer is promoted, App bumps seed.nonce — refresh
+  // the list so the new draft appears, then load it into the editor.
+  useEffect(() => {
+    if (!seed) return;
+    void refresh();
+    void selectGolden(seed.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.nonce]);
 
   function patch<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -1292,6 +1307,7 @@ export function GoldensPage() {
         <div style={box}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <input
+              data-testid="golden-question"
               value={draft.question}
               placeholder="Question, e.g. Which suburbs have the best rental yield?"
               onChange={(e) => patch("question", e.target.value)}
@@ -1305,6 +1321,7 @@ export function GoldensPage() {
               ))}
             </select>
             <select
+              data-testid="golden-status"
               value={draft.authoring_status}
               onChange={(e) => patch("authoring_status", e.target.value)}
             >
@@ -1370,6 +1387,7 @@ export function GoldensPage() {
         <div style={box}>
           <div style={label}>① SQL — extraction</div>
           <textarea
+            data-testid="golden-sql"
             value={draft.golden_sql}
             onChange={(e) => {
               patch("golden_sql", e.target.value);
@@ -1999,7 +2017,12 @@ export function GoldensPage() {
 
         {/* actions */}
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button style={btn(busy !== "save")} onClick={() => void save()} disabled={busy === "save"}>
+          <button
+            data-testid="golden-save"
+            style={btn(busy !== "save")}
+            onClick={() => void save()}
+            disabled={busy === "save"}
+          >
             {draft.id ? "Save golden" : "Create golden"}
           </button>
           {draft.id && (

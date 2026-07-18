@@ -79,6 +79,9 @@ export default function App() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sqlSeed, setSqlSeed] = useState<{ sql: string; nonce: number } | null>(null);
+  // Deep-link a promoted golden into the Goldens tab (mirrors sqlSeed): the
+  // nonce forces the effect to re-fire even when the same id is promoted twice.
+  const [goldenSeed, setGoldenSeed] = useState<{ id: string; nonce: number } | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [progress, setProgress] = useState<AskProgress[]>([]);
   // s10 streaming pages: the answer's page plan (ghost slots + locked teasers)
@@ -137,6 +140,12 @@ export default function App() {
   function openInSqlEditor(sqlText: string) {
     setSqlSeed({ sql: sqlText, nonce: Date.now() });
     setView("sql");
+  }
+
+  // Land on the Goldens tab with a just-promoted golden loaded in the editor.
+  function openInGoldens(goldenId: string) {
+    setGoldenSeed({ id: goldenId, nonce: Date.now() });
+    setView("goldens");
   }
 
   useEffect(() => {
@@ -350,7 +359,7 @@ export default function App() {
         )}
         <div className="view-host" key={view}>
           {view === "admin" && <AdminPage />}
-          {view === "goldens" && <GoldensPage />}
+          {view === "goldens" && <GoldensPage seed={goldenSeed} />}
           {view === "settings" && <SettingsPage user={user} />}
           {view === "explore" && (
             <Suspense
@@ -399,6 +408,7 @@ export default function App() {
               onSend={send}
               onStop={stopStreaming}
               onOpenSql={openInSqlEditor}
+              onPromoteToGolden={openInGoldens}
               conversationId={conversationId}
               onOpenConversation={openConversation}
               onNewConversation={newConversation}

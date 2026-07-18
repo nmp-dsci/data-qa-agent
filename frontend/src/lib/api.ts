@@ -1057,6 +1057,19 @@ export function createGolden(body: GoldenInput): Promise<{ status: string; id: s
   return adminPost<{ status: string; id: string }>("/admin/eval-goldens", body);
 }
 
+// Promote a stored chat answer into a draft golden (no agent re-run — the
+// backend copies the run's captured SQL / sandbox script / report pages).
+// Idempotent: re-promoting the same run returns the existing golden with
+// created=false. Admin-only.
+export function goldenFromRun(
+  runId: string,
+): Promise<{ status: string; id: string; created: boolean }> {
+  return adminPost<{ status: string; id: string; created: boolean }>(
+    "/admin/eval-goldens/from-run",
+    { run_id: runId },
+  );
+}
+
 export function updateGolden(
   id: string,
   patch: Partial<GoldenInput>,

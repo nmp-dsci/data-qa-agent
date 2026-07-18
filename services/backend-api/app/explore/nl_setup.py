@@ -67,6 +67,7 @@ def _infer_property_type(q: str) -> str | None:
 def _infer_years(dataset: Dataset, q: str) -> tuple[str, list[int]] | None:
     """Return (dimension_name, [years]) — financial-year if 'FY' appears, else
     calendar. Only dimensions the dataset actually has are used."""
+    q = _strip_postcode_mentions(q)
     fy = [int(y) for y in re.findall(r"\bfy\s*'?(\d{4})\b", q.lower())]
     if not fy:
         fy = [int(y) for y in re.findall(r"financial year\s+(\d{4})", q.lower())]
@@ -77,6 +78,31 @@ def _infer_years(dataset: Dataset, q: str) -> tuple[str, list[int]] | None:
         return ("year", cal)
     if cal and dataset.dimension("year_fy"):
         return ("year_fy", cal)
+    return None
+
+
+# "postcode 2077 [vs|versus|and [postcode] ]2076" or a lone "postcode 2077" —
+# matched and stripped before year inference so a postcode digit run is never
+# misread as a calendar year (see _infer_years).
+_POSTCODE_PAIR = re.compile(
+    r"post\s*code\s*(\d{3,4})\s*(?:vs\.?|versus|and)\s*(?:post\s*code\s*)?(\d{3,4})",
+    re.IGNORECASE,
+)
+_POSTCODE_SINGLE = re.compile(r"post\s*code\s*(\d{3,4})", re.IGNORECASE)
+
+
+def _strip_postcode_mentions(q: str) -> str:
+    q = _POSTCODE_PAIR.sub(" ", q)
+    return _POSTCODE_SINGLE.sub(" ", q)
+
+
+def _infer_postcodes(q: str) -> list[str] | None:
+    pair = _POSTCODE_PAIR.search(q)
+    if pair:
+        return [pair.group(1).zfill(4), pair.group(2).zfill(4)]
+    single = _POSTCODE_SINGLE.findall(q)
+    if single:
+        return [p.zfill(4) for p in single]
     return None
 
 
@@ -125,6 +151,14 @@ def interpret_profile(
         dim, ys = years
         target[dim] = ys[0]
         comparison[dim] = ys[0] - 1
+
+    postcodes = _infer_postcodes(question) if ds.dimension("postcode") else None
+    if postcodes and len(postcodes) >= 2:
+        target["postcode"] = postcodes[0]
+        comparison["postcode"] = postcodes[1]
+    elif postcodes and len(postcodes) == 1:
+        target["postcode"] = postcodes[0]
+        comparison["postcode"] = postcodes[0]
 
     return {
         "dataset": ds.slug,

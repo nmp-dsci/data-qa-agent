@@ -70,3 +70,31 @@ def test_forced_dataset_respected() -> None:
 
     state = nl_setup.interpret_profile("prices 2022", GRANTED, dataset=get_dataset("nsw_yield"))
     assert state["dataset"] == "nsw_yield"
+
+
+def test_profile_postcode_pair_not_read_as_years() -> None:
+    # "postcode 2077 vs 2076" must bind postcode, not calendar year — a bare
+    # 4-digit token right after "postcode" isn't a year, even though it looks
+    # like one to the \b(20\d{2})\b year regex.
+    state = nl_setup.interpret_profile(
+        "compare houses in postcode 2077 vs 2076 weekly rent", GRANTED
+    )
+    assert state["target"]["filters"] == {"property_type": "house", "postcode": "2077"}
+    assert state["comparison"]["filters"] == {"property_type": "house", "postcode": "2076"}
+    assert "year" not in state["target"]["filters"]
+    assert "year" not in state["comparison"]["filters"]
+
+
+def test_profile_single_postcode_applies_to_both_cohorts() -> None:
+    state = nl_setup.interpret_profile("weekly rent in postcode 2077", GRANTED)
+    assert state["target"]["filters"]["postcode"] == "2077"
+    assert state["comparison"]["filters"]["postcode"] == "2077"
+
+
+def test_profile_postcode_and_year_both_extracted() -> None:
+    state = nl_setup.interpret_profile(
+        "postcode 2077 vs 2076 weekly rent in 2022", GRANTED
+    )
+    assert state["target"]["filters"]["postcode"] == "2077"
+    assert state["comparison"]["filters"]["postcode"] == "2076"
+    assert state["target"]["filters"]["year"] == 2022

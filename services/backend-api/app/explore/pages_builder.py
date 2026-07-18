@@ -239,6 +239,7 @@ def _predictor_chart_page(
 ) -> dict[str, Any] | None:
     geo = payload.get("geo")
     geo_dim = str(geo.get("dimension")) if isinstance(geo, dict) else "postcode"
+    predictor_sql = payload.get("predictor_sql") or {}
     charts: list[dict[str, Any]] = []
     for p in payload.get("predictors", []):
         if p.get("predictor") == geo_dim or not p.get("segments"):
@@ -249,19 +250,23 @@ def _predictor_chart_page(
             rows.append(
                 {"segment": s.get("value"), "cohort": c_label, "value": s.get("comparison")}
             )
+        data: dict[str, Any] = {
+            "title": f"{p.get('label')} · signal {p.get('signal')}",
+            "dimension": "segment",
+            "measure": "value",
+            "group": "cohort",
+            "group_order": [t_label, c_label],
+            "rows": rows,
+            "height": "sm",
+        }
+        sql = predictor_sql.get(str(p.get("predictor")))
+        if sql:
+            data["sql"] = sql
         charts.append(
             _obj(
                 "breakdown",
                 f"profile:chart:{p.get('predictor')}",
-                {
-                    "title": f"{p.get('label')} · signal {p.get('signal')}",
-                    "dimension": "segment",
-                    "measure": "value",
-                    "group": "cohort",
-                    "group_order": [t_label, c_label],
-                    "rows": rows,
-                    "height": "sm",
-                },
+                data,
                 role="chart",
             )
         )

@@ -229,7 +229,7 @@ async def aggregate(
         "latency_ms": latency_ms,
         # The exact parameterized SQL (params inlined for readability) so a chart
         # can offer "open this query in the SQL editor".
-        "sql": _inline_sql(result["sql"], spec),
+        "sql": _inline_sql(result["sql"], result["params"]),
     }
 
 
@@ -246,15 +246,37 @@ def _sql_literal(val: Any) -> str:
     return "'" + str(val).replace("'", "''") + "'"
 
 
-def _inline_sql(sql: str, spec: service.AggregateSpec) -> str:
+def _inline_sql(sql: str, params: dict[str, Any]) -> str:
     """Render the parameterized SQL with its filter values inlined — a readable,
     runnable query for the SQL editor. Longest param names first so ``:p1`` never
     partially matches inside ``:p10``."""
-    _, params = service.build_aggregate_sql(spec)
     out = sql
     for key in sorted(params, key=len, reverse=True):
         out = out.replace(f":{key}", _sql_literal(params[key]))
     return out
+
+
+def _predictor_union_sql(
+    dim_name: str,
+    metric_name: str,
+    t_sql: str,
+    t_params: dict[str, Any],
+    c_sql: str,
+    c_params: dict[str, Any],
+) -> str:
+    """A single faithful, runnable query reproducing the target+comparison rows
+    behind a per-predictor profile chart (segment/cohort/value) — the "breakdown"
+    chart built in pages_builder._predictor_chart_page — so its SQL link opens
+    exactly what's plotted rather than only one side of the comparison."""
+    t_inline = _inline_sql(t_sql, t_params)
+    c_inline = _inline_sql(c_sql, c_params)
+    return (
+        f"select {dim_name} as segment, 'target' as cohort, {metric_name} as value\n"
+        f"from (\n{t_inline}\n) t\n"
+        f"union all\n"
+        f"select {dim_name} as segment, 'comparison' as cohort, {metric_name} as value\n"
+        f"from (\n{c_inline}\n) c"
+    )
 
 
 async def _audit(
@@ -311,23 +333,35 @@ async def profile(
             await _audit(conn, user.id, sql, row_count, latency_ms, channel)
             return result
 
-        async def _by_predictor(dim_name: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
+        async def _by_predictor(
+            dim_name: str, filters: dict[str, Any]
+        ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
             started = time.perf_counter()
-            result, sql, row_count = await service.cohort_by_predictor(
+            result, sql, params, row_count = await service.cohort_by_predictor(
                 conn, dataset, dim_name, response_metric, count_metric, filters
             )
             latency_ms = int((time.perf_counter() - started) * 1000)
             await _audit(conn, user.id, sql, row_count, latency_ms, channel)
-            return result
+            return result, sql, params
 
         target_totals = await _totals(body.target.filters)
         comparison_totals = await _totals(body.comparison.filters)
 
         target_by: dict[str, list[dict[str, Any]]] = {}
         comparison_by: dict[str, list[dict[str, Any]]] = {}
+        # The exact query behind each per-predictor chart (target ∪ comparison),
+        # so its "open in SQL editor" link is faithful and runnable — see
+        # pages_builder._predictor_chart_page, which is DB-free and can't build
+        # this itself.
+        predictor_sql: dict[str, str] = {}
         for dim in dataset.predictor_dimensions:
-            target_by[dim.name] = await _by_predictor(dim.name, body.target.filters)
-            comparison_by[dim.name] = await _by_predictor(dim.name, body.comparison.filters)
+            t_rows, t_sql, t_params = await _by_predictor(dim.name, body.target.filters)
+            c_rows, c_sql, c_params = await _by_predictor(dim.name, body.comparison.filters)
+            target_by[dim.name] = t_rows
+            comparison_by[dim.name] = c_rows
+            predictor_sql[dim.name] = _predictor_union_sql(
+                dim.name, response_metric, t_sql, t_params, c_sql, c_params
+            )
 
         await _log_event(
             conn,
@@ -351,6 +385,7 @@ async def profile(
     payload["geo"] = (
         {"dimension": dataset.geo.dimension, "layer": dataset.geo.layer} if dataset.geo else None
     )
+    payload["predictor_sql"] = predictor_sql
     # The same result assembled as report-engine pages (s20): the UI renders
     # these through PageLayout, and Save-as-golden persists them unchanged.
     payload["pages"] = build_profile_pages(payload, {d.name: d.label for d in dataset.dimensions})

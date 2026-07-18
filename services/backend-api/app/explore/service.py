@@ -226,7 +226,7 @@ async def granted_dataset_slugs(conn: AsyncConnection) -> set[str]:
 
 
 async def run_aggregate(conn: AsyncConnection, spec: AggregateSpec) -> dict[str, Any]:
-    """Execute an aggregate and return columns/rows/row_count/truncated/sql."""
+    """Execute an aggregate and return columns/rows/row_count/truncated/sql/params."""
     from sqlalchemy import text
 
     sql, params = build_aggregate_sql(spec)
@@ -244,6 +244,7 @@ async def run_aggregate(conn: AsyncConnection, spec: AggregateSpec) -> dict[str,
         "row_count": len(rows),
         "truncated": truncated,
         "sql": sql,
+        "params": params,
     }
 
 
@@ -271,12 +272,13 @@ async def cohort_by_predictor(
     response_metric: str,
     volume_metric: str,
     filters: dict[str, Any],
-) -> tuple[list[dict[str, Any]], str, int]:
+) -> tuple[list[dict[str, Any]], str, dict[str, Any], int]:
     """A cohort's response metric per segment of one predictor, with a volume count.
 
-    Returns (rows, sql, row_count); rows are shaped for the engine:
-    {segment, <response_metric>, _n}. The sql/row_count let the caller audit this
-    query in app.query_runs the same way the SQL editor is audited.
+    Returns (rows, sql, params, row_count); rows are shaped for the engine:
+    {segment, <response_metric>, _n}. sql/row_count let the caller audit this
+    query in app.query_runs the same way the SQL editor is audited; sql/params
+    together let the caller build a runnable "open in SQL editor" query.
     """
     from sqlalchemy import text
 
@@ -292,4 +294,4 @@ async def cohort_by_predictor(
         d["segment"] = d.pop(predictor)
         d["_n"] = d.get(volume_metric)
         out.append(d)
-    return out, sql, len(out)
+    return out, sql, params, len(out)

@@ -856,6 +856,7 @@ export function GoldensPage({
         golden_report: g.golden_report ?? null,
         golden_objects: goldenObjects,
       });
+      setBuilder(defaultBuilder(g.dataset ?? dataset));
       setDraftPages(pagesFromReport(g.golden_report));
       seedSelectedSkills(sandbox);
       // Seed each named object from its saved report copy so it shows immediately

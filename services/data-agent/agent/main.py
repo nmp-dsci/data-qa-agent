@@ -1066,6 +1066,7 @@ async def agent_analysis_build_object(
         element_id_for,
         name_from_instruction,
         needed_columns,
+        profile_for,
     )
     from .ordinals import load_overrides
 
@@ -1105,7 +1106,7 @@ async def agent_analysis_build_object(
     need = needed_columns(body.spec)
     must_rewrite = bool(body.spec) and (base_error is not None or not need.issubset(set(columns)))
     if must_rewrite:
-        grain = body.spec.get("grain") or ["suburb", "area_band", "month"]
+        grain = body.spec.get("grain") or list(profile_for(body.dataset).default_grain)
         try:
             new_sql = canonical_extract_sql(
                 body.sql,

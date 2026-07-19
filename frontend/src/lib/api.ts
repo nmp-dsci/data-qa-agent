@@ -999,10 +999,13 @@ export interface BuildObjectResult {
 
 export function buildGoldenObject(body: {
   sql: string;
-  name: string;
+  // Blank/omitted on the NL path (s22): the agent derives a slug from the instruction.
+  name?: string;
   object_type: string;
   spec: SandboxObjectSpec;
   instruction?: string;
+  // Dataset slug — selects the mart profile for the deterministic builder (s22 P2).
+  dataset?: string;
   as_user?: string | null;
 }): Promise<BuildObjectResult> {
   return adminPost<BuildObjectResult>("/admin/eval-goldens/build-object", body);
@@ -1036,6 +1039,26 @@ export interface SkillInfo {
 
 export function getGoldenSkills(): Promise<{ skills: SkillInfo[] }> {
   return adminGet<{ skills: SkillInfo[] }>("/admin/eval-goldens/skills");
+}
+
+/** An ordinal band-order fact (s23) — the canonical order the chart lift sorts an
+ *  ordinal x-axis (area_band, bedroom_band, …) by, per dataset. */
+export interface OrdinalRow {
+  column_name: string;
+  ordered_values: string[];
+  updated_at: string;
+}
+
+export function getOrdinals(dataset: string): Promise<OrdinalRow[]> {
+  return adminGet<OrdinalRow[]>(`/admin/eval-goldens/ordinals?dataset=${encodeURIComponent(dataset)}`);
+}
+
+export function putOrdinal(body: {
+  dataset: string;
+  column: string;
+  ordered_values: string[];
+}): Promise<{ status: string }> {
+  return adminSend<{ status: string }>("/admin/eval-goldens/ordinals", "PUT", body);
 }
 
 export interface ScaffoldResult {

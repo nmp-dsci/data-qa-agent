@@ -657,6 +657,7 @@ def _lift_object(
     element_id: str,
     object_type: str = "compare",
     sql: str | None = None,
+    dataset: str | None = None,
 ) -> dict[str, Any] | None:
     """Lift a built object's report into ONE page object with a stable element_id.
 
@@ -677,7 +678,7 @@ def _lift_object(
     spec = report.get("main_chart")
     if spec:
         lifted = chart_object_from_spec(
-            spec, element_id=element_id, role="chart", height="md", sql=sql
+            spec, element_id=element_id, role="chart", height="md", sql=sql, dataset=dataset
         )
         if lifted is not None:
             return lifted.model_dump(exclude_none=True)
@@ -731,6 +732,9 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
     With ``code`` it is Goal B: the metrics come from the tested skills in the
     locked-down sandbox, not hand-typing — so the golden reflects a real run.
     """
+    from .ordinals import load_overrides
+
+    await load_overrides()  # s23: honour curator ordinal edits before the lift
     try:
         frame, meta = await extract(body.sql, user_id=body.user.id)
     except UnsafeSQLError as exc:
@@ -822,6 +826,24 @@ def _chart_sig(data: dict[str, Any]) -> tuple[str, str, str, str]:
     return (dim, meas, line, grp)
 
 
+def _target_chart_sig(
+    existing: list[dict[str, Any]], target_element_id: str | None
+) -> tuple[str, str, str, str] | None:
+    """The field signature of the object the curator is editing — the digest entry
+    flagged ``_target`` (or whose element_id matches). Lets a DATA-ONLY edit
+    (reorder / filter / value change), which keeps dimension/measure/group
+    unchanged, still be matched back to its recomposed chart."""
+    for obj in existing or []:
+        if not isinstance(obj, dict):
+            continue
+        data = obj.get("data")
+        if obj.get("type") not in _CHART_TYPES or not isinstance(data, dict):
+            continue
+        if obj.get("_target") or (target_element_id and obj.get("element_id") == target_element_id):
+            return _chart_sig(data)
+    return None
+
+
 def _with_sql(obj: dict[str, Any] | None, sql: str | None) -> dict[str, Any] | None:
     """Fill ``data.sql`` on a chart object so it links to the governing query.
     Only sets it when missing (never clobbers a query the object already knows)."""
@@ -867,9 +889,20 @@ def _lift_target(
     for obj in charts:
         if _chart_sig(obj.get("data") or {}) not in existing_sigs:
             return _with_sql(obj, sql)
-    # No id match and no new/changed chart. If the golden had NO charts before,
-    # this is the first-object case → lift the report's main_chart. Otherwise the
-    # edit didn't take (every chart matches a pre-existing one) → None (error).
+    # Data-only edit (reorder / filter / value change): the field signature is
+    # UNCHANGED — e.g. "order the x-axis by the number before the dash" keeps the
+    # same dimension/measure/group — so the "new signature" pass above finds
+    # nothing. Match the recomposed chart back to the TARGET's own signature and
+    # lift it (with its fresh rows), instead of wrongly reporting "no chart".
+    target_sig = _target_chart_sig(existing, target_element_id)
+    if target_sig is not None:
+        for obj in charts:
+            if _chart_sig(obj.get("data") or {}) == target_sig:
+                return _with_sql(obj, sql)
+    # No id match, no new/changed chart, and no identifiable target. If the golden
+    # had NO charts before, this is the first-object case → lift the report's
+    # main_chart. Otherwise the edit didn't take (a chart with no known target) →
+    # None (error), so the caller surfaces it rather than a stale duplicate.
     if not existing_sigs:
         spec = report.get("main_chart") if isinstance(report, dict) else None
         lifted = chart_object_from_spec(
@@ -890,7 +923,9 @@ async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectRe
     the presentation. Never raises — errors travel on ``error`` for the builder.
     """
     from .object_codegen import scaffold_object
+    from .ordinals import load_overrides
 
+    await load_overrides()  # s23: honour curator ordinal edits before the lift
     try:
         frame, meta = await extract(body.sql, user_id=body.user.id)
     except UnsafeSQLError as exc:
@@ -983,7 +1018,8 @@ async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectRe
 
 class AnalysisBuildObjectRequest(BaseModel):
     sql: str
-    name: str
+    # Blank on the NL path (s22): a slug is derived from the instruction below.
+    name: str = ""
     object_type: str = "compare"
     # Structured form state (grain, dimension, group, bar/line measures + windows)
     # the deterministic builder emits code from — see agent.object_builder.
@@ -991,6 +1027,8 @@ class AnalysisBuildObjectRequest(BaseModel):
     # Optional NL instruction — when set, the DeepSeek scaffold_object path authors
     # the code instead of the deterministic builder (relabelled with this name).
     instruction: str = ""
+    # Dataset slug — selects the mart profile for the deterministic builder (s22 P2).
+    dataset: str = "nsw_sales"
     user: UserCtx
 
 
@@ -1026,14 +1064,22 @@ async def agent_analysis_build_object(
         build_object_code,
         canonical_extract_sql,
         element_id_for,
+        name_from_instruction,
         needed_columns,
     )
+    from .ordinals import load_overrides
 
-    eid = element_id_for(body.name)
+    # s23: pick up any curator ordinal edits before the lift orders the axis.
+    await load_overrides()
+
+    # s22: the NL path may omit the name — derive a stable slug from the words of
+    # the instruction so the object still gets a linkable obj:<slug> element_id.
+    name = body.name.strip() or name_from_instruction(body.instruction)
+    eid = element_id_for(name)
 
     def _err(msg: str, *, sql: str, code: str = "") -> AnalysisBuildObjectResponse:
         return AnalysisBuildObjectResponse(
-            name=body.name,
+            name=name,
             element_id=eid,
             object_type=body.object_type,
             sql=sql,
@@ -1066,6 +1112,7 @@ async def agent_analysis_build_object(
                 grain=grain,
                 measure_source_cols=need,
                 where_override=str(body.spec.get("filter") or ""),
+                dataset=body.dataset,
             )
         except ValueError as exc:
             return _err(f"invalid filter: {exc}", sql=body.sql)
@@ -1107,15 +1154,19 @@ async def agent_analysis_build_object(
         if not code.strip():
             return _err(gen.get("error") or "no code generated", sql=effective_sql)
     else:
-        code = build_object_code(object_type=body.object_type, spec=body.spec)
+        code = build_object_code(object_type=body.object_type, spec=body.spec, dataset=body.dataset)
 
-    # 3. Run + lift the object.
+    # 3. Run + lift the object (the lift orders any ordinal x-axis for the dataset).
     outcome = run_code(code, df=frame, frames={"extract": frame})
     obj = _lift_object(
-        outcome.report, element_id=eid, object_type=body.object_type, sql=effective_sql
+        outcome.report,
+        element_id=eid,
+        object_type=body.object_type,
+        sql=effective_sql,
+        dataset=body.dataset,
     )
     return AnalysisBuildObjectResponse(
-        name=body.name,
+        name=name,
         element_id=eid,
         object_type=body.object_type,
         sql=effective_sql,

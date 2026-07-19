@@ -24,7 +24,9 @@ from agent.object_builder import (
     build_object_code,
     canonical_extract_sql,
     element_id_for,
+    name_from_instruction,
     needed_columns,
+    profile_for,
     slug,
 )
 from agent.pages import chart_object_from_spec
@@ -157,6 +159,74 @@ def test_compare_object_lifts_to_combo_at_chart_grain() -> None:
     normanhurst = next(r for r in rows if r["suburb"] == "Normanhurst")
     assert hornsby["avg_sale_price"] > normanhurst["avg_sale_price"]
     assert hornsby["sales_volume"] > 0
+
+
+def _rent_frame() -> pd.DataFrame:
+    """A rent mart extract: month × bedroom_band, additive n_rented/total_weekly_rent."""
+    rows = []
+    months = [f"2024-{m:02d}" for m in range(1, 13)] + [f"2025-{m:02d}" for m in range(1, 7)]
+    for i, mo in enumerate(months):
+        for band, base_rent in (("1", 450), ("2", 600), ("3", 780)):
+            n = 20 + i
+            rows.append(
+                {
+                    "month": mo,
+                    "bedroom_band": band,
+                    "n_rented": n,
+                    "total_weekly_rent": n * base_rent,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_name_from_instruction_slugs_salient_words() -> None:
+    # Stopwords (by/as/the/only/…) dropped; first salient words kept, then slugged.
+    assert (
+        name_from_instruction(
+            "average weekly rent by month as x axis, colour by bedroom band, houses only"
+        )
+        == "average-weekly-rent-month-x"
+    )
+    assert name_from_instruction("") == "object"
+
+
+def test_rent_profile_canonical_extract_and_recompose() -> None:
+    prof = profile_for("nsw_rent")
+    assert prof.table == "marts.property_rent"
+    sql = canonical_extract_sql(
+        "SELECT * FROM marts.property_rent WHERE property_type = 'house'",
+        grain=["month", "bedroom_band"],
+        measure_source_cols={"n_rented", "total_weekly_rent"},
+        dataset="nsw_rent",
+    )
+    assert "FROM marts.property_rent" in sql
+    assert "sum(n_rented) AS n_rented" in sql
+    assert "sum(total_weekly_rent) AS total_weekly_rent" in sql
+    # Non-additive average recomposed as sum(value)/sum(count) — NOT avg-of-avgs.
+    assert (
+        "round((sum(total_weekly_rent) / NULLIF(sum(n_rented), 0))::numeric) AS avg_weekly_rent"
+        in sql
+    )
+    # Carried filter: property_type equality lifted verbatim from the base SQL.
+    assert "property_type = 'house'" in sql
+
+
+def test_rent_trend_object_colours_by_bedroom_band() -> None:
+    """The user's ask: a line chart of avg weekly rent by month, one series per
+    bedroom band — built deterministically against the rent profile."""
+    spec = {
+        "group": "bedroom_band",
+        "line_measure": {
+            "label": "avg_weekly_rent",
+            "num": "total_weekly_rent",
+            "den": "n_rented",
+        },
+    }
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_frame(), frames={"extract": _rent_frame()})
+    assert outcome.error is None
+    assert "trend_series" in outcome.skills_used
+    assert "trend_chart" in outcome.skills_used
 
 
 def test_breakdown_object_runs() -> None:

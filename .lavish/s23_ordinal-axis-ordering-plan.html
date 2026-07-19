@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s23 · Ordinal x-axis ordering — where should band-order knowledge live?</title>
+<style>
+  :root{
+    --bg:#0a0d15;--panel:#111522;--panel-2:#171c2b;--panel-3:#1e2434;--border:#242b3d;--border-2:#333d55;
+    --text:#eaecf3;--muted:#9aa4bb;--faint:#7a84a0;--code-bg:#0a0d13;
+    --accent:#d9a84e;--accent-ink:#1a1204;--accent-soft:#f2ca79;--accent-2:#7fb0ff;
+    --good:#9ece6a;--good-border:#33502f;--warn:#e0af68;--warn-border:#6b5a2a;--bad:#f2777a;--bad-border:#6b2a2a;
+    --purple:#c58fff;--info:#7dcfff;--info-border:#2f5a7a;
+    --radius:8px;--radius-lg:10px;--radius-xl:14px;
+    --sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;}
+  :where(.grid,.flex)>*{min-width:0;}
+  :where(p,h1,h2,h3,h4,li,dd,td,th,.chip){overflow-wrap:anywhere;}
+  :where(img,svg){max-width:100%;height:auto;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 22px 90px;}
+  h1{font-size:26px;line-height:1.2;margin:8px 0 6px;letter-spacing:-0.01em;}
+  h2{font-size:19px;margin:0 0 4px;letter-spacing:-0.01em;}
+  h3{font-size:15px;margin:0 0 4px;}
+  section{margin-top:34px;}
+  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:var(--accent);font-weight:600;}
+  .sub{color:var(--muted);max-width:64rem;}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;color:var(--accent-soft);white-space:nowrap;}
+  code.w{white-space:normal;}
+  a{color:var(--accent-2);}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .chip{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .chip.gold{color:var(--accent);border-color:#6b5a2a;background:rgba(217,168,78,0.08);}
+  .chip.blue{color:var(--accent-2);border-color:var(--info-border);background:rgba(127,176,255,0.08);}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px 20px;}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;}
+
+  /* problem strip */
+  .prob{display:grid;grid-template-columns:1.1fr 0.9fr;gap:14px;margin-top:14px;align-items:stretch;}
+  @media(max-width:900px){.prob{grid-template-columns:1fr;}}
+  .axis{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+  .band{font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-2);background:var(--panel-3);}
+  .band.bad{border-color:var(--bad-border);color:var(--bad);}
+  .band.good{border-color:var(--good-border);color:var(--good);}
+  .arrow{color:var(--faint);font-size:11px;align-self:center;}
+
+  /* two broken paths */
+  .paths{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+  @media(max-width:760px){.paths{grid-template-columns:1fr;}}
+  .pcard{border:1px solid var(--bad-border);border-radius:var(--radius-lg);background:rgba(242,119,122,0.05);padding:12px 14px;}
+  .pcard h3{color:var(--bad);}
+  .pcard .x{font-family:var(--mono);font-size:11px;color:var(--bad);}
+  .mock{background:var(--panel-2);border:1px solid var(--border-2);border-radius:8px;padding:10px;margin-top:8px;font-size:12px;}
+  .mock .err{font-family:var(--mono);font-size:11px;color:var(--bad);margin-top:6px;}
+  .mock select,.mock input{background:var(--panel-3);border:1px solid var(--border-2);color:var(--text);border-radius:5px;padding:3px 6px;font-family:var(--mono);font-size:11px;max-width:100%;}
+  .mock .pill{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
+
+  /* comparison */
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;align-items:start;}
+  @media(max-width:900px){.cmp{grid-template-columns:1fr;}}
+  .opt{border-radius:var(--radius-xl);border:1px solid var(--border);overflow:hidden;background:var(--panel);}
+  .opt>header{padding:11px 16px;font-family:var(--mono);font-size:12px;letter-spacing:0.5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .opt.win>header{color:var(--good);background:rgba(158,206,106,0.06);}
+  .opt.lose>header{color:var(--bad);background:rgba(242,119,122,0.05);}
+  .opt .body{padding:14px 16px;}
+  .tag{font-family:var(--mono);font-size:10px;padding:1px 8px;border-radius:999px;}
+  .tag.rec{color:var(--accent);border:1px solid #6b5a2a;}
+  .tag.no{color:var(--bad);border:1px solid var(--bad-border);}
+  ul.tight{margin:8px 0 0;padding-left:18px;color:var(--muted);}
+  ul.tight li{margin-top:6px;}
+  ul.tight li b{color:var(--text);}
+  .kill{color:var(--bad);font-weight:600;}
+  .win-txt{color:var(--good);font-weight:600;}
+
+  /* verdict callout */
+  .verdict{border-left:3px solid var(--accent);background:linear-gradient(180deg,rgba(217,168,78,0.06),var(--panel));border-radius:0 var(--radius) var(--radius) 0;padding:14px 18px;margin-top:16px;}
+  .verdict b{color:var(--accent-soft);}
+
+  /* change table */
+  .tblwrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);margin-top:12px;}
+  table.t{border-collapse:collapse;width:100%;font-size:13px;}
+  table.t th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);padding:9px 12px;background:var(--panel-2);border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.t td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--muted);}
+  table.t tr:last-child td{border-bottom:none;}
+  table.t .file{font-family:var(--mono);font-size:11.5px;color:var(--accent-2);}
+  table.t strong{color:var(--text);}
+  .badge{display:inline-block;font-family:var(--mono);font-size:10px;padding:1px 7px;border-radius:999px;white-space:nowrap;}
+  .badge.new{color:var(--good);border:1px solid var(--good-border);}
+  .badge.chg{color:var(--warn);border:1px solid var(--warn-border);}
+  .badge.keep{color:var(--info);border:1px solid var(--info-border);}
+
+  .mermaid{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-top:12px;overflow-x:auto;}
+  .codebox{margin-top:12px;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+  .codebox .cap{font-family:var(--mono);font-size:11.5px;color:var(--muted);background:var(--panel-2);border-bottom:1px solid var(--border);padding:7px 12px;}
+  .codebox .cap b{color:var(--accent-2);}
+  .note{font-size:12.5px;color:var(--faint);margin-top:8px;}
+
+  /* decisions */
+  .q{border:1px solid var(--border-2);border-radius:var(--radius-lg);background:var(--panel);padding:16px 18px;margin-top:14px;}
+  .q .opts{display:flex;flex-direction:column;gap:8px;margin:10px 0 12px;}
+  .q label.o{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2);cursor:pointer;}
+  .q label.o:hover{border-color:var(--border-2);}
+  .q label.o input{margin-top:3px;accent-color:var(--accent);flex:none;}
+  .q .o .t{font-weight:600;}
+  .q .o .d{color:var(--muted);font-size:13px;}
+  .q .rec{font-family:var(--mono);font-size:10px;color:var(--accent);border:1px solid #6b5a2a;border-radius:4px;padding:0 5px;margin-left:6px;}
+  .qbtn{border:1px solid var(--border-2);background:var(--panel-3);color:var(--text);border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer;}
+  .qbtn:hover{border-color:var(--accent);color:var(--accent-soft);}
+  .qstate{font-family:var(--mono);font-size:11px;color:var(--good);margin-left:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">s23 · ✓ BUILT &amp; VERIFIED — all phases shipped to the working tree (uncommitted)</div>
+  <h1>Ordinal x-axis ordering: where should “band order” knowledge live?</h1>
+  <p class="sub">
+    On the golden <em>“show house price growth for hornsby / normanhurst”</em>, page 2 / column 2, the line+bar chart
+    sorts <code>area_band</code> <strong>alphabetically</strong> — so <code>1000-5000</code> lands before <code>400-700</code>.
+    You can’t fix it by asking the agent, and there’s no control to fix it by hand. This plan answers the real question
+    you asked: is band-order a <strong>skills / data-knowledge</strong> fact, or something a <strong>golden</strong> teaches through eval?
+  </p>
+  <div class="chips">
+    <span class="chip gold">branch golden-egs</span>
+    <span class="chip blue">architecture question, not just a bug</span>
+    <span class="chip">grounded in schema.py · skills/charts.py · knowledge/*.md · eval_graders.py</span>
+  </div>
+
+  <!-- ========== THE PROBLEM ========== -->
+  <section>
+    <h2>1 · The problem, recreated</h2>
+    <div class="prob">
+      <div class="panel">
+        <div class="lbl">the chart today (page 2 / col 2)</div>
+        <div class="axis">
+          <span class="band bad">1000-5000</span><span class="band bad">400-700</span><span class="band bad">700-1000</span>
+          <span class="band">&lt;400</span><span class="band">5000+</span><span class="band">unknown</span>
+        </div>
+        <p class="note" style="margin-top:10px">alphabetical string sort — “1000…” sorts before “400…”. The bands are <strong>ordinal</strong>, but stored as strings.</p>
+        <div class="axis" style="margin-top:14px">
+          <span class="lbl" style="align-self:center">wanted&nbsp;→</span>
+          <span class="band good">&lt;400</span><span class="arrow">›</span><span class="band good">400-700</span><span class="arrow">›</span>
+          <span class="band good">700-1000</span><span class="arrow">›</span><span class="band good">1000-5000</span><span class="arrow">›</span>
+          <span class="band good">5000+</span><span class="arrow">›</span><span class="band">unknown</span>
+        </div>
+        <p class="note">Root cause chain: the extract’s <code>ORDER BY … area_band</code> is alphabetical → the Combo renderer keeps
+        <em>“first-seen row order”</em> (<code>Combo.tsx:60</code>) → the chart skills never sort → <strong>the agent has no notion these bands are ordinal.</strong></p>
+      </div>
+      <div>
+        <div class="lbl">the two ways you tried — both dead ends</div>
+        <div class="paths">
+          <div class="pcard">
+            <h3>“Feed it back to the agent”</h3>
+            <div class="pill" style="color:var(--muted)">✎ → ✦ describe this object’s data → Generate &amp; run</div>
+            <div class="mock">
+              <div class="pill">“…just sort the x-axis by the number before the dash”</div>
+              <div class="err">✕ The run produced no chart — describe the measures/dimension more explicitly.</div>
+            </div>
+            <p class="note" style="color:var(--bad)">Was crashing at the lift step (now patched), but it stays LLM-dependent, fumbles the edge bands (<code>&lt;400</code>, <code>5000+</code>, <code>unknown</code>), and never <em>reliably</em> knows the order.</p>
+          </div>
+          <div class="pcard">
+            <h3>“Update the chart myself”</h3>
+            <div class="mock">
+              <div class="pill">ENCODING</div>
+              <div style="margin-top:5px">x/dimension <select disabled><option>area_band</option></select> &nbsp; bars <select disabled><option>sales_volume</option></select></div>
+              <div style="margin-top:5px">group <select disabled><option>suburb</option></select></div>
+              <div class="err" style="color:var(--bad)">✕ no “sort x-axis” control anywhere</div>
+            </div>
+            <p class="note" style="color:var(--bad)">The encoding panel maps fields → channels, but has no ordering control. There’s literally no deterministic lever.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== ARCHITECTURE ========== -->
+  <section>
+    <h2>2 · Where could the “order” knowledge live?</h2>
+    <p class="sub">Four candidate homes exist in the agent today. The question is which one <em>owns the fact “area_band is ordinal, in this order”</em>.</p>
+    <pre class="mermaid">
+flowchart LR
+  subgraph DK["Data-knowledge layer"]
+    S["schema.py<br/>column metadata"]
+    K["knowledge/*.md<br/>segments.md / bedrooms.md<br/>(agent greps these)"]
+    O["ordinals registry<br/>(does NOT exist yet)"]
+  end
+  SK["skills/charts.py<br/>dual_axis_chart / comparison_chart<br/>(NO sort param today)"]
+  G["golden example<br/>stored rows"]
+  EV["eval graders<br/>grade_row_set / grade_series"]
+  CH["every chart<br/>chat · explore · golden"]
+  O -. "feeds" .-> SK
+  S -. "describes" .-> SK
+  K -. "LLM reads" .-> SK
+  SK --> CH
+  G -. "benchmark only" .-> EV
+  EV -. "ORDER-INSENSITIVE<br/>(cannot teach order)" .-x G
+  style O fill:#171c2b,stroke:#d9a84e,color:#eaecf3
+  style SK fill:#171c2b,stroke:#d9a84e,color:#eaecf3
+  style EV fill:#171c2b,stroke:#6b2a2a,color:#f2777a
+  style G fill:#171c2b,stroke:#333d55,color:#eaecf3
+  style CH fill:#171c2b,stroke:#33502f,color:#eaecf3
+    </pre>
+    <p class="note">Verified today: <code>area_band</code>/<code>bedroom_band</code> appear in <code>schema.py</code> and in <code>knowledge/…/segments.md</code> &amp; <code>bedrooms.md</code>
+    <em>as prose with the values listed in order</em> — but nothing machine-readable, and the chart skills never consume it. No ordinal registry exists.</p>
+  </section>
+
+  <!-- ========== THE DECISION ========== -->
+  <section>
+    <h2>3 · The decision: skills/data-knowledge — <span style="color:var(--good)">not</span> golden+eval</h2>
+    <div class="cmp">
+      <div class="opt win">
+        <header>OPTION A — data-knowledge + skills <span class="tag rec">recommended</span></header>
+        <div class="body">
+          <p class="sub" style="font-size:13.5px">Encode the order <b class="win-txt">once</b>, centrally; the chart skills apply it; a deterministic control lets a curator override.</p>
+          <ul class="tight">
+            <li><b>An ordinals registry</b> (new, tiny): <code class="w">{area_band:[…], bedroom_band:[…]}</code> with <code>unknown</code> last.</li>
+            <li><b>Chart skills auto-sort</b> the x/category column by the registered order (+ an explicit <code>x_order</code> override).</li>
+            <li><b>Schema + knowledge</b> carry the same order so the LLM also “knows” it when it writes SQL/sandbox code.</li>
+            <li><b>Generalises for free</b>: every chart — chat, Explore, golden — orders bands right with zero per-answer work.</li>
+            <li>Goldens become the <b>acceptance test</b> that it renders correctly, not the mechanism.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="opt lose">
+        <header>OPTION B — golden-only + “learn via eval” <span class="tag no">rejected</span></header>
+        <div class="body">
+          <p class="sub" style="font-size:13.5px">Curator fixes each golden; the agent is supposed to “learn” the ordering through the eval loop.</p>
+          <ul class="tight">
+            <li><span class="kill">The eval can’t see order.</span> <code>grade_row_set</code> is <em>“F1 over key values, order-insensitive”</em> (<code>eval_graders.py:58</code>); <code>grade_series</code> is per-point tolerance. Nothing scores x-axis order → <b>no learning signal at all.</b></li>
+            <li><span class="kill">Goldens aren’t weights.</span> They’re a benchmark the judge scores against — correcting one golden doesn’t change how the agent builds the <em>next</em> chart.</li>
+            <li><span class="kill">Doesn’t generalise.</span> A fix on this golden says nothing about a rent-by-bedroom chart, or a new suburb question.</li>
+            <li>At generation time the agent still has <b>no</b> band-order fact to use — so it keeps sorting alphabetically.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="verdict">
+      <b>Recommendation.</b> Band order is a deterministic property of the <b>data</b>, not of one answer — so it belongs in the
+      <b>data-knowledge layer (a shared ordinals registry) and is applied by the chart skills</b>. That’s exactly the layer you pointed at
+      (“skills capture information about data and inform the agent”). The golden’s job is to <b>prove</b> the chart renders right — the
+      eval loop is order-insensitive and structurally cannot teach ordering, so golden-only is a dead end for this class of problem.
+    </div>
+  </section>
+
+  <!-- ========== PLAN ========== -->
+  <section>
+    <h2>4 · Proposed changes (Pre → Post)</h2>
+    <div class="tblwrap">
+      <table class="t">
+        <thead><tr><th>Where</th><th>Pre (today)</th><th>Post (proposed)</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="file">agent/ordinals.py</span> + <span class="file">app.dataset_ordinals</span><br><span class="lbl">new · dataset-scoped source of truth</span></td>
+            <td>—</td>
+            <td><strong>Keyed by <code>(dataset_id, column)</code>, not column alone</strong> — the same <code>area_band</code> can carry different values/order in different datasets (your Q2). Ships a code <em>seed</em> AND a curator-editable DB table <code class="w">app.dataset_ordinals(dataset_id&nbsp;→&nbsp;app.datasets.id, column, ordered_values jsonb)</code>; the skill reads the DB row, falling back to the seed. <code>unknown</code> always last.</td>
+            <td><span class="badge new">new</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">agent/skills/charts.py</span></td>
+            <td><code>dual_axis_chart</code> / <code>comparison_chart</code> / <code>profile_chart</code> / <code>data_table</code> emit rows in whatever order they arrive — no sort.</td>
+            <td>Before serialising, <strong>sort the x/category column by the ordinals registry</strong> when it’s a known ordinal (else leave as-is). Add an explicit <code>x_order</code> param that overrides. One helper, reused by every chart skill.</td>
+            <td><span class="badge chg">change</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">agent/schema.py</span> + <span class="file">knowledge/…/segments.md, bedrooms.md</span></td>
+            <td>Bands listed in prose (“‘&lt;400’…‘5000+’”); not machine-readable, skills don’t read it.</td>
+            <td>Add the ordered list to the column metadata + a one-line rule (“render bands in this order”), so the LLM’s SQL/sandbox code and the skills agree.</td>
+            <td><span class="badge chg">change</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">GoldensPage.tsx · ② Sandbox</span><br><span class="lbl">Q1 · see + edit like skills</span></td>
+            <td>The sandbox shows a <em>skills catalogue</em> (<code>getGoldenSkills()</code>) but no data-knowledge.</td>
+            <td>A <strong>Data-knowledge panel</strong> beside the skills catalogue: lists the dataset's ordinals (+ other curated facts), editable order per <code>(dataset, column)</code>. Same disclosure pattern as skills.</td>
+            <td><span class="badge new">new</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">routers/goldens.py</span><br><span class="lbl">Q1 · the endpoint</span></td>
+            <td><code>GET /admin/eval-goldens/skills</code> exists; no ordinals endpoint.</td>
+            <td><code>GET/PUT /admin/eval-goldens/ordinals?dataset=…</code> — mirrors <code>/skills</code>; PUT writes <code>app.dataset_ordinals</code>. The skill reads it at run-time, so an edit takes effect on the next <strong>Run</strong> (no redeploy).</td>
+            <td><span class="badge new">new</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">frontend · ReportEditor.tsx</span><br><span class="lbl">the manual escape hatch</span></td>
+            <td>Encoding maps fields only; no way to reorder the x-axis.</td>
+            <td>A <strong>“Sort x-axis”</strong> control on chart objects: <em>Ordinal order</em> (from registry) · <em>Numeric (leading value)</em> · <em>A→Z</em> · <em>By value</em> · <em>Custom (drag)</em>. Deterministic, no LLM — closes “I can’t update the chart”. Stored on the object so the golden persists it.</td>
+            <td><span class="badge new">new</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">agent/main.py · _lift_target</span></td>
+            <td>Data-only edits (reorder) rejected as “no chart”.</td>
+            <td><span class="badge keep">already fixed</span> this session — the AI-rewrite path now returns the reordered chart (kept as a fallback, not the primary mechanism).</td>
+            <td><span class="badge keep">done</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">frontend · ReportEditor.tsx</span><br><span class="lbl">minor</span></td>
+            <td>Per-object AI instruction text + error persist when you load a different golden (you saw a stale “no chart” error on reload).</td>
+            <td>Reset <code>instructText</code>/<code>instructMsg</code>/<code>open</code> when the loaded golden changes.</td>
+            <td><span class="badge chg">tidy</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="codebox">
+      <div class="cap"><b>the whole idea in one helper</b> · applied inside every chart skill before <code>df.to_dict("records")</code></div>
+      <div id="code-py"></div>
+    </div>
+    <p class="note">Net effect: the golden’s chart — and every chat/Explore chart — orders <code>area_band</code> as <code>&lt;400 › 400-700 › 700-1000 › 1000-5000 › 5000+ › unknown</code> with no per-answer effort, and a curator can still override per object.</p>
+  </section>
+
+  <!-- ========== 4b CURATING FROM GOLDEN TAB ========== -->
+  <section>
+    <h2>4b · Curating &amp; verifying it from the Golden tab <span style="font-size:13px;color:var(--faint)">— your two questions</span></h2>
+    <p class="sub">Moving the fact into the data-knowledge layer only works if the <b>curator can see it, edit it, and prove it</b> from the Golden tab — not by editing Python. Two additions make that real, and the verify loop is lighter than it looks.</p>
+    <div class="cmp">
+      <div class="panel">
+        <div class="lbl" style="color:var(--accent-2)">① yes — see + edit it in the Sandbox, exactly like skills</div>
+        <div class="mock" style="margin-top:8px">
+          <div class="pill" style="color:var(--muted)">② SANDBOX · advanced</div>
+          <div style="margin-top:6px">▸ skills catalogue &nbsp;<span class="pill">trend_series · dual_axis_chart · …</span></div>
+          <div style="margin-top:8px;color:var(--accent)">▾ data-knowledge <span class="pill" style="color:var(--good);border:1px solid var(--good-border);border-radius:999px;padding:0 6px">NEW</span></div>
+          <div style="margin-top:6px;padding-left:12px">
+            <div class="pill">ordinal · <b style="color:var(--text)">area_band</b> <span style="color:var(--faint)">· dataset nsw_sales</span> &nbsp;<span class="pill" style="color:var(--accent-2)">✎ edit order</span></div>
+            <div class="axis" style="margin-top:5px">
+              <span class="band good">&lt;400</span><span class="band good">400-700</span><span class="band good">700-1000</span><span class="band good">1000-5000</span><span class="band good">5000+</span><span class="band">unknown</span>
+            </div>
+          </div>
+        </div>
+        <p class="note">A <b>Data-knowledge panel</b> in the sandbox, mirroring the skills catalogue (same 3-level disclosure). Scoped to the golden's dataset — so <code>area_band</code> under <code>nsw_sales</code> and any other dataset are edited independently (your Q2).</p>
+      </div>
+      <div class="panel">
+        <div class="lbl" style="color:var(--good)">② prove it with a Run — NOT a pipeline rebuild</div>
+        <ul class="tight" style="margin-top:6px">
+          <li><b>Band ORDER is a presentation sort</b> the chart skill applies over the already-extracted rows. To confirm an edit, press <b>Run</b> on the object in ② Sandbox — the fast per-object cascade — and the chart re-renders in the new order.</li>
+          <li><b class="win-txt">You do NOT re-run the dbt data lineage</b> for an ordering change. The skill reads the ordinals at run-time (DB → seed), so edit → Run → verify stays entirely inside the Golden tab.</li>
+        </ul>
+        <div class="note" style="margin-top:8px;border-left:2px solid var(--warn);padding-left:10px">
+          <b style="color:var(--warn)">order ≠ values.</b> Re-ordering bands = a sandbox Run (seconds). Changing <em>what the bands are</em> (the bucketing) = an upstream dbt/pipeline change — the ~3M-row data lineage. The UI should keep those two edits visibly distinct.
+        </div>
+      </div>
+    </div>
+    <p class="note">Net: the data-knowledge layer is authoritative, but it becomes a first-class, curator-editable surface in the Golden tab — you never touch <code>agent/ordinals.py</code> to fix a band order, and one Run proves it.</p>
+  </section>
+
+  <!-- ========== RISKS ========== -->
+  <section>
+    <h2>5 · Risks &amp; open questions</h2>
+    <div class="panel" style="border-left:3px solid var(--warn)">
+      <ul class="tight" style="margin:0">
+        <li><b>Auto-sort surprises a curator</b> who wanted a different order → the explicit “Sort x-axis” control + <code>x_order</code> param always win.</li>
+        <li><b>Unknown bands / new datasets</b> → registry defines placement (<code>unknown</code> last); an unrecognised column falls back to today’s behaviour (no change).</li>
+        <li><b>SQL vs chart layer.</b> Should the extract’s <code>ORDER BY</code> also change (a CASE expression), or is chart-layer sort enough? Recommend chart-layer — presentation order shouldn’t be dictated by extract SQL — but a CASE-order is a viable alternative for pure-SQL surfaces.</li>
+        <li><b>Numeric-parse fallback.</b> For unregistered bands, “sort by leading number” is a decent generic default the control can offer, but the registry is authoritative for the two known columns.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ========== DECISIONS ========== -->
+  <section>
+    <h2>6 · Decisions — pick, then Send to Agent</h2>
+    <p class="sub" style="font-size:13.5px">Each queues one prompt; selections stay local until you press its button.</p>
+
+    <form class="q" data-lavish-question="home" onsubmit="event.preventDefault(); qa(this,'home');">
+      <div class="lbl">Q1 · where does the ordering knowledge live?</div>
+      <div class="opts">
+        <label class="o"><input type="radio" name="home" value="data-knowledge ordinals registry + chart skills auto-apply; golden is the acceptance test">
+          <span><span class="t">Ordinals registry + chart skills auto-apply <span class="rec">recommended</span></span><br><span class="d">Encode once, every chart benefits; goldens verify, not teach.</span></span></label>
+        <label class="o"><input type="radio" name="home" value="golden-only; the agent learns ordering through the eval process">
+          <span><span class="t">Golden-only + eval learning</span><br><span class="d">Rejected in the analysis — the graders are order-insensitive, so there’s no signal.</span></span></label>
+        <label class="o"><input type="radio" name="home" value="both: registry+skills for defaults AND per-golden overrides">
+          <span><span class="t">Registry for defaults + per-golden override</span><br><span class="d">Same as A plus the manual control persisted on the golden object.</span></span></label>
+      </div>
+      <button class="qbtn" type="submit">Queue answer</button><span class="qstate"></span>
+    </form>
+
+    <form class="q" data-lavish-question="control" onsubmit="event.preventDefault(); qa(this,'control');">
+      <div class="lbl">Q2 · the manual curator control</div>
+      <div class="opts">
+        <label class="o"><input type="radio" name="control" value="a 'Sort x-axis' dropdown (Ordinal / Numeric / A-Z / By value / Custom drag)">
+          <span><span class="t">“Sort x-axis” dropdown <span class="rec">recommended</span></span><br><span class="d">Deterministic, covers ordinal + numeric + custom; no LLM.</span></span></label>
+        <label class="o"><input type="radio" name="control" value="drag-to-reorder the x-axis categories directly on the chart card">
+          <span><span class="t">Drag-to-reorder categories</span><br><span class="d">Most direct, but more UI to build and fiddly with many bands.</span></span></label>
+        <label class="o"><input type="radio" name="control" value="rely on the AI-rewrite box only (now that the lift bug is fixed)">
+          <span><span class="t">Just the AI box (now fixed)</span><br><span class="d">Lowest effort, but stays LLM-dependent and imperfect on edge bands.</span></span></label>
+      </div>
+      <button class="qbtn" type="submit">Queue answer</button><span class="qstate"></span>
+    </form>
+
+    <form class="q" data-lavish-question="scope" onsubmit="event.preventDefault(); qa(this,'scope');">
+      <div class="lbl">Q3 · what to build first</div>
+      <div class="opts">
+        <label class="o"><input type="radio" name="scope" value="ship registry + chart-skill auto-sort + the Sort control together (full fix)">
+          <span><span class="t">Full fix in one go <span class="rec">recommended</span></span><br><span class="d">Registry + skills auto-sort + curator control — the golden and every chart get it at once.</span></span></label>
+        <label class="o"><input type="radio" name="scope" value="registry + chart-skill auto-sort first; add the manual control later">
+          <span><span class="t">Auto-sort first, control later</span><br><span class="d">Fixes the default everywhere fast; manual override follows.</span></span></label>
+        <label class="o"><input type="radio" name="scope" value="ship the manual Sort control first; registry/skills auto-sort later">
+          <span><span class="t">Manual control first</span><br><span class="d">Unblocks this golden immediately; systemic default comes later.</span></span></label>
+      </div>
+      <button class="qbtn" type="submit">Queue answer</button><span class="qstate"></span>
+    </form>
+
+    <form class="q" data-lavish-question="persist" onsubmit="event.preventDefault(); qa(this,'persist');">
+      <div class="lbl">Q4 · where do the (dataset-scoped) ordinals persist &amp; get edited?</div>
+      <div class="opts">
+        <label class="o"><input type="radio" name="persist" value="curator-editable DB table app.dataset_ordinals surfaced in the Sandbox data-knowledge panel, with a code seed for defaults">
+          <span><span class="t">Editable DB table + Sandbox panel + code seed <span class="rec">recommended</span></span><br><span class="d">Edit → Run → verify inside the Golden tab; the seed ships sensible defaults. Answers “how do I update it from the golden tab”.</span></span></label>
+        <label class="o"><input type="radio" name="persist" value="code only in agent/ordinals.py, changed by a developer PR + redeploy">
+          <span><span class="t">Code-only (dev PR)</span><br><span class="d">Simplest, but a curator can’t fix a band order without a code change + redeploy — the workflow you flagged.</span></span></label>
+      </div>
+      <button class="qbtn" type="submit">Queue answer</button><span class="qstate"></span>
+    </form>
+  </section>
+
+  <p class="note" style="margin-top:30px">
+    Grounding: schema.py:266/288/329/354 (area_band/bedroom_band = text, no order) · knowledge/domains/property-sales/segments.md &amp; property-rent/bedrooms.md (bands listed in order, prose only) ·
+    skills/charts.py:78 dual_axis_chart (no sort param) · Combo.tsx:60 (“categories keep first-seen order”) · eval_graders.py:58 grade_row_set “order-insensitive”, :83 grade_series ·
+    ReportEditor.tsx:650 encoding controls (no sort) · main.py _lift_target (reorder-edit fix, this session).
+  </p>
+</div>
+
+<script>
+  function qa(form,q){
+    const v=new FormData(form).get(q);const s=form.querySelector('.qstate');
+    if(!v){s.textContent='pick an option first';s.style.color='var(--warn)';return;}
+    if(window.lavish&&window.lavish.queuePrompt){
+      window.lavish.queuePrompt('Decision '+q+': '+v,{tag:'decision',text:q+' → '+v,element:form,queueKey:q,data:{question:q,answer:v}});
+      s.textContent='queued ✓ — press Send to Agent when done';s.style.color='var(--good)';
+    }else{s.textContent='open via lavish-axi to send answers';s.style.color='var(--warn)';}
+  }
+</script>
+
+<script type="module">
+  import { File } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const py={name:"ordinals.py + chart skill",contents:
+"# agent/ordinals.py  — a code SEED; app.dataset_ordinals overrides it per dataset.\n"+
+"# Keyed by (dataset, column): the SAME column can differ across datasets (Q2).\n"+
+"BAND_ORDERS = {\n"+
+"    ('nsw_sales', 'area_band'):    ['<400','400-700','700-1000','1000-5000','5000+','unknown'],\n"+
+"    ('nsw_rent',  'bedroom_band'): ['0','1','2','3','4','5+','unknown'],\n"+
+"}\n"+
+"\n"+
+"def order_ordinal(df, col, dataset):\n"+
+"    \"\"\"Sort df by a known ordinal (dataset, col); unknown values last; no-op otherwise.\n"+
+"    Order = curator edit in app.dataset_ordinals, else this seed — read at RUN time,\n"+
+"    so an edit in the Golden tab takes effect on the next Run (no redeploy).\"\"\"\n"+
+"    order = load_override(dataset, col) or BAND_ORDERS.get((dataset, col))\n"+
+"    if not order or col not in df.columns:\n"+
+"        return df\n"+
+"    rank = {v: i for i, v in enumerate(order)}\n"+
+"    key = df[col].map(lambda v: rank.get(str(v), len(order)))\n"+
+"    return df.assign(_ord=key).sort_values('_ord').drop(columns='_ord')\n"+
+"\n"+
+"# applied where the dataset is in scope — inside the chart skill (dataset threaded\n"+
+"# in) OR at the lift step (pages.py::chart_object_from_spec, which already knows it).\n"};
+  new File({theme:{light:"github-light",dark:"tokyo-night"},themeType:"dark",overflow:"wrap"})
+    .render({containerWrapper:document.querySelector("#code-py"),file:py});
+</script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({startOnLoad:false,theme:"dark",securityLevel:"strict",themeVariables:{fontFamily:"JetBrains Mono, monospace",fontSize:"12.5px"}});
+  window.addEventListener("load",()=>mermaid.run({nodes:[...document.querySelectorAll(".mermaid")]}),{once:true});
+</script>
+</body>
+</html>

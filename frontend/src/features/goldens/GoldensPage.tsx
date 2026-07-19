@@ -14,6 +14,7 @@ import {
   GoldenListItem,
   GoldenObject,
   ObjectDigest,
+  OrdinalRow,
   Page,
   PageObject,
   PageObjectType,
@@ -28,8 +29,10 @@ import {
   draftGoldenStream,
   getGolden,
   getGoldenSkills,
+  getOrdinals,
   listGoldens,
   prepGolden,
+  putOrdinal,
   scaffoldGolden,
   updateGolden,
 } from "../../lib/api";
@@ -342,27 +345,106 @@ interface BuilderForm {
   instruction: string;
 }
 
-const defaultBuilder = (): BuilderForm => ({
-  name: "",
-  object_type: "compare",
-  grain: "month, suburb, area_band",
-  dimension: "area_band",
-  group: "suburb",
-  filter: "",
-  months: 12,
-  bar_label: "sales_volume",
-  bar_source: "n_sold",
-  bar_agg: "sum",
-  bar_months: 12,
-  line_label: "avg_sale_price",
-  line_mode: "wavg",
-  line_num: "total_sale_value",
-  line_den: "n_sold",
-  line_source: "avg_sale_price",
-  line_agg: "mean",
-  line_months: 6,
-  instruction: "",
-});
+// The deterministic (advanced) builder's defaults, per dataset (s22 P2) — so a
+// rent golden opens with valid rent columns instead of sales-only defaults that
+// don't exist on marts.property_rent (no suburb / area_band / n_sold there).
+const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
+  dataset === "nsw_rent"
+    ? {
+        name: "",
+        object_type: "trend",
+        grain: "month, bedroom_band",
+        dimension: "month",
+        group: "bedroom_band",
+        filter: "property_type = 'house'",
+        months: 12,
+        bar_label: "rentals_volume",
+        bar_source: "n_rented",
+        bar_agg: "sum",
+        bar_months: 12,
+        line_label: "avg_weekly_rent",
+        line_mode: "wavg",
+        line_num: "total_weekly_rent",
+        line_den: "n_rented",
+        line_source: "avg_weekly_rent",
+        line_agg: "mean",
+        line_months: 6,
+        instruction: "",
+      }
+    : {
+        name: "",
+        object_type: "compare",
+        grain: "month, suburb, area_band",
+        dimension: "area_band",
+        group: "suburb",
+        filter: "",
+        months: 12,
+        bar_label: "sales_volume",
+        bar_source: "n_sold",
+        bar_agg: "sum",
+        bar_months: 12,
+        line_label: "avg_sale_price",
+        line_mode: "wavg",
+        line_num: "total_sale_value",
+        line_den: "n_sold",
+        line_source: "avg_sale_price",
+        line_agg: "mean",
+        line_months: 6,
+        instruction: "",
+      };
+
+// s22: guess an object type from the words of an NL instruction (the curator can
+// still override it in the panel). Order matters — most specific first.
+function guessObjectType(text: string): PageObjectType {
+  const t = text.toLowerCase();
+  if (/\b(kpi|headline|single (number|value)|latest value|one number)\b/.test(t)) return "kpi";
+  if (/\btable\b/.test(t)) return "table";
+  if (/\b(line ?\+ ?bar|bar ?\+ ?line|combo|dual[- ]?axis|two axes|vs\.? ?volume)\b/.test(t))
+    return "compare";
+  if (/\b(trend|over time|by month|per month|monthly|line chart|time series)\b/.test(t))
+    return "trend";
+  if (/\b(bar chart|breakdown|compare|by (suburb|band|type|area|postcode|bedroom))\b/.test(t))
+    return "breakdown";
+  return "trend";
+}
+
+// s22: a short, stable slug for a new object, derived from the salient words of
+// the instruction. Mirrors the backend's name_from_instruction so the element_id
+// the UI previews matches what the agent assigns.
+const _STOPWORDS = new Set(
+  "a an the of by for with and to as only that is in on per over this these those chart show me plot graph across between into vs versus".split(
+    " ",
+  ),
+);
+function slugFromInstruction(text: string): string {
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const kept = words.filter((w) => !_STOPWORDS.has(w)).slice(0, 5);
+  return kept.join("-");
+}
+
+/** s22: place a freshly built object into the report draft — first column of the
+ *  first (currently visible) page, creating a one-col page when the report is
+ *  empty. A deep copy keeps the shared element_id (the link) while detaching the
+ *  array reference; idempotent if the same object is already on a page. */
+function placeObjectInReport(pages: Page[], obj: PageObject): Page[] {
+  const copy = JSON.parse(JSON.stringify(obj)) as PageObject;
+  if (pages.length === 0) {
+    return [{ template: "one-col", columns: [[copy]] }];
+  }
+  const next = JSON.parse(JSON.stringify(pages)) as Page[];
+  const already = next.some((p) =>
+    (p.columns ?? []).some((c) => c.some((o) => o.element_id === copy.element_id)),
+  );
+  if (already) return next;
+  const page = next[0];
+  if (!page.columns || page.columns.length === 0) page.columns = [[]];
+  page.columns[0] = [...page.columns[0], copy];
+  return next;
+}
 
 function barMeasure(f: BuilderForm): SandboxMeasure {
   return { label: f.bar_label, source: f.bar_source, agg: f.bar_agg, months: f.bar_months };
@@ -505,6 +587,27 @@ export function GoldensPage({
   const [builtObjects, setBuiltObjects] = useState<PageObject[]>([]);
   const [builder, setBuilder] = useState<BuilderForm>(defaultBuilder);
   const [buildMsg, setBuildMsg] = useState<string | null>(null);
+  // s22: "New object with AI" — the NL-first primary way to author an object.
+  // The name + type are auto-derived from the instruction; an override sticks
+  // once the curator edits the field (null = follow the auto value).
+  const [aiText, setAiText] = useState("");
+  const [aiNameOverride, setAiNameOverride] = useState<string | null>(null);
+  const [aiTypeOverride, setAiTypeOverride] = useState<PageObjectType | null>(null);
+  // Snapshot for one-click Undo of the last AI-authored object (pages + objects +
+  // built list + SQL/revert), so the whole add is reversible before Save.
+  const [aiUndo, setAiUndo] = useState<{
+    pages: Page[];
+    objects: GoldenObject[];
+    built: PageObject[];
+    sql: string;
+    sqlRevert: string | null;
+  } | null>(null);
+  const aiType: PageObjectType = aiTypeOverride ?? guessObjectType(aiText);
+  const aiName = (aiNameOverride ?? slugFromInstruction(aiText)).trim();
+  // s23: the dataset's ordinal band orders (data-knowledge) — the chart lift sorts
+  // an ordinal x-axis (area_band, …) by these. Editable here; applied on next Run.
+  const [ordinals, setOrdinals] = useState<OrdinalRow[]>([]);
+  const [ordinalDraft, setOrdinalDraft] = useState<Record<string, string>>({});
 
   /** Preselect the skills a piece of run_analysis code already applies (plus any
    *  a run reported), so the skills panel reflects what's in the code. */
@@ -582,6 +685,37 @@ export function GoldensPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed?.nonce]);
 
+  // s23: load the dataset's ordinal band orders whenever the golden's dataset changes.
+  useEffect(() => {
+    getOrdinals(draft.dataset)
+      .then((rows) => {
+        setOrdinals(rows);
+        setOrdinalDraft(Object.fromEntries(rows.map((r) => [r.column_name, r.ordered_values.join(", ")])));
+      })
+      .catch(() => setOrdinals([]));
+  }, [draft.dataset]);
+
+  /** Save an edited ordinal order (comma-separated) — applied on the next Run. */
+  async function saveOrdinal(column: string) {
+    const values = (ordinalDraft[column] ?? "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (values.length === 0) return;
+    setBusy(`ordinal:${column}`);
+    try {
+      await putOrdinal({ dataset: draft.dataset, column, ordered_values: values });
+      setOrdinals((prev) =>
+        prev.map((r) => (r.column_name === column ? { ...r, ordered_values: values } : r)),
+      );
+      setMsg(`Saved ordinal order for ${column} — press ▶ Run to see it applied.`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function patch<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
   }
@@ -638,8 +772,12 @@ export function GoldensPage({
     setMsg(null);
     setSqlRevert(null);
     setBuiltObjects([]);
-    setBuilder(defaultBuilder());
+    setBuilder(defaultBuilder(dataset));
     setBuildMsg(null);
+    setAiText("");
+    setAiNameOverride(null);
+    setAiTypeOverride(null);
+    setAiUndo(null);
   }
 
   /** Replace/insert an object in a list keyed by element_id. */
@@ -694,6 +832,10 @@ export function GoldensPage({
     setSqlRevert(null);
     setBuiltObjects([]);
     setBuildMsg(null);
+    setAiText("");
+    setAiNameOverride(null);
+    setAiTypeOverride(null);
+    setAiUndo(null);
     try {
       const g = await getGolden(id);
       const sandbox = g.golden_sandbox ?? "";
@@ -752,6 +894,7 @@ export function GoldensPage({
         object_type: builder.object_type,
         spec,
         instruction: builder.instruction.trim() || undefined,
+        dataset: draft.dataset,
         as_user: draft.as_user || null,
       });
       if (!res.object) {
@@ -788,6 +931,103 @@ export function GoldensPage({
     } finally {
       setBusy(null);
     }
+  }
+
+  /** s22: author a brand-new presentation object from ONE plain-English sentence
+   *  and place it into the interactive report — the NL-first primary flow. Reuses
+   *  the shipped /build-object NL path (schema-grounded scaffold_object, bounded
+   *  verify loop), then auto-links the lifted object into ③ (first column of the
+   *  first page, creating a page when the report is empty). Never places a stub /
+   *  no-chart result, and captures a one-click Undo of the whole action. */
+  async function authorNewObject() {
+    const instruction = aiText.trim();
+    if (!instruction) {
+      setBuildMsg("Describe the object first (e.g. “average rent by month, colour by bedroom band, houses only”).");
+      return;
+    }
+    if (!draft.golden_sql.trim()) {
+      setBuildMsg("Add the ① SQL extract first.");
+      return;
+    }
+    const name = aiName || slugFromInstruction(instruction) || "object";
+    setBusy("ai-object");
+    setBuildMsg(null);
+    try {
+      const res = await buildGoldenObject({
+        sql: draft.golden_sql,
+        name,
+        object_type: aiType,
+        // Empty spec → the agent authors the whole run_analysis from the
+        // instruction (schema-grounded), revising the SQL when a column is missing.
+        spec: {},
+        instruction,
+        dataset: draft.dataset,
+        as_user: draft.as_user || null,
+      });
+      if (!res.object) {
+        // Stub / no-chart → nothing usable; leave every stage untouched (no place).
+        setBuildMsg(
+          res.error ||
+            "The agent couldn’t produce a chart — name the measure, dimension and any filter more explicitly.",
+        );
+        return;
+      }
+      // Snapshot BEFORE applying so the whole add is one-click reversible.
+      setAiUndo({
+        pages: pendingPages,
+        objects: draft.golden_objects,
+        built: builtObjects,
+        sql: draft.golden_sql,
+        sqlRevert,
+      });
+      // The build may have extended the shared ① extract to add the object's
+      // columns — apply it and keep the previous SQL for one-click revert (①).
+      const sqlChanged = !!res.sql && res.sql.trim() !== draft.golden_sql.trim();
+      if (sqlChanged) {
+        setSqlRevert(draft.golden_sql);
+        patch("golden_sql", formatSql(res.sql));
+      }
+      const go: GoldenObject = {
+        name,
+        element_id: res.element_id,
+        object_type: res.object_type,
+        code: res.code,
+        spec: { instruction },
+      };
+      patch("golden_objects", [
+        ...draft.golden_objects.filter((o) => o.element_id !== res.element_id),
+        go,
+      ]);
+      setBuiltObjects((prev) => upsertObject(prev, res.object as PageObject));
+      // Auto-place into ③: first column of the first (currently visible) page,
+      // creating page 1 when the report is empty. The shared element_id IS the
+      // link, so the card renders the sandbox object (same as ReportEditor.addLinked).
+      setDraftPages(placeObjectInReport(pendingPages, res.object as PageObject));
+      setAiText("");
+      setAiNameOverride(null);
+      setAiTypeOverride(null);
+      setBuildMsg(
+        `Built “${name}” and added it to the report${
+          sqlChanged ? " · SQL extended (review / revert in ①)" : ""
+        }. Review & Save.`,
+      );
+    } catch (e) {
+      setBuildMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Undo the last AI-authored object: restore pages, objects, built list, SQL. */
+  function undoAiObject() {
+    if (!aiUndo) return;
+    setDraftPages(aiUndo.pages);
+    patch("golden_objects", aiUndo.objects);
+    setBuiltObjects(aiUndo.built);
+    patch("golden_sql", aiUndo.sql);
+    setSqlRevert(aiUndo.sqlRevert);
+    setAiUndo(null);
+    setBuildMsg("Reverted the last AI object.");
   }
 
   /** Re-run one built object's code (after editing it) against the extract. */
@@ -1458,17 +1698,92 @@ export function GoldensPage({
             input · click to collapse)
           </summary>
 
-          {/* Presentation Object builder — create a named dataset for a visualisation */}
-          <details
+          {/* ✦ New object with AI — the PRIMARY way to author an object (s22): one
+              sentence → schema-grounded build → auto-placed into the ③ report. */}
+          <div
             style={{
               ...box,
               marginTop: 10,
-              borderColor: "rgba(120,160,255,0.5)",
-              background: "rgba(120,160,255,0.05)",
+              borderColor: "rgba(120,160,255,0.55)",
+              background: "rgba(120,160,255,0.06)",
             }}
           >
-            <summary style={{ ...label, cursor: "pointer", color: "rgb(120,160,255)" }}>
-              ✦ Presentation Object builder — add a named object by picking columns + skills
+            <div style={{ ...label, color: "rgb(120,160,255)", marginBottom: 8 }}>
+              ✦ New object with AI — describe it in one sentence; it's built &amp; added to the report
+            </div>
+            <textarea
+              data-testid="ai-object-instruction"
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              placeholder="e.g. average weekly rent by month as the x-axis, colour by bedroom band, filtered to house property type only"
+              rows={2}
+              spellCheck={false}
+              style={{ ...mono, width: "100%" }}
+            />
+            <div
+              style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}
+            >
+              <label style={label}>
+                type{" "}
+                <select
+                  data-testid="ai-object-type"
+                  value={aiType}
+                  onChange={(e) => setAiTypeOverride(e.target.value as PageObjectType)}
+                  title="auto-guessed from your words — change it if the guess is wrong"
+                >
+                  {BUILDER_TYPES.map((t) => (
+                    <option key={t.type} value={t.type}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <input
+                data-testid="ai-object-name"
+                value={aiName}
+                placeholder="auto name"
+                onChange={(e) => setAiNameOverride(e.target.value)}
+                title="link id (element_id) — auto-derived from your sentence; editable before the first Save"
+                style={{ ...mono, fontSize: 12, padding: "3px 6px", minWidth: 220 }}
+              />
+              <button
+                type="button"
+                data-testid="ai-object-build"
+                style={{
+                  ...btn(busy !== "ai-object"),
+                  background: "rgba(120,160,255,0.22)",
+                  borderColor: "rgba(120,160,255,0.6)",
+                  fontWeight: 600,
+                }}
+                onClick={() => void authorNewObject()}
+                disabled={busy === "ai-object"}
+              >
+                {busy === "ai-object" ? "Building…" : "✦ Build & add to report"}
+              </button>
+              {aiUndo && (
+                <button
+                  type="button"
+                  data-testid="ai-object-undo"
+                  style={btn()}
+                  onClick={undoAiObject}
+                  title="remove the last AI object and restore the SQL / report"
+                >
+                  ↩ Undo
+                </button>
+              )}
+              {buildMsg && (
+                <span data-testid="ai-object-msg" style={{ fontSize: 12, opacity: 0.85 }}>
+                  {buildMsg}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* advanced — structured builder (deterministic: pick columns + skills). Demoted
+              under the AI panel (s22 Q2); still the repeatable, LLM-free authoring path. */}
+          <details style={{ ...box, marginTop: 10 }}>
+            <summary style={{ ...label, cursor: "pointer" }}>
+              ▸ advanced — structured builder (deterministic: pick columns + skills)
             </summary>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -1685,6 +2000,55 @@ export function GoldensPage({
               </div>
             </div>
           </details>
+
+          {/* data-knowledge — the dataset's ordinal band orders (s23). Like the skills
+              catalogue, this surfaces what the agent knows about the data; editing an
+              order here re-sorts that ordinal x-axis on every chart's next Run. */}
+          {ordinals.length > 0 && (
+            <details style={{ ...box, marginTop: 12 }}>
+              <summary style={{ ...label, cursor: "pointer", color: "rgb(120,160,255)" }}>
+                ✦ data-knowledge — ordinal band orders ({draft.dataset}) · applied to every chart's
+                x-axis
+              </summary>
+              <div style={{ ...label, opacity: 0.6, marginTop: 8 }}>
+                these columns are ordinal (not alphabetical) — the chart lift sorts their x-axis by
+                this order · edit + Save, then ▶ Run to see it applied
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                {ordinals.map((o) => {
+                  const dirty =
+                    (ordinalDraft[o.column_name] ?? "") !== o.ordered_values.join(", ");
+                  return (
+                    <div key={o.column_name} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <code style={{ fontSize: 12, color: "rgb(120,160,255)" }}>{o.column_name}</code>
+                        <span style={{ ...label, opacity: 0.5 }}>ordered values (comma-separated)</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <input
+                          data-testid={`ordinal-${o.column_name}`}
+                          value={ordinalDraft[o.column_name] ?? ""}
+                          onChange={(e) =>
+                            setOrdinalDraft((d) => ({ ...d, [o.column_name]: e.target.value }))
+                          }
+                          style={{ ...mono, fontSize: 12, padding: "4px 6px", flex: 1, minWidth: 260 }}
+                        />
+                        <button
+                          type="button"
+                          data-testid={`ordinal-save-${o.column_name}`}
+                          style={btn(busy !== `ordinal:${o.column_name}` && dirty)}
+                          disabled={busy === `ordinal:${o.column_name}` || !dirty}
+                          onClick={() => void saveOrdinal(o.column_name)}
+                        >
+                          {busy === `ordinal:${o.column_name}` ? "Saving…" : "Save order"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
 
           {/* Presentation Objects — built (named) + composed, each detailing its data + skills */}
           <div style={{ marginTop: 12 }}>

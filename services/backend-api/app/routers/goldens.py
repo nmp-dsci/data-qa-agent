@@ -120,6 +120,58 @@ async def skills(admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
     return await fetch_skills()
 
 
+class OrdinalIn(BaseModel):
+    dataset: str
+    column: str
+    ordered_values: list[str]
+
+
+# Declared before /{golden_id} so "ordinals" isn't captured as a golden id.
+@router.get("/admin/eval-goldens/ordinals")
+async def list_ordinals(
+    dataset: str, admin: CurrentUser = Depends(require_admin)
+) -> list[dict[str, Any]]:
+    """Ordinal band orders for a dataset (s23 data-knowledge panel). Each row is a
+    ``(column, ordered_values)`` the chart lift sorts an ordinal x-axis by."""
+    async with rls_connection(admin.id) as conn:
+        rows = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT o.column_name, o.ordered_values, o.updated_at "
+                        "FROM app.dataset_ordinals o JOIN app.datasets d ON d.id = o.dataset_id "
+                        "WHERE d.slug = :slug ORDER BY o.column_name"
+                    ),
+                    {"slug": dataset},
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return [{k: jsonable(v) for k, v in r.items()} for r in rows]
+
+
+@router.put("/admin/eval-goldens/ordinals")
+async def upsert_ordinal(
+    body: OrdinalIn, admin: CurrentUser = Depends(require_admin)
+) -> dict[str, Any]:
+    """Set the ordinal order for a ``(dataset, column)`` (s23). The data-agent picks
+    it up on the next Run, so the curator edits + re-runs entirely in the Golden tab."""
+    async with rls_connection(admin.id) as conn:
+        result = await conn.execute(
+            text(
+                "INSERT INTO app.dataset_ordinals (dataset_id, column_name, ordered_values) "
+                "SELECT id, :col, CAST(:vals AS jsonb) FROM app.datasets WHERE slug = :slug "
+                "ON CONFLICT (dataset_id, column_name) "
+                "DO UPDATE SET ordered_values = EXCLUDED.ordered_values, updated_at = now()"
+            ),
+            {"slug": body.dataset, "col": body.column, "vals": json.dumps(body.ordered_values)},
+        )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    return {"status": "ok"}
+
+
 @router.get("/admin/eval-goldens/{golden_id}")
 async def get_golden(golden_id: str, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
     """Full golden incl. all three stages, for the Builder / Evaluations tabs."""
@@ -253,12 +305,15 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
 
 class BuildObjectIn(BaseModel):
     sql: str
-    name: str
+    # Blank on the NL path (s22): the agent derives a slug from the instruction.
+    name: str = ""
     object_type: str = "compare"
     # Structured form state (grain, dimension, group, bar/line measures + windows).
     spec: dict[str, Any] = {}
     # Optional NL instruction — routes to the DeepSeek scaffold path instead.
     instruction: str = ""
+    # Dataset slug — selects the mart profile for the deterministic builder (s22 P2).
+    dataset: str = "nsw_sales"
     as_user: str | None = None
 
 
@@ -277,6 +332,7 @@ async def build_object_endpoint(
         object_type=body.object_type,
         spec=body.spec,
         instruction=body.instruction,
+        dataset=body.dataset,
         user_id=body.as_user or admin.id,
         role="user",
     )

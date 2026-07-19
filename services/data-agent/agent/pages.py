@@ -32,6 +32,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
+from .ordinals import order_rows
+
 # The published template registry — the frontend owns the layouts; the agent
 # side may only reference these ids. Only column layouts exist (s14): a page's
 # *template* is purely how many columns to render. The semantic role of a page
@@ -266,6 +268,7 @@ def chart_object_from_spec(
     height: int | str | None = "fill",
     explains: str | None = None,
     sql: str | None = None,
+    dataset: str | None = None,
 ) -> PageObject | None:
     """Lift a validated house chart spec into a data+intent page object.
 
@@ -280,6 +283,12 @@ def chart_object_from_spec(
         return None
     mark = _spec_mark(spec)
     encoding = _spec_encoding(spec)
+    # s23: order an ordinal x/dimension (area_band, bedroom_band, …) by its natural
+    # band order instead of the alphabetical row order — so every chart (chat,
+    # Explore, golden) reads correctly. No-op for non-ordinal columns (e.g. month).
+    x_field = _enc_field(encoding, "x")
+    if x_field:
+        values = order_rows(values, x_field, dataset)
     title = _spec_title(spec)
     extra: dict[str, Any] = {} if height is None else {"height": height}
     if sql:

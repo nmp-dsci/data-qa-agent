@@ -118,23 +118,27 @@ async def prep_golden(
 async def build_object(
     *,
     sql: str,
-    name: str,
     object_type: str,
     spec: dict[str, Any],
     user_id: str,
     role: str = "user",
+    name: str = "",
     instruction: str = "",
+    dataset: str = "nsw_sales",
 ) -> dict[str, Any]:
-    """Golden Sandbox (s18): deterministically build a NAMED presentation object
-    from a structured spec (or an NL instruction) — the data-agent extends the
+    """Golden Sandbox (s18): build a NAMED presentation object from a structured
+    spec (or, s22, a plain-English instruction) — the data-agent extends the
     shared extract as needed, runs the governed sandbox, and returns the lifted
-    object + its generating code + the (possibly revised) SQL."""
+    object + its generating code + the (possibly revised) SQL. ``name`` may be
+    blank on the NL path — the agent derives a slug from the instruction (s22);
+    ``dataset`` selects the mart profile for the deterministic builder (s22 P2)."""
     payload = {
         "sql": sql,
         "name": name,
         "object_type": object_type,
         "spec": spec,
         "instruction": instruction,
+        "dataset": dataset,
         "user": {"id": user_id, "role": role},
     }
     async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:

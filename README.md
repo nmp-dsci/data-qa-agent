@@ -145,7 +145,7 @@ actual rows/counts at any layer, connect to Postgres directly (`localhost:5434`,
 
 The **Explore** tab lets any signed-in user browse the property/postcode marts directly — filter, aggregate,
 and profile cohorts — without going through the chat agent. It covers three governed datasets: `nsw_sales`,
-`nsw_rent`, and `nsw_yield` (gross rental yield, sales joined to rent by postcode/property_type/year — its
+`nsw_rent`, and `nsw_yield` (gross rental yield, sales joined to rent by postcode/property_type/month — its
 own dataset since it needs both grants). A NSW postcode choropleth renders from a pre-built paths file
 (`frontend/public/geo/poa_nsw.paths.json`, regenerated with `scripts/build_poa_paths.py` — see
 `scripts/build_topojson.md`) rather than a runtime geo-projection library. Reads run under the same RLS as

@@ -26,7 +26,7 @@ def upgrade() -> None:
         """
         INSERT INTO app.datasets (slug, name, description, status) VALUES
           ('nsw_yield', 'NSW rental yield',
-           'Gross rental yield (rent vs sale price) by postcode, property type and year'
+           'Gross rental yield (rent vs sale price) by postcode, property type and month'
            ' — sales joined to rent.',
            'ready')
         ON CONFLICT (slug) DO NOTHING

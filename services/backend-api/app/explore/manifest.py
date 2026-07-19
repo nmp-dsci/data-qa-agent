@@ -284,13 +284,14 @@ _YIELD = Dataset(
     slug="nsw_yield",
     name="NSW rental yield",
     table="marts.property_yield",
-    time_dim="year",
+    time_dim="month",
     default_metric="gross_yield_pct",
     geo=GeoBinding(dimension="postcode", layer="poa_nsw"),
     dimensions=(
         _mart_dim("property_type", "Property type", "categorical"),
         _mart_dim("postcode", "Postcode", "categorical"),
-        _mart_dim("year", "Year", "time"),
+        _mart_dim("month", "Month", "time"),
+        *_calendar_dims_from_month(),
         *_geo_dims(),
     ),
     metrics=(

@@ -286,7 +286,7 @@ evals/journeys.yaml    # user-journey tests
 
 Flow: pipeline reads `datasets.yaml` → dlt ingests each CSV → `raw` → dbt → `marts`; a row is upserted into
 `datasets`, and `access` populates `dataset_access` so RLS enforces who can query it. The `nsw_yield` dataset
-(`marts.property_yield`, sales JOINed to rent by postcode/property_type/year, plus the `dim_postcode_geo`
+(`marts.property_yield`, sales JOINed to rent by postcode/property_type/month, plus the `dim_postcode_geo`
 region-rollup mart) is registered directly by migration 0025 instead of the pipeline's dataset upsert, since
 it derives from the other two marts rather than its own CSV. App config
 (DB URL, model keys, provider) is one typed **pydantic-settings** `Settings` object reading `.env` locally

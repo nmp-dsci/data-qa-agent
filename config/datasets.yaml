@@ -29,7 +29,7 @@ datasets:
     source: derived                       # sales JOIN rent; not its own CSV
     description: >
       Gross rental yield (rent vs sale price) by postcode, property type and
-      year. Powers marts.property_yield (dbt-built from property_sales +
+      month. Powers marts.property_yield (dbt-built from property_sales +
       property_rent). Its own dataset/grant (migration 0025) since answering
       it needs both nsw_sales and nsw_rent semantics.
     access:

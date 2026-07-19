@@ -429,17 +429,27 @@ function slugFromInstruction(text: string): string {
 /** s22: place a freshly built object into the report draft — first column of the
  *  first (currently visible) page, creating a one-col page when the report is
  *  empty. A deep copy keeps the shared element_id (the link) while detaching the
- *  array reference; idempotent if the same object is already on a page. */
+ *  array reference; if the same element_id is already on a page (e.g. a rebuild
+ *  after refining the instruction), its snapshot is replaced in place rather than
+ *  left stale. */
 function placeObjectInReport(pages: Page[], obj: PageObject): Page[] {
   const copy = JSON.parse(JSON.stringify(obj)) as PageObject;
   if (pages.length === 0) {
     return [{ template: "one-col", columns: [[copy]] }];
   }
   const next = JSON.parse(JSON.stringify(pages)) as Page[];
-  const already = next.some((p) =>
-    (p.columns ?? []).some((c) => c.some((o) => o.element_id === copy.element_id)),
-  );
-  if (already) return next;
+  let found = false;
+  for (const p of next) {
+    for (const col of p.columns ?? []) {
+      for (let i = 0; i < col.length; i++) {
+        if (col[i].element_id === copy.element_id) {
+          col[i] = copy;
+          found = true;
+        }
+      }
+    }
+  }
+  if (found) return next;
   const page = next[0];
   if (!page.columns || page.columns.length === 0) page.columns = [[]];
   page.columns[0] = [...page.columns[0], copy];

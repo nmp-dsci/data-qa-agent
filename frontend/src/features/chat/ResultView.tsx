@@ -34,7 +34,10 @@ export function ResultView({
     try {
       const res = await goldenFromRun(result.run_id);
       setPromoteState("saved");
-      onPromoteToGolden?.(res.id);
+      // Defer the handoff so "saved ✓" actually paints before the view-host
+      // remounts into the Goldens tab (same-tick setState + navigate would
+      // otherwise batch into one commit and skip painting this state).
+      setTimeout(() => onPromoteToGolden?.(res.id), 600);
     } catch {
       setPromoteState("error");
     }

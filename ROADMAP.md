@@ -7,9 +7,16 @@ build + deploy + evaluate; this roadmap proves ownership.
 ## Already shipped (claim these loudly)
 
 Real Entra SSO/OIDC · RLS data governance · Logfire tracing · Terraform IaC on AWS (App Runner + Aurora
-Serverless + Secrets Manager + S3/CloudFront) · multi-stage eval harness (G1 extraction / G2 preparation /
-G3 presentation graders + LLM judge) · golden-answer management with DB persistence + UI + `eval_runs` ·
-provider abstraction (Claude / DeepSeek) · dbt data-quality tests that gate agent capability.
+Serverless + Secrets Manager + S3/CloudFront) · golden-answer management with DB persistence + UI, authored
+stage-by-stage or promoted from a real chat answer · version-controlled golden packs (`evals/cases/*.yaml`)
+that seed any environment · composed build fingerprinting (`agent_versions`: provider + model + prompt /
+skills / knowledge hashes) stamped on every run · provider abstraction (Claude / DeepSeek) · dbt
+data-quality tests that gate agent capability.
+
+> **In progress, not yet shipped (s24):** the scored eval runner, the G2/G4 graders, the LLM-as-judge, the
+> regression gate, and the Evaluations tab. `eval_runs` / `eval_results` exist as schema and are being
+> filled by the s24 build — do not claim them as shipped until M2–M4 land. The deterministic G1 and
+> G3-structural graders exist in `agent/eval_graders.py` but are only wired into the runner as of M2.
 
 ---
 

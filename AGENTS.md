@@ -316,10 +316,20 @@ from the tested skill library), ③ the presentation report — starting from an
 Goldens are stored on `app.eval_cases` (CRUD via the backend's `/admin/eval-goldens` endpoints, which proxy
 draft/build actions to the data-agent's `/agent/analysis*` and `/agent/skills*` helpers; the object-type
 picker is generated from the report-engine registry so it can't drift from what the renderer supports).
-Deterministic graders (`agent/eval_graders.py`) score G1 extraction values, G2 sandbox metrics, and the
-structural half of G3 presentation against a `ready` golden — the LLM insight half of G3 is a judge, not
-code. Every `/ask` is stamped with an `agent_versions` build fingerprint, and batch scores land in
-`eval_runs`/`eval_results` (migrations 0019–0024).
+Deterministic graders (`agent/eval_graders.py`) score G1 extraction values and the structural half of G3
+presentation against a `ready` golden — the LLM insight half of G3 is a judge, not code. G2 preparation and
+G4 ops, the judge itself, and the runner that drives them all land in s24 (M2); until then the graders are
+pure functions with unit tests and no caller.
+
+**Version control (s24 M1).** Goldens live in the database *and* in the repo: `make eval-export` serialises
+`app.eval_cases` to `evals/cases/<dataset>.yaml` and `make eval-import` seeds any environment from it, so a
+golden authored in dev or promoted in prod is reviewable in a PR and visible to CI. The repo is the source
+of truth; the DB is a working surface. `golden_data` is treated as *derived* — the pack keeps only a digest,
+since G1 regrades against what `golden_sql` returns at eval time. Every `/ask` is stamped with an
+`agent_versions` build fingerprint — a composed hash of provider + model + `prompt_hash` + `skills_hash` +
+`knowledge_version` (`agent/version.py`, served at `GET /agent/version`) — so a base-vs-experiment
+comparison can prove exactly one lever moved. Runs predating M1 carry a null stamp and are not backfilled.
+Batch scores land in `eval_runs`/`eval_results` (migrations 0019–0024, extended by 0029).
 
 Three more ways to seed and refine a golden (s21–s23): an admin chat answer can skip stage ① entirely — a
 "★ save as golden" chip in the chat result (shown whenever the answer has an audited `run_id`) calls

@@ -17,8 +17,10 @@ forced, so these are fast and deterministic.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import pandas as pd
+import pytest
 
 import agent.object_codegen as oc
 from agent.main import _chart_sig, _lift_target
@@ -79,7 +81,7 @@ def test_run_book_reproduces_every_object_without_llm() -> None:
     assert {"kpi", "breakdown", "trend"} <= types
 
 
-def _pages_with(objs: list[dict]) -> list[dict]:
+def _pages_with(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{"template": "one-col", "columns": [objs]}]
 
 
@@ -208,7 +210,7 @@ def test_objects_digest_marks_target_and_hides_rows() -> None:
     assert "rows" not in out and '"a": 1' not in out  # the huge payload never ships
 
 
-def test_stub_is_non_destructive(monkeypatch) -> None:
+def test_stub_is_non_destructive(monkeypatch: pytest.MonkeyPatch) -> None:
     """No LLM key → the stub keeps the existing run_analysis intact (never clobbers
     the golden's other objects) and proposes no SQL change."""
     monkeypatch.setattr(oc, "choose_provider", lambda *a, **k: None)

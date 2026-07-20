@@ -16,10 +16,12 @@ _ALPHA = [
 
 
 def test_resolve_order_seed_and_column_only_fallback() -> None:
-    assert resolve_order("nsw_sales", "area_band")[0] == "<400"
+    sales_order = resolve_order("nsw_sales", "area_band")
+    assert sales_order is not None and sales_order[0] == "<400"
     # dataset unknown → column-only fallback still finds the seed order.
     assert resolve_order(None, "area_band") == resolve_order("nsw_sales", "area_band")
-    assert resolve_order("nsw_rent", "bedroom_band")[:2] == ["0", "1"]
+    rent_order = resolve_order("nsw_rent", "bedroom_band")
+    assert rent_order is not None and rent_order[:2] == ["0", "1"]
     # a non-ordinal column has no order.
     assert resolve_order("nsw_sales", "suburb") is None
 

@@ -1,7 +1,7 @@
 """nsw_yield — register the sales x rent yield dataset
 
 s19 Explore, Phase A. The gross-yield mart (marts.property_yield) joins sales and
-rent at postcode x property_type x year. Rather than require a user to hold both
+rent at postcode x property_type x month. Rather than require a user to hold both
 the nsw_sales AND nsw_rent grants (cross-dataset semantics), yield is its own
 dataset with its own grant. The mart itself is created by the data-pipeline (dbt)
 and applies its own RLS via post-hook; this migration only registers the dataset

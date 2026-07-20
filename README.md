@@ -172,6 +172,15 @@ data-agent's `/agent/analysis*` and `/agent/skills*` helpers). Deterministic gra
 shape against a `ready` golden; every `/ask` is stamped with an `agent_versions` build fingerprint, and
 batch scores land in `eval_runs`/`eval_results`.
 
+A chat answer can skip straight to a draft golden: admins see a **"★ save as golden"** chip on any answered
+chat result, which copies the already-captured question/SQL/sandbox script/report into a new draft (no
+agent re-run) and opens it in the editor. Inside the editor, the primary way to add a stage-② object is the
+**"New object with AI"** panel — describe it in one sentence and it's built and placed onto the report
+automatically (the structured form is still there as a manual fallback). Ordinal columns like `area_band`
+and `bedroom_band` render in their natural order rather than alphabetically; curators can tweak the order
+per dataset from a data-knowledge panel in the Sandbox tab (backed by `app.dataset_ordinals`), or override
+one chart's x-axis order manually in the report editor.
+
 ## Authentication (dev stub → Google Sign-in)
 
 Auth runs in one of two modes, chosen at runtime — the frontend reads `GET /auth/config` and adapts, so

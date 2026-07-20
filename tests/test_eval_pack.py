@@ -90,7 +90,7 @@ def test_pack_is_not_empty() -> None:
 
 def test_case_keys_are_unique() -> None:
     """case_key is what import upserts on and what `make eval CASE=` selects."""
-    keys = [c.get("case_key") for _, c in CASES]
+    keys = [str(c.get("case_key")) for _, c in CASES]
     duplicates = {k for k in keys if keys.count(k) > 1}
     assert not duplicates, f"duplicate case_key(s): {sorted(duplicates)}"
 

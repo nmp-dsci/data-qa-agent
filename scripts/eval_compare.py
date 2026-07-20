@@ -74,7 +74,7 @@ def load_run(run_id: str) -> dict[str, Any]:
         "FROM app.eval_runs r LEFT JOIN app.agent_versions v ON v.id = r.agent_version_id "
         f"WHERE r.id = {_lit(run_id)}::uuid"
     )
-    data = json.loads(raw or "{}")
+    data: dict[str, Any] = json.loads(raw or "{}")
     if not data.get("id"):
         sys.exit(f"no eval_run {run_id}")
     return data

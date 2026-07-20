@@ -153,6 +153,7 @@ async def judge_insight(*, question: str, answer: str, evidence: str = "") -> di
 
         from pydantic_ai import Agent
 
+        assert settings.anthropic_api_key  # guaranteed by judge_model() returning non-empty
         os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
         judge: Agent[None, str] = Agent(f"anthropic:{model}", system_prompt=INSIGHT_RUBRIC)
         result = await judge.run(prompt)

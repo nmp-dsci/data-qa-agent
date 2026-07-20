@@ -38,12 +38,9 @@ def upgrade() -> None:
     # Provenance of a golden. 'dev' is the safe default for everything authored
     # before this migration — a prod-promoted case is the exception, not the rule.
     op.execute(
-        "ALTER TABLE app.eval_cases "
-        "ADD COLUMN IF NOT EXISTS origin_env text NOT NULL DEFAULT 'dev'"
+        "ALTER TABLE app.eval_cases ADD COLUMN IF NOT EXISTS origin_env text NOT NULL DEFAULT 'dev'"
     )
-    op.execute(
-        "ALTER TABLE app.eval_cases DROP CONSTRAINT IF EXISTS eval_cases_origin_env_check"
-    )
+    op.execute("ALTER TABLE app.eval_cases DROP CONSTRAINT IF EXISTS eval_cases_origin_env_check")
     op.execute(
         "ALTER TABLE app.eval_cases ADD CONSTRAINT eval_cases_origin_env_check "
         "CHECK (origin_env IN ('dev', 'prod'))"
@@ -100,8 +97,6 @@ def downgrade() -> None:
     op.execute("ALTER TABLE app.eval_runs DROP COLUMN IF EXISTS base_run_id")
     op.execute("ALTER TABLE app.eval_runs DROP COLUMN IF EXISTS hypothesis")
     op.execute("ALTER TABLE app.eval_runs DROP COLUMN IF EXISTS experiment_id")
-    op.execute(
-        "ALTER TABLE app.eval_cases DROP CONSTRAINT IF EXISTS eval_cases_origin_env_check"
-    )
+    op.execute("ALTER TABLE app.eval_cases DROP CONSTRAINT IF EXISTS eval_cases_origin_env_check")
     op.execute("ALTER TABLE app.eval_cases DROP COLUMN IF EXISTS origin_env")
     op.execute("DELETE FROM app.schema_migrations WHERE version = '0029_eval_provenance'")

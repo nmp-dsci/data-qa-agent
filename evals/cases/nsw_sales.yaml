@@ -1,0 +1,393 @@
+pack: nsw_property
+dataset: nsw_sales
+cases:
+- case_key: nsw_sales-show-house-price-growth-for-hornsby-normanhurst-96c3
+  question: show house price growth for hornsby / normanhurst
+  dataset: nsw_sales
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: ready
+  grader:
+    key: _key
+    kind: series
+    value: avg_sale_price
+    aggregate: ratio
+    numerator: total_sale_value
+    key_fields:
+    - month
+    - suburb
+    denominator: n_sold
+    tolerance_pct: 5.0
+    expected_objects:
+    - trend
+  golden_sql: "SELECT\n  month,\n  suburb,\n  area_band,\n  sum(n_sold) AS n_sold,\n  sum(total_sale_value)\
+    \ AS total_sale_value,\n  round((sum(total_sale_value) / NULLIF(sum(n_sold), 0))::numeric) AS avg_sale_price\n\
+    FROM marts.property_sales\nWHERE property_type = 'house' AND suburb IN ('Hornsby', 'Normanhurst')\n\
+    GROUP BY month, suburb, area_band\nORDER BY month, suburb, area_band"
+  golden_sandbox: "df['price'] = df['total_sale_value'] / df['n_sold']\n\n# PASS 1: Summary page\ns =\
+    \ skills.trend_series(df, month_col=\"month\", value_col=\"price\", group_col=\"suburb\")\n\n# Latest\
+    \ values\nlatest_hornsby = skills.latest_value(df[df[\"suburb\"]==\"Hornsby\"], month_col=\"month\"\
+    , value_col=\"price\")\nlatest_normanhurst = skills.latest_value(df[df[\"suburb\"]==\"Normanhurst\"\
+    ], month_col=\"month\", value_col=\"price\")\n\n# Growth over ~5 years\ngrowth_hornsby = skills.growth_rate(df[df[\"\
+    suburb\"]==\"Hornsby\"], month_col=\"month\", value_col=\"price\", years=5)\ngrowth_normanhurst =\
+    \ skills.growth_rate(df[df[\"suburb\"]==\"Normanhurst\"], month_col=\"month\", value_col=\"price\"\
+    , years=5)\n\nsummary = (\n    f\"Hornsby houses averaged **${latest_hornsby['value']:,.0f}** \"\n\
+    \    f\"(as at {latest_hornsby['month']}), while Normanhurst houses averaged \"\n    f\"**${latest_normanhurst['value']:,.0f}**\
+    \ (as at {latest_normanhurst['month']}). \"\n)\n\nif growth_hornsby is not None and growth_normanhurst\
+    \ is not None:\n    summary += (\n        f\"Over the last ~5 years, Hornsby house prices grew **{growth_hornsby:.1f}%**\
+    \ \"\n        f\"and Normanhurst house prices grew **{growth_normanhurst:.1f}%**.\"\n    )\nelif growth_hornsby\
+    \ is not None:\n    summary += f\"Over the last ~5 years, Hornsby house prices grew **{growth_hornsby:.1f}%**.\"\
+    \nelif growth_normanhurst is not None:\n    summary += f\"Over the last ~5 years, Normanhurst house\
+    \ prices grew **{growth_normanhurst:.1f}%**.\"\n\n\nresult = skills.build_report(\n    summary=summary,\n\
+    \    headlines=[\n        {\"label\": \"Hornsby Avg House Price\", \"value\": f\"${latest_hornsby['value']:,.0f}\"\
+    , \"basis\": latest_hornsby['month']},\n        {\"label\": \"Normanhurst Avg House Price\", \"value\"\
+    : f\"${latest_normanhurst['value']:,.0f}\", \"basis\": latest_normanhurst['month']},\n        {\"\
+    label\": \"Hornsby 5-Yr Growth\", \"value\": f\"{growth_hornsby:.1f}%\" if growth_hornsby is not None\
+    \ else \"N/A\", \"basis\": \"~5 years\"},\n        {\"label\": \"Normanhurst 5-Yr Growth\", \"value\"\
+    : f\"{growth_normanhurst:.1f}%\" if growth_normanhurst is not None else \"N/A\", \"basis\": \"~5 years\"\
+    },\n    ],\n    main_chart=skills.trend_chart(s, title=\"Hornsby vs Normanhurst — House Price Trend\"\
+    ),\n)"
+  golden_objects:
+  - code: "work = df.copy()\n_grain = [\"month\", \"suburb\", \"area_band\"]\n_agg = {c: (c, 'sum') for\
+      \ c in ('n_sold', 'total_sale_value') if c in work.columns}\nbase = work.groupby(_grain, as_index=False).agg(**_agg)\
+      \ if _agg else work\n_months = sorted(m for m in base['month'].dropna().unique())\n_win_default\
+      \ = set(_months[-12:])\nbar_df = base[base['month'].isin(set(_months[-12:]))].groupby([\"area_band\"\
+      , \"suburb\"], as_index=False)['n_sold'].sum()\nbar_df = bar_df.rename(columns={'n_sold': 'sales_volume'})\n\
+      line_df = base[base['month'].isin(set(_months[-6:]))].groupby([\"area_band\", \"suburb\"], as_index=False).agg(_num=('total_sale_value',\
+      \ 'sum'), _den=('n_sold', 'sum'))\nline_df['avg_sale_price'] = (line_df['_num'] / line_df['_den'].where(line_df['_den']\
+      \ != 0)).round()\nline_df = line_df[[\"area_band\", \"suburb\"] + ['avg_sale_price']]\nagg = bar_df.merge(line_df,\
+      \ on=[\"area_band\", \"suburb\"], how='left')\nagg = agg.dropna(subset=['avg_sale_price'])\nchart\
+      \ = skills.dual_axis_chart(\n    agg,\n    x_col=\"area_band\",\n    left_value_col=\"sales_volume\"\
+      ,\n    right_value_col=\"avg_sale_price\",\n    x_type='nominal',\n    left_title=\"sales_volume\"\
+      ,\n    right_title=\"avg_sale_price\", series_col=\"suburb\",\n    title=\"line-bar-sale-volume\"\
+      ,\n)\nresult = skills.build_report(summary=\"Bars compare volume; the line tracks price across the\
+      \ dimension.\", main_chart=chart)"
+    name: line-bar-sale-volume
+    spec:
+      grain:
+      - month
+      - suburb
+      - area_band
+      group: suburb
+      title: line-bar-sale-volume
+      filter: property_type = 'house' AND suburb IN ('Hornsby', 'Normanhurst')
+      months: 12
+      dimension: area_band
+      bar_measure:
+        agg: sum
+        label: sales_volume
+        months: 12
+        source: n_sold
+      line_measure:
+        den: n_sold
+        num: total_sale_value
+        label: avg_sale_price
+        months: 6
+    element_id: obj:line-bar-sale-volume
+    object_type: compare
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 2026-05
+            label: Hornsby Avg House Price
+            value: $2,006,326
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: 2026-04
+            label: Normanhurst Avg House Price
+            value: $2,073,803
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: ~5 years
+            label: Hornsby 5-Yr Growth
+            value: 27.5%
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: ~5 years
+            label: Normanhurst 5-Yr Growth
+            value: 40.3%
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: Hornsby houses averaged **$2,006,326** (as at 2026-05), while Normanhurst houses averaged
+              **$2,073,803** (as at 2026-04). Over the last ~5 years, Hornsby house prices grew **27.5%**
+              and Normanhurst house prices grew **40.3%**.
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            rows:
+              _sha: 784063098f28
+              _head:
+              - layer: actual
+                month: '2011-05-01'
+                value: 560000
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2011-05-01'
+                value: 560000
+                series: Hornsby
+              - layer: actual
+                month: '2011-07-01'
+                value: 610000
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2011-07-01'
+                value: 585000
+                series: Hornsby
+              - layer: actual
+                month: '2011-11-01'
+                value: 724800
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2011-11-01'
+                value: 631600
+                series: Hornsby
+              - layer: actual
+                month: '2011-12-01'
+                value: 641714.29
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2011-12-01'
+                value: 634128.57
+                series: Hornsby
+              - layer: actual
+                month: '2012-01-01'
+                value: 668545.45
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-01-01'
+                value: 641011.95
+                series: Hornsby
+              - layer: actual
+                month: '2012-02-01'
+                value: 930818.18
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-02-01'
+                value: 689312.99
+                series: Hornsby
+              - layer: actual
+                month: '2012-03-01'
+                value: 679836.76
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-03-01'
+                value: 709285.78
+                series: Hornsby
+              - layer: actual
+                month: '2012-04-01'
+                value: 704786.67
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-04-01'
+                value: 725083.56
+                series: Hornsby
+              - layer: actual
+                month: '2012-05-01'
+                value: 718300
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-05-01'
+                value: 724000.23
+                series: Hornsby
+              - layer: actual
+                month: '2012-06-01'
+                value: 738812.5
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-06-01'
+                value: 740183.26
+                series: Hornsby
+              - layer: actual
+                month: '2012-07-01'
+                value: 701777.78
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-07-01'
+                value: 745721.98
+                series: Hornsby
+              - layer: actual
+                month: '2012-08-01'
+                value: 764590.91
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-08-01'
+                value: 718017.44
+                series: Hornsby
+              - layer: actual
+                month: '2012-09-01'
+                value: 713923.08
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-09-01'
+                value: 723698.49
+                series: Hornsby
+              - layer: actual
+                month: '2012-10-01'
+                value: 722437.5
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-10-01'
+                value: 726640.29
+                series: Hornsby
+              - layer: actual
+                month: '2012-11-01'
+                value: 696060
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-11-01'
+                value: 722933.63
+                series: Hornsby
+              - layer: actual
+                month: '2012-12-01'
+                value: 743522.22
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2012-12-01'
+                value: 723718.58
+                series: Hornsby
+              - layer: actual
+                month: '2013-01-01'
+                value: 651150.42
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-01-01'
+                value: 715280.69
+                series: Hornsby
+              - layer: actual
+                month: '2013-02-01'
+                value: 727450
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-02-01'
+                value: 709090.54
+                series: Hornsby
+              - layer: actual
+                month: '2013-03-01'
+                value: 912030.57
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-03-01'
+                value: 742108.45
+                series: Hornsby
+              - layer: actual
+                month: '2013-04-01'
+                value: 773923.08
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-04-01'
+                value: 750689.38
+                series: Hornsby
+              - layer: actual
+                month: '2013-05-01'
+                value: 786277.78
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-05-01'
+                value: 765725.68
+                series: Hornsby
+              - layer: actual
+                month: '2013-06-01'
+                value: 737150
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-06-01'
+                value: 764663.64
+                series: Hornsby
+              - layer: actual
+                month: '2013-07-01'
+                value: 765194.44
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-07-01'
+                value: 783670.98
+                series: Hornsby
+              - layer: actual
+                month: '2013-08-01'
+                value: 768285.71
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-08-01'
+                value: 790476.93
+                series: Hornsby
+              - layer: actual
+                month: '2013-09-01'
+                value: 794168.75
+                series: Hornsby
+              - layer: 6-mo avg
+                month: '2013-09-01'
+                value: 770833.29
+                series: Hornsby
+              _total: 690
+              _truncated: true
+            title: Hornsby vs Normanhurst — House Price Trend
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: Hornsby houses averaged **$2,006,326** (as at 2026-05), while Normanhurst houses averaged
+        **$2,073,803** (as at 2026-04…
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Over the full period, Hornsby houses have averaged **$1,345,668**, which is **3.9%**
+              lower than Normanhurst ($1,400,144). On a 5-year growth basis, Normanhurst has appreciated
+              faster (27.5% vs 40.3%), narrowing the price gap in recent years.
+            heading: Price Gap & Growth Comparison
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+      - - data:
+            rows:
+            - suburb: Hornsby
+              area_band: 1000-5000
+              sales_volume: 25
+              avg_sale_price: 2163528
+            - suburb: Hornsby
+              area_band: 400-700
+              sales_volume: 26
+              avg_sale_price: 1758250
+            - suburb: Normanhurst
+              area_band: 400-700
+              sales_volume: 20
+              avg_sale_price: 1916000
+            - suburb: Hornsby
+              area_band: 700-1000
+              sales_volume: 54
+              avg_sale_price: 2086762
+            - suburb: Normanhurst
+              area_band: 700-1000
+              sales_volume: 30
+              avg_sale_price: 2137450
+            group: suburb
+            title: line-bar-sale-volume
+            height: md
+            intent: combo
+            measure: sales_volume
+            dimension: area_band
+            line_measure: avg_sale_price
+          role: chart
+          type: compare
+          element_id: obj:line-bar-sale-volume
+      headline: Price Gap & Growth Comparison
+      template: two-col
+  golden_data_sha: 89684f800665

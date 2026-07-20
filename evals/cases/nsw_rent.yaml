@@ -1,0 +1,691 @@
+pack: nsw_property
+dataset: nsw_rent
+cases:
+- case_key: nsw_rent-give-me-rent-trends-for-postcode-2077-vs-2076-2fb4
+  question: Give me rent trends for postcode 2077 vs 2076
+  dataset: nsw_rent
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: ready
+  tags:
+  - from-chat
+  - run:89b20fae-65ae-428d-9c85-84381193741f
+  grader:
+    key: _key
+    kind: series
+    value: avg_weekly_rent
+    aggregate: ratio
+    numerator: total_weekly_rent
+    key_fields:
+    - month
+    - postcode
+    denominator: n_rented
+    tolerance_pct: 5.0
+    expected_objects:
+    - trend
+  golden_sql: "SELECT\n  month,\n  postcode,\n  property_type,\n  SUM(total_weekly_rent) AS total_weekly_rent,\n\
+    \  SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode IN ('2077', '2076')\nGROUP\
+    \ BY month, postcode, property_type\nORDER BY month, postcode, property_type"
+  golden_sandbox: "# PASS 1 — Summary page: headline aggregates + trend chart\n\n# Check the data span\n\
+    print(\"Month range:\", df['month'].min(), \"to\", df['month'].max())\nprint(\"Postcodes:\", df['postcode'].unique())\n\
+    \n# Compute average weekly rent per month per postcode (re-aggregated)\ndf['avg_weekly_rent'] = df['total_weekly_rent']\
+    \ / df['n_rented'].replace(0, float('nan'))\n\n# --- 2077 trend ---\ns2077 = skills.trend_series(\n\
+    \    df[df['postcode'] == '2077'],\n    month_col='month',\n    value_col='total_weekly_rent',\n \
+    \   den_col='n_rented'\n)\nlatest2077 = skills.latest_value(\n    df[df['postcode'] == '2077'],\n\
+    \    month_col='month',\n    value_col='total_weekly_rent',\n    den_col='n_rented'\n)\n\n# --- 2076\
+    \ trend ---\ns2076 = skills.trend_series(\n    df[df['postcode'] == '2076'],\n    month_col='month',\n\
+    \    value_col='total_weekly_rent',\n    den_col='n_rented'\n)\nlatest2076 = skills.latest_value(\n\
+    \    df[df['postcode'] == '2076'],\n    month_col='month',\n    value_col='total_weekly_rent',\n \
+    \   den_col='n_rented'\n)\n\n# Growth rates (approx 3 years, will clamp to available span)\ng2077\
+    \ = skills.growth_rate(\n    df[df['postcode'] == '2077'],\n    month_col='month',\n    value_col='total_weekly_rent',\n\
+    \    den_col='n_rented',\n    years=3\n)\ng2076 = skills.growth_rate(\n    df[df['postcode'] == '2076'],\n\
+    \    month_col='month',\n    value_col='total_weekly_rent',\n    den_col='n_rented',\n    years=3\n\
+    )\n\n# Combine both series into one chart frame\ns2077['postcode'] = '2077'\ns2076['postcode'] = '2076'\n\
+    combined = pd.concat([s2077, s2076], ignore_index=True)\n\n# Build a comparison chart showing both\
+    \ postcode trends\nchart = skills.trend_chart(combined, title=\"Average Weekly Rent: Postcode 2077\
+    \ vs 2076\")\n\n# Headlines\nheadlines = [\n    {\"label\": \"2077 — Avg Weekly Rent\", \"value\"\
+    : f\"${latest2077['value']:.0f}\", \"basis\": latest2077['month']},\n    {\"label\": \"2077 — Change\
+    \ (3yr)\", \"value\": f\"{g2077:.1f}%\" if g2077 is not None else \"N/A\", \"basis\": \"over ~3 years\"\
+    },\n    {\"label\": \"2076 — Avg Weekly Rent\", \"value\": f\"${latest2076['value']:.0f}\", \"basis\"\
+    : latest2076['month']},\n    {\"label\": \"2076 — Change (3yr)\", \"value\": f\"{g2076:.1f}%\" if\
+    \ g2076 is not None else \"N/A\", \"basis\": \"over ~3 years\"},\n]\n\nresult = skills.build_report(\n\
+    \    summary=\"**Postcode 2077 vs 2076 — Rent Trends**\\n\\nComparing average weekly rent trends across\
+    \ all property types and bedroom bands. Both postcodes are in Sydney's upper North Shore (Hornsby/Waitara\
+    \ area for 2077, Normanhurst/Thornleigh area for 2076). The chart shows the 6-month rolling average\
+    \ weekly rent over the full data period.\",\n    headlines=headlines,\n    main_chart=chart,\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 2026-05
+            label: 2077 — Avg Weekly Rent
+            value: $724
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: over ~3 years
+            label: 2077 — Change (3yr)
+            value: 23.4%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: 2026-05
+            label: 2076 — Avg Weekly Rent
+            value: $1099
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: over ~3 years
+            label: 2076 — Change (3yr)
+            value: 15.9%
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**Postcode 2077 vs 2076 — Rent Trends**
+
+
+              Comparing average weekly rent trends across all property types and bedroom bands. Both postcodes
+              are in Sydney''s upper North Shore (Hornsby/Waitara area for 2077, Normanhurst/Thornleigh
+              area for 2076). The chart shows the 6-month rolling average weekly rent over the full data
+              period.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT\n  month,\n  postcode,\n  property_type,\n  SUM(total_weekly_rent) AS total_weekly_rent,\n\
+              \  SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode IN ('2077', '2076')\n\
+              GROUP BY month, postcode, property_type\nORDER BY month, postcode, property_type"
+            rows:
+              _sha: 8cd9314ea5b2
+              _head:
+              - layer: actual
+                month: '2016-01-01'
+                value: 512.61
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-01-01'
+                value: 512.61
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-02-01'
+                value: 511.21
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-02-01'
+                value: 511.91
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-03-01'
+                value: 517.16
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-03-01'
+                value: 513.66
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-04-01'
+                value: 496.22
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-04-01'
+                value: 509.3
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-05-01'
+                value: 518.25
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-05-01'
+                value: 511.09
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-06-01'
+                value: 519.32
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-06-01'
+                value: 512.46
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-07-01'
+                value: 509.67
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-07-01'
+                value: 511.97
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-08-01'
+                value: 550.34
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-08-01'
+                value: 518.49
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-09-01'
+                value: 509.54
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-09-01'
+                value: 517.22
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-10-01'
+                value: 527.09
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-10-01'
+                value: 522.37
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-11-01'
+                value: 507.68
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-11-01'
+                value: 520.61
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2016-12-01'
+                value: 515.61
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2016-12-01'
+                value: 519.99
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-01-01'
+                value: 501.05
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-01-01'
+                value: 518.55
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-02-01'
+                value: 518.01
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-02-01'
+                value: 513.17
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-03-01'
+                value: 528
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-03-01'
+                value: 516.24
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-04-01'
+                value: 518.97
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-04-01'
+                value: 514.89
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-05-01'
+                value: 518.01
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-05-01'
+                value: 516.61
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-06-01'
+                value: 519.56
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-06-01'
+                value: 517.27
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-07-01'
+                value: 527.81
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-07-01'
+                value: 521.73
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-08-01'
+                value: 532.38
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-08-01'
+                value: 524.12
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-09-01'
+                value: 522.93
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-09-01'
+                value: 523.28
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-10-01'
+                value: 526.48
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-10-01'
+                value: 524.53
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-11-01'
+                value: 513.78
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-11-01'
+                value: 523.82
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2017-12-01'
+                value: 522.5
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2017-12-01'
+                value: 524.32
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: actual
+                month: '2019-01-01'
+                value: 504.08
+                series: total_weekly_rent
+                postcode: '2077'
+              - layer: 6-mo avg
+                month: '2019-01-01'
+                value: 520.36
+                series: total_weekly_rent
+                postcode: '2077'
+              _total: 452
+              _truncated: true
+            title: 'Average Weekly Rent: Postcode 2077 vs 2076'
+            height: fill
+            intent: line
+            series: postcode
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Postcode 2077 vs 2076 — Rent Trends**  Comparing average weekly rent trends across
+        all property types and bedroom ban…'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: '**property_type** is the strongest factor explaining the rent gap between postcodes
+              (score: 19%). Postcode 2077 (Hornsby/Waitara) is dominated by **units** — 678 avg weekly
+              rent — while 2076 (Normanhurst/Thornleigh) leans towards **houses** at 1262/wk. 2077 units
+              have grown 22.9% over ~3 years, while 2076 houses rose 16.8%.'
+            heading: 🏠 property_type drives the rent difference
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: '**Postcode 2077:** Houses avg $858/wk, Units $678/wk
+
+              **Postcode 2076:** Houses avg $1262/wk, Units $772/wk
+
+
+              The biggest gap is in units: 2077 units rent ~$-95/wk more than 2076 units — reflecting
+              the higher-density, more centrally-located Hornsby area versus the leafy, house-dominated
+              Normanhurst belt.'
+            heading: 📊 Rent levels — side by side
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: 'Over the ~3-year window:
+
+              • **2077 Houses:** 21.8%
+
+              • **2077 Units:** 22.9%
+
+              • **2076 Houses:** 16.8%
+
+              • **2076 Units:** 18.9%
+
+
+              Unit rents in both postcodes have grown faster than house rents — consistent with the broader
+              Sydney rental market where apartment demand has intensified.'
+            heading: 📈 Growth comparison
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT\n  month,\n  postcode,\n  property_type,\n  SUM(total_weekly_rent) AS total_weekly_rent,\n\
+              \  SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode IN ('2077', '2076')\n\
+              GROUP BY month, postcode, property_type\nORDER BY month, postcode, property_type"
+            rows:
+              _sha: 894d44d0b638
+              _head:
+              - layer: actual
+                month: '2016-01-01'
+                value: 574.13
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-01-01'
+                value: 574.13
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-02-01'
+                value: 596.18
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-02-01'
+                value: 585.15
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-03-01'
+                value: 617.18
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-03-01'
+                value: 595.83
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-04-01'
+                value: 608.94
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-04-01'
+                value: 599.11
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-05-01'
+                value: 631.84
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-05-01'
+                value: 605.65
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-06-01'
+                value: 622.42
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-06-01'
+                value: 608.45
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-07-01'
+                value: 583
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-07-01'
+                value: 609.93
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-08-01'
+                value: 664.55
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-08-01'
+                value: 621.32
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-09-01'
+                value: 560.52
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-09-01'
+                value: 611.88
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-10-01'
+                value: 629.44
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-10-01'
+                value: 615.29
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-11-01'
+                value: 612.37
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-11-01'
+                value: 612.05
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2016-12-01'
+                value: 653.1
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2016-12-01'
+                value: 617.16
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-01-01'
+                value: 621.09
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-01-01'
+                value: 623.51
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-02-01'
+                value: 629.55
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-02-01'
+                value: 617.68
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-03-01'
+                value: 624.71
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-03-01'
+                value: 628.38
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-04-01'
+                value: 656.05
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-04-01'
+                value: 632.81
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-05-01'
+                value: 623.5
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-05-01'
+                value: 634.67
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-06-01'
+                value: 634
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-06-01'
+                value: 631.48
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-07-01'
+                value: 639.62
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-07-01'
+                value: 634.57
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-08-01'
+                value: 646.96
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-08-01'
+                value: 637.47
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-09-01'
+                value: 617.34
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-09-01'
+                value: 636.25
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-10-01'
+                value: 639.44
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-10-01'
+                value: 633.48
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-11-01'
+                value: 652.17
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-11-01'
+                value: 638.26
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2017-12-01'
+                value: 618.21
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2017-12-01'
+                value: 635.62
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: actual
+                month: '2019-01-01'
+                value: 596.02
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              - layer: 6-mo avg
+                month: '2019-01-01'
+                value: 628.36
+                series: total_weekly_rent
+                postcode_type: 2077 — House
+              _total: 904
+              _truncated: true
+            title: 'Average Weekly Rent by Property Type: 2077 vs 2076'
+            height: fill
+            intent: line
+            series: postcode_type
+          role: chart
+          type: trend
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: 🏠 property_type drives the rent difference
+      template: two-col
+  golden_data_sha: f20825308e10

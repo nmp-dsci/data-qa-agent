@@ -10,7 +10,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .db import engine, rls_connection
 from .explore.manifest import ManifestError, validate_manifest
-from .routers import admin_config, ask, auth, events, explore, feedback, goldens, profile, sql
+from .routers import (
+    admin_config,
+    ask,
+    auth,
+    evals,
+    events,
+    explore,
+    feedback,
+    goldens,
+    profile,
+    sql,
+)
 
 log = logging.getLogger("uvicorn.error")
 
@@ -51,6 +62,7 @@ app.include_router(goldens.router)
 app.include_router(admin_config.router)
 app.include_router(profile.router)
 app.include_router(explore.router)
+app.include_router(evals.router)
 
 
 @app.get("/health")

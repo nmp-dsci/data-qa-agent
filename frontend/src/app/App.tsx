@@ -20,6 +20,7 @@ import { getTheme, setTheme } from "../lib/theme";
 import { MOBILE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { ChatMsg, ChatPage, ConversationList } from "../features/chat/ChatPage";
 import { AdminPage } from "../features/admin/AdminPage";
+import { EvalsPage } from "../features/evals/EvalsPage";
 import { GoldensPage } from "../features/goldens/GoldensPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { NavRail, View } from "./NavRail";
@@ -115,7 +116,9 @@ export default function App() {
       ? "sql"
       : location.pathname.startsWith("/goldens")
         ? "goldens"
-        : location.pathname.startsWith("/admin")
+        : location.pathname.startsWith("/evals")
+          ? "evals"
+          : location.pathname.startsWith("/admin")
           ? "admin"
           : location.pathname.startsWith("/settings")
             ? "settings"
@@ -124,8 +127,8 @@ export default function App() {
 
   // Normalize unknown paths and guard the admin route by role.
   useEffect(() => {
-    const known = ["/chat", "/explore", "/sql", "/goldens", "/admin", "/settings"];
-    const adminOnly = ["/goldens", "/admin"];
+    const known = ["/chat", "/explore", "/sql", "/goldens", "/evals", "/admin", "/settings"];
+    const adminOnly = ["/goldens", "/evals", "/admin"];
     if (!known.some((p) => location.pathname.startsWith(p))) {
       navigate("/chat", { replace: true });
     } else if (
@@ -360,6 +363,7 @@ export default function App() {
         <div className="view-host" key={view}>
           {view === "admin" && <AdminPage />}
           {view === "goldens" && <GoldensPage seed={goldenSeed} />}
+          {view === "evals" && <EvalsPage />}
           {view === "settings" && <SettingsPage user={user} />}
           {view === "explore" && (
             <Suspense

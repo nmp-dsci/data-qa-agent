@@ -1269,3 +1269,83 @@ export function track(eventType: string, payload: Record<string, unknown> = {}) 
     body: JSON.stringify({ event_type: eventType, session_id: sessionId, payload }),
   }).catch(() => {});
 }
+
+/* ---------------------------------------------------------------------------
+ * Evaluations (s24 M4) — read-only history of scored eval runs. Runs are
+ * produced by `make eval`, never by the UI, so there is no write path here.
+ * ------------------------------------------------------------------------- */
+
+export interface EvalAgentVersion {
+  fingerprint: string | null;
+  label: string | null;
+  provider: string | null;
+  model_id: string | null;
+  prompt_hash: string | null;
+  skills_hash: string | null;
+  knowledge_version: string | null;
+}
+
+export interface EvalRun {
+  id: string;
+  started_at: string | null;
+  finished_at: string | null;
+  dataset: string;
+  pack: string;
+  pack_version: string;
+  experiment_id: string | null;
+  hypothesis: string | null;
+  base_run_id: string | null;
+  judge_model: string | null;
+  judge_prompt_hash: string | null;
+  totals: {
+    cases?: number;
+    passed?: number;
+    errors?: number;
+    pass_rate?: number;
+    g1_mean?: number | null;
+    g3_insight_mean?: number | null;
+    g4_turns_mean?: number | null;
+    generalisation?: string;
+  };
+  agent: EvalAgentVersion;
+}
+
+export interface EvalCaseResult {
+  case_key: string;
+  question: string;
+  dataset: string;
+  tier: string | null;
+  holdout: boolean;
+  passed: boolean | null;
+  notes: string | null;
+  query_run_id: string | null;
+  g1: { kind?: string; score?: number | null; error?: string };
+  g2: { score?: number; expected_objects?: string[]; built_object_types?: string[] };
+  g3: {
+    format?: { passed?: boolean; issues?: string[]; object_types?: string[] };
+    insight?: { total?: number | null; max?: number; skipped?: boolean; reason?: string };
+  };
+  g4: { turns?: number; latency_ms?: number; input_tokens?: number | null };
+}
+
+export interface EvalComparison {
+  base: EvalRun | null;
+  comparable: boolean;
+  regressed: string[];
+  fixed: string[];
+  gate: "PASS" | "FAIL";
+}
+
+export interface EvalRunDetail {
+  run: EvalRun;
+  results: EvalCaseResult[];
+  comparison: EvalComparison | null;
+}
+
+export function getEvalRuns(limit = 50): Promise<EvalRun[]> {
+  return adminGet<EvalRun[]>(`/admin/eval-runs?limit=${limit}`);
+}
+
+export function getEvalRun(runId: string): Promise<EvalRunDetail> {
+  return adminGet<EvalRunDetail>(`/admin/eval-runs/${runId}`);
+}

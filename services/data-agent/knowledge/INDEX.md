@@ -12,5 +12,6 @@ Do not edit by hand; regenerate from page frontmatter.
   sales-segments — Lot-size band and planning zone breakdowns for house sales.
   suburbs-and-postcodes — Suburb<->postcode mapping; sales have suburb, rent does not.
 [presentation]
+  one-pass-trend-analysis — Build a whole month-by-group trend answer in a single run_analysis pass.
   when-to-visualise — Chart-selection guide for matching a question and data shape to a chart skill.
 ```

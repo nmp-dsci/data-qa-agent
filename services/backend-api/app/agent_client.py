@@ -212,6 +212,19 @@ async def fetch_agent_config() -> dict[str, Any]:
         return cast(dict[str, Any], resp.json())
 
 
+async def fetch_agent_version() -> dict[str, Any]:
+    """Fetch the data-agent's composed build fingerprint (s24 M1).
+
+    Short timeout and no retry: stamping a run with its build is valuable but
+    never worth failing an answer over — the caller treats any error as "no
+    stamp this time".
+    """
+    async with httpx.AsyncClient(timeout=10.0, headers=_headers()) as client:
+        resp = await client.get(f"{settings.agent_url}/agent/version")
+        resp.raise_for_status()
+        return cast(dict[str, Any], resp.json())
+
+
 async def fetch_catalog(*, role: str) -> dict[str, Any]:
     """Fetch the structured schema catalog for the SQL editor's browser."""
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:

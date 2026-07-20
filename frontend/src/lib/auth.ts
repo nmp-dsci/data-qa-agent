@@ -2,7 +2,7 @@
 //   dev    -> the local dev-auth stub (pick a seeded test user)
 //   google -> Google Sign-in via Google Identity Services (real OIDC sign-in)
 // The GIS script is loaded lazily so dev never pays for it.
-import { AuthConfig, devLogin, getAuthConfig, getMe, setToken, User } from "./api";
+import { AuthConfig, devLogin, getAuthConfig, getMe, logoutSession, setToken, User } from "./api";
 
 // Minimal typing for the slice of Google Identity Services we use.
 interface GoogleIdApi {
@@ -86,7 +86,35 @@ export async function loginDev(username: string): Promise<User> {
   return user;
 }
 
+/**
+ * Resume a session left over from a previous page load. The in-memory bearer
+ * token (`setToken`) does not survive a reload — it is a plain JS variable —
+ * but dev-mode also sets an httpOnly session cookie on login, which does. This
+ * is what lets a reload skip the login screen instead of dropping back to it
+ * even though the session is still valid for hours.
+ *
+ * Google mode has no equivalent yet: the ID token lives only in memory, so a
+ * reload always requires signing in again there. Returns null (not a throw)
+ * on any failure, including "no session" — the 401 from a cookie-less /me is
+ * the expected, common case on a first visit, not an error to log.
+ */
+export async function resumeSession(): Promise<User | null> {
+  try {
+    return await getMe();
+  } catch {
+    return null;
+  }
+}
+
 export async function logout(): Promise<void> {
   setToken(null);
   window.google?.accounts.id.disableAutoSelect?.();
+  // Best-effort: the dev-mode session cookie (if any) is httpOnly, so clearing
+  // it needs a round trip. A failed call (e.g. Google mode, where the endpoint
+  // has nothing to clear but still exists) must not stop local sign-out.
+  try {
+    await logoutSession();
+  } catch {
+    // already signed out locally; nothing more to do
+  }
 }

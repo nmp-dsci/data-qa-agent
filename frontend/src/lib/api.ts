@@ -1,5 +1,16 @@
 const API = (import.meta.env.VITE_API_URL as string) ?? "http://localhost:8000";
 
+// Every backend call goes through this so the dev-auth session cookie
+// (services/backend-api/app/routers/auth.py::dev_login) rides along. Cross-port
+// requests (5230 -> 8000) do not send cookies without an explicit
+// `credentials: "include"` — the browser default is "same-origin", which would
+// silently drop it. Harmless when there is no cookie to send (Google mode,
+// prod): the in-memory bearer token in authHeaders() keeps working exactly as
+// before either way.
+function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  return fetch(input, { ...init, credentials: "include" });
+}
+
 export interface User {
   id: string;
   username: string;
@@ -335,13 +346,13 @@ function authHeaders(): Record<string, string> {
 }
 
 export async function getAuthConfig(): Promise<AuthConfig> {
-  const resp = await fetch(`${API}/auth/config`);
+  const resp = await apiFetch(`${API}/auth/config`);
   if (!resp.ok) throw new Error(`Could not load auth config (${resp.status})`);
   return resp.json();
 }
 
 export async function devLogin(username: string): Promise<{ access_token: string; user: User }> {
-  const resp = await fetch(`${API}/auth/dev-login`, {
+  const resp = await apiFetch(`${API}/auth/dev-login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username }),
@@ -350,8 +361,17 @@ export async function devLogin(username: string): Promise<{ access_token: string
   return resp.json();
 }
 
+// Clears the httpOnly session cookie set by devLogin. The frontend cannot do
+// this itself with document.cookie — httpOnly means JS never sees the cookie
+// at all — so sign-out has to be a round trip. Best-effort: a failed logout
+// call should not block the client-side sign-out (clearing the in-memory
+// token, resetting the UI), so callers swallow the error rather than surface it.
+export async function logoutSession(): Promise<void> {
+  await apiFetch(`${API}/auth/logout`, { method: "POST" });
+}
+
 export async function getMe(): Promise<User> {
-  const resp = await fetch(`${API}/me`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/me`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Could not load profile (${resp.status})`);
   return resp.json();
 }
@@ -361,7 +381,7 @@ export async function ask(
   conversationId: string | null,
   signal?: AbortSignal,
 ): Promise<AskResult> {
-  const resp = await fetch(`${API}/ask`, {
+  const resp = await apiFetch(`${API}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ question, conversation_id: conversationId }),
@@ -421,7 +441,7 @@ export async function askStream(
 ): Promise<AskResult> {
   let resp: Response;
   try {
-    resp = await fetch(`${API}/ask/stream`, {
+    resp = await apiFetch(`${API}/ask/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ question, conversation_id: conversationId }),
@@ -494,7 +514,7 @@ export async function askStream(
 }
 
 export async function runSql(sql: string): Promise<SqlRunResult> {
-  const resp = await fetch(`${API}/sql`, {
+  const resp = await apiFetch(`${API}/sql`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ sql }),
@@ -507,7 +527,7 @@ export async function runSql(sql: string): Promise<SqlRunResult> {
 }
 
 export async function getSqlHistory(limit = 20): Promise<SqlHistoryItem[]> {
-  const resp = await fetch(`${API}/sql/history?limit=${limit}`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/sql/history?limit=${limit}`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Could not load history (${resp.status})`);
   return resp.json();
 }
@@ -516,7 +536,7 @@ export async function runSqlAi(
   action: AiAction,
   args: { prompt?: string; sql?: string },
 ): Promise<AiAssistResult> {
-  const resp = await fetch(`${API}/sql/ai`, {
+  const resp = await apiFetch(`${API}/sql/ai`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ action, prompt: args.prompt ?? null, sql: args.sql ?? null }),
@@ -529,7 +549,7 @@ export async function runSqlAi(
 }
 
 export async function getCatalog(): Promise<CatalogTable[]> {
-  const resp = await fetch(`${API}/schema/catalog`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/schema/catalog`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Could not load schema (${resp.status})`);
   const data = (await resp.json()) as { tables: CatalogTable[] };
   return data.tables ?? [];
@@ -650,7 +670,7 @@ export interface AskState {
 }
 
 export async function getExploreDatasets(): Promise<ExploreDataset[]> {
-  const resp = await fetch(`${API}/explore/datasets`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/explore/datasets`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Could not load datasets (${resp.status})`);
   const data = (await resp.json()) as { datasets: ExploreDataset[] };
   return data.datasets ?? [];
@@ -663,7 +683,7 @@ export async function exploreAggregate(body: {
   filters?: ExploreFilters;
   limit?: number;
 }): Promise<AggregateResult> {
-  const resp = await fetch(`${API}/explore/aggregate`, {
+  const resp = await apiFetch(`${API}/explore/aggregate`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ group_by: [], filters: {}, ...body }),
@@ -678,7 +698,7 @@ export async function exploreProfile(body: {
   target: { filters: ExploreFilters };
   comparison: { filters: ExploreFilters };
 }): Promise<ProfileResult> {
-  const resp = await fetch(`${API}/explore/profile`, {
+  const resp = await apiFetch(`${API}/explore/profile`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
@@ -692,7 +712,7 @@ export async function exploreAsk(
   mode: "profile" | "trends",
   dataset?: string,
 ): Promise<AskState> {
-  const resp = await fetch(`${API}/explore/ask`, {
+  const resp = await apiFetch(`${API}/explore/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ question, mode, dataset: dataset ?? null }),
@@ -707,14 +727,14 @@ export async function exploreTypeahead(
   q: string,
 ): Promise<(string | number)[]> {
   const params = new URLSearchParams({ dataset, dimension, q });
-  const resp = await fetch(`${API}/explore/typeahead?${params}`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/explore/typeahead?${params}`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Typeahead failed (${resp.status})`);
   const data = (await resp.json()) as { values: (string | number)[] };
   return data.values ?? [];
 }
 
 async function adminGet<T>(path: string): Promise<T> {
-  const resp = await fetch(`${API}${path}`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}${path}`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Admin request failed (${resp.status})`);
   return resp.json();
 }
@@ -797,13 +817,13 @@ export interface ConversationMessage {
 }
 
 export async function getConversations(): Promise<ConversationSummary[]> {
-  const resp = await fetch(`${API}/conversations`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/conversations`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Could not load conversations (${resp.status})`);
   return resp.json();
 }
 
 export async function getConversationMessages(id: string): Promise<ConversationMessage[]> {
-  const resp = await fetch(`${API}/conversations/${id}/messages`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/conversations/${id}/messages`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Could not load conversation (${resp.status})`);
   return resp.json();
 }
@@ -825,13 +845,13 @@ export interface MyAccess {
 }
 
 export async function getMyMemories(): Promise<UserMemory[]> {
-  const resp = await fetch(`${API}/me/memories`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/me/memories`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Could not load memories (${resp.status})`);
   return resp.json();
 }
 
 export async function deleteMyMemory(id: string): Promise<{ deleted: boolean }> {
-  const resp = await fetch(`${API}/me/memories/${id}`, {
+  const resp = await apiFetch(`${API}/me/memories/${id}`, {
     method: "DELETE",
     headers: authHeaders(),
   });
@@ -840,13 +860,13 @@ export async function deleteMyMemory(id: string): Promise<{ deleted: boolean }> 
 }
 
 export async function getMyAccess(): Promise<MyAccess> {
-  const resp = await fetch(`${API}/me/access`, { headers: authHeaders() });
+  const resp = await apiFetch(`${API}/me/access`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Could not load access (${resp.status})`);
   return resp.json();
 }
 
 export async function submitFeedback(input: FeedbackInput): Promise<{ id: string }> {
-  const resp = await fetch(`${API}/feedback`, {
+  const resp = await apiFetch(`${API}/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(input),
@@ -1012,7 +1032,7 @@ export function buildGoldenObject(body: {
 }
 
 async function adminSend<T>(path: string, method: string, body?: unknown): Promise<T> {
-  const resp = await fetch(`${API}${path}`, {
+  const resp = await apiFetch(`${API}${path}`, {
     method,
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -1181,7 +1201,7 @@ export async function draftGoldenStream(
   body: { question: string; as_user?: string | null; dataset?: string },
   onStatus: (label: string) => void,
 ): Promise<DraftResult> {
-  const resp = await fetch(`${API}/admin/eval-goldens/draft/stream`, {
+  const resp = await apiFetch(`${API}/admin/eval-goldens/draft/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
@@ -1229,7 +1249,7 @@ export async function draftGoldenStream(
 }
 
 async function adminPost<T>(path: string, body: unknown): Promise<T> {
-  const resp = await fetch(`${API}${path}`, {
+  const resp = await apiFetch(`${API}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
@@ -1263,9 +1283,89 @@ export function runEvalStaleness(): Promise<{
 
 export function track(eventType: string, payload: Record<string, unknown> = {}) {
   // Fire-and-forget product analytics.
-  fetch(`${API}/events`, {
+  apiFetch(`${API}/events`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ event_type: eventType, session_id: sessionId, payload }),
   }).catch(() => {});
+}
+
+/* ---------------------------------------------------------------------------
+ * Evaluations (s24 M4) — read-only history of scored eval runs. Runs are
+ * produced by `make eval`, never by the UI, so there is no write path here.
+ * ------------------------------------------------------------------------- */
+
+export interface EvalAgentVersion {
+  fingerprint: string | null;
+  label: string | null;
+  provider: string | null;
+  model_id: string | null;
+  prompt_hash: string | null;
+  skills_hash: string | null;
+  knowledge_version: string | null;
+}
+
+export interface EvalRun {
+  id: string;
+  started_at: string | null;
+  finished_at: string | null;
+  dataset: string;
+  pack: string;
+  pack_version: string;
+  experiment_id: string | null;
+  hypothesis: string | null;
+  base_run_id: string | null;
+  judge_model: string | null;
+  judge_prompt_hash: string | null;
+  totals: {
+    cases?: number;
+    passed?: number;
+    errors?: number;
+    pass_rate?: number;
+    g1_mean?: number | null;
+    g3_insight_mean?: number | null;
+    g4_turns_mean?: number | null;
+    generalisation?: string;
+  };
+  agent: EvalAgentVersion;
+}
+
+export interface EvalCaseResult {
+  case_key: string;
+  question: string;
+  dataset: string;
+  tier: string | null;
+  holdout: boolean;
+  passed: boolean | null;
+  notes: string | null;
+  query_run_id: string | null;
+  g1: { kind?: string; score?: number | null; error?: string };
+  g2: { score?: number; expected_objects?: string[]; built_object_types?: string[] };
+  g3: {
+    format?: { passed?: boolean; issues?: string[]; object_types?: string[] };
+    insight?: { total?: number | null; max?: number; skipped?: boolean; reason?: string };
+  };
+  g4: { turns?: number; latency_ms?: number; input_tokens?: number | null };
+}
+
+export interface EvalComparison {
+  base: EvalRun | null;
+  comparable: boolean;
+  regressed: string[];
+  fixed: string[];
+  gate: "PASS" | "FAIL";
+}
+
+export interface EvalRunDetail {
+  run: EvalRun;
+  results: EvalCaseResult[];
+  comparison: EvalComparison | null;
+}
+
+export function getEvalRuns(limit = 50): Promise<EvalRun[]> {
+  return adminGet<EvalRun[]>(`/admin/eval-runs?limit=${limit}`);
+}
+
+export function getEvalRun(runId: string): Promise<EvalRunDetail> {
+  return adminGet<EvalRunDetail>(`/admin/eval-runs/${runId}`);
 }

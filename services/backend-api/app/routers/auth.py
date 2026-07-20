@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..auth import CurrentUser, create_access_token, get_current_user
+from ..auth import SESSION_COOKIE_NAME, CurrentUser, create_access_token, get_current_user
 from ..config import settings
 from ..db import rls_connection
 
@@ -53,8 +53,14 @@ async def auth_config() -> AuthConfig:
 
 
 @router.post("/auth/dev-login", response_model=TokenResponse)
-async def dev_login(body: DevLoginRequest) -> TokenResponse:
-    """Local dev-auth stub. In production this is replaced by Google OIDC."""
+async def dev_login(body: DevLoginRequest, response: Response) -> TokenResponse:
+    """Local dev-auth stub. In production this is replaced by Google OIDC.
+
+    Sets the session as an httpOnly cookie *in addition to* returning it in the
+    body — the body keeps scripts.eval_run/smoke_test/CI journeys working
+    exactly as before (they use the bearer, never a cookie jar), while the
+    cookie lets a browser reload survive without re-logging in.
+    """
     if settings.auth_mode != "dev":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dev login disabled")
 
@@ -89,6 +95,16 @@ async def dev_login(body: DevLoginRequest) -> TokenResponse:
         email=row["email"],
         role=row["role"],
     )
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        max_age=settings.jwt_ttl_seconds,
+        httponly=True,
+        samesite="lax",
+        # Secure requires TLS; local dev serves over plain http://localhost.
+        secure=settings.app_env != "dev",
+        path="/",
+    )
     return TokenResponse(
         access_token=token,
         user=UserOut(
@@ -99,6 +115,14 @@ async def dev_login(body: DevLoginRequest) -> TokenResponse:
             role=row["role"],
         ),
     )
+
+
+@router.post("/auth/logout")
+async def logout(response: Response) -> dict[str, bool]:
+    """Clear the session cookie. httpOnly means the frontend cannot do this
+    itself with document.cookie, so sign-out has to be a round trip."""
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    return {"ok": True}
 
 
 @router.get("/me", response_model=UserOut)

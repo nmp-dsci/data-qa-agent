@@ -7,9 +7,22 @@ build + deploy + evaluate; this roadmap proves ownership.
 ## Already shipped (claim these loudly)
 
 Real Entra SSO/OIDC · RLS data governance · Logfire tracing · Terraform IaC on AWS (App Runner + Aurora
-Serverless + Secrets Manager + S3/CloudFront) · multi-stage eval harness (G1 extraction / G2 preparation /
-G3 presentation graders + LLM judge) · golden-answer management with DB persistence + UI + `eval_runs` ·
-provider abstraction (Claude / DeepSeek) · dbt data-quality tests that gate agent capability.
+Serverless + Secrets Manager + S3/CloudFront) · golden-answer management with DB persistence + UI, authored
+stage-by-stage or promoted from a real chat answer · version-controlled golden packs (`evals/cases/*.yaml`)
+that seed any environment, redacted on export since a golden can come from a real prod answer · composed
+build fingerprinting (`agent_versions`: provider + model + prompt / skills / knowledge hashes) stamped on
+every run · a scored eval runner (`make eval`, works down to N=1 case) with deterministic G1/G2/G4 graders
+and a cross-family LLM-as-judge for G3 insight (records `skipped` rather than self-grading) · a
+regression gate (`make eval-compare`) that blocks on any case flipping pass→fail, plus a free
+zero-LLM-cost golden-pack lint job in CI · a read-only admin Evaluations tab (base-vs-experiment runs, gate
+verdict, per-case scores linked to `query_runs` traces) · a read-only diagnosis script (`make
+eval-diagnose`) that proposes one-lever hypotheses without writing · provider abstraction (Claude /
+DeepSeek) · dbt data-quality tests that gate agent capability.
+
+> **Still open from s24:** the regression gate is a manual/CD step (`make eval-compare`), not wired into CI
+> to block a merge or deploy on a live accuracy regression — only the zero-cost pack lint runs in CI today.
+> That wiring is the remaining piece of roadmap item #2 below. Write access for the diagnosis script
+> (auto-editing knowledge/prompt files from a hypothesis) is deliberately deferred (decision D-3).
 
 ---
 
@@ -24,8 +37,10 @@ Prove RLS + SELECT-only guardrails hold **under adversarial pressure**, not just
   financial services (CBA, Macquarie, Westpac) screen for.
 
 ## 2. Eval loop → deploy-gate + trend dashboard  ⭐ do this first
-Make the eval **block a bad deploy** and show quality **over time**.
-- Wire the harness into CI so a merge/deploy **fails on regression** (accuracy drop, latency/cost blowout)
+The gate, runner, judge, and a run-history tab exist (s24); make the eval **block a bad deploy**, not just a
+manual `make eval-compare`, and show quality **over time** in something more than the tab's flat run list.
+- Wire the regression gate into CI/CD so a merge/deploy **fails on regression** — today only the free
+  pack-lint runs in CI; the scored gate needs a live agent + judge key and stays a manual step
 - Dashboard: accuracy / refusal-rate / p95 latency / cost-per-query **by slice** (query type, user role, dataset)
 - **Plugs into:** `eval_runs` table + existing CI + Logfire.
 - **Signal:** LLMOps maturity — "evals are a gate, not a vibe." The biggest mid→senior leap, and closest to

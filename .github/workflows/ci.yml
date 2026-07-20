@@ -21,6 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      # The golden-pack gate (s24 M3). Deterministic and zero-LLM-cost, so it
+      # blocks every merge: it validates the eval *specification* — unique case
+      # keys, dispatchable grader specs, no real user ids or data dumps in git.
+      # The SQL/golden-rot half self-skips without a database, so it stays green
+      # here and does the full check locally where the stack is up.
+      - name: Golden pack gate
+        run: uv run pytest tests/test_eval_pack.py -q
       - name: Pytest (repo root)
         run: uv run pytest -q
       - name: Pytest (data-agent service)

@@ -15,11 +15,12 @@ import {
   track,
   User,
 } from "../lib/api";
-import { loadAuthConfig, loginDev, logout as authLogout } from "../lib/auth";
+import { loadAuthConfig, loginDev, logout as authLogout, resumeSession } from "../lib/auth";
 import { getTheme, setTheme } from "../lib/theme";
 import { MOBILE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { ChatMsg, ChatPage, ConversationList } from "../features/chat/ChatPage";
 import { AdminPage } from "../features/admin/AdminPage";
+import { EvalsPage } from "../features/evals/EvalsPage";
 import { GoldensPage } from "../features/goldens/GoldensPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { NavRail, View } from "./NavRail";
@@ -72,6 +73,10 @@ function messageToChat(m: ConversationMessage): ChatMsg {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  // True until the initial resumeSession() call resolves, so a valid session
+  // (dev-mode's httpOnly cookie) is not masked by a flash of the login screen
+  // while we find out it exists.
+  const [resuming, setResuming] = useState(true);
   const [authMode, setAuthMode] = useState<"dev" | "google">("dev");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -115,7 +120,9 @@ export default function App() {
       ? "sql"
       : location.pathname.startsWith("/goldens")
         ? "goldens"
-        : location.pathname.startsWith("/admin")
+        : location.pathname.startsWith("/evals")
+          ? "evals"
+          : location.pathname.startsWith("/admin")
           ? "admin"
           : location.pathname.startsWith("/settings")
             ? "settings"
@@ -124,8 +131,8 @@ export default function App() {
 
   // Normalize unknown paths and guard the admin route by role.
   useEffect(() => {
-    const known = ["/chat", "/explore", "/sql", "/goldens", "/admin", "/settings"];
-    const adminOnly = ["/goldens", "/admin"];
+    const known = ["/chat", "/explore", "/sql", "/goldens", "/evals", "/admin", "/settings"];
+    const adminOnly = ["/goldens", "/evals", "/admin"];
     if (!known.some((p) => location.pathname.startsWith(p))) {
       navigate("/chat", { replace: true });
     } else if (
@@ -154,6 +161,26 @@ export default function App() {
     loadAuthConfig()
       .then((cfg) => setAuthMode(cfg.auth_mode))
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A page reload wipes the in-memory bearer token, but dev-mode also sets an
+  // httpOnly session cookie that survives it. Without this, the cookie fix in
+  // lib/auth.ts is invisible to the user: the backend would accept the
+  // session, but nothing ever asked it to, so the login screen showed anyway.
+  useEffect(() => {
+    let cancelled = false;
+    resumeSession()
+      .then((u) => {
+        if (cancelled) return;
+        if (u) enterApp(u);
+      })
+      .finally(() => {
+        if (!cancelled) setResuming(false);
+      });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -319,6 +346,12 @@ export default function App() {
     { id: "signout", label: "Sign out", hint: "session", run: () => void logout() },
   ];
 
+  // Nothing to render yet either way: showing Login here would flash it for
+  // the common case where the session resumes successfully a moment later.
+  if (resuming) {
+    return null;
+  }
+
   if (!user) {
     return (
       <Login
@@ -360,6 +393,7 @@ export default function App() {
         <div className="view-host" key={view}>
           {view === "admin" && <AdminPage />}
           {view === "goldens" && <GoldensPage seed={goldenSeed} />}
+          {view === "evals" && <EvalsPage />}
           {view === "settings" && <SettingsPage user={user} />}
           {view === "explore" && (
             <Suspense

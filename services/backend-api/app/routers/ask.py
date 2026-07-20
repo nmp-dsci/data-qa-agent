@@ -13,6 +13,7 @@ from sqlalchemy import text
 from starlette.background import BackgroundTask
 
 from ..agent_client import ask_agent, ask_agent_stream, title_agent
+from ..agent_version import current_agent_version_id
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
 from ..db import jsonable, rls_connection
@@ -230,11 +231,11 @@ async def _persist_answer(
                         "INSERT INTO app.query_runs "
                         "(conversation_id, message_id, user_id, dataset_id, question, "
                         "sql_text, engine, row_count, latency_ms, status, input_tokens, "
-                        "output_tokens, trace, channel) "
+                        "output_tokens, trace, channel, agent_version_id) "
                         "VALUES (:cid, :mid, :uid, "
                         "(SELECT id FROM app.datasets WHERE slug = :slug), :question, :sql, "
                         ":engine, :row_count, :lat, 'success', :in_tok, :out_tok, "
-                        "CAST(:trace AS jsonb), :channel) RETURNING id"
+                        "CAST(:trace AS jsonb), :channel, :agent_version_id) RETURNING id"
                     ),
                     {
                         "cid": conversation_id,
@@ -250,6 +251,9 @@ async def _persist_answer(
                         "out_tok": result.get("output_tokens"),
                         "trace": _json(result.get("steps") or []),
                         "channel": channel,
+                        # Which build answered this (s24 M1). None when the agent
+                        # cannot be reached — provenance never blocks an answer.
+                        "agent_version_id": await current_agent_version_id(conn),
                     },
                 )
             ).scalar_one()

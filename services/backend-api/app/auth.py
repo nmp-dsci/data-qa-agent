@@ -6,13 +6,25 @@ from typing import Any, cast
 
 import httpx
 import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, status
 from jwt import PyJWKClient
 from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from .config import settings
 from .db import rls_connection
+
+# Dev-auth stub only (auth_mode=dev): the local HS256 session token, also set
+# as an httpOnly cookie by /auth/dev-login so a page reload doesn't drop the
+# session — the frontend previously held the token only in a JS variable,
+# which a reload wipes even though the token itself is still valid for
+# jwt_ttl_seconds. Google mode is untouched: its ID token is verified as a
+# bearer header on every request, same as before. Unifying that onto the same
+# cookie would need SameSite=None (frontend and backend sit on different
+# registrable domains in prod — CloudFront vs App Runner, see
+# infra/terraform/foundations/apprunner.tf) which is a materially different
+# and riskier decision than this dev-only convenience fix.
+SESSION_COOKIE_NAME = "dp_session"
 
 
 @dataclass
@@ -183,18 +195,29 @@ def _bearer_token(authorization: str | None) -> str | None:
     return authorization.split(" ", 1)[1]
 
 
-async def _user_from_authorization(authorization: str | None) -> CurrentUser | None:
+async def _user_from_credentials(
+    authorization: str | None, session_cookie: str | None
+) -> CurrentUser | None:
+    # Header first, so nothing that already sends an explicit bearer (scripts,
+    # smoke tests, the CI journeys, Google mode's ID token) changes behaviour.
+    # The cookie is only ever populated by /auth/dev-login, so it only carries
+    # a dev-mode HS256 token — safe to decode with _dev_user unconditionally.
     token = _bearer_token(authorization)
-    if token is None:
-        return None
-    if settings.auth_mode == "google":
-        claims = await _google_verifier.verify(token)
-        return await _provision_google_user(claims)
-    return _dev_user(token)
+    if token is not None:
+        if settings.auth_mode == "google":
+            claims = await _google_verifier.verify(token)
+            return await _provision_google_user(claims)
+        return _dev_user(token)
+    if session_cookie is not None:
+        return _dev_user(session_cookie)
+    return None
 
 
-async def get_current_user(authorization: str | None = Header(default=None)) -> CurrentUser:
-    user = await _user_from_authorization(authorization)
+async def get_current_user(
+    authorization: str | None = Header(default=None),
+    session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> CurrentUser:
+    user = await _user_from_credentials(authorization, session_cookie)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return user
@@ -202,8 +225,9 @@ async def get_current_user(authorization: str | None = Header(default=None)) -> 
 
 async def get_optional_user(
     authorization: str | None = Header(default=None),
+    session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> CurrentUser | None:
-    return await _user_from_authorization(authorization)
+    return await _user_from_credentials(authorization, session_cookie)
 
 
 async def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:

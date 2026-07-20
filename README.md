@@ -94,25 +94,33 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 | Service | URL | Notes |
 |---------|-----|-------|
 | Frontend | http://localhost:5230 | React + Vite dev server |
-| Backend API | http://localhost:8000 | `/health`, `/auth/config`, `/auth/dev-login`, `/me`, `/ask`, `/events`, `/admin/*`, `/explore/*` |
-| Data agent | http://localhost:8100 | `/health`, `/agent/config`, `/agent/ask(/stream)`, `/agent/sql(/assist)`, `/agent/title`, `/agent/analysis*`, `/agent/skills*`, `/agent/schema` |
+| Backend API | http://localhost:8000 | `/health`, `/auth/config`, `/auth/dev-login`, `/auth/logout`, `/me`, `/ask`, `/events`, `/admin/*` (incl. `/admin/eval-runs*`), `/explore/*` |
+| Data agent | http://localhost:8100 | `/health`, `/agent/config`, `/agent/version`, `/agent/ask(/stream)`, `/agent/sql(/assist)`, `/agent/title`, `/agent/analysis*`, `/agent/skills*`, `/agent/eval/grade`, `/agent/schema` |
 | Postgres | `localhost:5434` | user `postgres` / `postgres`, db `dataqa` (5432/5433 were in use) |
 
 ## Project structure
 
 ```
-services/backend-api/   FastAPI: dev-auth, RLS context, /ask, /events, admin + /admin/eval-goldens endpoints
-services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails; eval graders
+services/backend-api/   FastAPI: dev-auth (+ dev-mode session cookie), RLS context, /ask, /events,
+                        admin + /admin/eval-goldens + read-only /admin/eval-runs endpoints
+services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails; eval
+                        graders + LLM-as-judge (agent/eval_graders.py, agent/eval_judge.py); build
+                        fingerprint (agent/version.py, GET /agent/version)
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
-frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore + golden authoring + event tracking
+frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore + golden authoring
+                        + Evaluations (admin, read-only) + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
 data/                   full NSW CSVs (gitignored) + data/samples/ (small committed samples)
-evals/                  journeys.yaml — user-journey evals (grows every phase)
+evals/                  journeys.yaml (user-journey evals) + cases/*.yaml (version-controlled golden pack,
+                        the source of truth for `app.eval_cases` — see `make eval-export`/`eval-import`)
 scripts/                make_samples.py, smoke_test.py, build_poa_paths.py (Explore choropleth paths,
                         see scripts/build_topojson.md), explore_parity.py + AWS deploy scripts
-                        (aws_build_push, run_job, deploy_frontend, cloud_smoke)
+                        (aws_build_push, run_job, deploy_frontend, cloud_smoke); eval_pack.py, eval_run.py,
+                        eval_compare.py, eval_diagnose.py — the eval loop's DB<->pack, runner, gate, and
+                        read-only diagnosis tools (`make eval*`)
+docs/evals/             cycle-NNN.md write-ups of real improvement attempts scored through the eval loop
 docs/chronicle/         vendored legacy NSW profiling tool, kept as the Explore reference (see its README)
 infra/terraform/        AWS deployment (live) — see infra/terraform/README.md; infra/ Bicep = Azure reference
 docker-compose.yml      the local dev stack;  Makefile has the shortcuts
@@ -167,10 +175,24 @@ Admins also get a **Golden Examples** tab for authoring *golden answers* — the
 loop scores the agent against — stage by stage (① SQL extract → ② sandbox analysis objects, built from the
 tested skill library → ③ presentation report), starting from an agent-drafted first pass. Goldens live on
 `app.eval_cases` (CRUD under `/admin/eval-goldens`; the backend proxies draft/build actions to the
-data-agent's `/agent/analysis*` and `/agent/skills*` helpers). Deterministic graders
-(`services/data-agent/agent/eval_graders.py`) compare a run's extracted values, sandbox metrics, and report
-shape against a `ready` golden; every `/ask` is stamped with an `agent_versions` build fingerprint, and
-batch scores land in `eval_runs`/`eval_results`.
+data-agent's `/agent/analysis*` and `/agent/skills*` helpers), and the dataset picker covers all three
+governed datasets (`nsw_sales`, `nsw_rent`, `nsw_yield`). Deterministic graders
+(`services/data-agent/agent/eval_graders.py`) compare a run's extracted values, built objects, and report
+shape against a `ready` golden; every `/ask` is stamped with an `agent_versions` build fingerprint (provider
++ model + prompt/skills/knowledge hashes, `GET /agent/version`).
+
+Goldens are version-controlled: `make eval-export` serialises `app.eval_cases` to `evals/cases/*.yaml` (the
+repo is the source of truth, the DB a working surface), redacting anything promoted from a real prod answer
+— remapped user, size-capped rows — and `make eval-import` seeds any environment from the pack. `make eval`
+(down to a single `CASE=`) scores the pack against the running agent, including an LLM-as-judge for insight
+quality that refuses to grade a model of its own family and records a `skipped` verdict rather than a faked
+score when no cross-family judge key is configured. `make eval-compare A=<run> B=<run>` is the regression
+gate: it blocks on **any** case flipping pass → fail, not on the headline average moving, and CI runs a
+free, zero-LLM-cost lint of the pack itself on every merge (`tests/test_eval_pack.py`). `make eval-diagnose`
+reads a scored run's traces and proposes one-lever hypotheses — read-only, it never writes a fix. An
+admin-only, read-only **Evaluations** tab shows base-vs-experiment runs, the gate verdict, and per-case
+scores linked back to their `query_runs` trace. Batch scores land in `eval_runs`/`eval_results`; real
+improvement cycles run against this loop are written up in `docs/evals/cycle-001.md`–`cycle-003.md`.
 
 A chat answer can skip straight to a draft golden: admins see a **"★ save as golden"** chip on any answered
 chat result, which copies the already-captured question/SQL/sandbox script/report into a new draft (no
@@ -187,7 +209,9 @@ Auth runs in one of two modes, chosen at runtime — the frontend reads `GET /au
 **flipping to real auth needs no rebuild**:
 
 - **`dev` (default)** — a local dev-auth stub. The login screen shows the three seeded users; the backend
-  mints a signed HS256 token. Everything runs offline.
+  mints a signed HS256 token and also sets it as an httpOnly `dp_session` cookie, so a page reload keeps the
+  session (the frontend calls `resumeSession()` on mount) instead of dropping it back to the login screen.
+  `POST /auth/logout` clears the cookie. Everything runs offline.
 - **`google`** — real **Google Sign-in** (OIDC). The frontend renders the official Google Identity Services
   button, which hands back a Google-signed RS256 ID token; the backend validates it against Google's public
   **JWKS** (no client secret needed), then **just-in-time provisions** the user into `app.users` keyed by

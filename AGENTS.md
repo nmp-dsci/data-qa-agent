@@ -169,7 +169,12 @@ in [`infra/`](./infra/README.md) stays as a reference.
 ## Security model — three stacked layers
 
 1. **AuthN** — Google issues an ID token (JWT; the dev stub mints one locally); the API verifies
-   signature/claims on every request.
+   signature/claims on every request. In `AUTH_MODE=dev` only, `POST /auth/dev-login` also sets the same
+   token as an httpOnly, `SameSite=Lax` cookie (`dp_session`) so a page reload survives without dropping the
+   session; `get_current_user` checks the `Authorization` header first and only falls back to the cookie
+   when no header is sent, so scripts/CI/smoke tests are unaffected. `POST /auth/logout` clears it. Google
+   mode and production are untouched — frontend and backend sit on different registrable domains there
+   (CloudFront vs App Runner), so a cross-site cookie would need `SameSite=None`, a separate decision.
 2. **AuthZ** — FastAPI dependencies gate endpoints by role (e.g. `analyst` vs `admin`).
 3. **Row-Level Security** — Postgres policies filter rows by `app.current_user_id`, enforced by the database
    itself so isolation holds even if app code has a bug.
@@ -317,9 +322,10 @@ Goldens are stored on `app.eval_cases` (CRUD via the backend's `/admin/eval-gold
 draft/build actions to the data-agent's `/agent/analysis*` and `/agent/skills*` helpers; the object-type
 picker is generated from the report-engine registry so it can't drift from what the renderer supports).
 Deterministic graders (`agent/eval_graders.py`) score G1 extraction values and the structural half of G3
-presentation against a `ready` golden — the LLM insight half of G3 is a judge, not code. G2 preparation and
-G4 ops, the judge itself, and the runner that drives them all land in s24 (M2); until then the graders are
-pure functions with unit tests and no caller.
+presentation against a `ready` golden — the LLM insight half of G3 is a judge, not code. G2 preparation
+(did the sandbox build the golden's objects) and G4 ops (turns, latency, tokens) are scored directly by the
+runner; a case passes when G1 is at or above threshold and the G3 report shape is well-formed — G3 insight
+is scored and recorded but does not gate on its own (s24 M2, below).
 
 **Version control (s24 M1).** Goldens live in the database *and* in the repo: `make eval-export` serialises
 `app.eval_cases` to `evals/cases/<dataset>.yaml` and `make eval-import` seeds any environment from it, so a
@@ -329,7 +335,44 @@ since G1 regrades against what `golden_sql` returns at eval time. Every `/ask` i
 `agent_versions` build fingerprint — a composed hash of provider + model + `prompt_hash` + `skills_hash` +
 `knowledge_version` (`agent/version.py`, served at `GET /agent/version`) — so a base-vs-experiment
 comparison can prove exactly one lever moved. Runs predating M1 carry a null stamp and are not backfilled.
-Batch scores land in `eval_runs`/`eval_results` (migrations 0019–0024, extended by 0029).
+Batch scores land in `eval_runs`/`eval_results` (migrations 0019–0024, extended by 0029; the pack's
+per-golden `grader` spec — which `kind` of comparison G1 dispatches on — is migration 0030). Since a golden can
+be promoted from a real prod chat answer, `scripts/eval_pack.py export` redacts it on the way into the repo
+(decision D-2): `as_user` is remapped to a seeded test identity and embedded row data is capped to a size
+budget with a digest kept for the rest, so the pack can never become a back door around RLS. The Golden
+tab's dataset picker now reads the dataset registry instead of a hardcoded `["nsw_sales", "nsw_rent"]`
+literal, which had silently locked `nsw_yield` out of golden authoring since migration 0025.
+
+**Scored runner + judge (s24 M2).** `make eval` (`scripts/eval_run.py`) drives the golden pack against the
+running agent, works down to a single case (`CASE=`), and calls the data-agent's `POST /agent/eval/grade`
+to score G1/G2/G3-structural plus the G3 insight judge. The judge (`agent/eval_judge.py`) grades a frozen,
+hashed rubric (`judge_prompt_hash`) and refuses to grade a model of its own family — with DeepSeek
+answering, only an Anthropic key can judge — recording a `skipped` verdict rather than fabricating a score
+when no cross-family judge key is configured. Insight is scored and reported but does not gate a case on
+its own; a case passes on G1 + G3-structural.
+
+**Regression gate + pack lint (s24 M3).** `make eval-compare A=<run> B=<run>` (`scripts/eval_compare.py`,
+also served at `GET /admin/eval-runs/{id}`) is the base-vs-experiment gate: it blocks on **any** case
+flipping pass → fail, regardless of what the headline averages do, and refuses to compare runs graded
+against different pack versions. `tests/test_eval_pack.py` is a separate, zero-LLM-cost CI job (the golden
+pack gate in `.github/workflows/ci.yml`) that lints the pack itself — unique case keys, dispatchable grader
+specs, no real user ids or unredacted data — and blocks every merge, unlike the scored gate which needs a
+live agent and API keys and stays a manual/CD step.
+
+**Evaluations tab (s24 M4).** An admin-only, read-only tab (`frontend/src/features/evals/EvalsPage.tsx`,
+backed by `services/backend-api/app/routers/evals.py`) shows base-vs-experiment runs, the gate verdict, and
+per-case scores linked to the `query_runs` trace that produced them. `eval_runs`/`eval_results` are written
+only by the offline runner script, never by the API, so a score can never be produced by clicking something
+in the UI.
+
+**Diagnosis (s24 M6).** `make eval-diagnose` (`scripts/eval_diagnose.py`) reads a scored run's traces and
+proposes one-lever hypotheses for the next cycle. It is read-only by design (decision D-3) — write access
+(e.g. auto-editing knowledge/prompt files) is explicitly deferred, not implemented.
+
+Three improvement cycles run against the live DeepSeek agent and the curated goldens are written up in
+`docs/evals/cycle-001.md`–`cycle-003.md`: two accepted by the gate, one deliberately rejected because it hit
+its own stated cost target but broke an accuracy case — the core proof that the gate blocks on regressions
+rather than trading them off against an average.
 
 Three more ways to seed and refine a golden (s21–s23): an admin chat answer can skip stage ① entirely — a
 "★ save as golden" chip in the chat result (shown whenever the answer has an audited `run_id`) calls

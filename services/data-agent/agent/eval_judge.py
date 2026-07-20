@@ -14,9 +14,10 @@ Three disciplines make a judge trustworthy rather than decorative:
 * **Cross-family.** The judge must not belong to the same model family as the
   agent it grades, or it rewards its own habits (self-preference bias). With
   DeepSeek answering, Claude judges.
-* **Calibration before trust.** ``make eval-calibrate`` scores a handful of
-  hand-rated answers so the judge's agreement with a human is a measured number,
-  not an assumption.
+* **Calibration before trust.** Insight is scored and reported but does not gate
+  a case on its own (``scripts/eval_run.py``) until its agreement with a human
+  rater has been measured, not assumed — that calibration step is not yet
+  built.
 """
 
 from __future__ import annotations

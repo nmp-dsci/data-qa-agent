@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s24 · Eval scoring loop — golden answers to a regression-gated flywheel</title>
+<style>
+  :root{
+    --bg:#0a0d15;--panel:#111522;--panel-2:#171c2b;--panel-3:#1e2434;--border:#242b3d;--border-2:#333d55;
+    --text:#eaecf3;--muted:#9aa4bb;--faint:#7a84a0;--code-bg:#0a0d13;
+    --accent:#d9a84e;--accent-ink:#1a1204;--accent-soft:#f2ca79;--accent-2:#7fb0ff;
+    --good:#9ece6a;--good-border:#33502f;--warn:#e0af68;--warn-border:#6b5a2a;--bad:#f2777a;--bad-border:#6b2a2a;
+    --purple:#c58fff;--info:#7dcfff;--info-border:#2f5a7a;
+    --radius:8px;--radius-lg:10px;--radius-xl:14px;
+    --sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;}
+  :where(.grid,.flex)>*{min-width:0;}
+  :where(p,h1,h2,h3,h4,li,dd,td,th,.chip){overflow-wrap:anywhere;}
+  :where(img,svg){max-width:100%;height:auto;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 22px 90px;}
+  h1{font-size:26px;line-height:1.2;margin:8px 0 6px;letter-spacing:-0.01em;}
+  h2{font-size:19px;margin:0 0 4px;letter-spacing:-0.01em;}
+  h3{font-size:15px;margin:0 0 4px;}
+  h4{font-size:13px;margin:0 0 4px;}
+  section{margin-top:34px;}
+  p{margin:8px 0;}
+  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:var(--accent);font-weight:600;}
+  .sub{color:var(--muted);max-width:64rem;}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;color:var(--accent-soft);white-space:nowrap;}
+  code.w{white-space:normal;}
+  a{color:var(--accent-2);}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .chip{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .chip.gold{color:var(--accent);border-color:#6b5a2a;background:rgba(217,168,78,0.08);}
+  .chip.blue{color:var(--accent-2);border-color:var(--info-border);background:rgba(127,176,255,0.08);}
+  .chip.good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .chip.bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px 20px;}
+  .panel.tight{padding:14px 16px;}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;}
+  .hr{height:1px;background:var(--border);margin:26px 0 0;}
+
+  .thesis{margin-top:18px;border-left:3px solid var(--accent);background:linear-gradient(90deg,rgba(217,168,78,0.09),rgba(217,168,78,0));padding:14px 18px;border-radius:0 var(--radius-lg) var(--radius-lg) 0;}
+  .thesis .q{font-size:17px;line-height:1.45;}
+
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px;}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;padding:0 10px 7px;border-bottom:1px solid var(--border);}
+  td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .st{font-family:var(--mono);font-size:11px;white-space:nowrap;padding:2px 8px;border-radius:5px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .st.ok{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .st.no{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .st.part{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,0.08);}
+
+  .grid{display:grid;gap:14px;}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr));}
+  @media(max-width:880px){.g2,.g3{grid-template-columns:1fr;}}
+
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:13px 15px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.6;margin:10px 0 0;color:#cfd6e6;}
+  pre .c{color:var(--faint);}
+  pre .g{color:var(--good);}
+  pre .r{color:var(--bad);}
+  pre .y{color:var(--accent);}
+  pre .b{color:var(--accent-2);}
+
+  .mmd{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:16px;margin-top:14px;overflow-x:auto;}
+  .mmd svg{display:block;margin:0 auto;}
+
+  .num{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:6px;background:var(--panel-3);border:1px solid var(--border-2);font-family:var(--mono);font-size:11px;color:var(--accent);flex:none;}
+  .step{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--border);}
+  .step:last-child{border-bottom:none;}
+
+  /* app UI mock */
+  .mock{border:1px solid var(--border-2);border-radius:var(--radius-lg);background:var(--bg);overflow:hidden;margin-top:12px;}
+  .mock-top{display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1px solid var(--border);background:var(--panel);}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--panel-3);border:1px solid var(--border-2);flex:none;}
+  .mock-body{display:grid;grid-template-columns:132px minmax(0,1fr);}
+  @media(max-width:760px){.mock-body{grid-template-columns:1fr;}}
+  .rail{background:var(--panel);border-right:1px solid var(--border);padding:9px 7px;font-size:11.5px;}
+  @media(max-width:760px){.rail{border-right:none;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;}}
+  .rail div{padding:6px 9px;border-radius:6px;color:var(--muted);white-space:nowrap;}
+  .rail div.on{background:rgba(217,168,78,0.11);color:var(--accent);border:1px solid #6b5a2a;}
+  .stage{padding:15px;min-width:0;}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;}
+  @media(max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:10px 11px;}
+  .kpi .v{font-size:19px;font-family:var(--mono);letter-spacing:-0.02em;margin-top:3px;}
+  .kpi .d{font-size:10.5px;font-family:var(--mono);margin-top:2px;}
+  .up{color:var(--good);} .dn{color:var(--bad);} .flat{color:var(--faint);}
+  .bar{height:7px;border-radius:4px;background:var(--panel-3);overflow:hidden;margin-top:5px;}
+  .bar i{display:block;height:100%;border-radius:4px;background:var(--accent);}
+  .bar i.g{background:var(--good);}
+  .gate{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:6px;font-family:var(--mono);font-size:11.5px;border:1px solid var(--good-border);background:rgba(158,206,106,0.09);color:var(--good);}
+
+  .dec{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:16px 18px;margin-top:14px;}
+  .dec h3{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;}
+  .opts{display:grid;gap:8px;margin-top:11px;}
+  .opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2);cursor:pointer;}
+  .opt:hover{border-color:var(--border-2);}
+  .opt input{margin-top:3px;flex:none;accent-color:var(--accent);}
+  .opt .t{font-weight:600;font-size:13.5px;}
+  .opt .why{color:var(--muted);font-size:12.5px;margin-top:2px;}
+  .rec{font-family:var(--mono);font-size:10px;color:var(--accent);border:1px solid #6b5a2a;background:rgba(217,168,78,0.08);border-radius:999px;padding:1px 7px;margin-left:6px;white-space:nowrap;}
+  .qbtn{margin-top:12px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius);padding:8px 15px;font-family:var(--sans);font-size:13px;font-weight:650;cursor:pointer;}
+  .qbtn:hover{background:var(--accent-soft);}
+
+  ul{margin:8px 0;padding-left:19px;}
+  li{margin:4px 0;}
+  .risk{border-left:3px solid var(--bad-border);padding-left:13px;margin-top:14px;}
+  .risk h4{color:var(--bad);}
+  .note{border-left:3px solid var(--info-border);padding-left:13px;margin-top:14px;}
+  .note h4{color:var(--info);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">s24 · data-qa-agent · branch <code>s24-eval-scoring-loop</code></div>
+  <h1>The eval scoring loop</h1>
+  <p class="sub">Turning golden answers into a versioned, scored, regression-gated flywheel — with a teacher agent that
+  proposes improvements and has to beat the gate to land. This plan <strong>extends s14</strong> (whose decisions D1–D7 stay
+  locked) rather than replacing it; it adds the version-control spine, dev+prod capture, an N=1 scoring path, and the
+  Evaluations tab.</p>
+
+  <div class="chips">
+    <span class="chip gold">extends s14</span>
+    <span class="chip">closes ROADMAP #2</span>
+    <span class="chip blue">Evaluations tab</span>
+    <span class="chip">dev + prod capture</span>
+    <span class="chip">works at N=1</span>
+  </div>
+
+  <div class="thesis">
+    <div class="q">“Evals are a gate, not a vibe.”</div>
+    <p class="sub" style="margin-bottom:0">This build turns the data-agent's eval harness into a versioned, scored,
+    regression-gated loop — closing the one row the evidence scorecard flags as the
+    <strong>clearest senior-LLMOps signal</strong>, and the only build it marks <em>Recommended first</em>.</p>
+  </div>
+
+  <!-- ================= 01 ================= -->
+  <section>
+    <div class="kicker">01 · baseline</div>
+    <h2>What actually exists today (verified, not documented)</h2>
+    <p class="sub">Every row below was checked against the code and the running database on <code>main</code>
+    (<code>1862f08</code>). Two rows contradict the project's own docs — both are corrected as part of M1, because a plan
+    built on a claimed-but-absent foundation fails silently.</p>
+
+    <div class="tw">
+    <table>
+      <thead><tr><th>Component</th><th>State</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Golden authoring UI + API</strong></td><td><span class="st ok">built</span></td>
+          <td><code>GoldensPage.tsx</code> (2,413 ln), <code>routers/goldens.py</code> (631 ln, 16 endpoints incl.
+          <code>/from-run</code>, <code>/draft/stream</code>)</td></tr>
+        <tr><td><strong>Schema spine</strong> — <code>eval_cases</code>, <code>eval_runs</code>,
+          <code>eval_results</code>, <code>agent_versions</code>, <code>query_runs.channel</code></td>
+          <td><span class="st part">schema only</span></td>
+          <td>migrations 0019–0023. <strong>0 rows in <code>eval_runs</code> / <code>agent_versions</code>; no reader,
+          no writer anywhere in the codebase</strong></td></tr>
+        <tr><td><strong>Deterministic graders</strong> G1 + G3-structural</td><td><span class="st part">orphaned</span></td>
+          <td><code>agent/eval_graders.py</code> — imported <em>only</em> by <code>tests/test_eval_graders.py</code></td></tr>
+        <tr><td><code>agent_version</code> stamp on every <code>/ask</code></td><td><span class="st no">not built</span></td>
+          <td>AGENTS.md:322 claims it ships. Reality: <strong>0 of 1,137 <code>query_runs</code> carry an
+          <code>agent_version_id</code></strong></td></tr>
+        <tr><td><strong>LLM judge</strong> (G3 insight half)</td><td><span class="st no">not built</span></td>
+          <td>ROADMAP.md:10 lists it under “Already shipped”. No judge module, no rubric file;
+          <code>judge_model</code>/<code>judge_prompt_hash</code> columns unused</td></tr>
+        <tr><td><strong>Eval runner</strong>, <code>compare.py</code>, <code>make eval</code></td><td><span class="st no">not built</span></td>
+          <td>no runner in <code>services/</code> or <code>scripts/</code>; Makefile has no eval target</td></tr>
+        <tr><td><strong>Evaluations tab</strong></td><td><span class="st no">not built</span></td>
+          <td><code>NavRail.tsx:20</code> View union has no <code>evals</code>; <code>api.ts</code> has 15
+          <code>/admin/eval-goldens</code> calls and zero <code>/admin/eval-runs</code></td></tr>
+        <tr><td><strong>Goldens in version control</strong></td><td><span class="st no">not built</span></td>
+          <td>no <code>evals/cases/</code>; goldens exist only in a local Postgres — invisible to CI and to a fresh clone</td></tr>
+        <tr><td><code>nsw_yield</code> authorable</td><td><span class="st no">blocked</span></td>
+          <td><code>GoldensPage.tsx:41</code> — <code class="w">const DATASETS = ["nsw_sales", "nsw_rent"]</code></td></tr>
+        <tr><td><strong>Golden corpus</strong></td><td><span class="st no">3 drafts</span></td>
+          <td>all <code>authoring_status='draft'</code>, all tagged <code>nsw_sales</code>, two are duplicate rent
+          questions, zero yield</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="note">
+      <h4>The honest summary</h4>
+      <p class="sub" style="margin-bottom:0">The skeleton is complete and well-designed; nothing has muscle. That is
+      genuinely good news — the schema decisions (composed behaviour hash, run/result split, channel column) are the part
+      that is expensive to get wrong, and they are already right. This plan writes the code that fills them.</p>
+    </div>
+  </section>
+
+  <!-- ================= 02 ================= -->
+  <section>
+    <div class="kicker">02 · the loop</div>
+    <h2>What we are building</h2>
+    <p class="sub">One cycle: goldens are captured wherever the admin is (dev or prod), versioned into the repo, replayed
+    against a fingerprinted agent build, scored, and gated. The teacher agent joins the same loop as just another
+    proposer that has to pass the gate.</p>
+
+    <div class="mmd"><pre class="mmd-src" style="background:none;border:none;padding:0;margin:0">flowchart TD
+  subgraph CAP["① capture — wherever the admin is"]
+    D["Dev · Golden tab<br/>author stages ①②③"]
+    P["Prod · ★ save as golden<br/>promote a real answer"]
+  end
+  D --> EX["export<br/>make eval-export"]
+  P --> EX
+  EX --> PACK["② evals/cases/*.yaml<br/><b>version-controlled pack</b><br/>reviewed in a PR"]
+  PACK --> IMP["import → any DB<br/>dev · CI · prod"]
+  IMP --> RUN["③ runner<br/>replay through real /ask<br/>channel=eval"]
+  AV["agent_version<br/>composed behaviour hash"] --> RUN
+  RUN --> SC["④ score<br/>G1 G2 G3 G4 + judge"]
+  SC --> ST[("eval_runs<br/>eval_results")]
+  ST --> GATE{"⑤ regression gate<br/>target improves &amp;<br/>0 pass→fail"}
+  GATE -->|pass| SHIP["merge / promote"]
+  GATE -->|fail| BLOCK["blocked"]
+  ST --> TAB["⑥ Evaluations tab<br/>trend · per-tier · compare"]
+  ST --> TEACH["⑦ teacher agent<br/>read traces → one lever"]
+  TEACH --> PR["PR + cycle report"]
+  PR --> AV
+  BLOCK -.-> TEACH
+
+  classDef cap fill:#171c2b,stroke:#6b5a2a,color:#f2ca79
+  classDef store fill:#12151c,stroke:#2f5a7a,color:#7dcfff
+  classDef gate fill:#1e2434,stroke:#6b5a2a,color:#d9a84e
+  class D,P cap
+  class ST,PACK store
+  class GATE gate</pre></div>
+
+    <p class="sub">The three things that make this a <em>loop</em> rather than a test suite: the pack is versioned so a
+    score is reproducible; the agent build is fingerprinted so an improvement is attributable to <strong>one lever</strong>;
+    and the gate is symmetric — it blocks a regression as readily as it admits a gain.</p>
+  </section>
+
+  <!-- ================= 03 ================= -->
+  <section>
+    <div class="kicker">03 · version control</div>
+    <h2>The LLMOps spine: what is versioned, and where truth lives</h2>
+    <p class="sub">Your requirement is “full version control LLMOps”. Concretely that means four independently-versioned
+    artifacts, all stamped onto every score, so any number in the dashboard can be traced back to the exact inputs that
+    produced it.</p>
+
+    <div class="grid g2">
+      <div class="panel">
+        <div class="lbl">Versioned artifact</div>
+        <table style="margin-top:8px">
+          <tbody>
+            <tr><td><code>pack_version</code></td><td class="sub" style="font-size:12.5px">content hash of the golden pack YAML — <em>what we measured against</em></td></tr>
+            <tr><td><code>agent_version</code></td><td class="sub" style="font-size:12.5px">provider + model_id + prompt_hash + skills_hash + knowledge_version + image_tag + git_sha — <em>what we measured</em></td></tr>
+            <tr><td><code>judge_prompt_hash</code><br><code>judge_model</code></td><td class="sub" style="font-size:12.5px">frozen rubric + judge identity — <em>how we measured</em></td></tr>
+            <tr><td><code>eval_run.id</code></td><td class="sub" style="font-size:12.5px">joins all three to per-case results and back to <code>query_runs</code> traces</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <div class="lbl">Source-of-truth rule</div>
+        <p class="sub" style="margin-top:8px"><strong>The repo is the source of truth. The database is a working
+        surface.</strong></p>
+        <ul class="sub" style="font-size:13px">
+          <li>Admins author in whichever DB they are in (dev or prod) — that is the ergonomic bit.</li>
+          <li><code>make eval-export</code> serialises <code>app.eval_cases</code> → <code>evals/cases/&lt;dataset&gt;.yaml</code>.</li>
+          <li>That YAML lands in a <strong>PR and gets reviewed</strong> — a golden is a specification, so it deserves the
+          same review as code.</li>
+          <li><code>make eval-import</code> seeds any environment from the pack: a fresh clone, CI's ephemeral Postgres, or prod.</li>
+        </ul>
+        <p class="sub" style="font-size:13px;margin-bottom:0">Without this, a golden authored in prod is invisible to CI —
+        which is exactly why evals cannot gate anything today.</p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px">
+      <div class="lbl">Pack shape — <code>evals/cases/nsw_yield.yaml</code></div>
+      <pre><span class="c"># pack_version is the content hash of this file, recorded on every eval_run</span>
+pack: nsw_property
+dataset: nsw_yield
+cases:
+  - id: yield-postcode-trend-001
+    tier: T2                      <span class="c"># T1 lookup · T2 trend · T3 multi-mart · T4 ambiguous · T5 adversarial</span>
+    question: <span class="g">"How has gross rental yield moved in postcode 2077 over the last 2 years?"</span>
+    as_user: user1                <span class="c"># RLS dimension — the golden is user-scoped</span>
+    holdout: false                <span class="c"># set at authoring time, before any score is seen</span>
+    origin_env: prod              <span class="c"># provenance: captured from a real prod answer</span>
+    tags: [yield, trend, postcode]
+    golden_sql: |
+      select month, gross_yield_pct from marts.property_yield ...
+    golden_objects:               <span class="c"># stage ② — named presentation objects</span>
+      - name: yield_trend
+        type: line
+    golden_report: { pages: [...] }   <span class="c"># stage ③ — the delivered shape</span></pre>
+    </div>
+  </section>
+
+  <!-- ================= 04 ================= -->
+  <section>
+    <div class="kicker">04 · M1 foundation</div>
+    <h2>The behaviour hash — the piece everything else depends on</h2>
+    <p class="sub">An eval score is meaningless unless you know precisely which build produced it. The schema for this is
+    already perfect; the writer does not exist. This is the first commit.</p>
+
+    <div class="grid g3">
+      <div class="panel tight"><div class="lbl">exists today</div>
+        <p class="sub" style="font-size:13px;margin-bottom:0"><code>knowledge_version()</code> — a content hash of the
+        knowledge tree, at <code>agent/knowledge.py:142</code>. Already computed and already returned by
+        <code>main.py:322</code>.</p></div>
+      <div class="panel tight"><div class="lbl">to build</div>
+        <p class="sub" style="font-size:13px;margin-bottom:0"><code>prompt_hash</code> and <code>skills_hash</code> —
+        content hashes over the system prompt and <code>agent/skills/*.py</code>. Same pattern as
+        <code>knowledge_version()</code>.</p></div>
+      <div class="panel tight"><div class="lbl">to wire</div>
+        <p class="sub" style="font-size:13px;margin-bottom:0">Upsert an <code>agent_versions</code> row at agent start-up;
+        stamp <code>agent_version_id</code> on every <code>query_runs</code> insert. The FK is already there.</p></div>
+    </div>
+
+    <p class="sub" style="margin-top:14px">Because the hash is <em>composed</em>, a comparison can prove that exactly one
+    lever moved — the discipline that separates a real improvement cycle from tuning noise:</p>
+    <pre><span class="b">A</span> av-8c41f2a  deepseek-chat · prompt p-3f · skills s-11 · <span class="y">kv-A</span> · img 2026.07.20
+<span class="b">B</span> av-d907e1b  deepseek-chat · prompt p-3f · skills s-11 · <span class="y">kv-B</span> · img 2026.07.20
+                                                    <span class="g">^^^^ one lever: +knowledge/rental-yield-method.md</span></pre>
+  </section>
+
+  <!-- ================= 05 ================= -->
+  <section>
+    <div class="kicker">05 · capture</div>
+    <h2>Golden capture in dev <em>and</em> prod</h2>
+    <p class="sub">Both paths already largely exist — s21 shipped chat→golden promotion. What is missing is provenance and
+    the yield dataset.</p>
+
+    <div class="grid g2">
+      <div class="panel">
+        <div class="lbl">Dev · deliberate authoring</div>
+        <h3 style="margin-top:6px">Golden tab, stages ①②③</h3>
+        <p class="sub" style="font-size:13px">Admin writes the question, drafts SQL, builds named objects (NL or the
+        advanced form), lays out the report, marks it <code>ready</code>. Fully built.</p>
+        <p class="sub" style="font-size:13px;margin-bottom:0"><strong>Fix required:</strong> source the dataset picker from
+        <code>listAdminDatasets()</code> (<code>api.ts:739</code>) instead of the hardcoded array, so
+        <code>nsw_yield</code> — a registered dataset since migration 0025 — becomes authorable and the list can never
+        drift from the registry again.</p>
+      </div>
+      <div class="panel">
+        <div class="lbl">Prod · opportunistic capture</div>
+        <h3 style="margin-top:6px">★ save as golden</h3>
+        <p class="sub" style="font-size:13px">A real answer that came out right is the cheapest golden there is — the SQL,
+        sandbox script and report are already on <code>query_runs</code>. One click copies them into a draft. Shipped in s21.</p>
+        <p class="sub" style="font-size:13px;margin-bottom:0"><strong>Add:</strong> an <code>origin_env</code> column
+        (<code>dev</code>|<code>prod</code>) so the pack records where a case came from, and a
+        <strong>redaction pass on export</strong> — see the PII risk in §11.</p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px">
+      <div class="lbl">Also in this phase — curate what exists</div>
+      <p class="sub" style="font-size:13px;margin-bottom:0">Dedupe the two identical rent goldens, retag them
+      <code>nsw_rent</code>, and promote to <code>ready</code>. Small, but the mis-tagging is the exact failure mode the
+      registry-sourced picker prevents — worth fixing in the same commit so the fix is visibly motivated.</p>
+    </div>
+  </section>
+
+  <!-- ================= 06 ================= -->
+  <section>
+    <div class="kicker">06 · scoring</div>
+    <h2>It has to work at N = 1</h2>
+    <p class="sub">Your explicit requirement, and the right one — a loop you cannot run until you have 80 cases is a loop
+    you will never start. The runner takes a filter and scores whatever it matches, down to a single case.</p>
+
+    <pre><span class="c"># the whole pack</span>
+make eval
+
+<span class="c"># one dataset · one tier · one case — the inner diagnose→fix loop</span>
+make eval DATASET=nsw_yield
+make eval DATASET=nsw_yield TIER=T2
+make eval CASE=yield-postcode-trend-001</pre>
+
+    <p class="sub" style="margin-top:14px">Two things degrade gracefully rather than erroring when the corpus is tiny, and
+    the report says so out loud:</p>
+    <ul class="sub">
+      <li><strong>The holdout slice is skipped</strong> below ~10 cases and the run is labelled
+        <code>generalisation: unproven</code>. A holdout of one case is theatre.</li>
+      <li><strong>The regression gate still applies</strong> — “no case flips pass→fail” is meaningful at any N, including
+        one. This is the half of the gate that works from day one.</li>
+    </ul>
+
+    <div class="note">
+      <h4>Why this matters beyond convenience</h4>
+      <p class="sub" style="margin-bottom:0">Scoring a single golden end-to-end is what proves the wiring: pack → runner →
+      real <code>/ask</code> → graders → judge → <code>eval_results</code> → gate → dashboard. Once one case flows through,
+      adding the 80th is data entry, not engineering. <strong>M2 ships when one yield golden scores end-to-end.</strong></p>
+    </div>
+  </section>
+
+  <!-- ================= 07 ================= -->
+  <section>
+    <div class="kicker">07 · surface</div>
+    <h2>The Evaluations tab</h2>
+    <p class="sub">Admin-only, alongside Golden Examples. Rendered below in the app's own design system — the same tokens
+    <code>styles.css</code> defines, so this is what it will actually look like. Nav wiring is a known pattern:
+    <code>NavRail.tsx:20</code> View union → <code>:26</code> nav entry with <code>adminOnly</code> →
+    <code>App.tsx:127-128</code>.</p>
+
+    <div class="mock">
+      <div class="mock-top"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span style="font-family:var(--mono);font-size:11.5px;color:var(--faint)">Data Pilot · Evaluations</span></div>
+      <div class="mock-body">
+        <div class="rail">
+          <div>Chat</div><div>Explore</div><div>SQL</div><div>Golden Examples</div>
+          <div class="on">Evaluations</div><div>Admin</div><div>Settings</div>
+        </div>
+        <div class="stage">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+            <div>
+              <div class="lbl">run #12 · pack nsw_property @ pv-4a91 · 51 cases</div>
+              <div style="font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:3px">
+                <span style="color:var(--accent-2)">B</span> av-d907e1b vs <span style="color:var(--accent-2)">A</span> av-8c41f2a
+                · Δ <span style="color:var(--good)">+knowledge/rental-yield-method.md</span></div>
+            </div>
+            <div class="gate">● gate PASS · 0 flipped pass→fail</div>
+          </div>
+
+          <div class="kpis" style="margin-top:13px">
+            <div class="kpi"><div class="lbl">overall pass</div><div class="v">88%</div>
+              <div class="d up">▲ +7 cases</div><div class="bar"><i class="g" style="width:88%"></i></div></div>
+            <div class="kpi"><div class="lbl">G1 extraction</div><div class="v">0.86</div>
+              <div class="d up">▲ +0.12</div><div class="bar"><i class="g" style="width:86%"></i></div></div>
+            <div class="kpi"><div class="lbl">G3 insight</div><div class="v">7.7</div>
+              <div class="d up">▲ +0.6</div><div class="bar"><i style="width:77%"></i></div></div>
+            <div class="kpi"><div class="lbl">G4 turns</div><div class="v">6.7</div>
+              <div class="d up">▲ cheaper</div><div class="bar"><i style="width:45%"></i></div></div>
+          </div>
+
+          <div style="margin-top:14px" class="lbl">by tier — the failure cluster is where the lever gets chosen</div>
+          <div class="tw">
+          <table style="font-size:12.5px">
+            <thead><tr><th>tier</th><th>A</th><th>B</th><th style="width:38%">movement</th><th>note</th></tr></thead>
+            <tbody>
+              <tr><td>T1 lookup</td><td>10/10</td><td>10/10</td><td><div class="bar"><i class="g" style="width:100%"></i></div></td><td class="flat">=</td></tr>
+              <tr><td>T2 trend</td><td>11/12</td><td>11/12</td><td><div class="bar"><i class="g" style="width:92%"></i></div></td><td class="flat">=</td></tr>
+              <tr><td><strong>T3 multi-mart</strong></td><td>4/10</td><td><strong>9/10</strong></td><td><div class="bar"><i class="g" style="width:90%"></i></div></td><td class="up">★ target cluster</td></tr>
+              <tr><td>T5 adversarial</td><td>6/8</td><td>6/8</td><td><div class="bar"><i style="width:75%"></i></div></td><td class="flat">=</td></tr>
+              <tr><td>holdout (10)</td><td>7/10</td><td>9/10</td><td><div class="bar"><i class="g" style="width:90%"></i></div></td><td class="up">generalises</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="sub" style="margin-top:12px">Three views, one tab: <strong>trend</strong> (pass-rate and G-means over runs),
+    <strong>compare</strong> (base vs proposed, as mocked), and <strong>cases</strong> (per-case scores, each linking to its
+    <code>query_runs</code> trace). Backed by a new <code>GET /admin/eval-runs</code> — the first read endpoint these tables
+    have ever had.</p>
+  </section>
+
+  <!-- ================= 08 ================= -->
+  <section>
+    <div class="kicker">08 · gates</div>
+    <h2>Where it runs — and what blocks a merge</h2>
+    <p class="sub">s14's decision D4 stays locked: the expensive scored run is not a PR gate. Two tiers, different costs,
+    different jobs.</p>
+
+    <div class="tw">
+    <table>
+      <thead><tr><th>Surface</th><th>What runs</th><th>Cost</th><th>Blocks?</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Every PR</strong><br><span class="st">ci.yml</span></td>
+          <td><strong>Deterministic only — zero LLM calls.</strong> <code>tests/test_eval_pack.py</code>: pack schema lint,
+          unique ids, <code>EXPLAIN</code> every <code>golden_sql</code> against the migrated schema, validate the report
+          contract. Catches golden rot for free.</td>
+          <td><span class="st ok">free</span></td>
+          <td><span class="st ok">yes — blocks merge</span></td>
+        </tr>
+        <tr>
+          <td><strong>Local / manual</strong><br><span class="st">make eval</span></td>
+          <td>The real loop. Full pack (or one case) through real <code>/ask</code> with <code>channel=eval</code> → G1–G4
+          incl. judge → persisted, stamped, gated.</td>
+          <td><span class="st part">single-digit ¢/run</span></td>
+          <td>developer judgment</td>
+        </tr>
+        <tr>
+          <td><strong>Nightly</strong><br><span class="st">eval-nightly.yml</span></td>
+          <td>Same scored run on a schedule, alerting on pass-rate drop. Reuses the local entrypoint and the GH-secrets
+          pattern the deploy smoke test already uses.</td>
+          <td><span class="st part">~¢/night</span></td>
+          <td>alert, not gate <span class="chip" style="margin-left:4px">decision D-4</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p class="sub">The pack-lint gate is the sleeper value here: <em>a golden that cannot regenerate its own answer fails
+    CI before it is ever used to grade the agent.</em> It costs nothing and it is what stops the corpus rotting as the
+    schema evolves.</p>
+  </section>
+
+  <!-- ================= 09 ================= -->
+  <section>
+    <div class="kicker">09 · auto-research</div>
+    <h2>The teacher agent</h2>
+    <p class="sub">The part you called auto-research. It is deliberately last, because it is the only component whose
+    correctness cannot be checked by inspection — it has to be checked by the gate, which must therefore exist and be
+    trustworthy first.</p>
+
+    <div class="grid g2">
+      <div class="panel">
+        <div class="lbl">step 1 — read-only diagnosis</div>
+        <h3 style="margin-top:6px">Safe, and useful immediately</h3>
+        <p class="sub" style="font-size:13px;margin-bottom:0">A Claude Agent SDK agent with <strong>read access only</strong>
+        to <code>eval_results</code> + joined <code>query_runs</code> traces. It clusters failures by tier × grader × tag
+        and reports hypotheses. A human picks the lever. Useful from the very first scored run; cannot break anything.</p>
+      </div>
+      <div class="panel">
+        <div class="lbl">step 2 — propose one lever</div>
+        <h3 style="margin-top:6px">Gated, auditable</h3>
+        <p class="sub" style="font-size:13px;margin-bottom:0">Same agent, now permitted to write <strong>exactly one</strong>
+        intervention — a knowledge page, a skill, or the prompt — then trigger a candidate run. The composed hash proves it
+        moved one lever. The gate decides. An accepted change arrives as a <strong>PR carrying
+        <code>docs/evals/cycle-00N.md</code></strong>; a human reviews the diff.</p>
+      </div>
+    </div>
+
+    <p class="sub" style="margin-top:14px">Prerequisites this plan deliberately creates — the teacher is not safe without
+    them: a broad-enough pack, a calibrated cross-family judge, the <code>agent_version</code> stamp, per-run cost caps,
+    and one-change-per-cycle discipline.</p>
+
+    <div class="risk">
+      <h4>Rebutting “eval-tuning theatre”</h4>
+      <p class="sub" style="margin-bottom:0">The obvious objection to an agent that optimises against its own scoreboard is
+      that it learns the scoreboard. Three structural defences, all of which must be in place <em>before</em> step 2:
+      the intervention is one auditable file tied to a hash; ~20% of cases are a holdout that never steers a fix but is
+      still scored; and the regression gate makes “fixed yield, broke trends” impossible to ship silently.</p>
+    </div>
+  </section>
+
+  <!-- ================= 10 ================= -->
+  <section>
+    <div class="kicker">10 · delivery</div>
+    <h2>Phases</h2>
+    <p class="sub">Ordered so that something is provable at the end of each. M1–M3 are the spine; M2 is the milestone that
+    turns a test suite into a loop.</p>
+
+    <div class="panel">
+      <div class="step"><span class="num">M1</span><div>
+        <h3>Foundation — the stamp and the pack</h3>
+        <p class="sub" style="font-size:13px;margin-bottom:0"><code>prompt_hash</code> + <code>skills_hash</code>;
+        upsert <code>agent_versions</code> and stamp every <code>query_runs</code>. Add <code>origin_env</code>.
+        <code>make eval-export</code> / <code>eval-import</code> + <code>evals/cases/*.yaml</code>. Unblock
+        <code>nsw_yield</code> in the picker; curate the 3 existing goldens. Correct the two doc overclaims.
+        <span class="chip good" style="margin-left:4px">provable: a golden round-trips DB → YAML → fresh DB</span></p></div></div>
+
+      <div class="step"><span class="num">M2</span><div>
+        <h3>Runner + judge — score one golden end to end</h3>
+        <p class="sub" style="font-size:13px;margin-bottom:0">Runner replays a case through real <code>/ask</code>
+        (<code>channel=eval</code>); wire the orphaned graders; add G2 preparation + G4 ops; frozen judge rubric with
+        <code>judge_prompt_hash</code>; write <code>eval_runs</code>/<code>eval_results</code>. <code>make eval CASE=…</code>.
+        <span class="chip good" style="margin-left:4px">provable: one yield golden scores, N=1</span></p></div></div>
+
+      <div class="step"><span class="num">M3</span><div>
+        <h3>Compare + gate</h3>
+        <p class="sub" style="font-size:13px;margin-bottom:0"><code>make eval-compare A=… B=…</code>; the regression gate;
+        <code>tests/test_eval_pack.py</code> wired into <code>ci.yml</code> as a blocking, zero-cost job.
+        <span class="chip good" style="margin-left:4px">provable: a deliberate regression is blocked</span></p></div></div>
+
+      <div class="step"><span class="num">M4</span><div>
+        <h3>Evaluations tab</h3>
+        <p class="sub" style="font-size:13px;margin-bottom:0"><code>GET /admin/eval-runs</code>; the three views; nav wiring;
+        Playwright e2e reusing the <code>goldens.spec.ts</code> pattern.
+        <span class="chip good" style="margin-left:4px">provable: a run is readable without psql</span></p></div></div>
+
+      <div class="step"><span class="num">M5</span><div>
+        <h3>Corpus + two proven cycles</h3>
+        <p class="sub" style="font-size:13px;margin-bottom:0">Author the pack out across sales / rent / yield, tiers T1–T5,
+        holdout marked blind. Run two documented improvement cycles → <code>docs/evals/cycle-001.md</code>, <code>-002.md</code>.
+        <span class="chip good" style="margin-left:4px">provable: the loop trains the agent</span></p></div></div>
+
+      <div class="step"><span class="num">M6</span><div>
+        <h3>Teacher agent</h3>
+        <p class="sub" style="font-size:13px;margin-bottom:0">Read-only diagnosis first; then one-lever proposals behind the
+        gate, landing as PRs with cycle reports.
+        <span class="chip good" style="margin-left:4px">provable: an agent-authored PR passes the gate</span></p></div></div>
+    </div>
+  </section>
+
+  <!-- ================= 11 ================= -->
+  <section>
+    <div class="kicker">11 · why this build</div>
+    <h2>What it evidences</h2>
+    <p class="sub">Mapped against the evidence scorecard in <code>ai-engineer-fit/</code>. Eval-gated CI is the only build
+    there marked <em>Recommended first</em> — its stated rationale: <em>“you're already in the eval loop; clearest
+    senior-LLMOps signal; makes red-team &amp; A/B trivial to bolt on.”</em></p>
+
+    <div class="tw">
+    <table>
+      <thead><tr><th>Ships</th><th>Scorecard row</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td>Regression gates in CI</td><td><strong>“Eval-gated CI (regression gates)”</strong> — <em>Google “evaluation pipelines” · LLMOps</em></td><td><span class="st ok">closes a named GAP</span></td></tr>
+        <tr><td>Versioned packs + composed hash + promotion</td><td>MLOps/LLMOps — scored 60, noted <em>“no registry/rollback”</em></td><td><span class="st ok">fills the named hole</span></td></tr>
+        <tr><td>Evaluations dashboard + G4 cost metrics</td><td>“Model &amp; prompt A/B, cost-latency Pareto”</td><td><span class="st part">partial → proven</span></td></tr>
+        <tr><td>Golden capture dev+prod</td><td>“Eval harness &amp; golden datasets” — currently <em>“(in progress)”</em></td><td><span class="st ok">→ fully shipped</span></td></tr>
+        <tr><td>Scored runner + frozen rubric</td><td>“LLM-as-judge”, “Slice-based error analysis”</td><td><span class="st ok">reinforces</span></td></tr>
+        <tr><td>Teacher agent</td><td>“Multi-agent systems” — as a <em>production</em> instance</td><td><span class="st ok">reinforces</span></td></tr>
+        <tr><td>T5 adversarial tier (cheap bolt-on)</td><td>“AI security &amp; prompt-injection testing”</td><td><span class="st part">partial → proven</span></td></tr>
+        <tr><td>Goldens as NL→SQL training pairs</td><td>“Fine-tuning (LoRA/PEFT)”</td><td><span class="st part">enables only — not closed</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="note">
+      <h4>What this build does <em>not</em> close — do not overclaim</h4>
+      <p class="sub" style="margin-bottom:0">GCP/Vertex · Kubernetes · Spark/Databricks · Azure · PyTorch · a shipped MCP
+      server. Those stay open rows. Fine-tuning is <em>enabled</em> by the golden corpus, not closed by it.</p>
+    </div>
+
+    <p class="sub" style="margin-top:14px">The resume bullet this unlocks on ship day, in the tool → metric-vs-baseline →
+    consequence form: <em>“Built a regression-gated eval loop (golden packs, composed build hashes, LLM-as-judge) that
+    lifted multi-mart answer accuracy from 40% to 90% against a versioned baseline and blocks any merge that regresses
+    it.”</em> The numbers are placeholders until M5 produces real ones — and the plan is structured so they will be real.</p>
+  </section>
+
+  <!-- ================= 12 ================= -->
+  <section>
+    <div class="kicker">12 · risks</div>
+    <h2>Failure modes and migration concerns</h2>
+
+    <div class="grid g2">
+      <div class="risk"><h4>Prod goldens can leak PII into git</h4>
+        <p class="sub" style="font-size:13px;margin-bottom:0">A golden captured from prod carries a real user's question and
+        real result rows into a version-controlled file. For a product whose whole thesis is RLS governance, that is the
+        sharpest own-goal available. <strong>Mitigation:</strong> export redacts by default — questions reviewed,
+        <code>golden_data</code> capped and scrubbed, <code>as_user</code> mapped to a seeded test identity, never a real
+        user id. Gate it in the pack-lint test.</p></div>
+
+      <div class="risk"><h4>Judge self-preference</h4>
+        <p class="sub" style="font-size:13px;margin-bottom:0">A DeepSeek agent judged by a DeepSeek judge scores itself
+        generously. <strong>Mitigation:</strong> cross-family judge (Claude judging DeepSeek), calibrated against ~10
+        hand-scored cases before it is trusted, rubric frozen and hashed.</p></div>
+
+      <div class="risk"><h4>Overfitting at small N</h4>
+        <p class="sub" style="font-size:13px;margin-bottom:0">With 3–10 goldens, any intervention can be tuned to pass.
+        <strong>Mitigation:</strong> the run is explicitly labelled <code>generalisation: unproven</code> below the holdout
+        threshold, and no cycle report may be written from a run in that state.</p></div>
+
+      <div class="risk"><h4>Golden rot as the schema evolves</h4>
+        <p class="sub" style="font-size:13px;margin-bottom:0">Marts change; <code>golden_sql</code> silently stops running
+        and the agent gets graded against a broken benchmark. <strong>Mitigation:</strong> the free PR gate
+        <code>EXPLAIN</code>s every golden on every PR. This is why M3's cheap gate lands before the corpus grows.</p></div>
+
+      <div class="risk"><h4>Backwards compatibility</h4>
+        <p class="sub" style="font-size:13px;margin-bottom:0">1,137 existing <code>query_runs</code> have no
+        <code>agent_version_id</code>. They stay null — the column is already nullable, so no backfill and no migration
+        risk. Trend charts start at the first stamped run and say so rather than implying history.</p></div>
+
+      <div class="risk"><h4>Cost drift from the loop itself</h4>
+        <p class="sub" style="font-size:13px;margin-bottom:0">A teacher agent that can trigger runs can burn budget.
+        <strong>Mitigation:</strong> per-run cost cap, one candidate run per proposal, and <code>channel=eval</code> excluded
+        from the user-facing daily caps but counted separately so it is visible.</p></div>
+    </div>
+  </section>
+
+  <!-- ================= 13 ================= -->
+  <section>
+    <div class="kicker">13 · decisions</div>
+    <h2>Four things I need you to choose</h2>
+    <p class="sub">Everything above is drafted against the recommended option. Pick per question and queue the answer —
+    or annotate any section directly if you want something reshaped.</p>
+
+    <div class="dec" data-lavish-question="d1">
+      <h3>D-1 · Where does golden truth live?<span class="rec">drafted: repo</span></h3>
+      <p class="sub" style="font-size:13px">Determines whether CI can ever see a golden, and how a prod-authored case
+      reaches the repo.</p>
+      <form onsubmit="event.preventDefault();const v=new FormData(event.currentTarget).get('d1');if(v)window.lavish.queuePrompt('D-1 (golden source of truth): '+v,{tag:'decision',text:'D-1: '+v,element:event.currentTarget,data:{question:'d1',answer:v}});">
+        <div class="opts">
+          <label class="opt"><input type="radio" name="d1" value="Repo pack is source of truth; DB is a working surface; export lands in a reviewed PR"><span><span class="t">Repo pack is truth <span class="rec">recommended</span></span><span class="why">DB is a working surface. Export → PR → review. CI and fresh clones seed from the pack. A golden is a spec, so it gets reviewed like code.</span></span></label>
+          <label class="opt"><input type="radio" name="d1" value="Database is source of truth; the repo pack is only a generated snapshot"><span><span class="t">DB is truth</span><span class="why">Simpler day to day, but CI must reach a live DB and goldens escape review. Weakens the version-control story you asked for.</span></span></label>
+          <label class="opt"><input type="radio" name="d1" value="Bidirectional sync between DB and repo pack with conflict resolution"><span><span class="t">Bidirectional sync</span><span class="why">Most ergonomic, most machinery. Needs conflict resolution nobody wants to own.</span></span></label>
+        </div>
+        <button class="qbtn" type="submit">Queue this answer</button>
+      </form>
+    </div>
+
+    <div class="dec" data-lavish-question="d2">
+      <h3>D-2 · How do prod-captured goldens reach the repo?<span class="rec">drafted: manual export + PR</span></h3>
+      <form onsubmit="event.preventDefault();const v=new FormData(event.currentTarget).get('d2');if(v)window.lavish.queuePrompt('D-2 (prod golden path): '+v,{tag:'decision',text:'D-2: '+v,element:event.currentTarget,data:{question:'d2',answer:v}});">
+        <div class="opts">
+          <label class="opt"><input type="radio" name="d2" value="Admin exports from prod and opens a PR manually, with redaction applied at export"><span><span class="t">Manual export → PR <span class="rec">recommended</span></span><span class="why">A human sees every question and row before it enters git. Given the PII risk, the friction is the feature.</span></span></label>
+          <label class="opt"><input type="radio" name="d2" value="An automated bot exports prod goldens nightly and opens a PR"><span><span class="t">Nightly bot PR</span><span class="why">Lower friction, but automates the exact step where PII review needs to happen.</span></span></label>
+          <label class="opt"><input type="radio" name="d2" value="Prod is read-only for goldens; authoring happens only in dev"><span><span class="t">Dev-only authoring</span><span class="why">Safest, but throws away the best source of goldens — real answers that came out right.</span></span></label>
+        </div>
+        <button class="qbtn" type="submit">Queue this answer</button>
+      </form>
+    </div>
+
+    <div class="dec" data-lavish-question="d3">
+      <h3>D-3 · Teacher agent scope for the first cut<span class="rec">drafted: read-only first</span></h3>
+      <form onsubmit="event.preventDefault();const v=new FormData(event.currentTarget).get('d3');if(v)window.lavish.queuePrompt('D-3 (teacher scope): '+v,{tag:'decision',text:'D-3: '+v,element:event.currentTarget,data:{question:'d3',answer:v}});">
+        <div class="opts">
+          <label class="opt"><input type="radio" name="d3" value="Read-only diagnosis agent in M6, one-lever write proposals only after two human cycles"><span><span class="t">Read-only first <span class="rec">recommended</span></span><span class="why">Useful from the first scored run, cannot break anything, and lets you calibrate whether its hypotheses are any good before granting write access.</span></span></label>
+          <label class="opt"><input type="radio" name="d3" value="Full one-lever propose-and-PR teacher agent in M6"><span><span class="t">Full teacher in M6</span><span class="why">The stronger portfolio artifact, sooner. Riskier: you are trusting the gate before it has been exercised much.</span></span></label>
+        </div>
+        <button class="qbtn" type="submit">Queue this answer</button>
+      </form>
+    </div>
+
+    <div class="dec" data-lavish-question="d4">
+      <h3>D-4 · Do scored evals run in CI?<span class="rec">drafted: nightly alert</span></h3>
+      <p class="sub" style="font-size:13px">The deterministic pack-lint blocks merges either way. This is about the
+      LLM-cost run.</p>
+      <form onsubmit="event.preventDefault();const v=new FormData(event.currentTarget).get('d4');if(v)window.lavish.queuePrompt('D-4 (scored evals in CI): '+v,{tag:'decision',text:'D-4: '+v,element:event.currentTarget,data:{question:'d4',answer:v}});">
+        <div class="opts">
+          <label class="opt"><input type="radio" name="d4" value="Nightly scheduled scored run that alerts on pass-rate drop; never blocks a PR"><span><span class="t">Nightly, alert-only <span class="rec">recommended</span></span><span class="why">Cheap, catches drift, and keeps flaky model behaviour out of the merge path. Ships the trend chart with real data.</span></span></label>
+          <label class="opt"><input type="radio" name="d4" value="Scored evals block the deploy to prod on merge to main"><span><span class="t">Block the deploy</span><span class="why">The strongest “evals are a gate” claim — ROADMAP #2 literally asks for a deploy that fails on regression. Costs LLM calls on every merge and can block on model flakiness.</span></span></label>
+          <label class="opt"><input type="radio" name="d4" value="Manual only; no scheduled scored run"><span><span class="t">Manual only</span><span class="why">s14's original D4. Cheapest, but no trend data accumulates on its own.</span></span></label>
+        </div>
+        <button class="qbtn" type="submit">Queue this answer</button>
+      </form>
+    </div>
+  </section>
+
+  <div class="hr"></div>
+  <p class="sub" style="margin-top:14px;font-size:12.5px">Baseline verified against <code>main</code> @ <code>1862f08</code>
+  on 2026-07-20 — schema via live <code>psql</code>, code via grep, counts via <code>app.eval_cases</code> /
+  <code>app.query_runs</code>. Extends <code>s14_eval-loop-plan.html</code> (D1–D7 locked). Competency mapping from
+  <code>ai-engineer-fit/.lavish/s00_ai-engineer-evidence-scorecard.html</code>.</p>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict",
+    themeVariables: { fontFamily: "Inter, sans-serif", fontSize: "13px",
+      primaryColor: "#181c25", primaryBorderColor: "#333a48", primaryTextColor: "#e7e9ee",
+      lineColor: "#79839a", clusterBkg: "#12151c", clusterBorder: "#232834" } });
+  await mermaid.run({ nodes: [...document.querySelectorAll(".mmd-src")] });
+</script>
+</body>
+</html>

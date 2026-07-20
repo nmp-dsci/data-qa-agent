@@ -32,6 +32,7 @@ from .schema import get_catalog, merge_catalogs  # noqa: E402
 from .sql_assist import sql_assist  # noqa: E402
 from .sql_guardrails import UnsafeSQLError  # noqa: E402
 from .titles import summarize_title  # noqa: E402
+from .version import build_fingerprint  # noqa: E402
 
 
 @asynccontextmanager
@@ -323,6 +324,17 @@ def _sales_trend_stub_report(result: dict[str, Any]) -> dict[str, Any] | None:
         "fallback_reason": "sandbox_llm_did_not_complete_report",
     }
     return {"answer": summary, "chart": chart, "report": report}
+
+
+@app.get("/agent/version")
+async def agent_version() -> dict[str, str]:
+    """The composed build fingerprint of this agent (s24 M1).
+
+    The backend upserts this into ``app.agent_versions`` and stamps the
+    resulting id onto every ``app.query_runs`` row, so any answer — and any eval
+    score derived from it — is attributable to an exact build.
+    """
+    return build_fingerprint()
 
 
 @app.get("/agent/config", response_model=ConfigSection)

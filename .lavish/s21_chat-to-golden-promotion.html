@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Pilot — Chat → Golden promotion (s21)</title>
+<style>
+/* ============ artifact chrome (matches the app's own token system, carried from s19/s20) ============ */
+:root {
+  --bg:#0b0d12; --panel:#12151c; --panel-2:#181c25; --panel-3:#1f2430;
+  --border:#232834; --border-2:#333a48; --text:#e7e9ee; --muted:#98a2b6; --faint:#79839a;
+  --accent:#b48a3f; --accent-soft:#f0c674; --accent-2:#6ea8fe;
+  --good:#9ece6a; --warn:#e0af68; --bad:#f2777a; --purple:#c58fff; --info:#7dcfff;
+  --sans:"Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px; --r-lg:14px;
+}
+* { box-sizing:border-box; min-width:0; }
+html,body { margin:0; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14.5px;
+  line-height:1.55; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+.wrap { max-width:1240px; margin:0 auto; padding:28px 22px 120px; }
+h1 { font-size:27px; letter-spacing:-.02em; margin:6px 0 4px; }
+h2 { font-size:19px; letter-spacing:-.01em; margin:0 0 4px; }
+h3 { font-size:15px; margin:0 0 6px; }
+h4 { margin:0 0 4px; font-size:13.5px; }
+p { margin:6px 0; }
+ul { margin:6px 0; padding-left:20px; }
+li { margin:3px 0; }
+.sub { color:var(--muted); }
+.small { font-size:12.5px; }
+.tiny { font-size:11px; }
+code, .mono { font-family:var(--mono); font-size:.92em; }
+code { background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:0 5px; white-space:nowrap; }
+p code, li code, td code { line-height:1.3; }
+section.band { margin-top:42px; }
+.band-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.band-num { font-family:var(--mono); font-size:11px; color:var(--accent-soft); border:1px solid var(--border-2);
+  border-radius:999px; padding:2px 10px; letter-spacing:.08em; }
+.chips { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
+.chip { font-size:11.5px; border:1px solid var(--border-2); border-radius:999px; padding:3px 11px; color:var(--muted); }
+.chip b { color:var(--text); font-weight:650; }
+.chip.gold { color:var(--accent-soft); border-color:#6b5a2a; }
+.chip.red { color:var(--bad); border-color:#6b2a2a; }
+.chip.green { color:var(--good); border-color:#33502f; }
+.chip.blue { color:var(--info); border-color:#2f5a7a; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px 18px; }
+.grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+@media (max-width:960px){ .grid2,.grid3 { grid-template-columns:1fr; } }
+
+table.t { width:100%; border-collapse:collapse; font-size:12.8px; }
+.t th,.t td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+.t thead th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  background:var(--panel-2); position:sticky; top:0; }
+.t tr:last-child td { border-bottom:none; }
+.tbl-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:var(--r); }
+.ok { color:var(--good); } .warn-t { color:var(--warn); } .bad-t { color:var(--bad); }
+.badge { font-size:10px; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:999px; border:1px solid; white-space:nowrap; }
+.badge.new { color:var(--good); border-color:#33502f; }
+.badge.mod { color:var(--warn); border-color:#6b5a2a; }
+.badge.reuse { color:var(--info); border-color:#2f5a7a; }
+.badge.gap { color:var(--bad); border-color:#6b2a2a; }
+
+/* verdict panel */
+.verdict { border:1px solid var(--border-2); border-left:4px solid var(--accent); background:var(--panel);
+  border-radius:var(--r-lg); padding:16px 20px; margin-top:16px; }
+.verdict .vrow { display:grid; grid-template-columns:110px minmax(0,1fr); gap:10px 16px; padding:7px 0; border-bottom:1px dashed var(--border); }
+.verdict .vrow:last-child { border-bottom:none; }
+.verdict .vtag { font-family:var(--mono); font-size:11px; letter-spacing:.06em; padding-top:2px; }
+@media (max-width:700px){ .verdict .vrow { grid-template-columns:1fr; gap:2px; } }
+
+/* phases */
+.phase { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--panel); overflow:hidden; margin-top:14px; }
+.phase-head { display:flex; align-items:baseline; gap:12px; padding:12px 16px; background:var(--panel-2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.phase-head .pnum { font-family:var(--mono); font-size:12px; color:var(--accent-soft); }
+.phase-head h3 { margin:0; }
+.phase-head .sz { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint); }
+.phase-body { padding:12px 16px 14px; }
+.phase-body .cols { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:16px; }
+@media (max-width:900px){ .phase-body .cols { grid-template-columns:1fr; } }
+.filelist { font-family:var(--mono); font-size:11.5px; color:var(--muted); line-height:1.8; overflow-wrap:anywhere; }
+.filelist b { color:var(--text); font-weight:600; }
+.accept { border-left:3px solid var(--good); background:var(--panel-2); border-radius:0 var(--r) var(--r) 0; padding:8px 12px; font-size:12.5px; margin-top:10px; }
+.accept b { color:var(--good); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+
+/* code blocks */
+pre.code { background:var(--panel-2); border:1px solid var(--border); border-radius:var(--r); padding:10px 14px;
+  font-family:var(--mono); font-size:11.8px; line-height:1.65; overflow-x:auto; margin:8px 0; color:var(--muted); }
+pre.code b { color:var(--accent-soft); font-weight:600; }
+pre.code i { color:var(--good); font-style:normal; }
+
+/* ---- app-UI mocks (faithful to Data Pilot's chat + goldens surfaces) ---- */
+.appmock { border:1px solid var(--border-2); border-radius:var(--r-lg); overflow:hidden; margin-top:10px; }
+.appmock-title { font-family:var(--mono); font-size:10.5px; color:var(--faint); background:var(--panel-3);
+  padding:5px 12px; border-bottom:1px solid var(--border); }
+.appmock-body { background:var(--panel); padding:14px 16px; }
+.meta-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+.meta-row .spacer { flex:1; }
+.uichip { border:1px solid var(--border-2); background:var(--panel-2); border-radius:999px; padding:2px 11px;
+  font-size:11.5px; color:var(--muted); white-space:nowrap; }
+.uichip.new-btn { color:var(--accent-soft); border-color:#6b5a2a; background:rgba(180,138,63,.12); font-weight:650; }
+.uilink { color:var(--accent-2); font-size:11.5px; }
+.engine-badge { font-family:var(--mono); font-size:10px; border:1px solid var(--border-2); border-radius:5px;
+  padding:1px 7px; color:var(--purple); letter-spacing:.05em; }
+.runid { font-family:var(--mono); font-size:10px; color:var(--faint); border:1px solid var(--border); border-radius:5px; padding:1px 7px; }
+.promo-banner { display:flex; gap:10px; align-items:center; flex-wrap:wrap; border:1px solid #6b5a2a;
+  background:rgba(180,138,63,.10); color:var(--accent-soft); border-radius:8px; padding:7px 12px; font-size:12.5px; margin-bottom:10px; }
+
+/* chat-tab storyboard (full answer mock) */
+.step-cap { font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; color:var(--accent-soft);
+  text-transform:uppercase; margin:16px 0 6px; }
+.chatmock-canvas { background:var(--bg); padding:16px 18px; }
+.user-bubble { display:flex; justify-content:flex-end; }
+.user-bubble span { background:var(--panel-3); border:1px solid var(--border-2); border-radius:14px 14px 4px 14px;
+  padding:7px 14px; font-size:13px; max-width:75%; }
+.answer-id { display:flex; align-items:center; gap:8px; margin:14px 0 8px; font-size:13px; }
+.answer-id .plane { width:20px; height:20px; border-radius:6px; background:var(--accent); color:#0b0d12;
+  display:inline-flex; align-items:center; justify-content:center; font-size:12px; flex:none; }
+.report-mini { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); gap:10px; }
+@media (max-width:700px){ .report-mini { grid-template-columns:1fr; } }
+.kpi-pair { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.kpi { border:1px solid var(--border); background:var(--panel); border-radius:8px; padding:8px 10px; }
+.kpi .klabel { font-size:10px; color:var(--faint); text-transform:uppercase; letter-spacing:.05em; }
+.kpi .kval { font-size:18px; font-weight:700; letter-spacing:-.02em; }
+.kpi .ksub { font-size:10px; color:var(--faint); }
+.insight-note { border-left:3px solid var(--accent); background:var(--panel); border:1px solid var(--border);
+  border-left:3px solid var(--accent); border-radius:0 8px 8px 0; padding:7px 10px; font-size:11.5px; color:var(--muted); margin-top:8px; }
+.chart-mini { border:1px solid var(--border-2); background:var(--panel); border-radius:8px; padding:8px 10px; }
+.chart-mini .ctitle { font-family:var(--mono); font-size:9.5px; color:var(--faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px; }
+.chart-mini .legend { display:flex; gap:12px; font-size:10px; color:var(--muted); margin-bottom:2px; }
+.chart-mini .legend i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; }
+.chart-mini svg { width:100%; height:auto; display:block; }
+.click-callout { position:relative; display:inline-flex; align-items:center; gap:7px; }
+.click-callout .pointer { font-size:15px; }
+.click-callout .say { font-size:11px; color:var(--accent-soft); border:1px dashed #6b5a2a; border-radius:6px; padding:2px 8px; }
+.norun { display:flex; gap:14px; align-items:center; flex-wrap:wrap; border:1px solid #33502f;
+  background:rgba(158,206,106,.07); border-radius:var(--r); padding:10px 16px; margin:10px 0; }
+.norun .zero { font-family:var(--mono); font-size:11px; color:var(--good); border:1px solid #33502f;
+  border-radius:999px; padding:2px 10px; white-space:nowrap; }
+.norun p { margin:0; font-size:12.5px; color:var(--muted); flex:1 1 260px; }
+.stagebox { border:1px solid var(--border); border-radius:8px; background:var(--panel-2); padding:8px 12px; margin-top:8px; }
+.stagebox .slabel { font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:3px; }
+.stagebox .mono-prev { font-family:var(--mono); font-size:11px; color:var(--muted); white-space:pre; overflow-x:auto; }
+.stage-ok { color:var(--good); font-size:11px; }
+
+/* mermaid */
+.mermaid-box { background:var(--panel); border:1px solid var(--border); border-radius:var(--r-lg); padding:14px; overflow-x:auto; }
+.mmd-src { display:flex; justify-content:center; }
+.mmd-src svg { max-width:100%; height:auto; }
+
+/* decisions (input playbook) */
+.decision { border:1px solid var(--border-2); border-left:3px solid var(--accent); border-radius:var(--r);
+  background:var(--panel); padding:14px 16px; margin-top:14px; }
+.decision h4 { display:flex; gap:10px; align-items:baseline; }
+.decision .dnum { font-family:var(--mono); font-size:11px; color:var(--accent-soft); }
+.decision label.opt { display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border:1px solid var(--border);
+  border-radius:8px; margin-top:8px; cursor:pointer; background:var(--panel-2); }
+.decision label.opt:hover { border-color:var(--border-2); }
+.decision label.opt input { margin-top:3px; flex:none; }
+.decision .opt-title { font-weight:650; font-size:13px; }
+.decision .opt-sub { color:var(--muted); font-size:12px; }
+.decision .rec { color:var(--good); font-size:10.5px; font-weight:700; letter-spacing:.05em; margin-left:6px; }
+.decision button { margin-top:10px; background:var(--panel-3); color:var(--text); border:1px solid var(--border-2);
+  border-radius:8px; padding:6px 14px; font-size:12.5px; cursor:pointer; font-family:var(--sans); }
+.decision button:hover { border-color:var(--accent); color:var(--accent-soft); }
+.decision .queued-note { display:none; margin-left:10px; color:var(--good); font-size:12px; }
+.decision.queued .queued-note { display:inline; }
+textarea.free { width:100%; background:var(--panel-2); color:var(--text); border:1px solid var(--border-2);
+  border-radius:8px; padding:8px 10px; font-family:var(--sans); font-size:13px; min-height:64px; resize:vertical; }
+footer { margin-top:56px; color:var(--faint); font-size:11.5px; border-top:1px solid var(--border); padding-top:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="band-num">s21 · plan</div>
+  <h1>Chat answer → Golden, in one click</h1>
+  <p class="sub">Promote any Chat answer into a draft golden — pre-filled with the run's real SQL, sandbox script and report —
+    then edit and save it in the existing Golden Examples editor.</p>
+  <div class="chips">
+    <span class="chip gold"><b>Verified live</b> 2026-07-18 · postcode 2077 vs 2076 rent test</span>
+    <span class="chip">run <b class="mono">1565d54f</b> · deepseek · 226 rows · 1 page</span>
+    <span class="chip green">all 3 golden stages already persisted per answer</span>
+    <span class="chip blue">reuses <b>_sandbox_code_from_steps</b> + the whole Goldens editor</span>
+  </div>
+</header>
+
+<!-- ================================ 1 · today ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">1</span><h2>Today — the gap, verified in the running app</h2></div>
+  <div class="grid2">
+    <div class="card">
+      <h3>What the live test showed</h3>
+      <p class="small">Asked <i>“Show me postcode 2077 house Rent trends vs postcode 2076”</i> in Chat as Admin.
+        The agent resolved 2077 → Hornsby/Waitara, 2076 → Normanhurst/Wahroonga, streamed a Summary page
+        (KPIs + weekly-rent trend chart) and finished with Q1/Q2 query references.</p>
+      <div class="appmock">
+        <div class="appmock-title">Chat · answer action row — as it is today (no promote path)</div>
+        <div class="appmock-body">
+          <div class="meta-row">
+            <span class="uichip">copy</span>
+            <span class="uichip">csv</span>
+            <span class="uilink">trace · 31 steps</span>
+            <span class="uilink">render JSON (1 page)</span>
+            <span class="spacer"></span>
+            <span class="engine-badge">DEEPSEEK</span>
+            <span class="tiny">226 rows</span>
+            <span class="runid">run 1565d54f</span>
+          </div>
+        </div>
+      </div>
+      <p class="small sub" style="margin-top:10px">The only route into a golden today is the Goldens tab's
+        <b>“✨ Draft with agent (first pass)”</b> — it re-runs the agent from scratch (~60&nbsp;s, non-deterministic),
+        instead of reusing the answer you just curated with your own eyes.</p>
+    </div>
+    <div class="card">
+      <h3>Everything a golden needs is already stored per answer</h3>
+      <div class="tbl-scroll"><table class="t">
+        <thead><tr><th>Golden stage</th><th>Persisted where</th><th>Check on run 1565d54f</th></tr></thead>
+        <tbody>
+          <tr><td>question</td><td><code>app.query_runs.question</code></td><td class="ok">✓</td></tr>
+          <tr><td>① golden_sql</td><td><code>app.query_runs.sql_text</code></td><td class="ok">✓</td></tr>
+          <tr><td>② golden_sandbox</td><td><code>query_runs.trace</code> → <code>run_analysis</code> tool-call args</td><td class="ok">✓ 5 calls, code recovered clean</td></tr>
+          <tr><td>③ golden_report</td><td><code>app.messages.report.pages</code> (via <code>message_id</code>)</td><td class="ok">✓ 1 page</td></tr>
+          <tr><td>golden_data</td><td><code>app.messages.report</code> (metrics + queries)</td><td class="ok">✓</td></tr>
+          <tr><td>run_id in the UI</td><td><code>AskResult.run_id</code> — fresh <i>and</i> history-reopened answers</td><td class="ok">✓ (<code>ConversationMessage.run_id</code>)</td></tr>
+        </tbody>
+      </table></div>
+      <p class="small sub" style="margin-top:8px">And the extractor already exists:
+        <code>goldens.py :: _sandbox_code_from_steps()</code> turns a stored trace into a runnable
+        run_analysis script — it's what “Draft with agent” uses on a fresh run. We point it at the <i>stored</i> trace instead.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================ 2 · target flow ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">2</span><h2>Target flow — press ★, land in the editor, save</h2></div>
+  <div class="mermaid-box">
+    <pre class="mmd-src">
+flowchart TD
+  A["Chat answer<br/>(run_id on every answer,<br/>fresh or reopened)"] -->|"★ save as golden (admin)"| B["POST /admin/eval-goldens/from-run<br/>{ run_id }"]
+  B --> C["backend assembles draft golden<br/>question + sql_text + trace→run_analysis code<br/>+ messages.report.pages"]
+  C --> D[("app.eval_cases<br/>status=draft · tags=[from-chat, run:&lt;id&gt;]")]
+  D --> E["frontend: setView('goldens')<br/>goldenSeed = { id, nonce }"]
+  E --> F["GoldensPage seed → selectGolden(id)<br/>①②③ stages pre-filled, objects repopulated"]
+  F --> G["curator edits any stage<br/>(existing editor, unchanged)"]
+  G --> H["Save · flip draft → ready<br/>= the 100/100 eval benchmark"]
+    </pre>
+  </div>
+  <div class="step-cap">Step 1 · Chat tab — the answer is already on screen; the admin clicks ★</div>
+  <div class="appmock">
+    <div class="appmock-title">Chat tab · admin view — the full answer, exactly as it rendered during the ask</div>
+    <div class="chatmock-canvas">
+      <div class="user-bubble"><span>Give me rent trends for postcode 2077 vs 2076</span></div>
+      <div class="answer-id"><span class="plane">✈</span><b>Data agent</b></div>
+      <div class="report-mini">
+        <div>
+          <div class="kpi-pair">
+            <div class="kpi"><div class="klabel">2077 (Hornsby) — ave weekly rent</div><div class="kval">$858</div><div class="ksub">2026-05</div></div>
+            <div class="kpi"><div class="klabel">2076 (Normanhurst/Wahroonga)</div><div class="kval">$1,262</div><div class="ksub">2026-05</div></div>
+          </div>
+          <div class="kpi-pair" style="margin-top:8px">
+            <div class="kpi"><div class="klabel">2077 rent growth (3yr)</div><div class="kval">21.8%</div></div>
+            <div class="kpi"><div class="klabel">2076 rent growth (3yr)</div><div class="kval">16.8%</div></div>
+          </div>
+          <div class="insight-note">Comparing average weekly house rent trends between postcode <b>2077</b> (Hornsby, Waitara) and <b>2076</b> (Normanhurst, Wahroonga) from the rental bond data.</div>
+        </div>
+        <div class="chart-mini">
+          <div class="ctitle">House weekly rent trends: 2077 vs 2076</div>
+          <div class="legend"><span><i style="background:var(--accent-soft)"></i>2076</span><span><i style="background:var(--accent-2)"></i>2077</span></div>
+          <svg viewBox="0 0 300 96" role="img" aria-label="two rising rent trend lines, 2076 above 2077">
+            <line x1="0" y1="88" x2="300" y2="88" stroke="#232834" stroke-width="1"/>
+            <line x1="0" y1="52" x2="300" y2="52" stroke="#232834" stroke-width="1" stroke-dasharray="3 4"/>
+            <line x1="0" y1="16" x2="300" y2="16" stroke="#232834" stroke-width="1" stroke-dasharray="3 4"/>
+            <polyline fill="none" stroke="var(--accent-soft)" stroke-width="2"
+              points="4,56 34,54 64,57 94,52 124,50 154,48 184,44 214,36 244,30 274,22 296,18"/>
+            <polyline fill="none" stroke="var(--accent-2)" stroke-width="2"
+              points="4,80 34,79 64,80 94,78 124,76 154,74 184,71 214,66 244,61 274,56 296,53"/>
+          </svg>
+        </div>
+      </div>
+      <div class="meta-row" style="margin-top:12px">
+        <span class="uichip">copy</span>
+        <span class="uichip">csv</span>
+        <span class="click-callout">
+          <span class="uichip new-btn">★ save as golden</span>
+          <span class="pointer">🖱️</span>
+          <span class="say">admin clicks — one press, that's the whole flow</span>
+        </span>
+        <span class="uilink">trace · 31 steps</span>
+        <span class="uilink">render JSON (1 page)</span>
+        <span class="spacer"></span>
+        <span class="engine-badge">DEEPSEEK</span>
+        <span class="tiny">226 rows</span>
+        <span class="runid">run 1565d54f</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-cap">Step 2 · what happens on the click — a copy of stored artifacts, nothing executes</div>
+  <div class="norun">
+    <span class="zero">0 agent re-runs</span>
+    <span class="zero">0 SQL executed</span>
+    <span class="zero">0 LLM tokens</span>
+    <p><b>Nothing re-runs.</b> The original ask already captured everything into the audit trail — the question and
+      ① SQL in <code>app.query_runs</code>, the ② run_analysis script inside its stored <code>trace</code>, the ③ report pages in
+      <code>app.messages.report</code>. The endpoint is a read-and-insert: it copies those stored artifacts into a draft golden.
+      The exact answer you saw in Chat is what appears in Golden Examples — byte-for-byte, not a fresh answer.</p>
+  </div>
+  <div class="appmock">
+    <div class="appmock-body">
+      <div class="meta-row">
+        <span class="uichip" style="color:var(--good); border-color:#33502f">saved ✓ — opening in Goldens…</span>
+        <span class="tiny sub">instant (one INSERT) · second press on the same run re-opens the same golden — no duplicates</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-cap">Step 3 · Golden Examples tab — same question, same answer, now editable</div>
+  <div class="appmock">
+    <div class="appmock-title">Goldens · editor opens on the promoted draft</div>
+    <div class="appmock-body">
+      <div class="promo-banner">★ Promoted from chat · run <span class="mono">1565d54f</span> — review each stage, then Save.</div>
+      <div class="stagebox">
+        <div class="slabel">question <span class="stage-ok">· copied verbatim</span></div>
+        <div class="mono-prev">Give me rent trends for postcode 2077 vs 2076</div>
+      </div>
+      <div class="stagebox">
+        <div class="slabel">① SQL — extraction <span class="stage-ok">· pre-filled from sql_text (not re-executed)</span></div>
+        <div class="mono-prev">SELECT
+  month, postcode,
+  SUM(total_weekly_rent) AS total_weekly_rent,
+  SUM(n_rented) AS n_rented
+FROM marts.property_rent
+WHERE postcode IN ('2076','2077') AND property_type = 'house' …</div>
+      </div>
+      <div class="stagebox">
+        <div class="slabel">② Sandbox — run_analysis <span class="stage-ok">· recovered from the stored trace (pass 1, imports stripped)</span></div>
+        <div class="mono-prev">df['avg_weekly_rent'] = df['total_weekly_rent'] / df['n_rented']
+df_2076 = df[df['postcode'] == '2076'].copy() …</div>
+      </div>
+      <div class="stagebox">
+        <div class="slabel">③ Report — presentation <span class="stage-ok">· the exact pages Chat rendered · 1 page · KPIs + trend chart + insight</span></div>
+        <div class="mono-prev">{ "pages": [ { "template": "two-col", "columns": [ … ] } ] }</div>
+      </div>
+      <p class="small sub" style="margin-top:8px">From here it's the existing editor: edit any stage (a curator <i>choosing</i> to press
+        ▶ Run SQL or ↻ Re-run is the only thing that ever executes), then Save and flip <code>draft → ready</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================ 3 · build plan ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">3</span><h2>Build plan — four small phases, one PR</h2></div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">P1</span><h3>Backend · promote endpoint</h3><span class="sz">~70 LOC · new endpoint</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <pre class="code"><b>POST /admin/eval-goldens/from-run</b>   (require_admin)
+{ "run_id": "1565d54f-…" }
+→ { "id": "&lt;golden uuid&gt;", "created": true|false }
+
+1  SELECT question, sql_text, trace, message_id
+     FROM app.query_runs WHERE id = :run_id        <i># 404 if missing</i>
+2  SELECT report FROM app.messages
+     WHERE id = :message_id                        <i># pages = report.pages</i>
+3  code = _sandbox_code_from_steps(trace)          <i># existing helper, unchanged</i>
+4  SELECT id FROM app.eval_cases
+     WHERE tags @> '["run:&lt;run_id&gt;"]'              <i># idempotency guard</i>
+     → hit ⇒ return { id, created: false }
+5  INSERT app.eval_cases (question, dataset 'nsw_sales',
+     tier 'T1', authoring_status 'draft',
+     tags ['from-chat','run:&lt;run_id&gt;'],
+     golden_sql, golden_sandbox, golden_data = report,
+     golden_report = {'pages': pages}) RETURNING id</pre>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>services/backend-api/app/routers/goldens.py</b> <span class="badge new">NEW endpoint</span><br>
+          reuses <b>_sandbox_code_from_steps</b> <span class="badge reuse">REUSE</span><br>
+          <b>services/backend-api/tests/…</b> <span class="badge new">unit test</span>
+        </div>
+        <div class="accept"><b>Accept</b> · the endpoint is pure read-and-insert — <b>no agent call, no LLM tokens, no SQL execution</b> (steps 1–2 read the stored audit rows; the only write is the INSERT). POSTing run 1565d54f returns a golden whose copied ① SQL / ② sandbox / ③ report are exactly what the chat answer used, runnable as-is when the curator later presses Run; second POST returns the same id with <code>created:false</code>. Stub-engine runs (no run_analysis in trace) still succeed with an empty ② stage.</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">P2</span><h3>Frontend · ★ button on the chat answer</h3><span class="sz">~40 LOC · ResultView + api</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li><code>lib/api.ts</code>: <code>goldenFromRun(run_id) → {id, created}</code> via <code>adminPost</code>.</li>
+          <li><code>ResultView.tsx</code>: new chip in the existing <code>answer-actions</code> cluster — rendered only when <code>isAdmin && result.run_id</code> (hidden for legacy answers with <code>run_id: null</code>).</li>
+          <li>States: idle → <i>saving…</i> → <i>saved ✓ — opening in Goldens…</i>; on success calls a new <code>onPromoted(goldenId)</code> prop (threaded ChatPage → App like <code>onOpenSql</code>).</li>
+          <li>Works identically on history-reopened answers — <code>ConversationMessage.run_id</code> is already joined server-side.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>frontend/src/lib/api.ts</b> <span class="badge new">NEW fn</span><br>
+          <b>frontend/src/features/chat/ResultView.tsx</b> <span class="badge mod">MOD</span><br>
+          <b>frontend/src/features/chat/ChatPage.tsx</b> <span class="badge mod">MOD (prop pass-through)</span>
+        </div>
+        <div class="accept"><b>Accept</b> · button visible only to admins; press → chip flips to saved; non-admin and legacy answers show today's row unchanged.</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">P3</span><h3>Frontend · Goldens deep-link (seed pattern)</h3><span class="sz">~30 LOC · App + GoldensPage</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <ul class="small">
+          <li><code>App.tsx</code>: <code>goldenSeed {id, nonce}</code> state + <code>openInGoldens(id)</code>, mirroring <code>openInSqlEditor</code> (App.tsx:137) — sets seed, <code>setView("goldens")</code>.</li>
+          <li><code>GoldensPage.tsx</code>: optional <code>seed</code> prop; <code>useEffect</code> on <code>seed.nonce</code> → <code>selectGolden(seed.id)</code> + switch the dataset dropdown to the golden's dataset so it's highlighted in the list.</li>
+          <li>StrictMode double-mount is harmless here — <code>selectGolden</code> is a read (unlike the s19 SqlEditor seed, no module-level guard needed; the nonce dedupes re-seeds).</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>frontend/src/app/App.tsx</b> <span class="badge mod">MOD</span><br>
+          <b>frontend/src/features/goldens/GoldensPage.tsx</b> <span class="badge mod">MOD (seed prop)</span>
+        </div>
+        <div class="accept"><b>Accept</b> · after pressing ★, the Goldens tab opens with the promoted golden loaded — question, ①②③ filled, named objects repopulated — and the list shows it selected under its dataset.</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><span class="pnum">P4</span><h3>Verify · the PRIMARY acceptance test — the full journey, driven through the frontend</h3><span class="sz">~90 LOC · Playwright</span></div>
+    <div class="phase-body"><div class="cols">
+      <div>
+        <p class="small" style="margin-top:0">One Playwright journey <b>is the definition of done</b> — the feature ships only when this
+          passes end-to-end through the real UI (no API shortcuts):</p>
+        <pre class="code"><b>chat-to-golden.spec.ts</b>  — the primary test
+1  sign in as Admin (dev auth)
+2  Chat: ask <i>"Give me rent trends for postcode 2077 vs 2076"</i>
+3  wait for the answer to publish (pages rendered, action row visible)
+4  press <b>★ save as golden</b> → chip flips to "saved ✓ — opening in Goldens…"
+5  app lands on the Goldens tab with the promoted DRAFT loaded
+6  view: question + ① SQL + ② sandbox + ③ report are pre-filled
+7  edit: change the question text (curator correction)
+8  Save → flip authoring_status <b>draft → ready</b> → Save again
+9  reload the app → Goldens list shows the golden as <b>ready</b>
+   with the edit kept and <i>tags ⊇ [from-chat, run:&lt;id&gt;]</i></pre>
+        <ul class="small">
+          <li><b>Two tiers, same spec:</b> in CI it runs against the <b>stub engine</b> (deterministic, no LLM key — steps 3–9 all still exercise the button, hand-off, edit and status flip). Locally it also runs <b>live against deepseek</b> with the exact question above — same pattern as the existing journeys that self-skip in CI.</li>
+          <li>Secondary checks: API unit test for <code>from-run</code> idempotency (re-POST returns the same id) and the stub-run empty-② case.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="filelist">
+          <b>frontend/e2e/chat-to-golden.spec.ts</b> <span class="badge new">NEW · primary</span><br>
+          reuses <b>goldens.spec.ts</b> helpers (s18) <span class="badge reuse">REUSE</span><br>
+          <b>make smoke</b> unchanged <span class="badge reuse">stub-aware</span>
+        </div>
+        <div class="accept"><b>Accept (= feature done)</b> · the 9-step journey above passes in stub mode in CI <i>and</i> live locally: question asked in Chat → answer published → ★ pressed → draft viewed and edited in Goldens → promoted to <code>ready</code> → survives reload.</div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================ 4 · edge cases ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">4</span><h2>Edge cases &amp; risks</h2></div>
+  <div class="tbl-scroll"><table class="t">
+    <thead><tr><th>Case</th><th>What happens</th><th>Handling</th></tr></thead>
+    <tbody>
+      <tr><td>Stub-engine answer (no LLM key / fallback)</td><td>trace has no <code>run_analysis</code>; sql may still exist</td><td>Golden is created with an empty ② stage — curator scaffolds from skills or writes it; button stays enabled.</td></tr>
+      <tr><td>Legacy / pre-audit answers</td><td><code>run_id</code> is null on rehydration</td><td>Button hidden (same rule as the admin RunId chip today).</td></tr>
+      <tr><td>Double press / re-press later</td><td>would create duplicate goldens</td><td><code>run:&lt;run_id&gt;</code> tag + upsert guard ⇒ same golden id returned, editor just re-opens it.</td></tr>
+      <tr><td>Multi-pass sandbox runs (this run had 5)</td><td>joining passes yields un-runnable code</td><td>Inherit the existing <code>_sandbox_code_from_steps</code> policy: first pass, imports stripped — same as “Draft with agent” today. Curator refines in ②.</td></tr>
+      <tr><td>Dataset attribution</td><td>chat runs are all tagged <code>nsw_sales</code> (<code>ask.py DATASET_SLUG</code>) even for rent questions</td><td>Default <code>nsw_sales</code>; curator can flip the dropdown before Save. (A slug-inference from mart names in SQL is a cheap later nicety.)</td></tr>
+      <tr><td>RLS / as_user</td><td>the promoted run executed as the asking admin</td><td><code>as_user</code> left blank (= admin) — matches how the run actually read data. Promoting a non-admin user's run keeps blank too; curator sets <code>as_user</code> if the golden should be RLS-scoped.</td></tr>
+      <tr><td>report.pages missing but report present</td><td>older answers pre-s10</td><td><code>golden_report = null</code>, <code>golden_data = report</code> — editor's “Add output as page” path takes over.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ================================ 5 · decisions ================================ -->
+<section class="band">
+  <div class="band-head"><span class="band-num">5</span><h2>Decisions — pick, then Send to Agent</h2></div>
+
+  <form class="decision" data-lavish-question="d1-assembly" onsubmit="queueDecision(event,'d1-assembly','draft assembly location')">
+    <h4><span class="dnum">D1</span> Where is the draft golden assembled?</h4>
+    <label class="opt"><input type="radio" name="d1-assembly" value="backend from-run endpoint" checked>
+      <span><span class="opt-title">Backend endpoint <code>from-run</code><span class="rec">RECOMMENDED</span></span><br>
+      <span class="opt-sub">Server reads query_runs + messages and reuses <code>_sandbox_code_from_steps</code>. Works for fresh and reopened answers, one source of truth, trivially testable.</span></span></label>
+    <label class="opt"><input type="radio" name="d1-assembly" value="frontend assembles GoldenInput and calls existing createGolden">
+      <span><span class="opt-title">Frontend assembly via existing <code>createGolden</code></span><br>
+      <span class="opt-sub">No backend change, but the trace→code parse moves into the browser and the payload (steps) must be present client-side — heavier and duplicates server logic.</span></span></label>
+    <button type="submit">Queue answer</button><span class="queued-note">queued ✓</span>
+  </form>
+
+  <form class="decision" data-lavish-question="d2-row" onsubmit="queueDecision(event,'d2-row','create-row timing')">
+    <h4><span class="dnum">D2</span> Does pressing ★ create the DB row immediately?</h4>
+    <label class="opt"><input type="radio" name="d2-row" value="create draft row immediately, idempotent via run tag" checked>
+      <span><span class="opt-title">Create the draft row on press<span class="rec">RECOMMENDED</span></span><br>
+      <span class="opt-sub">Editor opens a real golden (survives refresh/tab-switch); <code>run:&lt;id&gt;</code> tag makes re-presses idempotent. Unwanted drafts are one Delete away.</span></span></label>
+    <label class="opt"><input type="radio" name="d2-row" value="prefill the editor only; no row until curator saves">
+      <span><span class="opt-title">Prefill only, save later</span><br>
+      <span class="opt-sub">Cleaner data hygiene (no abandoned drafts), but the unsaved draft must survive the tab hand-off and a refresh loses it.</span></span></label>
+    <button type="submit">Queue answer</button><span class="queued-note">queued ✓</span>
+  </form>
+
+  <form class="decision" data-lavish-question="d3-audience" onsubmit="queueDecision(event,'d3-audience','button audience')">
+    <h4><span class="dnum">D3</span> Who sees the ★ button?</h4>
+    <label class="opt"><input type="radio" name="d3-audience" value="admin only" checked>
+      <span><span class="opt-title">Admin-only<span class="rec">RECOMMENDED</span></span><br>
+      <span class="opt-sub">Goldens are the training signal and the tab is admin-only; matches the trace/run-id visibility rule.</span></span></label>
+    <label class="opt"><input type="radio" name="d3-audience" value="all users may suggest; lands as a suggestion queue for admins">
+      <span><span class="opt-title">Everyone can “suggest as golden”</span><br>
+      <span class="opt-sub">Users flag great answers; admins triage a suggestion queue. Bigger scope — new list UI + status field; better as a follow-up.</span></span></label>
+    <button type="submit">Queue answer</button><span class="queued-note">queued ✓</span>
+  </form>
+
+  <form class="decision" data-lavish-question="d4-notes" onsubmit="queueDecision(event,'d4-notes','extra notes')">
+    <h4><span class="dnum">D4</span> Anything to add or change?</h4>
+    <textarea class="free" name="d4-notes" placeholder="Constraints, naming, scope trims, follow-ups…"></textarea>
+    <button type="submit">Queue answer</button><span class="queued-note">queued ✓</span>
+  </form>
+</section>
+
+<footer>
+  s21 · Chat → Golden promotion · facts verified live on 2026-07-18 against run <span class="mono">1565d54f</span>
+  (browser test + psql on app.query_runs / app.messages / goldens.py &amp; ResultView.tsx source).
+  design system = the app's own tokens (carried from s19/s20 artifacts).
+</footer>
+
+</div>
+
+<script>
+function queueDecision(ev, name, label) {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const fd = new FormData(form);
+  const val = (fd.get(name) || "").toString().trim();
+  if (!val) return;
+  window.lavish?.queuePrompt(
+    "Decision " + label + ": " + val,
+    { tag: "decision", text: label + " = " + val, element: form,
+      queueKey: name, data: { question: name, answer: val } }
+  );
+  form.classList.add("queued");
+}
+</script>
+<script type="module">
+  // Mermaid ESM, dark theme to match the page (dark-fixed artifact, same as s19/s20).
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict",
+    themeVariables: { fontFamily: "Inter, sans-serif", fontSize: "13px",
+      primaryColor: "#181c25", primaryBorderColor: "#333a48", primaryTextColor: "#e7e9ee",
+      lineColor: "#79839a", clusterBkg: "#12151c", clusterBorder: "#232834" } });
+  await mermaid.run({ nodes: [...document.querySelectorAll(".mmd-src")] });
+</script>
+</body>
+</html>

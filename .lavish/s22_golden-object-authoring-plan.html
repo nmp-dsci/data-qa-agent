@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s22 · Golden object authoring — Pre/Post plan</title>
+<style>
+  /* ===== Data Pilot design tokens (frontend/src/styles.css) ===== */
+  :root {
+    --bg: #0a0d15;            /* canvas — navy ink */
+    --panel: #111522;
+    --panel-2: #171c2b;
+    --panel-3: #1e2434;
+    --border: #242b3d;
+    --border-2: #333d55;
+    --text: #eaecf3;
+    --muted: #9aa4bb;
+    --faint: #7a84a0;
+    --code-bg: #0a0d13;
+    --accent: #d9a84e;        /* instrument gold */
+    --accent-ink: #1a1204;
+    --accent-soft: #f2ca79;
+    --accent-2: #7fb0ff;      /* blue */
+    --good: #9ece6a;
+    --good-border: #33502f;
+    --warn: #e0af68;
+    --warn-border: #6b5a2a;
+    --bad: #f2777a;
+    --bad-border: #6b2a2a;
+    --purple: #c58fff;
+    --info: #7dcfff;
+    --info-border: #2f5a7a;
+    --radius-sm: 6px; --radius: 8px; --radius-lg: 10px; --radius-xl: 14px;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > *, :where([style*="display:grid"], [style*="display:flex"]) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, li, dd, td, th, .chip, .lbl) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  body { font-size: 15px; line-height: 1.55; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 22px 90px; }
+
+  h1 { font-size: 26px; line-height: 1.2; margin: 8px 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 19px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h3 { font-size: 15px; margin: 0 0 4px; }
+  section { margin-top: 34px; }
+  .kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--accent); font-weight: 600; }
+  .sub { color: var(--muted); max-width: 62rem; }
+  code, .mono { font-family: var(--mono); font-size: 12.5px; }
+  code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; color: var(--accent-soft); white-space: nowrap; }
+  code.wrap-ok { white-space: normal; }
+  a { color: var(--accent-2); }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .chip { font-family: var(--mono); font-size: 11px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--panel-2); color: var(--muted); }
+  .chip.gold { color: var(--accent); border-color: #6b5a2a; background: rgba(217,168,78,0.08); }
+  .chip.blue { color: var(--accent-2); border-color: var(--info-border); background: rgba(127,176,255,0.08); }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 18px 20px; }
+  .panel-2 { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 14px; }
+
+  .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--faint); font-weight: 600; }
+
+  /* stage strip */
+  .stages { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 14px; }
+  .stage { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); padding: 14px 16px; position: relative; }
+  .stage .num { font-family: var(--mono); font-size: 20px; opacity: 0.9; }
+  .stage.ok { border-color: var(--good-border); }
+  .stage.pain { border-color: var(--bad-border); }
+  .verdict { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 2px 9px; border-radius: 999px; margin-top: 8px; }
+  .verdict.ok { color: var(--good); border: 1px solid var(--good-border); background: rgba(158,206,106,0.07); }
+  .verdict.pain { color: var(--bad); border: 1px solid var(--bad-border); background: rgba(242,119,122,0.07); }
+
+  /* pre/post */
+  .prepost { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; margin-top: 14px; align-items: start; }
+  @media (max-width: 900px) { .prepost, .stages { grid-template-columns: minmax(0,1fr); } }
+  .side { border-radius: var(--radius-xl); border: 1px solid var(--border); overflow: hidden; background: var(--panel); }
+  .side > header { padding: 10px 16px; font-family: var(--mono); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  .side.pre > header { color: var(--bad); background: rgba(242,119,122,0.06); }
+  .side.post > header { color: var(--good); background: rgba(158,206,106,0.06); }
+  .side .body { padding: 14px 16px; }
+
+  ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; }
+  ol.steps li { color: var(--muted); }
+  ol.steps li strong { color: var(--text); font-weight: 600; }
+  .pain-tag { font-family: var(--mono); font-size: 10px; color: var(--bad); border: 1px solid var(--bad-border); border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }
+  .dead { color: var(--bad); font-weight: 600; }
+
+  /* UI mock */
+  .mock { background: var(--panel-2); border: 1px solid var(--border-2); border-radius: var(--radius-lg); padding: 12px; font-size: 12.5px; }
+  .mock .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+  .mock input[type=text], .mock textarea, .mock select {
+    background: var(--panel-3); border: 1px solid var(--border-2); color: var(--text);
+    border-radius: 6px; padding: 5px 8px; font-family: var(--mono); font-size: 12px;
+    max-width: 100%; min-width: 0;
+  }
+  .mock textarea { width: 100%; resize: vertical; }
+  .mock .mbtn { border: 1px solid rgba(127,176,255,0.6); background: rgba(127,176,255,0.22); color: var(--text); border-radius: 8px; padding: 6px 14px; font-size: 13px; font-weight: 600; }
+  .mock .mbtn.gold { border-color: rgba(217,168,78,0.7); background: rgba(217,168,78,0.18); color: var(--accent-soft); }
+  .mock .hint { font-size: 11px; color: var(--faint); }
+  .mock .flag { position: relative; }
+  .callout { font-family: var(--mono); font-size: 10.5px; color: var(--bad); }
+  .okline { font-family: var(--mono); font-size: 11.5px; color: var(--good); margin-top: 8px; }
+
+  /* fake chart */
+  .fakechart { margin-top: 10px; background: var(--panel-3); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 6px; }
+  .dotk { display: inline-block; width: 8px; height: 8px; border-radius: 999px; margin-right: 4px; vertical-align: middle; }
+
+  /* tables */
+  .tblwrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); margin-top: 12px; }
+  table.t { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.t th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--faint); padding: 9px 12px; background: var(--panel-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.t td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--muted); }
+  table.t tr:last-child td { border-bottom: none; }
+  table.t td:first-child { white-space: nowrap; }
+  table.t .file { font-family: var(--mono); font-size: 11.5px; color: var(--accent-2); }
+  table.t strong { color: var(--text); }
+
+  .badge { display: inline-block; font-family: var(--mono); font-size: 10px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+  .badge.keep { color: var(--info); border: 1px solid var(--info-border); }
+  .badge.change { color: var(--warn); border: 1px solid var(--warn-border); }
+  .badge.new { color: var(--good); border: 1px solid var(--good-border); }
+  .badge.gap { color: var(--bad); border: 1px solid var(--bad-border); }
+
+  /* phases */
+  .phases { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 14px; }
+  @media (max-width: 900px) { .phases { grid-template-columns: minmax(0,1fr); } }
+  .phase { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); padding: 14px 16px; }
+  .phase.hero { border-color: #6b5a2a; background: linear-gradient(180deg, rgba(217,168,78,0.06), var(--panel)); }
+  .phase ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+  .phase li { margin-top: 5px; }
+
+  /* risks */
+  .risk { border-left: 3px solid var(--warn); background: var(--panel); border-radius: 0 var(--radius) var(--radius) 0; padding: 10px 14px; margin-top: 10px; }
+  .risk .lbl { color: var(--warn); }
+
+  /* decisions */
+  .q { border: 1px solid var(--border-2); border-radius: var(--radius-lg); background: var(--panel); padding: 16px 18px; margin-top: 14px; }
+  .q .opts { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 12px; }
+  .q label.opt { display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); cursor: pointer; }
+  .q label.opt:hover { border-color: var(--border-2); }
+  .q label.opt input { margin-top: 3px; accent-color: var(--accent); flex: none; }
+  .q .opt .t { font-weight: 600; }
+  .q .opt .d { color: var(--muted); font-size: 13px; }
+  .q .rec { font-family: var(--mono); font-size: 10px; color: var(--accent); border: 1px solid #6b5a2a; border-radius: 4px; padding: 0 5px; margin-left: 6px; }
+  .qbtn { border: 1px solid var(--border-2); background: var(--panel-3); color: var(--text); border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .qbtn:hover { border-color: var(--accent); color: var(--accent-soft); }
+  .qstate { font-family: var(--mono); font-size: 11px; color: var(--good); margin-left: 10px; }
+
+  .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; margin-top: 12px; overflow-x: auto; }
+  .codebox { margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .codebox .cap { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--panel-2); border-bottom: 1px solid var(--border); padding: 7px 12px; }
+  .codebox .cap b { color: var(--accent-2); font-weight: 600; }
+  .note { font-size: 12.5px; color: var(--faint); margin-top: 8px; }
+  .twocol { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
+  @media (max-width: 980px) { .twocol { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============================ HEADER ============================ -->
+  <div class="kicker">s22 · plan for review — nothing built yet</div>
+  <h1>Golden editing: make ② Presentation objects as easy as ① SQL</h1>
+  <p class="sub">
+    The Golden tab's three-stage editor works, but authoring a <em>new presentation object</em> means fighting a
+    15-field form with sales-only defaults, then hand-linking the result into the report. This plan makes a plain-English
+    sentence the primary way to create an object — <strong>one instruction → sandbox object + report object, placed automatically</strong>.
+    Most of the plumbing already exists; this is a UX-and-wiring change, not new machinery.
+  </p>
+  <div class="chips">
+    <span class="chip gold">branch golden-egs</span>
+    <span class="chip">GoldensPage.tsx · 2,038 loc</span>
+    <span class="chip">ReportEditor.tsx · 1,112 loc</span>
+    <span class="chip">routers/goldens.py · 575 loc</span>
+    <span class="chip blue">reuses /build-object NL path (already shipped)</span>
+  </div>
+
+  <!-- ============================ CURRENT STATE ============================ -->
+  <section>
+    <h2>Where the friction actually is</h2>
+    <p class="sub">The three stages today, as coded on <code>golden-egs</code>:</p>
+    <div class="stages">
+      <div class="stage ok">
+        <div class="num">①</div>
+        <h3>SQL extract</h3>
+        <p class="sub" style="font-size:13px">Textarea + <strong>▶ Run SQL</strong>. Edit, run, see rows. Already has one-click revert when an AI edit rewrites it (<code>sqlRevert</code>).</p>
+        <span class="verdict ok">easy — keep as-is</span>
+      </div>
+      <div class="stage pain">
+        <div class="num">②</div>
+        <h3>Sandbox · presentation objects</h3>
+        <p class="sub" style="font-size:13px">"Presentation Object builder" = name + type + grain + dimension + group + filter + 2 measure rows, defaults hardcoded to <code>nsw_sales</code>. The NL box exists but is collapsed under <em>"optional — describe it in words instead"</em> (GoldensPage.tsx:1651).</p>
+        <span class="verdict pain">main friction</span>
+      </div>
+      <div class="stage pain">
+        <div class="num">③</div>
+        <h3>Interactive report</h3>
+        <p class="sub" style="font-size:13px">A built object does <strong>not</strong> appear here. The success message says <em>"Link it from a report chart in ③"</em> (GoldensPage.tsx:784) — open a column's ＋ picker, add a chart, bind it via the "Linked object" dropdown.</p>
+        <span class="verdict pain">manual link step</span>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px">
+      <div class="lbl">What already exists (the leverage)</div>
+      <div class="tblwrap" style="margin-top:8px">
+        <table class="t">
+          <thead><tr><th>Path</th><th>What it does today</th><th>Gap</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="file">POST /admin/eval-goldens/build-object</span><br><span class="lbl">deterministic + NL</span></td>
+              <td>Builds a <strong>named</strong> object from the form spec — or, when <code>instruction</code> is set, routes to the schema-grounded LLM codegen (<span class="file">main.py:1085</span> → <code>scaffold_object</code>). Extends the shared extract, runs the governed sandbox, lifts a linkable <code>PageObject</code> with stable <code>obj:&lt;slug&gt;</code> id (<span class="file">main.py:654 _lift_object</span>).</td>
+              <td><span class="badge gap">buried</span> NL is a collapsed afterthought; <code>name</code> required (<span class="file">goldens.py:256</span>); result never placed into ③.</td>
+            </tr>
+            <tr>
+              <td><span class="file">POST /admin/eval-goldens/object</span><br><span class="lbl">s16 cascade</span></td>
+              <td>"✦ describe this object's data" on an <em>existing</em> ③ chart — rewrites the <em>whole</em> <code>run_analysis</code>, may revise SQL, applies all stages together (<span class="file">GoldensPage.tsx:872 instructObject</span>).</td>
+              <td><span class="badge gap">edit-only</span> Can't create a new object without first adding a blank chart; whole-report rewrite is heavier than needed for "add one chart".</td>
+            </tr>
+            <tr>
+              <td><span class="file">object_builder.py</span><br><span class="lbl">deterministic codegen</span></td>
+              <td>Repeatable, LLM-free spec → SQL + snippet. Great for eval reproducibility.</td>
+              <td><span class="badge gap">sales-only</span> <code>table=SALES_MART</code> (<span class="file">:152</span>), additive cols <code>n_sold/total_sale_value</code> (<span class="file">:56</span>), filter-carry knows only suburb/property_type (<span class="file">:127</span>). A rent object can't be built deterministically at all.</td>
+            </tr>
+            <tr>
+              <td><span class="file">object_codegen.py</span><br><span class="lbl">LLM codegen</span></td>
+              <td>Schema-grounded (<code>get_schema_compact()</code> — knows <em>all</em> marts incl. rent), orchestrated verify loop, ≤3 bounded LLM calls, never clobbers other objects on failure.</td>
+              <td><span class="badge keep">none</span> — this is the engine the new flow leans on.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ WORKED EXAMPLE ============================ -->
+  <section>
+    <h2>The worked example — your exact ask, Pre vs Post</h2>
+    <p class="sub">
+      <em>"Average rent by month as x-axis, colour by bedroom band, filtered to house property type only."</em><br>
+      Maps to <code>marts.property_rent</code> (month, bedroom_band, property_type; additive <code>total_weekly_rent</code>/<code>n_rented</code>) —
+      and note <code>skills.trend_series(..., group_col='bedroom_band')</code> natively emits one coloured series per band, so the chart stack needs <strong>zero</strong> changes.
+    </p>
+
+    <div class="prepost">
+      <!-- PRE -->
+      <div class="side pre">
+        <header>Pre — what it takes today</header>
+        <div class="body">
+          <ol class="steps">
+            <li>Expand the builder <code>&lt;details&gt;</code>, <strong>invent a name</strong> — build refuses without one <span class="pain-tag">required</span></li>
+            <li>Pick "Line chart"</li>
+            <li>Fix grain default <code>month, suburb, area_band</code> — <strong>rent has no suburb column</strong>, the extract would fail <span class="pain-tag">sales default</span></li>
+            <li>Fix dimension <code>area_band</code> → n/a for rent <span class="pain-tag">sales default</span></li>
+            <li>Change group <code>suburb</code> → <code>bedroom_band</code> — must know the mart's columns by heart <span class="pain-tag">schema recall</span></li>
+            <li>Type the WHERE filter by hand</li>
+            <li>Rewrite line measure <code>total_sale_value / n_sold</code> → <code>total_weekly_rent / n_rented</code> <span class="pain-tag">schema recall</span></li>
+            <li><span class="dead">Dead end anyway:</span> the deterministic builder writes SQL against <code>marts.property_sales</code> — hardcoded. A rent object can't come out of this form.</li>
+            <li>Workaround: spot the collapsed "describe it in words" box, use the NL path instead <span class="pain-tag">undiscoverable</span></li>
+            <li>Object lands in ② only → go to ③, open a column's ＋ picker, add a chart, bind via "Linked object" dropdown <span class="pain-tag">manual link</span></li>
+            <li>Save</li>
+          </ol>
+          <div style="margin-top:12px" class="mock">
+            <div class="lbl" style="color:var(--accent-2)">✦ Presentation Object builder — today</div>
+            <div class="row">
+              <input type="text" value="" placeholder="object name, e.g. line-bar-sale-volume" size="26" readonly>
+              <select disabled><option>Line chart</option></select>
+              <span class="callout">← must fill first</span>
+            </div>
+            <div class="row">
+              <span class="lbl">grain</span><input type="text" value="month, suburb, area_band" size="27" readonly><span class="callout">← invalid for rent</span>
+            </div>
+            <div class="row">
+              <span class="lbl">x / dimension</span><input type="text" value="area_band" size="9" readonly>
+              <span class="lbl">group</span><input type="text" value="suburb" size="7" readonly>
+              <span class="callout">← all sales defaults</span>
+            </div>
+            <div class="row">
+              <span class="lbl" style="color:var(--accent-2)">line =</span>
+              <input type="text" value="total_sale_value" size="19" readonly><span class="lbl">/</span><input type="text" value="n_sold" size="8" readonly>
+            </div>
+            <div class="row"><span class="hint">▸ optional — describe it in words instead (AI authors the code)</span><span class="callout">← the good path, hidden</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- POST -->
+      <div class="side post">
+        <header>Post — one sentence, one click</header>
+        <div class="body">
+          <ol class="steps">
+            <li><strong>Type the sentence</strong> in the new "New object with AI" panel — no name, no form</li>
+            <li><strong>Build &amp; add to report</strong> — agent authors + sandbox-verifies the code, object appears in ② <em>and</em> is placed into ③ automatically</li>
+            <li>Review the chart (and the surfaced SQL extension), Save</li>
+          </ol>
+          <div style="margin-top:12px" class="mock">
+            <div class="lbl" style="color:var(--accent-2)">✦ New object with AI — proposed primary panel in ②</div>
+            <textarea rows="2" readonly>average rent by month as x axis, colour by bedroom band, filtered to house property type only</textarea>
+            <div class="row">
+              <select disabled><option>auto → Line chart</option></select>
+              <input type="text" value="avg-rent-by-month-by-bedroom" size="31" readonly title="auto-slug, editable">
+              <button class="mbtn" disabled>✦ Build &amp; add to report</button>
+            </div>
+            <div class="okline">✓ built obj:avg-rent-by-month-by-bedroom · added to report page 1 · SQL extended (review / revert in ①) · undo</div>
+            <div class="fakechart">
+              <svg viewBox="0 0 340 110" width="100%" height="110" role="img" aria-label="mock line chart: avg weekly rent by month, one line per bedroom band">
+                <line x1="28" y1="92" x2="330" y2="92" stroke="#242b3d"/>
+                <line x1="28" y1="8" x2="28" y2="92" stroke="#242b3d"/>
+                <polyline fill="none" stroke="#d9a84e" stroke-width="2" points="28,74 78,70 128,66 178,60 228,58 278,52 330,48"/>
+                <polyline fill="none" stroke="#7fb0ff" stroke-width="2" points="28,60 78,57 128,52 178,48 228,44 278,40 330,34"/>
+                <polyline fill="none" stroke="#9ece6a" stroke-width="2" points="28,46 78,44 128,40 178,34 228,32 278,26 330,22"/>
+                <polyline fill="none" stroke="#c58fff" stroke-width="2" points="28,34 78,30 128,28 178,24 228,20 278,16 330,12"/>
+              </svg>
+              <div class="legend">
+                <span><span class="dotk" style="background:#d9a84e"></span>1 bed</span>
+                <span><span class="dotk" style="background:#7fb0ff"></span>2 bed</span>
+                <span><span class="dotk" style="background:#9ece6a"></span>3 bed</span>
+                <span><span class="dotk" style="background:#c58fff"></span>4 bed</span>
+                <span style="margin-left:auto">avg weekly rent · houses only</span>
+              </div>
+            </div>
+          </div>
+          <p class="note">The structured form doesn't disappear — it moves under "advanced" for the deterministic/repeatable path (decision Q2 below).</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:20px">What the agent would generate for this instruction</h3>
+    <p class="sub" style="font-size:13.5px">Real shapes, verified against the schema and skills as they exist today — this is what lands in the golden's ① and ②:</p>
+    <div class="twocol">
+      <div class="codebox">
+        <div class="cap"><b>golden_sql</b> · extract over marts.property_rent (additive legs kept so re-aggregation stays correct)</div>
+        <div id="code-sql"></div>
+      </div>
+      <div class="codebox">
+        <div class="cap"><b>golden_objects[·].code</b> · run_analysis snippet — governed sandbox, no imports</div>
+        <div id="code-py"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ PIPELINE ============================ -->
+  <section>
+    <h2>Post pipeline — how one sentence becomes both objects</h2>
+    <p class="sub">Every hop below exists today except the two gold-bordered ones.</p>
+    <pre class="mermaid">
+flowchart TD
+  A["curator types instruction in ②<br/>'avg rent by month, colour by bedroom band, houses only'"]
+  B["POST /admin/eval-goldens/build-object<br/>{ instruction, sql, dataset, name? }"]
+  C["data-agent: scaffold_object<br/>schema-grounded codegen · ≤3 bounded LLM calls"]
+  D["governed extract (RLS) + sandbox verify loop<br/>on error → one correction pass"]
+  E["lifted PageObject · element_id obj:&lt;slug&gt;<br/>_lift_object (main.py:654)"]
+  F["② golden_objects + builtObjects upsert<br/>+ golden_sql extension surfaced w/ revert"]
+  G["③ auto-insert into pendingPages<br/>deep copy · shared element_id IS the link"]
+  H["Save → golden_sql / golden_objects / golden_report<br/>commit together (existing save())"]
+  A --> B --> C --> D
+  D -- "verified" --> E
+  E --> F --> H
+  E --> G --> H
+  style A fill:#171c2b,stroke:#333d55,color:#eaecf3
+  style B fill:#171c2b,stroke:#d9a84e,color:#eaecf3
+  style C fill:#171c2b,stroke:#333d55,color:#eaecf3
+  style D fill:#171c2b,stroke:#333d55,color:#eaecf3
+  style E fill:#171c2b,stroke:#333d55,color:#eaecf3
+  style F fill:#171c2b,stroke:#333d55,color:#eaecf3
+  style G fill:#171c2b,stroke:#d9a84e,color:#eaecf3
+  style H fill:#171c2b,stroke:#33502f,color:#eaecf3
+    </pre>
+    <p class="note">Gold border = the two changes: <code>name</code> becomes optional on the endpoint, and the frontend places the lifted object into the report draft. Everything else is the shipped s16/s18 machinery.</p>
+  </section>
+
+  <!-- ============================ CHANGE MAP ============================ -->
+  <section>
+    <h2>Pre → Post change map</h2>
+    <div class="tblwrap">
+      <table class="t">
+        <thead><tr><th>File</th><th>Pre (today)</th><th>Post (proposed)</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="file">frontend/…/goldens/GoldensPage.tsx</span></td>
+            <td>NL box collapsed under the 15-field form (:1651); <code>buildObject()</code> requires a typed name (:737); success = "Link it from a report chart in ③" (:784).</td>
+            <td><strong>"✦ New object with AI"</strong> card leads ②: instruction textarea + auto-slug name (editable) + type select defaulting to a keyword guess (line→trend, bar→breakdown, …). On success: upsert ② <em>and</em> insert a deep copy into <code>pendingPages</code> (same semantics as ReportEditor's <code>addLinked</code> :307 — shared element_id is the link), with undo. Structured form moves under "advanced".</td>
+            <td><span class="badge change">change</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">frontend/…/goldens/ReportEditor.tsx</span></td>
+            <td>Linking is pull-only: ＋ picker → "Linked object" dropdown (:691).</td>
+            <td>No structural change — pages arrive via props, so the auto-inserted object just renders. Keep the picker for re-linking.</td>
+            <td><span class="badge keep">keep</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">services/backend-api/…/routers/goldens.py</span></td>
+            <td><code>BuildObjectIn.name: str</code> required (:256).</td>
+            <td><code>name</code> optional → server derives the slug from the instruction when absent; pass <code>dataset</code> through (Phase 2).</td>
+            <td><span class="badge change">change</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">services/data-agent/agent/main.py</span></td>
+            <td><code>build-object</code> NL branch already calls <code>scaffold_object</code> with schema grounding (:1085).</td>
+            <td>Accept absent name (slug from instruction); return a suggested <code>title</code> for the report card. ~10 lines.</td>
+            <td><span class="badge change">change</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">services/data-agent/agent/object_builder.py</span></td>
+            <td>Hardcoded sales: <code>SALES_MART</code>, additive <code>n_sold/total_sale_value</code>, suburb/property_type filter-carry.</td>
+            <td><strong>Phase 2:</strong> per-dataset registry — <code>nsw_rent</code> → <code>RENT_MART</code>, additive <code>n_rented/total_weekly_rent</code>, recomposed <code>avg_weekly_rent</code>, filter-carry adds bedroom_band/postcode. Frontend <code>defaultBuilder(dataset)</code> gets rent defaults.</td>
+            <td><span class="badge new">phase 2</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">services/data-agent/agent/object_codegen.py</span></td>
+            <td>Schema-grounded, bounded verify loop, safe stub fallback.</td>
+            <td>Unchanged — it is the engine. (Optional: mention <code>group_col</code> series-colour in the trend recipe, one line.)</td>
+            <td><span class="badge keep">keep</span></td>
+          </tr>
+          <tr>
+            <td><span class="file">frontend/e2e/goldens.spec.ts</span></td>
+            <td>Covers form-built objects.</td>
+            <td><strong>Phase 3:</strong> NL build → object visible in ② and auto-placed in ③ → Save round-trips.</td>
+            <td><span class="badge new">phase 3</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note"><strong>What deliberately doesn't change:</strong> the ③ per-object "describe this object's data" edit path (right tool for <em>editing</em> an existing object — whole-report rewrite), the governed sandbox + RLS + SQL guardrails, the save/commit flow, and the eval semantics — goldens stay the training signal.</p>
+  </section>
+
+  <!-- ============================ PHASES ============================ -->
+  <section>
+    <h2>Build order</h2>
+    <div class="phases">
+      <div class="phase hero">
+        <div class="lbl" style="color:var(--accent)">Phase 1 · the ask</div>
+        <h3>NL-first authoring + auto-place</h3>
+        <ul>
+          <li>"New object with AI" panel leads ②; name auto-slugged, type keyword-guessed (both editable)</li>
+          <li>Auto-insert the lifted object into <code>pendingPages</code> + undo; never place when <code>engine === "stub"</code> or no object</li>
+          <li><code>name</code> optional end-to-end (router → agent)</li>
+          <li>Demote the structured form under "advanced"</li>
+        </ul>
+        <p class="note">Small: one frontend panel + a place-into-pages helper + ~15 backend lines. No new endpoints, no migration.</p>
+      </div>
+      <div class="phase">
+        <div class="lbl">Phase 2</div>
+        <h3>Dataset-aware deterministic builder</h3>
+        <ul>
+          <li>Mart registry in <code>object_builder.py</code> (sales + rent; yield later)</li>
+          <li><code>defaultBuilder(dataset)</code> — rent goldens open with valid defaults</li>
+          <li>Extend <code>test_object_builder.py</code> for the rent leg</li>
+        </ul>
+        <p class="note">Makes rent objects repeatable without an LLM — matters for eval reproducibility.</p>
+      </div>
+      <div class="phase">
+        <div class="lbl">Phase 3</div>
+        <h3>Polish + proof</h3>
+        <ul>
+          <li>e2e: sentence → chart in ② + ③ → Save (extend <code>goldens.spec.ts</code>)</li>
+          <li>Type inference refinement; placement target picker if Q1 wants it</li>
+          <li>Roadmap note: cross-golden object library (out of scope here)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ RISKS ============================ -->
+  <section>
+    <h2>Risks &amp; failure modes</h2>
+    <div class="risk">
+      <span class="lbl">stub fallback</span>
+      <p class="sub" style="margin:4px 0 0; font-size:13.5px">No LLM key / budget exhausted → <code>scaffold_object</code> returns the stub. Existing guard (GoldensPage.tsx:906) already refuses to apply it; the new auto-place must use the same gate so a stand-in object never lands in the report.</p>
+    </div>
+    <div class="risk">
+      <span class="lbl">silent SQL rewrites</span>
+      <p class="sub" style="margin:4px 0 0; font-size:13.5px">The NL build may extend ① to add missing columns. Keep the existing surface: "SQL changed (review / revert in ①)" + <code>sqlRevert</code> one-click restore. The extension is additive by prompt contract (keeps existing columns + WHERE), but the curator reviews it.</p>
+    </div>
+    <div class="risk">
+      <span class="lbl">DeepSeek reliability</span>
+      <p class="sub" style="margin:4px 0 0; font-size:13.5px">Already solved by design: this is the s16 orchestrated verify loop (≤3 bounded calls, we run the sandbox, feed errors back) — not an open tool loop, which DeepSeek thrashes in. No change to that architecture.</p>
+    </div>
+    <div class="risk">
+      <span class="lbl">element_id churn</span>
+      <p class="sub" style="margin:4px 0 0; font-size:13.5px">Renaming the auto-slug creates a new <code>obj:&lt;slug&gt;</code>. Keep upsert-by-element_id (existing <code>upsertObject</code>); rename before first Save is free, after Save it's a new object — same rule as today, worth a hint in the UI.</p>
+    </div>
+  </section>
+
+  <!-- ============================ DECISIONS ============================ -->
+  <section>
+    <h2>Decisions — pick, then Send to Agent</h2>
+    <p class="sub" style="font-size:13.5px">Each queues one prompt; selections stay local until you press its button.</p>
+
+    <form class="q" data-lavish-question="placement" onsubmit="event.preventDefault(); queueAnswer(this, 'placement');">
+      <div class="lbl">Q1 · where does the auto-placed object land in ③?</div>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="placement" value="first column of the currently visible page (create page 1 if the report is empty)">
+          <span><span class="t">Active page, first column <span class="rec">recommended</span></span><br><span class="d">Appears where the curator is looking; empty report → creates page 1. Undo removes it.</span></span></label>
+        <label class="opt"><input type="radio" name="placement" value="a new page appended at the end of the report">
+          <span><span class="t">New page at the end</span><br><span class="d">Never disturbs existing layout, but the result can land off-screen.</span></span></label>
+        <label class="opt"><input type="radio" name="placement" value="a small 'place into' page/column picker shown next to the Build button">
+          <span><span class="t">Explicit "place into ▾" picker</span><br><span class="d">Full control, one more decision per build.</span></span></label>
+      </div>
+      <button class="qbtn" type="submit">Queue answer</button><span class="qstate"></span>
+    </form>
+
+    <form class="q" data-lavish-question="form-primacy" onsubmit="event.preventDefault(); queueAnswer(this, 'form-primacy');">
+      <div class="lbl">Q2 · what happens to the structured builder form?</div>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="form-primacy" value="NL panel primary; structured form demoted under an 'advanced — structured builder' details">
+          <span><span class="t">NL primary, form under "advanced" <span class="rec">recommended</span></span><br><span class="d">One obvious path; the deterministic form stays available for repeatable eval objects.</span></span></label>
+        <label class="opt"><input type="radio" name="form-primacy" value="keep NL panel and structured form side by side, both expanded">
+          <span><span class="t">Both visible side by side</span><br><span class="d">No relearning, but ② stays visually heavy — the current problem in milder form.</span></span></label>
+      </div>
+      <button class="qbtn" type="submit">Queue answer</button><span class="qstate"></span>
+    </form>
+
+    <form class="q" data-lavish-question="phase2" onsubmit="event.preventDefault(); queueAnswer(this, 'phase2');">
+      <div class="lbl">Q3 · Phase 2 (dataset-aware deterministic builder) timing?</div>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="phase2" value="ship Phase 1 first, Phase 2 as a follow-up">
+          <span><span class="t">Phase 1 first, Phase 2 follow-up <span class="rec">recommended</span></span><br><span class="d">The NL path already covers rent (schema-grounded); registry lands when the flow is proven.</span></span></label>
+        <label class="opt"><input type="radio" name="phase2" value="build Phase 1 and Phase 2 together in one PR">
+          <span><span class="t">Both together</span><br><span class="d">Rent form-defaults correct from day one; bigger PR, slower to review.</span></span></label>
+        <label class="opt"><input type="radio" name="phase2" value="skip Phase 2 — rely on the NL path for non-sales datasets">
+          <span><span class="t">Skip Phase 2</span><br><span class="d">Least work, but rent objects always cost an LLM call and aren't deterministic for evals.</span></span></label>
+      </div>
+      <button class="qbtn" type="submit">Queue answer</button><span class="qstate"></span>
+    </form>
+  </section>
+
+  <p class="note" style="margin-top:30px">
+    Grounding: GoldensPage.tsx:345 (sales defaults) · :735 buildObject · :784 "Link it from ③" · :872 instructObject ·
+    ReportEditor.tsx:307 addLinked · :691 linked-object dropdown · goldens.py:254 BuildObjectIn · main.py:1013/1085 build-object NL branch ·
+    :654 _lift_object · object_builder.py:32/56/127/152 sales hardcoding · object_codegen.py:63 bounded corrections ·
+    schema.py:70–80 RENT_MART (no suburb; bedroom_band; additive rent legs) · skills/analysis.py:65 trend_series(group_col).
+  </p>
+</div>
+
+<script>
+  function queueAnswer(form, q) {
+    const v = new FormData(form).get(q);
+    const state = form.querySelector('.qstate');
+    if (!v) { state.textContent = 'pick an option first'; state.style.color = 'var(--warn)'; return; }
+    if (window.lavish && window.lavish.queuePrompt) {
+      window.lavish.queuePrompt('Decision ' + q + ': ' + v, {
+        tag: 'decision', text: q + ' → ' + v, element: form,
+        queueKey: q, data: { question: q, answer: v }
+      });
+      state.textContent = 'queued ✓ — press Send to Agent when done';
+      state.style.color = 'var(--good)';
+    } else {
+      state.textContent = 'open via lavish-axi to send answers';
+      state.style.color = 'var(--warn)';
+    }
+  }
+</script>
+
+<!-- @pierre/diffs code rendering -->
+<script type="module">
+  import { File } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const theme = { light: "github-light", dark: "tokyo-night" };
+  const options = { theme, themeType: "dark", overflow: "wrap" };
+
+  const sql = {
+    name: "golden_sql.sql",
+    contents:
+"SELECT\n" +
+"  month,\n" +
+"  bedroom_band,\n" +
+"  sum(total_weekly_rent) AS total_weekly_rent,\n" +
+"  sum(n_rented) AS n_rented,\n" +
+"  round((sum(total_weekly_rent)\n" +
+"         / NULLIF(sum(n_rented), 0))::numeric) AS avg_weekly_rent\n" +
+"FROM marts.property_rent\n" +
+"WHERE property_type = 'house'\n" +
+"GROUP BY month, bedroom_band\n" +
+"ORDER BY month, bedroom_band\n",
+  };
+
+  const py = {
+    name: "run_analysis.py",
+    contents:
+"# df, pd, skills already in scope — governed sandbox, no imports\n" +
+"series = skills.trend_series(\n" +
+"    df,\n" +
+"    month_col='month',\n" +
+"    value_col='total_weekly_rent',\n" +
+"    den_col='n_rented',            # weighted avg, not avg-of-avgs\n" +
+"    group_col='bedroom_band',      # -> one coloured line per band\n" +
+")\n" +
+"chart = skills.trend_chart(\n" +
+"    series,\n" +
+"    title='Avg weekly rent by month · by bedroom band (houses)',\n" +
+")\n" +
+"result = skills.build_report(\n" +
+"    summary='Average weekly rent per month for houses, one line per bedroom band.',\n" +
+"    main_chart=chart,\n" +
+")\n",
+  };
+
+  new File(options).render({ containerWrapper: document.querySelector("#code-sql"), file: sql });
+  new File(options).render({ containerWrapper: document.querySelector("#code-py"), file: py });
+</script>
+
+<!-- Mermaid (theme-aware) -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict",
+    themeVariables: { fontFamily: "JetBrains Mono, monospace", fontSize: "13px" } });
+  window.addEventListener("load", () => mermaid.run({ nodes: [...document.querySelectorAll(".mermaid")] }), { once: true });
+</script>
+</body>
+</html>

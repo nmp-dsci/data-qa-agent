@@ -27,9 +27,73 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 
-from .schema import SALES_MART
+from .schema import RENT_MART, SALES_MART
+
+# ---------------------------------------------------------------------------
+# Mart profiles (s22 P2) — the deterministic builder is dataset-aware. Each
+# profile names the source table, its additive legs (a count + a value that may
+# be summed across a window), the recomposed ratio (a non-additive average
+# recomputed as sum(value)/sum(count)), a sensible default grain, and the
+# equality/IN filters carried verbatim from the golden's current extract.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MartProfile:
+    table: str
+    count_col: str  # additive count (bar default), e.g. n_sold / n_rented
+    value_col: str  # additive total, e.g. total_sale_value / total_weekly_rent
+    ratio_col: str  # recomposed average (line default), e.g. avg_sale_price
+    default_grain: tuple[str, ...]
+    carry_cols: tuple[str, ...]
+
+    @property
+    def additive(self) -> tuple[str, str]:
+        return (self.count_col, self.value_col)
+
+
+_PROFILES: dict[str, MartProfile] = {
+    "nsw_sales": MartProfile(
+        table=SALES_MART,
+        count_col="n_sold",
+        value_col="total_sale_value",
+        ratio_col="avg_sale_price",
+        default_grain=("suburb", "area_band", "month"),
+        carry_cols=("suburb", "property_type"),
+    ),
+    "nsw_rent": MartProfile(
+        table=RENT_MART,
+        count_col="n_rented",
+        value_col="total_weekly_rent",
+        ratio_col="avg_weekly_rent",
+        default_grain=("postcode", "bedroom_band", "month"),
+        carry_cols=("postcode", "property_type", "bedroom_band"),
+    ),
+}
+
+
+def profile_for(dataset: str | None) -> MartProfile:
+    """The mart profile for a dataset slug (defaults to sales — the historical
+    behaviour, so callers that don't pass a dataset are unchanged)."""
+    return _PROFILES.get(dataset or "nsw_sales", _PROFILES["nsw_sales"])
+
+
+_STOPWORDS = frozenset(
+    "a an the of by for with and to as only that is in on per over this these those "
+    "chart show me plot graph across between into vs versus".split()
+)
+
+
+def name_from_instruction(instruction: str, *, max_words: int = 5) -> str:
+    """A short, stable slug derived from the salient words of an NL instruction —
+    used to give an unnamed object (s22 NL path) a linkable ``obj:<slug>`` id."""
+    words = re.sub(r"[^a-z0-9\s]", " ", (instruction or "").lower()).split()
+    kept = [w for w in words if w not in _STOPWORDS][:max_words]
+    return slug(" ".join(kept)) if kept else "object"
+
 
 # ---------------------------------------------------------------------------
 # Identity — a stable, link-able element_id per named object.
@@ -51,9 +115,6 @@ def element_id_for(name: str) -> str:
 # The spec — the structured form state the builder collects (all optional with
 # sensible house defaults so a partial form still yields runnable code).
 # ---------------------------------------------------------------------------
-
-# Additive raw columns that may be summed across a re-aggregation window.
-_ADDITIVE = ("n_sold", "total_sale_value")
 
 
 def _measure(raw: Any, *, default_label: str, default_source: str) -> dict[str, Any]:
@@ -124,21 +185,21 @@ def validate_where_override(where_override: str) -> str:
     return frag
 
 
-def _carry_filters(base_sql: str) -> list[str]:
-    """Best-effort WHERE predicates lifted from the golden's current extract:
-    the suburb IN/= list and a property_type = '…' filter (verbatim values)."""
+def _carry_filters(base_sql: str, carry_cols: tuple[str, ...]) -> list[str]:
+    """Best-effort WHERE predicates lifted verbatim from the golden's current
+    extract — an ``IN (...)`` list or an ``= '…'`` equality for each carried
+    column (suburb/property_type for sales; postcode/property_type/bedroom_band
+    for rent). ``carry_cols`` are fixed profile literals, never user input."""
     preds: list[str] = []
     sql = base_sql or ""
-    m = re.search(r"\bsuburb\s+IN\s*\(([^)]*)\)", sql, re.IGNORECASE)
-    if m and m.group(1).strip():
-        preds.append(f"suburb IN ({m.group(1).strip()})")
-    else:
-        m = re.search(r"\bsuburb\s*=\s*('[^']*')", sql, re.IGNORECASE)
+    for col in carry_cols:
+        m = re.search(rf"\b{col}\s+IN\s*\(([^)]*)\)", sql, re.IGNORECASE)
+        if m and m.group(1).strip():
+            preds.append(f"{col} IN ({m.group(1).strip()})")
+            continue
+        m = re.search(rf"\b{col}\s*=\s*('[^']*')", sql, re.IGNORECASE)
         if m:
-            preds.append(f"suburb = {m.group(1)}")
-    m = re.search(r"\bproperty_type\s*=\s*('[^']*')", sql, re.IGNORECASE)
-    if m:
-        preds.append(f"property_type = {m.group(1)}")
+            preds.append(f"{col} = {m.group(1)}")
     return preds
 
 
@@ -148,36 +209,40 @@ def canonical_extract_sql(
     grain: list[str],
     measure_source_cols: set[str],
     where_override: str = "",
-    table: str = SALES_MART,
+    dataset: str = "nsw_sales",
+    table: str | None = None,
 ) -> str:
-    """A canonical extract at ``grain`` that SELECTs the additive measure sources
-    (+ a recomposed ``avg_sale_price`` convenience column).
+    """A canonical extract at ``grain`` that SELECTs the profile's additive legs
+    (+ a recomposed average convenience column, e.g. ``avg_sale_price`` for sales,
+    ``avg_weekly_rent`` for rent).
 
-    ``where_override`` is the exact WHERE predicate to scope the object (from the
-    builder's filter field, e.g. ``property_type = 'house' AND suburb IN (...)``);
-    when empty the golden's suburb / property_type filters are best-effort carried
-    from ``base_sql`` instead. The filter is surfaced in the form so it's editable
-    lineage, not a hidden guess."""
-    grain_cols = [c for c in grain if c] or ["suburb", "area_band", "month"]
-    # Always carry both additive sources so avg_sale_price can be recomposed.
-    additive = list(_ADDITIVE)
+    ``dataset`` selects the mart profile (table, additive legs, recomposed ratio,
+    carried filters). ``where_override`` is the exact WHERE predicate to scope the
+    object (from the builder's filter field, e.g. ``property_type = 'house' AND
+    suburb IN (...)``); when empty the golden's carried filters are best-effort
+    lifted from ``base_sql`` instead. The filter is surfaced in the form so it's
+    editable lineage, not a hidden guess."""
+    prof = profile_for(dataset)
+    tbl = table or prof.table
+    grain_cols = [c for c in grain if c] or list(prof.default_grain)
+    # Always carry both additive legs so the ratio can be recomposed correctly.
     select = [*grain_cols]
-    for c in additive:
+    for c in prof.additive:
         select.append(f"sum({c}) AS {c}")
-    if {"n_sold", "total_sale_value"} <= set(additive):
-        select.append(
-            "round((sum(total_sale_value) / NULLIF(sum(n_sold), 0))::numeric) AS avg_sale_price"
-        )
+    select.append(
+        f"round((sum({prof.value_col}) / NULLIF(sum({prof.count_col}), 0))::numeric) "
+        f"AS {prof.ratio_col}"
+    )
     where = (
         [validate_where_override(where_override)]
         if where_override.strip()
-        else _carry_filters(base_sql)
+        else _carry_filters(base_sql, prof.carry_cols)
     )
     where_sql = ("\nWHERE " + "\n  AND ".join(where)) if where else ""
     return (
         "SELECT\n  "
         + ",\n  ".join(select)
-        + f"\nFROM {table}"
+        + f"\nFROM {tbl}"
         + where_sql
         + "\nGROUP BY "
         + ", ".join(grain_cols)
@@ -191,14 +256,16 @@ def canonical_extract_sql(
 # ---------------------------------------------------------------------------
 
 
-def _window_setup(grain: list[str], months: int | None) -> list[str]:
-    """Dedup df to ``grain`` (summing additive cols) and expose the latest-N-month
-    windows as python sets the measure blocks filter on."""
+def _window_setup(grain: list[str], months: int | None, additive: tuple[str, ...]) -> list[str]:
+    """Dedup df to ``grain`` (summing the profile's additive cols) and expose the
+    latest-N-month windows as python sets the measure blocks filter on."""
     keys = json.dumps(grain)
+    add = json.dumps(list(additive))
     lines = [
         "work = df.copy()",
         f"_grain = {keys}",
-        "_agg = {c: (c, 'sum') for c in ('n_sold', 'total_sale_value') if c in work.columns}",
+        f"_add = {add}",
+        "_agg = {c: (c, 'sum') for c in _add if c in work.columns}",
         "base = work.groupby(_grain, as_index=False).agg(**_agg) if _agg else work",
     ]
     if "month" in grain:
@@ -237,19 +304,19 @@ def _measure_block(m: dict[str, Any], keys: list[str], var: str, has_month: bool
     ]
 
 
-def _combo_code(spec: dict[str, Any]) -> str:
-    grain = spec.get("grain") or ["month", "suburb", "area_band"]
-    dimension = str(spec.get("dimension") or "area_band")
+def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
+    grain = spec.get("grain") or list(prof.default_grain)
+    dimension = str(spec.get("dimension") or prof.default_grain[1])
     group = spec.get("group") or None
     has_month = "month" in grain
-    bar = _measure(spec.get("bar_measure"), default_label="sales_volume", default_source="n_sold")
+    bar = _measure(spec.get("bar_measure"), default_label="volume", default_source=prof.count_col)
     line = _measure(
         spec.get("line_measure"),
-        default_label="avg_sale_price",
-        default_source="avg_sale_price",
+        default_label=prof.ratio_col,
+        default_source=prof.ratio_col,
     )
     chart_keys = [dimension] + ([str(group)] if group else [])
-    lines = _window_setup(grain, int(spec.get("months") or 12))
+    lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
     lines += _measure_block(bar, chart_keys, "bar_df", has_month)
     lines += _measure_block(line, chart_keys, "line_df", has_month)
     keys_lit = json.dumps(chart_keys)
@@ -278,14 +345,14 @@ def _combo_code(spec: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _breakdown_code(spec: dict[str, Any]) -> str:
-    grain = spec.get("grain") or ["suburb", "area_band"]
-    dimension = str(spec.get("dimension") or "area_band")
+def _breakdown_code(spec: dict[str, Any], prof: MartProfile) -> str:
+    grain = spec.get("grain") or list(prof.default_grain)
+    dimension = str(spec.get("dimension") or prof.default_grain[1])
     group = spec.get("group") or None
     has_month = "month" in grain
-    bar = _measure(spec.get("bar_measure"), default_label="sales_volume", default_source="n_sold")
+    bar = _measure(spec.get("bar_measure"), default_label="volume", default_source=prof.count_col)
     chart_keys = [dimension] + ([str(group)] if group else [])
-    lines = _window_setup(grain, int(spec.get("months") or 12))
+    lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
     lines += _measure_block(bar, chart_keys, "agg", has_month)
     series = f", series_col={json.dumps(str(group))}" if group else ""
     title = json.dumps(spec.get("title") or f"{bar['label']} by {dimension}")
@@ -302,12 +369,12 @@ def _breakdown_code(spec: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _trend_code(spec: dict[str, Any]) -> str:
+def _trend_code(spec: dict[str, Any], prof: MartProfile) -> str:
     group = spec.get("group") or None
     line = _measure(
         spec.get("line_measure") or spec.get("bar_measure"),
-        default_label="avg_sale_price",
-        default_source="avg_sale_price",
+        default_label=prof.ratio_col,
+        default_source=prof.ratio_col,
     )
     group_arg = f", group_col={json.dumps(str(group))}" if group else ""
     if line["kind"] == "wavg":
@@ -325,11 +392,11 @@ def _trend_code(spec: dict[str, Any]) -> str:
     )
 
 
-def _kpi_code(spec: dict[str, Any]) -> str:
+def _kpi_code(spec: dict[str, Any], prof: MartProfile) -> str:
     m = _measure(
         spec.get("line_measure") or spec.get("bar_measure"),
-        default_label="avg_sale_price",
-        default_source="avg_sale_price",
+        default_label=prof.ratio_col,
+        default_source=prof.ratio_col,
     )
     if m["kind"] == "wavg":
         val = f"value_col={json.dumps(m['num'])}, den_col={json.dumps(m['den'])}"
@@ -347,28 +414,28 @@ def _kpi_code(spec: dict[str, Any]) -> str:
     )
 
 
-def _table_code(spec: dict[str, Any]) -> str:
+def _table_code(spec: dict[str, Any], prof: MartProfile) -> str:
     """A ranked/plain data table at the chart grain — the s20 ``table`` object.
 
     Aggregates the bar measure (and, when present, the line measure as a second
     value column) to ``dimension`` (+ optional ``group``), then emits the
     DataTable wire shape via ``skills.data_table`` for ``build_report(table=...)``.
     """
-    grain = spec.get("grain") or ["suburb", "area_band"]
-    dimension = str(spec.get("dimension") or "area_band")
+    grain = spec.get("grain") or list(prof.default_grain)
+    dimension = str(spec.get("dimension") or prof.default_grain[1])
     group = spec.get("group") or None
     has_month = "month" in grain
-    bar = _measure(spec.get("bar_measure"), default_label="sales_volume", default_source="n_sold")
+    bar = _measure(spec.get("bar_measure"), default_label="volume", default_source=prof.count_col)
     measures = [bar]
     line_raw = spec.get("line_measure")
     if isinstance(line_raw, dict) and (line_raw.get("source") or line_raw.get("num")):
         measures.append(
-            _measure(line_raw, default_label="avg_sale_price", default_source="avg_sale_price")
+            _measure(line_raw, default_label=prof.ratio_col, default_source=prof.ratio_col)
         )
     chart_keys = [dimension] + ([str(group)] if group else [])
     keys_lit = json.dumps(chart_keys)
 
-    lines = _window_setup(grain, int(spec.get("months") or 12))
+    lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
     lines += _measure_block(measures[0], chart_keys, "agg", has_month)
     if len(measures) > 1:
         lines += _measure_block(measures[1], chart_keys, "m2", has_month)
@@ -409,11 +476,15 @@ _BUILDERS = {
 }
 
 
-def build_object_code(*, object_type: str, spec: dict[str, Any]) -> str:
+def build_object_code(*, object_type: str, spec: dict[str, Any], dataset: str = "nsw_sales") -> str:
     """Deterministic run_analysis snippet for a named presentation object.
 
-    ``df`` (the shared extract), ``pd`` and ``skills`` are already in scope in the
-    sandbox — the snippet never imports. Ends in ``result = skills.build_report(...)``.
+    ``dataset`` selects the mart profile (additive legs + default grain/measures),
+    so a rent object aggregates ``n_rented``/``total_weekly_rent`` while a sales
+    object aggregates ``n_sold``/``total_sale_value`` (s22 P2). ``df`` (the shared
+    extract), ``pd`` and ``skills`` are already in scope in the sandbox — the
+    snippet never imports. Ends in ``result = skills.build_report(...)``.
     """
+    prof = profile_for(dataset)
     builder = _BUILDERS.get(object_type, _combo_code)
-    return builder(spec if isinstance(spec, dict) else {})
+    return builder(spec if isinstance(spec, dict) else {}, prof)

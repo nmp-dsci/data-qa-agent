@@ -326,6 +326,7 @@ export function ChatPage({
   onSend,
   onStop,
   onOpenSql,
+  onPromoteToGolden,
   conversationId,
   onOpenConversation,
   onNewConversation,
@@ -343,6 +344,7 @@ export function ChatPage({
   onSend: (question: string) => void;
   onStop?: () => void;
   onOpenSql: (sql: string) => void;
+  onPromoteToGolden?: (goldenId: string) => void;
   conversationId: string | null;
   onOpenConversation: (id: string) => void;
   onNewConversation: () => void;
@@ -422,6 +424,7 @@ export function ChatPage({
                         result={m.result}
                         isAdmin={user.role === "admin"}
                         onOpenSql={onOpenSql}
+                        onPromoteToGolden={onPromoteToGolden}
                       />
                     )}
                   </div>

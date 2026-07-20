@@ -113,15 +113,16 @@ models:
 
   - name: mart_property_yield
     description: >
-      Gross rental yield by (postcode, property_type, year) — sales JOIN rent,
-      the combined view neither single-source mart can answer. Physical table:
+      Gross rental yield by (postcode, property_type, month) — sales JOIN rent,
+      the combined view neither single-source mart can answer, at the same month
+      grain as property_sales and property_rent. Physical table:
       marts.property_yield. Ported from docs/chronicle/property_yield_20241003.py.
       Keeps the additive components (total_sale_value, n_sold, total_weekly_rent,
-      n_rented) so a consumer re-aggregating to SA3 or across property types can
-      recompute averages and yield; gross_yield_pct is a derived
-      ratio-of-averages (52 * avg_weekly_rent / avg_sale_price * 100), not an
-      average of per-row yields. Thin cells are floored at n_sold >= 5 and
-      n_rented >= 5. Belongs to the `nsw_yield` dataset (its own RLS grant).
+      n_rented) so a consumer re-aggregating to quarter, year, SA3 or across
+      property types can recompute averages and yield; gross_yield_pct is a
+      derived ratio-of-averages (52 * avg_weekly_rent / avg_sale_price * 100), not
+      an average of per-row yields. Thin cells are floored per month at n_sold >= 5
+      and n_rented >= 5. Belongs to the `nsw_yield` dataset (its own RLS grant).
       Verified by assert_property_yield_has_coverage and
       assert_property_yield_range.
     columns:
@@ -131,8 +132,8 @@ models:
       - name: property_type
         description: "'house' or 'unit', standardised the same way as the sales/rent marts."
         data_tests: [not_null]
-      - name: year
-        description: Calendar year (both sales and rent aggregated to the year). Part of the grain.
+      - name: month
+        description: Calendar month (first-of-month date) both sales and rent were aggregated to. Part of the grain.
         data_tests: [not_null]
       - name: total_sale_value
         description: Additive sum of sale_price (AUD) for the cell. Use with n_sold to re-aggregate avg_sale_price.

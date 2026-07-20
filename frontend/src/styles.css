@@ -638,6 +638,11 @@ section > .agent-demo-canvas { border: 1px solid var(--border); border-radius: v
   border-radius: var(--radius-sm); padding: 3px 9px; cursor: pointer; }
 .chip.active { color: var(--accent); border-color: var(--warn-border); }
 .chip:disabled { opacity: .4; cursor: default; }
+/* ★ promote-to-golden chip (admin, chat answers) — gold accent to read as a
+   deliberate curation action, not a demoted utility like copy/csv. */
+.chip.promote-golden { color: var(--accent); border-color: var(--warn-border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.chip.promote-golden:disabled { opacity: .8; }
 .result-filter { margin: 8px 0; width: 220px; max-width: 100%; background: var(--panel);
   border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 6px 10px; font-size: 12px; }
 .chart-builder { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }

@@ -145,7 +145,7 @@ actual rows/counts at any layer, connect to Postgres directly (`localhost:5434`,
 
 The **Explore** tab lets any signed-in user browse the property/postcode marts directly — filter, aggregate,
 and profile cohorts — without going through the chat agent. It covers three governed datasets: `nsw_sales`,
-`nsw_rent`, and `nsw_yield` (gross rental yield, sales joined to rent by postcode/property_type/year — its
+`nsw_rent`, and `nsw_yield` (gross rental yield, sales joined to rent by postcode/property_type/month — its
 own dataset since it needs both grants). A NSW postcode choropleth renders from a pre-built paths file
 (`frontend/public/geo/poa_nsw.paths.json`, regenerated with `scripts/build_poa_paths.py` — see
 `scripts/build_topojson.md`) rather than a runtime geo-projection library. Reads run under the same RLS as
@@ -171,6 +171,15 @@ data-agent's `/agent/analysis*` and `/agent/skills*` helpers). Deterministic gra
 (`services/data-agent/agent/eval_graders.py`) compare a run's extracted values, sandbox metrics, and report
 shape against a `ready` golden; every `/ask` is stamped with an `agent_versions` build fingerprint, and
 batch scores land in `eval_runs`/`eval_results`.
+
+A chat answer can skip straight to a draft golden: admins see a **"★ save as golden"** chip on any answered
+chat result, which copies the already-captured question/SQL/sandbox script/report into a new draft (no
+agent re-run) and opens it in the editor. Inside the editor, the primary way to add a stage-② object is the
+**"New object with AI"** panel — describe it in one sentence and it's built and placed onto the report
+automatically (the structured form is still there as a manual fallback). Ordinal columns like `area_band`
+and `bedroom_band` render in their natural order rather than alphabetically; curators can tweak the order
+per dataset from a data-knowledge panel in the Sandbox tab (backed by `app.dataset_ordinals`), or override
+one chart's x-axis order manually in the report editor.
 
 ## Authentication (dev stub → Google Sign-in)
 

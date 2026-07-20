@@ -2,7 +2,7 @@
 // expander (admin only), then the insight report — or the legacy result
 // (raw SQL + chart + rows) for pre-report answers.
 import { useState } from "react";
-import { AskResult } from "../../lib/api";
+import { AskResult, goldenFromRun } from "../../lib/api";
 import { downloadCsv } from "../../lib/csv";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
 import { ContractJson } from "../../ui/ContractJson";
@@ -14,14 +14,34 @@ export function ResultView({
   result,
   isAdmin,
   onOpenSql,
+  onPromoteToGolden,
 }: {
   result: AskResult;
   isAdmin: boolean;
   onOpenSql: (sql: string) => void;
+  onPromoteToGolden?: (goldenId: string) => void;
 }) {
   const [showTrace, setShowTrace] = useState(false);
   const [showRenderJson, setShowRenderJson] = useState(false);
   const [copied, setCopied] = useState(false);
+  // ★ promote-to-golden: idle → saving → saved (then hands off to the Goldens
+  // tab). Admin-only, and only when this answer has an audited run_id to copy.
+  const [promoteState, setPromoteState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const canPromote = isAdmin && !!result.run_id && !!onPromoteToGolden;
+  async function promote() {
+    if (!result.run_id || promoteState === "saving") return;
+    setPromoteState("saving");
+    try {
+      const res = await goldenFromRun(result.run_id);
+      setPromoteState("saved");
+      // Defer the handoff so "saved ✓" actually paints before the view-host
+      // remounts into the Goldens tab (same-tick setState + navigate would
+      // otherwise batch into one commit and skip painting this state).
+      setTimeout(() => onPromoteToGolden?.(res.id), 600);
+    } catch {
+      setPromoteState("error");
+    }
+  }
   const hasTrace = isAdmin && result.steps.length > 0;
   // The render contract (s10): the exact Page JSON the data-agent sent the
   // frontend — the same inspector Template Studio uses. Admin-only, like the trace.
@@ -88,6 +108,23 @@ export function ResultView({
               }
             >
               csv
+            </button>
+          )}
+          {canPromote && (
+            <button
+              className="chip promote-golden"
+              onClick={() => void promote()}
+              disabled={promoteState === "saving" || promoteState === "saved"}
+              title="Copy this answer into a draft golden — no re-run — and open it in the Golden Examples tab"
+              data-testid="promote-golden"
+            >
+              {promoteState === "saving"
+                ? "saving…"
+                : promoteState === "saved"
+                  ? "saved ✓ — opening in Goldens…"
+                  : promoteState === "error"
+                    ? "★ retry save as golden"
+                    : "★ save as golden"}
             </button>
           )}
           {hasTrace && (

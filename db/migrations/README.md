@@ -16,9 +16,12 @@ and schemas, and so tables are owned by the admin role — which is what makes R
   users/datasets. Housing **data** is loaded separately by `seed_data.py` (it is pipeline output, not schema).
 
 Later revisions live in `services/db-migrate/migrations/versions/` (one file per change; each docstring
-explains it), currently through `0024_backfill_removed_templates`. The eval loop (s14–s18) added
+explains it), currently through `0028_dataset_ordinals`. The eval loop (s14–s18) added
 `0019`–`0024`: golden-answer columns + `golden_objects` on `eval_cases`, the `agent_versions` registry,
-the `eval_runs`/`eval_results` score store, and the column-only page-template re-seed + backfill.
+the `eval_runs`/`eval_results` score store, and the column-only page-template re-seed + backfill. Explore +
+chart-object unification (s19–s20) added `0025`–`0027`: the `nsw_yield` dataset registration, widening
+`query_runs.source` to admit `'explore'`, and publishing `DataTable` to the chart registry. The golden-editor
+overhaul (s21–s23) added `0028`: curator-editable ordinal band order (`dataset_ordinals`).
 
 The `db/init/*.sql` files remain the single source of truth for the baseline schema; the `0001` revision
 executes them, and they are baked into the migration image.

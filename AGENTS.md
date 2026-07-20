@@ -263,6 +263,7 @@ All capabilities live in one Postgres, all under RLS.
 | `users` | Identity | Local mirror of signed-in users (Google or dev-seeded) + role (`admin`/`user`) | self; admin sees all |
 | `datasets` | Datasets | Registry of ingested datasets the agent can answer over | readable if access granted |
 | `dataset_access` | Datasets | Which users/roles may query which dataset | self; admin manages |
+| `dataset_ordinals` | Datasets | Curator-editable ordinal band order per `(dataset, column)` (e.g. `area_band`) so ordinal chart axes sort naturally, not alphabetically | admin/CI-curated; no RLS |
 | `conversations` | Q&A | A user's chat sessions | owner; admin sees all |
 | `messages` | Q&A | Turns: question, answer, generated SQL, tokens, latency | via conversation owner |
 | `query_runs` | Q&A | Audit of every SQL executed (`source` = `agent` / `sql_editor` / `explore`) | via owner; admin audits |
@@ -286,7 +287,7 @@ evals/journeys.yaml    # user-journey tests
 
 Flow: pipeline reads `datasets.yaml` → dlt ingests each CSV → `raw` → dbt → `marts`; a row is upserted into
 `datasets`, and `access` populates `dataset_access` so RLS enforces who can query it. The `nsw_yield` dataset
-(`marts.property_yield`, sales JOINed to rent by postcode/property_type/year, plus the `dim_postcode_geo`
+(`marts.property_yield`, sales JOINed to rent by postcode/property_type/month, plus the `dim_postcode_geo`
 region-rollup mart) is registered directly by migration 0025 instead of the pipeline's dataset upsert, since
 it derives from the other two marts rather than its own CSV. App config
 (DB URL, model keys, provider) is one typed **pydantic-settings** `Settings` object reading `.env` locally
@@ -319,6 +320,19 @@ Deterministic graders (`agent/eval_graders.py`) score G1 extraction values, G2 s
 structural half of G3 presentation against a `ready` golden — the LLM insight half of G3 is a judge, not
 code. Every `/ask` is stamped with an `agent_versions` build fingerprint, and batch scores land in
 `eval_runs`/`eval_results` (migrations 0019–0024).
+
+Three more ways to seed and refine a golden (s21–s23): an admin chat answer can skip stage ① entirely — a
+"★ save as golden" chip in the chat result (shown whenever the answer has an audited `run_id`) calls
+`POST /admin/eval-goldens/from-run` to copy the question/SQL/sandbox script/report already captured on
+`query_runs`/`messages` into a new draft (idempotent per run) and opens it straight in the editor, no agent
+re-run. Inside the editor, a **"New object with AI"** panel is the NL-first way to author stage-②
+presentation objects: one sentence auto-derives a name/type and the built object is auto-placed onto the
+report, with the structured/advanced form kept as a manual fallback. Ordinal dimensions (`area_band`,
+`bedroom_band`, …) render in their natural order instead of alphabetically — `agent/ordinals.py` is the
+registry (a code-level `BAND_ORDERS` seed plus a curator-editable override), consulted by the chart lift on
+every surface; curators edit the override per `(dataset, column)` in `app.dataset_ordinals` (migration 0028)
+via a data-knowledge panel in the Sandbox tab, picked up on the next Run, with a manual "sort x-axis"
+control in the report editor for columns the registry doesn't cover.
 
 ---
 

@@ -17,8 +17,10 @@ forced, so these are fast and deterministic.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import pandas as pd
+import pytest
 
 import agent.object_codegen as oc
 from agent.main import _chart_sig, _lift_target
@@ -79,7 +81,7 @@ def test_run_book_reproduces_every_object_without_llm() -> None:
     assert {"kpi", "breakdown", "trend"} <= types
 
 
-def _pages_with(objs: list[dict]) -> list[dict]:
+def _pages_with(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{"template": "one-col", "columns": [objs]}]
 
 
@@ -125,6 +127,46 @@ def test_lift_target_signature_diff_picks_the_new_chart() -> None:
     assert got is not None and got["type"] == "breakdown"  # the new bar, not the pre-existing trend
 
 
+def test_lift_target_data_only_edit_matches_target_by_signature() -> None:
+    """A data-only edit (e.g. "order the x-axis by the number before the dash")
+    keeps the field signature — dimension/measure/group are unchanged — so the
+    "new signature" pass finds nothing. The recomposed chart must still be lifted
+    by matching it to the ``_target`` object's signature, else the edit is wrongly
+    rejected as "no chart" (the golden x-axis-ordering bug)."""
+    pages = _pages_with(
+        [
+            {
+                "element_id": "s0c0o0",  # recomposed id, NOT the golden's obj: id
+                "type": "compare",
+                "data": {
+                    "dimension": "area_band",
+                    "measure": "sales_volume",
+                    "line_measure": "avg_sale_price",
+                    "group": "suburb",
+                    # rows now in numeric band order (the honoured edit)
+                    "rows": [{"area_band": "400-700"}, {"area_band": "1000-5000"}],
+                },
+            }
+        ]
+    )
+    existing = [
+        {
+            "element_id": "obj:line-bar-sale-volume",
+            "type": "compare",
+            "_target": True,
+            "data": {
+                "dimension": "area_band",
+                "measure": "sales_volume",
+                "line_measure": "avg_sale_price",
+                "group": "suburb",
+            },
+        }
+    ]
+    got = _lift_target(pages, {}, "obj:line-bar-sale-volume", existing)
+    assert got is not None and got["type"] == "compare"
+    assert got["data"]["rows"][0]["area_band"] == "400-700"  # the reordered chart
+
+
 def test_lift_target_none_when_no_new_chart() -> None:
     """A run that only reproduced the pre-existing charts (didn't honour the edit)
     yields no target, so the caller surfaces an error rather than a stale duplicate."""
@@ -168,7 +210,7 @@ def test_objects_digest_marks_target_and_hides_rows() -> None:
     assert "rows" not in out and '"a": 1' not in out  # the huge payload never ships
 
 
-def test_stub_is_non_destructive(monkeypatch) -> None:
+def test_stub_is_non_destructive(monkeypatch: pytest.MonkeyPatch) -> None:
     """No LLM key → the stub keeps the existing run_analysis intact (never clobbers
     the golden's other objects) and proposes no SQL change."""
     monkeypatch.setattr(oc, "choose_provider", lambda *a, **k: None)

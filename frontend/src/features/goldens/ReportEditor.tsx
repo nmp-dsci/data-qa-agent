@@ -184,6 +184,10 @@ const TEXT_FIELDS: Record<PageObjectType, [string, string, boolean][]> = {
 const ctrl: React.CSSProperties = {
   border: "1px solid rgba(128,128,128,0.4)",
   background: "rgba(128,128,128,0.18)",
+  // Without an explicit color a <button> inherits the UA default (black), which is
+  // illegible on this dark control background — the report editor's ↑↓✎✕ / ✕ page /
+  // Add-page controls all use this style, so pin them to the theme text token.
+  color: "var(--text)",
   borderRadius: 4,
   fontSize: 11,
   lineHeight: 1.1,
@@ -295,10 +299,16 @@ export function ReportEditor({
   }
 
   function addObject(pi: number, ci: number, type: PageObjectType) {
+    const obj = newObject(type);
     const next = clone(pages);
-    next[pi].columns[ci].push(newObject(type));
+    next[pi].columns[ci].push(obj);
     emit(next);
     setPickerKey(null);
+    // Drop straight into editing the new object: open its fields panel, select it
+    // and queue focus — so "Add object" lands you in edit mode, not a blank card.
+    setOpen((prev) => new Set(prev).add(obj.element_id));
+    setSelectedId(obj.element_id);
+    focusNext.current = obj.element_id;
   }
 
   /** Add an object linked to a ② Sandbox output — a deep copy that keeps the
@@ -422,6 +432,25 @@ export function ReportEditor({
     const obj = next[loc.pi].columns[loc.ci][loc.oi];
     obj.data = { ...obj.data, [key]: value };
     emit(next);
+  }
+
+  /** s23: the manual x-axis order override — reorder a chart object's rows (the
+   *  renderer keeps first-seen category order). The backend already auto-orders
+   *  known ordinals; this is the escape hatch for custom / non-ordinal columns. */
+  function sortXAxis(o: PageObject, mode: string) {
+    const field = String(o.data[o.type === "trend" ? "x" : "dimension"] ?? "");
+    const rows = (o.data["rows"] as Record<string, unknown>[]) ?? [];
+    if (!field || rows.length === 0) return;
+    const val = (r: Record<string, unknown>) => String(r[field] ?? "");
+    const lead = (s: string) => {
+      const m = s.match(/-?\d+(\.\d+)?/);
+      return m ? parseFloat(m[0]) : Number.POSITIVE_INFINITY;
+    };
+    const rowsSorted = [...rows];
+    if (mode === "numeric") rowsSorted.sort((a, b) => lead(val(a)) - lead(val(b)));
+    else if (mode === "az") rowsSorted.sort((a, b) => val(a).localeCompare(val(b)));
+    else if (mode === "za") rowsSorted.sort((a, b) => val(b).localeCompare(val(a)));
+    patchData(o.element_id, "rows", rowsSorted);
   }
 
   function retype(id: string, type: PageObjectType) {
@@ -643,6 +672,22 @@ export function ReportEditor({
             {enc("group", "group / series", "enc-group")}
           </>
         )}
+        <label style={label} title="reorder the x-axis categories (known ordinals are auto-ordered by the agent; this overrides for custom / non-ordinal columns)">
+          sort x{" "}
+          <select
+            data-testid="sort-xaxis"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) sortXAxis(o, e.target.value);
+            }}
+            style={{ fontSize: 12 }}
+          >
+            <option value="">— reorder —</option>
+            <option value="numeric">by number (400 → 5000)</option>
+            <option value="az">A → Z</option>
+            <option value="za">Z → A</option>
+          </select>
+        </label>
       </div>
     );
   };

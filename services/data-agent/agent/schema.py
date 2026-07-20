@@ -79,14 +79,16 @@ Columns:
   median_weekly_rent (numeric) — bucket-level median; not additive
   min_weekly_rent (numeric), max_weekly_rent (numeric)
 
-Table {YIELD_MART} — gross rental yield by postcode + property_type + year
-(dataset nsw_yield). Sales JOINed to rent — the combined view neither single mart
-can answer. Keeps the additive legs (total_sale_value, n_sold, total_weekly_rent,
-n_rented) so a rollup recomputes correctly; gross_yield_pct is a
+Table {YIELD_MART} — gross rental yield by postcode + property_type + month
+(dataset nsw_yield), same month grain as the sales and rent marts. Sales JOINed to
+rent — the combined view neither single mart can answer. Keeps the additive legs
+(total_sale_value, n_sold, total_weekly_rent, n_rented) so a rollup to any window
+(quarter, year, region) recomputes correctly; gross_yield_pct is a
 ratio-of-averages = 52 * avg_weekly_rent / avg_sale_price * 100, NOT an average of
-per-row yields. Thin cells floored at n_sold>=5, n_rented>=5.
+per-row yields. Thin cells floored per month at n_sold>=5, n_rented>=5 — for a
+yearly read, SUM the legs across the months first, don't average gross_yield_pct.
 Columns:
-  postcode (text), property_type (text), year (int)
+  postcode (text), property_type (text), month (date)   — first-of-month
   total_sale_value, n_sold, total_weekly_rent, n_rented  — additive legs
   avg_sale_price, avg_weekly_rent (numeric)              — cell averages
   gross_yield_pct (numeric)                              — derived; re-derive on rollup

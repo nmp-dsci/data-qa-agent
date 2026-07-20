@@ -1,7 +1,7 @@
 """nsw_yield — register the sales x rent yield dataset
 
 s19 Explore, Phase A. The gross-yield mart (marts.property_yield) joins sales and
-rent at postcode x property_type x year. Rather than require a user to hold both
+rent at postcode x property_type x month. Rather than require a user to hold both
 the nsw_sales AND nsw_rent grants (cross-dataset semantics), yield is its own
 dataset with its own grant. The mart itself is created by the data-pipeline (dbt)
 and applies its own RLS via post-hook; this migration only registers the dataset
@@ -26,7 +26,7 @@ def upgrade() -> None:
         """
         INSERT INTO app.datasets (slug, name, description, status) VALUES
           ('nsw_yield', 'NSW rental yield',
-           'Gross rental yield (rent vs sale price) by postcode, property type and year'
+           'Gross rental yield (rent vs sale price) by postcode, property type and month'
            ' — sales joined to rent.',
            'ready')
         ON CONFLICT (slug) DO NOTHING

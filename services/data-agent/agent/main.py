@@ -21,6 +21,8 @@ from . import analytics  # noqa: E402
 from .chart import trend_overlay_encoding, validate_chart_spec  # noqa: E402
 from .config import settings  # noqa: E402
 from .db import admin_engine, engine, load_database_catalog, run_select  # noqa: E402
+from .eval_graders import grade_extraction, grade_presentation_format  # noqa: E402
+from .eval_judge import judge_insight  # noqa: E402
 from .knowledge import knowledge_version  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
 from .pages import chart_object_from_spec, compose_pages, page_plan, planned_kinds  # noqa: E402
@@ -324,6 +326,61 @@ def _sales_trend_stub_report(result: dict[str, Any]) -> dict[str, Any] | None:
         "fallback_reason": "sandbox_llm_did_not_complete_report",
     }
     return {"answer": summary, "chart": chart, "report": report}
+
+
+class GradeRequest(BaseModel):
+    """One case's golden vs one agent answer (s24 M2)."""
+
+    question: str
+    grader: dict[str, Any] = {}
+    golden_rows: list[dict[str, Any]] = []
+    actual_rows: list[dict[str, Any]] = []
+    report: dict[str, Any] | None = None
+    answer: str = ""
+    # Set false to score G1/G2/G3-structural only and skip the LLM call.
+    judge: bool = True
+
+
+@app.post("/agent/eval/grade")
+async def eval_grade(req: GradeRequest) -> dict[str, Any]:
+    """Score one answer against its golden.
+
+    Lives in the data-agent because that is where the graders, the report
+    linter, and LLM access already are — the runner stays a thin orchestrator
+    and there is exactly one implementation of each grader.
+    """
+    spec = req.grader or {}
+    kind = str(spec.get("kind") or "")
+
+    # G1 — extraction: are the numbers right?
+    if kind:
+        g1 = grade_extraction(
+            kind=kind,
+            golden_rows=req.golden_rows,
+            actual_rows=req.actual_rows,
+            key=str(spec.get("key") or ""),
+            value=str(spec.get("value") or ""),
+            k=int(spec.get("k") or 5),
+            tolerance_pct=float(spec.get("tolerance_pct") or 1.0),
+        )
+    else:
+        # No declared kind: say so rather than guessing a shape and reporting a
+        # number the golden's author never asked for.
+        g1 = {"kind": "", "score": None, "error": "golden has no grader.kind"}
+
+    # G3 (deterministic half) — is the delivered report well-formed?
+    g3_format = grade_presentation_format(
+        req.report, expected_objects=list(spec.get("expected_objects") or [])
+    )
+
+    # G3 (insight half) — is the answer worth reading?
+    g3_insight = (
+        await judge_insight(question=req.question, answer=req.answer)
+        if req.judge
+        else {"skipped": True, "reason": "judge disabled for this run"}
+    )
+
+    return {"g1": g1, "g3_format": g3_format, "g3_insight": g3_insight}
 
 
 @app.get("/agent/version")

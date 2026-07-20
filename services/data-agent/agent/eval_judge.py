@@ -73,7 +73,7 @@ def judge_model() -> str:
     rewards its own phrasing. When no cross-family key is configured the caller
     is told so explicitly rather than quietly grading with the agent itself.
     """
-    if settings.anthropic_api_key:
+    if settings.anthropic_api_key and settings.llm_provider != "anthropic":
         return settings.model
     return ""
 

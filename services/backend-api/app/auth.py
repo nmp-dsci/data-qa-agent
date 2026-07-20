@@ -200,15 +200,16 @@ async def _user_from_credentials(
 ) -> CurrentUser | None:
     # Header first, so nothing that already sends an explicit bearer (scripts,
     # smoke tests, the CI journeys, Google mode's ID token) changes behaviour.
-    # The cookie is only ever populated by /auth/dev-login, so it only carries
-    # a dev-mode HS256 token — safe to decode with _dev_user unconditionally.
+    # The cookie is only ever populated by /auth/dev-login, which itself
+    # refuses to set it outside auth_mode=dev — mirror that gate here so the
+    # server never accepts a dev-mode cookie while running in Google mode.
     token = _bearer_token(authorization)
     if token is not None:
         if settings.auth_mode == "google":
             claims = await _google_verifier.verify(token)
             return await _provision_google_user(claims)
         return _dev_user(token)
-    if session_cookie is not None:
+    if session_cookie is not None and settings.auth_mode == "dev":
         return _dev_user(session_cookie)
     return None
 

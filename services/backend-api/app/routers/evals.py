@@ -17,8 +17,9 @@ Three views, matching how the loop is actually used:
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 
 from ..auth import CurrentUser, require_admin
@@ -88,6 +89,11 @@ async def get_eval_run(run_id: str, admin: CurrentUser = Depends(require_admin))
     ``scripts/eval_compare.py`` cannot disagree about what counts as a
     regression.
     """
+    try:
+        UUID(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid run_id") from exc
+
     async with rls_connection(admin.id) as conn:
         row = (await conn.execute(text(_RUN_SELECT + "WHERE r.id = :id"), {"id": run_id})).first()
         if row is None:

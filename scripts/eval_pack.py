@@ -175,7 +175,7 @@ def _fetch(service: str, dataset: str | None) -> list[dict[str, Any]]:
     """Every non-archived golden, newest last, as parsed dicts."""
     where = "status <> 'archived'"
     if dataset:
-        where += f" AND dataset = '{dataset}'"
+        where += f" AND dataset = {_sql_literal(dataset)}"
     cols = ", ".join(f"'{f}', {f}" for f in FIELDS)
     raw = _psql(
         f"SELECT coalesce(json_agg(json_build_object({cols}) ORDER BY created_at), '[]')"

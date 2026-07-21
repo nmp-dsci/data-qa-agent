@@ -4,7 +4,7 @@
 // keeps a bubble; assistant answers get an identity row and the report pages
 // directly on a ~768px reading column (960px when a report is present).
 // Conversation state lives in the app shell so it survives tab switches.
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AskProgress,
@@ -18,6 +18,7 @@ import {
 import { useStickToBottom } from "../../lib/useStickToBottom";
 import { PageLayout } from "../../report-engine/PageLayout";
 import { Composer } from "../../ui/Composer";
+import { FlightPath, InstrumentLabel } from "../../ui/flightdeck";
 import { BrandMark } from "../../ui/icons";
 import { ResultView } from "./ResultView";
 
@@ -27,44 +28,38 @@ export interface ChatMsg {
   result?: AskResult;
 }
 
-// Line-icon suggestion glyphs (issue #8 — emoji clashed with the app's line-icon
-// language). 16-viewBox, colored by the parent (--accent).
-const SugTrend = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="1,13 5,8 9,10 15,3" />
-  </svg>
-);
-const SugBars = () => (
-  <svg viewBox="0 0 16 16" fill="currentColor">
-    <rect x="2" y="8" width="3" height="6" rx="1" />
-    <rect x="6.5" y="4" width="3" height="10" rx="1" />
-    <rect x="11" y="1" width="3" height="13" rx="1" />
-  </svg>
-);
-const SugGrowth = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2 11l4-4 3 3 5-6" />
-    <path d="M11 4h3v3" />
-  </svg>
-);
-const SugCompare = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2.5" y="4" width="4" height="10" rx="1" />
-    <rect x="9.5" y="7" width="4" height="7" rx="1" />
-  </svg>
-);
-
-/** Suggestion cards: a line glyph + short verb-first label + the real question. */
-const SUGGESTIONS: { title: string; q: string; icon: ReactNode }[] = [
+/** The flight plan (s25): the four opening questions, numbered as waypoints on
+ *  a route rather than scattered as cards. Each row keeps the full question
+ *  visible — the point of a flight plan is that you can read the legs. */
+const SUGGESTIONS: { title: string; q: string }[] = [
   {
     title: "Price trend",
     q: "show me trend of sale price for houses for Normanhurst vs Hornsby for all time 2010 to 2026",
-    icon: <SugTrend />,
   },
-  { title: "Top movers", q: "What are the top growth suburbs for sale price and rent?", icon: <SugBars /> },
-  { title: "Rent growth", q: "Which suburbs have the highest rent growth?", icon: <SugGrowth /> },
-  { title: "Compare", q: "Top suburbs by sale price growth?", icon: <SugCompare /> },
+  { title: "Top movers", q: "What are the top growth suburbs for sale price and rent?" },
+  { title: "Rent growth", q: "Which suburbs have the highest rent growth?" },
+  { title: "Compare", q: "Top suburbs by sale price growth?" },
 ];
+
+/** The run, as a sortie (s25). The SSE step actions the agent already emits are
+ *  remapped onto five flight phases — no new backend data, just a different
+ *  reading of the same stream. Kept as substring matches because the actions
+ *  are human-authored strings in sandbox_agent.py, not an enum. */
+const FLIGHT_PHASES = [
+  { key: "plan", label: "Plan" },
+  { key: "sql", label: "SQL" },
+  { key: "analyze", label: "Analyze" },
+  { key: "compose", label: "Compose" },
+  { key: "landed", label: "Landed" },
+];
+
+function phaseFor(action: string): number {
+  const a = action.toLowerCase();
+  if (a.includes("querying data")) return 1;
+  if (a.includes("building the report")) return 2;
+  if (a.includes("streaming page") || a.includes("concluding")) return 3;
+  return 0; // knowledge lookups, schema inspection, value resolution — planning
+}
 
 function greeting(name: string): string {
   const h = new Date().getHours();
@@ -239,11 +234,13 @@ function AnswerHead({ note }: { note?: string | null }) {
  *  until a frame lands, paywall teasers for locked plan entries. */
 function WorkingAnswer({
   working,
+  elapsedS,
   progress,
   pagePlan,
   streamedPages,
 }: {
   working?: string | null;
+  elapsedS?: number | null;
   progress: AskProgress[];
   pagePlan: PagePlanSlot[];
   streamedPages: Record<number, PageFrame>;
@@ -254,9 +251,30 @@ function WorkingAnswer({
   // has resolved (complete or skipped). The first slot shows immediately.
   const visibleUpTo = (index: number) =>
     open.filter((s) => s.index < index).every((s) => streamedPages[s.index] != null);
+
+  // Max, not last: a retry can emit "Querying data" again after the report has
+  // started building, and the flight strip must never fly backwards. LANDED
+  // lights once every open page slot has a frame — the report is on screen.
+  const stepPhase = progress.length ? Math.max(...progress.map((p) => phaseFor(p.action))) : 0;
+  const allLanded = open.length > 0 && open.every((s) => streamedPages[s.index] != null);
+  const phase = allLanded ? 4 : stepPhase;
+
   return (
     <div className="answer wide">
       <AnswerHead note={working ?? "working…"} />
+      {/* The flagship carry: the same SSE progress, read as a sortie. */}
+      <div className="flight-strip">
+        <div className="flight-strip-head">
+          <InstrumentLabel tone="hud">In flight</InstrumentLabel>
+          {elapsedS != null && (
+            <span className="flight-strip-clock">
+              {String(Math.floor(elapsedS / 60)).padStart(2, "0")}:
+              {String(Math.floor(elapsedS % 60)).padStart(2, "0")}
+            </span>
+          )}
+        </div>
+        <FlightPath stops={FLIGHT_PHASES} active={phase} />
+      </div>
       {progress.length > 0 && (
         <ol className="working-steps">
           {progress.map((p) => (
@@ -317,6 +335,7 @@ export function ChatPage({
   messages,
   loading,
   working,
+  elapsedS,
   progress,
   pagePlan,
   streamedPages,
@@ -335,6 +354,7 @@ export function ChatPage({
   messages: ChatMsg[];
   loading: boolean;
   working?: string | null;
+  elapsedS?: number | null;
   progress: AskProgress[];
   pagePlan: PagePlanSlot[];
   streamedPages: Record<number, PageFrame>;
@@ -374,8 +394,9 @@ export function ChatPage({
           <div className="hero-wrap">
             <div className="hero">
               <h1>{greeting(user.display_name)}</h1>
-              <p className="hero-sub">
-                Sales &amp; rents across NSW suburbs · 2010 → 2026 · governed SQL over your data
+              {/* The data source, read as an instrument line rather than prose. */}
+              <p className="hero-sub instrument-label dim">
+                Sales &amp; rents · NSW suburbs · 2010–2026 · governed SQL
               </p>
               <Composer
                 value={input}
@@ -385,16 +406,21 @@ export function ChatPage({
                 placeholder="Ask about your data…"
                 autoFocus
               />
-              <div className="sugs">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s.title} className="sug" onClick={() => onSend(s.q)}>
-                    <span className="sug-icon">{s.icon}</span>
-                    <span className="sug-text">
-                      <b>{s.title}</b>
-                      <span>{s.q}</span>
-                    </span>
-                  </button>
-                ))}
+              <div className="flight-plan">
+                <InstrumentLabel tone="dim" className="flight-plan-head">
+                  Flight plan
+                </InstrumentLabel>
+                <div className="sugs">
+                  {SUGGESTIONS.map((s, i) => (
+                    <button key={s.title} className="sug" onClick={() => onSend(s.q)}>
+                      <span className="sug-n">{String(i + 1).padStart(2, "0")}</span>
+                      <span className="sug-text">
+                        <b>{s.title}</b>
+                        <span>{s.q}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
               <p className="onboard-hint">
                 Answers open with a <b>Summary</b> and an <b>Insights</b> page. Click any element
@@ -433,6 +459,7 @@ export function ChatPage({
               {loading && (
                 <WorkingAnswer
                   working={working}
+                  elapsedS={elapsedS}
                   progress={progress}
                   pagePlan={pagePlan}
                   streamedPages={streamedPages}

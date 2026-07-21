@@ -158,7 +158,7 @@ export function FlightPath({
             className={i <= active ? "fp-wp lit" : "fp-wp"}
             cx={p.x}
             cy={p.y}
-            r="7"
+            r="5.5"
           />
         ))}
         {flying && active >= 0 && (
@@ -170,7 +170,7 @@ export function FlightPath({
               offsetDistance: `${lit * 100}%`,
             }}
           >
-            <g transform="rotate(90) scale(0.30) translate(-50,-50)">
+            <g transform="rotate(90) scale(0.44) translate(-50,-50)">
               <path d={PLANE_PATH_D} />
             </g>
           </g>

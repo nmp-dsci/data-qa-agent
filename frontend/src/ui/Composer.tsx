@@ -2,7 +2,7 @@
 // icon send button, stop button while the agent streams. One component serves
 // both the hero (empty state) and the docked thread footer.
 import { FormEvent, KeyboardEvent, useEffect, useRef } from "react";
-import { IconSend, IconStop } from "./icons";
+import { IconSend, IconStop, PlaneGlyph } from "./icons";
 
 const MAX_HEIGHT = 152; // ~6 lines, then the textarea scrolls internally
 
@@ -58,7 +58,12 @@ export function Composer({
         onKeyDown={onKey}
       />
       <div className="composer2-row">
-        <span className="composer2-hint">⏎ send · ⇧⏎ newline · ⌘K commands</span>
+        <span className="composer2-hint">
+          {/* The Sortie idles beside the composer and climbs while the agent
+              works — the same plane the login flew, now doing the user's job. */}
+          <PlaneGlyph size={13} className={busy ? "composer2-glyph climb" : "composer2-glyph"} />
+          ⏎ send · ⇧⏎ newline · ⌘K commands
+        </span>
         {busy && onStop ? (
           <button
             type="button"

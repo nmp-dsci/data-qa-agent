@@ -254,6 +254,9 @@ code, pre, kbd { font-family: var(--mono); }
 .fp-plane { fill: var(--accent-soft); color: var(--accent-soft);
   filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 65%, transparent));
   transition: offset-distance var(--dur-3) var(--ease); }
+/* Outline the Sortie in the panel colour and paint it under the fill, so the
+   silhouette still reads when it parks on top of a lit (gold-on-gold) dot. */
+.fp-plane path { paint-order: stroke; stroke: var(--panel); stroke-width: 10; stroke-linejoin: round; }
 .fp-labels { list-style: none; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
   margin: 2px 0 0; padding: 0; }
 .fp-label { display: flex; flex-direction: column; align-items: center; gap: 1px; text-align: center;
@@ -598,13 +601,30 @@ main > .answer.wide { width: min(960px, 100%); }
 .hero { width: min(620px, 100%); display: flex; flex-direction: column; position: relative; z-index: 1; }
 .hero h1 { font-size: 24px; font-weight: 750; letter-spacing: -.015em; margin: 0; }
 .hero-sub { color: var(--muted); font-size: 13.5px; margin: 6px 0 18px; }
-.sugs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+/* Flight plan (s25): the opening questions as numbered legs on a route rather
+   than a 2×2 card grid. A single column keeps every question fully readable —
+   a flight plan you can't read the legs of isn't one. The route is the dashed
+   rule behind the badges; each badge punches through it with a panel fill. */
+.flight-plan { margin-top: 18px; }
+.flight-plan-head { display: block; margin-bottom: 7px; }
+.sugs { display: grid; gap: 6px; }
 @media (max-width: 560px) { .sugs { grid-template-columns: 1fr; } }
-.sug { display: flex; gap: 10px; align-items: flex-start; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; text-align: left; color: var(--text); }
-.sug:hover { border-color: var(--border-2); background: var(--panel-2); }
-.sug-icon { flex: none; width: 18px; height: 18px; color: var(--accent); margin-top: 1px; }
-.sug-icon svg { width: 100%; height: 100%; display: block; }
+.sug { position: relative; display: flex; gap: 11px; align-items: center; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; text-align: left; color: var(--text); }
+.sug:hover { border-color: var(--accent); background: var(--panel-2); }
+/* Waypoint badge — sits on the dashed route and masks it, so the legs read as
+   one path rather than a line crossing four cards. */
+.sug-n { position: relative; flex: none; display: grid; place-items: center; width: 25px; height: 22px;
+  border-radius: 6px; background: var(--panel-3); color: var(--accent-soft);
+  font-family: var(--mono); font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
+.sug:hover .sug-n { background: var(--accent); color: var(--accent-ink); }
+/* The leg between waypoints. Anchored to the badge rather than drawn as one
+   long rule behind the column, so it can never drift out of alignment; it
+   overflows the card into the 6px gap, which is the only place it shows. */
+.sug-n::after { content: ""; position: absolute; left: 50%; top: calc(100% + 10px); height: 14px;
+  border-left: 1px dashed var(--border-2); }
+.sug:last-child .sug-n::after { display: none; }
 .sug-text { min-width: 0; }
 .sug-text b { display: block; font-size: 12.5px; font-weight: 650; }
 .sug-text > span { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;
@@ -623,7 +643,19 @@ main > .answer.wide { width: min(960px, 100%); }
 .composer2 textarea:focus-visible { outline: none; }
 .composer2 textarea::placeholder { color: var(--faint); }
 .composer2-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 7px; }
-.composer2-hint { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.composer2-hint { display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; color: var(--muted); }
+/* The Sortie, idling on the apron beside the composer; it climbs while the
+   agent works. Decorative only — the hint text carries the meaning. */
+.composer2-glyph { flex: none; color: var(--accent); opacity: .7;
+  transition: transform var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease); }
+.composer2:focus-within .composer2-glyph { opacity: 1; }
+.composer2-glyph.climb { opacity: 1; animation: dp-climb 2.4s ease-in-out infinite; }
+@keyframes dp-climb {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(2px, -3px) rotate(-8deg); }
+}
+@media (prefers-reduced-motion: reduce) { .composer2-glyph.climb { animation: none !important; } }
 .composer2-send, .composer2-stop { width: 32px; height: 32px; border-radius: 9px; border: none;
   display: grid; place-items: center; flex: none; }
 .composer2-send { background: linear-gradient(135deg, var(--accent-soft), var(--accent)); color: var(--accent-ink); }
@@ -888,6 +920,15 @@ th.sortable:hover { color: var(--text); }
 
 /* Live "agent is working" step list (SSE progress) */
 .working-head { font-weight: 600; color: var(--text); }
+/* The flight strip (s25) — the run, read as a sortie. Same SSE progress data
+   the step list below is built from, remapped onto five phases. */
+.flight-strip { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 70%, transparent); padding: 9px 12px 6px; }
+.flight-strip-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.flight-strip-clock { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--hud);
+  font-variant-numeric: tabular-nums; }
+.flight-strip .fp-svg { max-height: 44px; }
+
 .working-steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
 .working-step { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--text);
   animation: working-step-in .18s ease-out; }

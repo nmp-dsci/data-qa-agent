@@ -10,8 +10,8 @@ The regression these guard is real: a Golden Sandbox build printed
 
 into the builder's status line, where the success message belongs. The cause was
 not a typo — several house skills return a mapping (``latest_value`` always;
-``growth_rate`` / ``top_growth`` once ``group_col`` is passed), so formatting one
-directly is a mistake the model repeats.
+``growth_rate`` once ``group_col`` is passed), so formatting one directly is a
+mistake the model repeats.
 """
 
 from __future__ import annotations

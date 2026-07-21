@@ -786,7 +786,8 @@ def _run_named_objects(
         try:
             outcome = run_code(code, df=frame, frames={"extract": frame})
             obj = _lift_object(outcome.report, element_id=eid, object_type=otype, sql=sql)
-            out.append({"element_id": eid, "object": obj, "error": None if obj else outcome.error})
+            err = None if obj else explain_sandbox_error(outcome.error)
+            out.append({"element_id": eid, "object": obj, "error": err})
         except Exception as exc:  # noqa: BLE001 — one bad object must not fail the prep
             out.append({"element_id": eid, "object": None, "error": str(exc)})
     return out
@@ -846,7 +847,7 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
         skills_used=outcome.skills_used,
         skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
         objects_out=objects_out,
-        error=outcome.error,
+        error=explain_sandbox_error(outcome.error),
     )
 
 
@@ -1081,7 +1082,7 @@ async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectRe
         engine=engine,
         skills_used=outcome.skills_used,
         skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
-        error=outcome.error or gen.get("error"),
+        error=explain_sandbox_error(outcome.error) or gen.get("error"),
     )
 
 

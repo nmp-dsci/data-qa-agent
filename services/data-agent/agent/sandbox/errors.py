@@ -14,11 +14,10 @@ the raw form:
 `HINTS` encodes the failure modes that come from the *shape of the house skills*
 rather than from a typo, because those are the ones the model repeats. The
 biggest is that several analysis skills return a dict: ``latest_value`` always
-returns ``{"value", "month"}``, and ``growth_rate`` / ``top_growth`` return a
-``{group: ...}`` mapping as soon as ``group_col`` is passed. Formatting one of
-those directly — ``f"{skills.latest_value(...):,.0f}"`` — raises
-``unsupported format string passed to dict.__format__``, which says nothing
-about the actual mistake.
+returns ``{"value", "month"}``, and ``growth_rate`` returns a ``{group: ...}``
+mapping as soon as ``group_col`` is passed. Formatting one of those directly —
+``f"{skills.latest_value(...):,.0f}"`` — raises ``unsupported format string
+passed to dict.__format__``, which says nothing about the actual mistake.
 """
 
 from __future__ import annotations
@@ -33,9 +32,9 @@ HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"unsupported format string passed to (dict|Series)\.__format__"),
         "A format spec was applied to a dict/Series. Several skills return a mapping, "
         "not a number: skills.latest_value(...) always returns {'value': float, "
-        "'month': 'YYYY-MM'}, and skills.growth_rate(...) / skills.top_growth(...) "
-        "return {group: ...} whenever group_col is passed. Index it before "
-        "formatting — f\"{skills.latest_value(...)['value']:,.0f}\", not "
+        "'month': 'YYYY-MM'}, and skills.growth_rate(...) returns {group: ...} "
+        "whenever group_col is passed. Index it before formatting — "
+        "f\"{skills.latest_value(...)['value']:,.0f}\", not "
         'f"{skills.latest_value(...):,.0f}".',
     ),
     (
@@ -67,7 +66,7 @@ def final_exception_line(traceback_text: str) -> str:
     if not lines:
         return ""
     for line in reversed(lines):
-        if not line.startswith(("File ", "Traceback", "  ")):
+        if not line.startswith(("File ", "Traceback")):
             return line
     return lines[-1]
 

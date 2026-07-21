@@ -52,7 +52,10 @@ test("Golden AI object: describe a chart → built in ② and auto-placed in ③
   await page.getByTestId("ai-object-build").click();
 
   // Success message confirms the object was built AND placed into the report.
-  await expect(page.getByTestId("ai-object-msg")).toContainText(/added to the report/i, {
+  // The copy is "…and added it to the report", so the pattern has to allow the
+  // object pronoun — without it this assertion could never match and the test
+  // only ever failed after burning its full 240s timeout.
+  await expect(page.getByTestId("ai-object-msg")).toContainText(/added it to the report/i, {
     timeout: 240_000,
   });
 
@@ -76,7 +79,7 @@ test("Golden AI object: describe a chart → built in ② and auto-placed in ③
 
   await page.getByTestId("ai-object-instruction").fill(INSTRUCTION);
   await page.getByTestId("ai-object-build").click();
-  await expect(page.getByTestId("ai-object-msg")).toContainText(/added to the report/i, {
+  await expect(page.getByTestId("ai-object-msg")).toContainText(/added it to the report/i, {
     timeout: 240_000,
   });
 

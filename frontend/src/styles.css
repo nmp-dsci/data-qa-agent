@@ -431,7 +431,6 @@ code, pre, kbd { font-family: var(--mono); }
 .login-who span { color: var(--muted); font-size: 11.5px; }
 /* Preflight: the guarantees, as cockpit status lamps rather than a muted line. */
 .login-preflight { justify-content: center; margin-top: 12px; }
-.foot { color: var(--faint); font-size: 11px; text-align: center; margin: 4px 0 0; }
 
 /* -- right panel: the story, on glass ----------------------------------- */
 .walk { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: center;

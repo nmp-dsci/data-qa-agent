@@ -313,6 +313,29 @@ code, pre, kbd { font-family: var(--mono); }
     radial-gradient(90% 52% at 50% 70%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%),
     /* cool high air, so the warmth reads as low sun rather than a wash */
     radial-gradient(90% 40% at 24% -6%, color-mix(in srgb, var(--accent-2) 13%, transparent), transparent 72%); }
+/* Day (s25 W5): the same scene, read as an aeronautical chart printed on
+   chart-paper cream rather than a night sky. The cool high-air wash is
+   dropped — on paper it reads as a grey stain fighting the warm ground — and
+   the dawn becomes a soft ink bloom instead of a light source. */
+:root[data-theme="light"] .canopy-sky {
+  background:
+    radial-gradient(150% 30% at 50% 64%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 74%),
+    radial-gradient(95% 55% at 50% 74%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 72%);
+}
+:root[data-theme="light"] .canopy-horizon { opacity: .7; filter: none; }
+:root[data-theme="light"] .canopy-ground line { opacity: .3; stroke-width: .7; }
+:root[data-theme="light"] .canopy-vignette {
+  background: radial-gradient(125% 95% at 50% 48%, transparent 52%,
+    color-mix(in srgb, var(--bg) 82%, transparent) 100%);
+}
+:root[data-theme="light"] .canopy-pillar { opacity: .5; }
+/* Ink, not light: the contrail's glow becomes a plain deep-gold stroke. */
+:root[data-theme="light"] .hero-lit,
+:root[data-theme="light"] .sortie,
+:root[data-theme="light"] .fp-plane { filter: none; }
+:root[data-theme="light"] .air-2 { opacity: .28; }
+:root[data-theme="light"] .air-3 { opacity: .3; }
+
 .canopy-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* The 1px horizon everything else is measured against. */
 .canopy-horizon { stroke: var(--accent); stroke-width: 1; opacity: .85;
@@ -428,6 +451,9 @@ code, pre, kbd { font-family: var(--mono); }
 }
 .walk-lede { margin: 0 0 18px; display: flex; flex-direction: column; gap: 6px; }
 .walk-lede .instrument-label { font-size: 11px; letter-spacing: .1em; }
+/* On the glass panel the quiet variant lifts to --muted: --faint is tuned for
+   solid panels and loses its AA margin over a translucent, blurred backdrop. */
+.walk .instrument-label.dim { color: var(--muted); }
 .walk-lede > span:last-child { color: var(--muted); font-size: 13px; line-height: 1.5; }
 
 .walk-props { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
@@ -445,7 +471,7 @@ code, pre, kbd { font-family: var(--mono); }
   font-family: var(--mono); font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums;
   transition: background var(--dur-2) var(--ease), color var(--dur-2) var(--ease); }
 .walk-prop.lit .walk-prop-i { background: var(--accent); color: var(--accent-ink); }
-.walk-prop-wp { color: var(--faint); }
+.walk-prop-wp { color: var(--muted); }
 .walk-prop.lit .walk-prop-wp { color: var(--accent-soft); }
 .walk-prop b { display: block; font-size: 13.5px; line-height: 1.3; }
 .walk-prop-story { display: block; color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 3px; }

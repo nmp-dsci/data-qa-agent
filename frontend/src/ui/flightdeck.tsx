@@ -247,9 +247,13 @@ export function Annunciator({
   );
 }
 
-/** Row wrapper — just the flex/gap, but it keeps the class name in one place. */
+/** Row wrapper — just the flex/gap, but it keeps the class name in one place.
+ *  Renders a <span> rather than a <div>: lamp rows sit inside <button> labels
+ *  (the Goldens list rows, the SQL bar), and a <div> there is invalid HTML —
+ *  button's content model is phrasing content only. display:flex works the
+ *  same on a span. */
 export function Annunciators({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`annunciators ${className}`.trim()}>{children}</div>;
+  return <span className={`annunciators ${className}`.trim()}>{children}</span>;
 }
 
 // ---------------------------------------------------------------------------

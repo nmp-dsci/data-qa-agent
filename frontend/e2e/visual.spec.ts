@@ -17,12 +17,24 @@ for (const tier of TIERS) {
   test.describe(`visual · ${tier.name}`, () => {
     test.use({ viewport: tier.viewport, colorScheme: "dark" });
 
-    test(`login (${tier.name})`, async ({ page }) => {
-      await page.goto("/");
-      await page.getByText("Data Pilot").first().waitFor();
-      await expect(page).toHaveScreenshot(`login-${tier.name}.png`, {
-        maxDiffPixelRatio: 0.02,
-        animations: "disabled",
+    // The login runs under reduced motion, and that is load-bearing for
+    // determinism rather than a preference: `animations: "disabled"` stops CSS
+    // and SMIL but not JS timers, so the 4s walkthrough auto-advance would
+    // land on a different waypoint run to run — and since s25 the active
+    // waypoint renders a different product micro-mock, that's a large diff,
+    // not a small one. Reduced motion suspends the auto-advance (pinning the
+    // slide to 01) and freezes the drifting HUD readouts at their nominal
+    // values, so the shot is stable. It also means this baseline doubles as
+    // the reduced-motion still's regression test.
+    test.describe("login", () => {
+      test.use({ reducedMotion: "reduce" });
+      test(`login (${tier.name})`, async ({ page }) => {
+        await page.goto("/");
+        await page.getByText("Data Pilot").first().waitFor();
+        await expect(page).toHaveScreenshot(`login-${tier.name}.png`, {
+          maxDiffPixelRatio: 0.02,
+          animations: "disabled",
+        });
       });
     });
 

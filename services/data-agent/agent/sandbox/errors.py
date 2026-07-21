@@ -2,14 +2,16 @@
 model — can act on.
 
 Model-written analysis code fails inside the sandbox and comes back as a
-``traceback.format_exc()`` string. Two consumers need that, and neither wants
-the raw form:
+``traceback.format_exc()`` string. Two kinds of consumer need that, and neither
+wants the raw form:
 
 * the object-codegen correction loop, which hands the failure back to the model
   for a repair pass — a targeted hint converts far more often than a bare
   ``TypeError`` line, and the correction budget is only two passes;
-* the Golden Sandbox builder UI, which used to print the whole traceback into
-  the status line where the success message belongs.
+* every ``/agent/analysis*`` endpoint's ``error`` field (including the Golden
+  Sandbox builder, which used to print the whole traceback into the status
+  line where the success message belongs), so a UI can never show a bare
+  traceback.
 
 `HINTS` encodes the failure modes that come from the *shape of the house skills*
 rather than from a typo, because those are the ones the model repeats. The

@@ -286,6 +286,17 @@ The login's Playwright visual baselines force `reducedMotion: "reduce"`: `animat
 CSS/SMIL but not JS timers, and the walkthrough's auto-advance (each waypoint renders a different product
 micro-mock) would otherwise make the screenshot nondeterministic.
 
+**Card/airway legibility (s26).** E2e testing on the s25 PR flagged that "traffic behind a windshield"
+only read in the left panel and the gutters — the story column's `.walk-prop` cards were too opaque for
+the airways to show through it. Fixed two ways: inactive cards go more glass (`--panel` 58%→34%) while the
+active card (`.walk-prop.lit`, which carries the step's dense micro-mock) stays solid so it doesn't lose
+contrast, and the `.air-2`/`.air-3` aircraft + route opacities are raised, since card opacity alone
+couldn't fix visibility once the aircraft crossed behind the column — both stay subordinate to the hero
+Sortie. Verified by measurement rather than by eye: a probe hides card content to sample the true
+composited backdrop and checks it against the live `--text`/`--muted` tokens across viewports and themes,
+and a second probe checks row-luminance variation over the busiest card to confirm the airway is
+perceptible, not merely present.
+
 ---
 
 ## Data model (Postgres)
@@ -415,6 +426,16 @@ registry (a code-level `BAND_ORDERS` seed plus a curator-editable override), con
 every surface; curators edit the override per `(dataset, column)` in `app.dataset_ordinals` (migration 0028)
 via a data-knowledge panel in the Sandbox tab, picked up on the next Run, with a manual "sort x-axis"
 control in the report editor for columns the registry doesn't cover.
+
+**Readable sandbox failures (s26).** Model-written analysis code that raises inside the sandbox used to
+surface its raw `traceback.format_exc()` verbatim — including into the Golden Sandbox builder's status
+line, where the success message belongs. `agent/sandbox/errors.py`'s `explain_sandbox_error` reduces a
+traceback to its final exception line plus a targeted hint for the failure modes that come from a house
+skill's return shape rather than a typo (`skills.latest_value` always returns a dict; `skills.growth_rate`
+returns one once `group_col` is passed; `skills.top_growth` returns a DataFrame that must not be indexed
+like a mapping). It's wired into both `object_codegen`'s correction loop (only two passes, so the first
+piece of feedback has to carry the real cause) and every `/agent/analysis*` endpoint's `error` field, so
+the UI can never show a bare traceback.
 
 ---
 

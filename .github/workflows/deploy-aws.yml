@@ -56,6 +56,13 @@ jobs:
         with:
           terraform_wrapper: false # plain stdout so -raw outputs work in scripts
 
+      # Pushing :latest (above) kicks off App Runner auto-deploys. UpdateService
+      # is rejected while one is in progress, so an apply that changes service
+      # config (e.g. instance sizing) raced them and failed with
+      # InvalidStateException: OPERATION_IN_PROGRESS (2026-07-21) — settle first.
+      - name: Wait for image auto-deploys to settle
+        run: ./scripts/wait_apprunner.sh "image auto-deploys, before terraform apply"
+
       - name: Terraform apply (foundations)
         working-directory: infra/terraform/foundations
         run: |
@@ -79,23 +86,9 @@ jobs:
         run: ./scripts/run_job.sh pipeline
 
       - name: Wait for App Runner deployments
-        # Pushing :latest auto-deploys both services; wait until they settle so
-        # the smoke test hits the new code, not the old instances.
-        run: |
-          # The workflow-level AWS_PROFILE="" means "use OIDC creds" to our
-          # scripts, but the raw aws CLI treats it as a profile named "".
-          unset AWS_PROFILE
-          for i in $(seq 1 60); do
-            B=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='data-qa-backend-api'].Status" --output text)
-            A=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='data-qa-data-agent'].Status" --output text)
-            echo "backend=$B agent=$A"
-            if [ "$B" = "RUNNING" ] && [ "$A" = "RUNNING" ] && [ "$i" -gt 3 ]; then
-              exit 0
-            fi
-            sleep 20
-          done
-          echo "services did not settle in time" >&2
-          exit 1
+        # Any apply-triggered service updates must finish so the smoke test
+        # hits the new code/config, not the old instances.
+        run: ./scripts/wait_apprunner.sh "apply-triggered updates, before smoke test"
 
       - uses: actions/setup-node@v4
         with:

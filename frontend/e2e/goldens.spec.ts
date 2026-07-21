@@ -37,7 +37,12 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
   await expect(page.getByTestId("page-0")).toBeVisible({ timeout: 360_000 });
 
   // --- 2. Build the named presentation object -----------------------------
-  await page.getByText(/Presentation Object builder/).click(); // expand the builder
+  // The structured builder lives in a <details> whose summary reads "advanced
+  // — structured builder…". It was renamed and demoted under the AI panel in
+  // s22 (d70d1dd) and this spec was never updated: "Presentation Object
+  // builder" now survives only in a source comment, so the old locator matched
+  // nothing in the DOM and the test could only ever time out here.
+  await page.getByText(/structured builder/i).click(); // expand the builder
   await page.getByTestId("builder-name").fill(OBJECT);
   await page.getByTestId("builder-type").selectOption({ label: "Line + bar chart" });
   await page.getByTestId("builder-grain").fill("month, suburb, area_band");

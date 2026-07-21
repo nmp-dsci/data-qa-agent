@@ -41,18 +41,20 @@ export function smoothPath(pts: { x: number; y: number }[]): string {
  *  Measured from the real path element once it mounts (rather than assumed)
  *  so the flying glyph and the lit contrail agree with the waypoint dots to
  *  the pixel. Sampling is fixed-step and deterministic, so visual baselines
- *  don't drift between runs. */
+ *  don't drift between runs.
+ *
+ *  `points` must be a stable reference (a module constant or a useMemo) — it
+ *  is an effect dependency, and a fresh array each render would re-sample the
+ *  path on every commit. Both callers satisfy this. */
 export function useRouteFractions(
   pathRef: React.RefObject<SVGPathElement | null>,
   points: { x: number; y: number }[],
 ): number[] {
-  const key = useMemo(() => points.map((p) => `${p.x},${p.y}`).join(" "), [points]);
-  const fallback = useMemo(
-    () => points.map((_, i) => (points.length > 1 ? i / (points.length - 1) : 0)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key],
+  // Even spacing until the real path is measured — right for a straight route,
+  // close enough for one frame on a curved one.
+  const [fracs, setFracs] = useState<number[]>(() =>
+    points.map((_, i) => (points.length > 1 ? i / (points.length - 1) : 0)),
   );
-  const [fracs, setFracs] = useState<number[]>(fallback);
 
   useEffect(() => {
     const path = pathRef.current;
@@ -66,12 +68,8 @@ export function useRouteFractions(
       const p = path.getPointAtLength(len);
       samples.push({ len, x: p.x, y: p.y });
     }
-    const pts = key ? key.split(" ").map((s) => {
-      const [x, y] = s.split(",").map(Number);
-      return { x, y };
-    }) : [];
     setFracs(
-      pts.map((w) => {
+      points.map((w) => {
         let best = samples[0];
         let bestD = Infinity;
         for (const s of samples) {
@@ -81,7 +79,7 @@ export function useRouteFractions(
         return best.len / total;
       }),
     );
-  }, [pathRef, key]);
+  }, [pathRef, points]);
 
   return fracs;
 }

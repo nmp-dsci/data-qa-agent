@@ -333,8 +333,8 @@ code, pre, kbd { font-family: var(--mono); }
 :root[data-theme="light"] .hero-lit,
 :root[data-theme="light"] .sortie,
 :root[data-theme="light"] .fp-plane { filter: none; }
-:root[data-theme="light"] .air-2 { opacity: .28; }
-:root[data-theme="light"] .air-3 { opacity: .3; }
+:root[data-theme="light"] .air-2 { opacity: .4; }
+:root[data-theme="light"] .air-3 { opacity: .42; }
 
 .canopy-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* The 1px horizon everything else is measured against. */
@@ -355,11 +355,16 @@ code, pre, kbd { font-family: var(--mono); }
 .airway-route { fill: none; stroke-dasharray: 5 5; animation: dp-march 1.8s linear infinite; }
 .airway-plane, .sortie { fill: currentColor; }
 .air-1 { color: var(--accent-soft); }
-.air-1 .airway-route { stroke: var(--accent); stroke-width: 1.5; opacity: .38; }
-.air-2 { color: var(--accent-2); opacity: .34; }
-.air-2 .airway-route { stroke: var(--accent-2); stroke-width: 1.1; opacity: .5; }
-.air-3 { color: var(--accent); opacity: .26; }
-.air-3 .airway-route { stroke: var(--accent); stroke-width: 1; opacity: .42; }
+.air-1 .airway-route { stroke: var(--accent); stroke-width: 1.5; opacity: .46; }
+/* s26: traffic is tuned to survive TWO translucent layers (the glass panel
+   plus a glass story card) — at s25's opacity it was invisible the moment
+   it crossed behind the column, which is where the 'traffic behind a
+   windshield' reading actually has to happen. Still subordinate to the
+   hero Sortie by size and brightness. */
+.air-2 { color: var(--accent-2); opacity: .5; }
+.air-2 .airway-route { stroke: var(--accent-2); stroke-width: 1.2; opacity: .72; }
+.air-3 { color: var(--accent); opacity: .46; }
+.air-3 .airway-route { stroke: var(--accent); stroke-width: 1.1; opacity: .68; }
 /* The lit contrail — the story so far, burned into the route. */
 .hero-lit { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round;
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
@@ -438,8 +443,8 @@ code, pre, kbd { font-family: var(--mono); }
   padding: 44px clamp(24px, 4vw, 56px);
   /* Glass, not a wall: the airways stay legible behind it — traffic behind a
      windshield. The per-card fills below carry the text contrast instead. */
-  background: color-mix(in srgb, var(--panel) 30%, transparent);
-  -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); }
+  background: color-mix(in srgb, var(--panel) 42%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .walk:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -3px; }
 /* Ultrawide cap (s17 bug): the story column stops stretching past 620px. */
 .walk-inner { width: 100%; max-width: 620px; margin: 0 auto; }
@@ -459,8 +464,15 @@ code, pre, kbd { font-family: var(--mono); }
 /* Translucent so the airways ghost through the whole story column — the panel's
    own backdrop-filter does the blurring, so no per-card filter is needed (the
    s25 perf rule caps backdrop blur at two panels). */
+/* s26: the card you are READING is solid; the ones you are not are glass, so
+   the airways genuinely pass behind the story column instead of only showing in
+   the gutters. That split is what buys scene visibility without trading away
+   contrast on the densest content (the active card carries a micro-mock).
+   Contrast on the glass cards is measured, not assumed — see the probe in the
+   PR description; --text and --muted both clear AA over the darkest and the
+   brightest points of the scene behind them. */
 .walk-prop { border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px;
-  background: color-mix(in srgb, var(--panel) 58%, transparent);
+  background: color-mix(in srgb, var(--panel) 34%, transparent);
   transition: border-color var(--dur-2) var(--ease), background var(--dur-2) var(--ease); }
 .walk-prop.lit { border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   background: color-mix(in srgb, var(--panel-2) 88%, transparent); }

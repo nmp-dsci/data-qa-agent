@@ -19,10 +19,11 @@ import pandas as pd
 
 from ..config import settings
 from .contract import AnalysisResult, SkillGap
+from .errors import explain_sandbox_error
 from .runner import SandboxError
 from .runner import run_code as _subprocess_run_code
 
-__all__ = ["run_code", "AnalysisResult", "SkillGap", "SandboxError"]
+__all__ = ["run_code", "AnalysisResult", "SkillGap", "SandboxError", "explain_sandbox_error"]
 
 
 def run_code(

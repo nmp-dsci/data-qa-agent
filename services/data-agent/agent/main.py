@@ -27,7 +27,7 @@ from .knowledge import knowledge_version  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
 from .pages import chart_object_from_spec, compose_pages, page_plan, planned_kinds  # noqa: E402
 from .provider import choose_provider  # noqa: E402
-from .sandbox import run_code  # noqa: E402
+from .sandbox import explain_sandbox_error, run_code  # noqa: E402
 from .sandbox.extract import extract  # noqa: E402
 from .sandbox_agent import answer_with_sandbox  # noqa: E402
 from .schema import get_catalog, merge_catalogs  # noqa: E402
@@ -1228,6 +1228,10 @@ async def agent_analysis_build_object(
 
     # 3. Run + lift the object (the lift orders any ordinal x-axis for the dataset).
     outcome = run_code(code, df=frame, frames={"extract": frame})
+    # The curator reads this in the builder's status line, so it must be a message
+    # rather than a Python traceback — the codegen loop has already spent its
+    # correction passes by the time we get here.
+    run_error = explain_sandbox_error(outcome.error)
     obj = _lift_object(
         outcome.report,
         element_id=eid,
@@ -1246,7 +1250,7 @@ async def agent_analysis_build_object(
         rows=meta.get("rows", []),
         skills_used=outcome.skills_used,
         skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
-        error=outcome.error if obj is not None else (outcome.error or "object produced no chart"),
+        error=run_error if obj is not None else (run_error or "object produced no chart"),
     )
 
 

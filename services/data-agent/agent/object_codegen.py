@@ -31,7 +31,7 @@ import pandas as pd
 
 from .config import settings
 from .provider import choose_provider
-from .sandbox import run_code
+from .sandbox import explain_sandbox_error, run_code
 from .sandbox.extract import extract
 from .schema import get_schema_compact
 from .skill_codegen import _ENV_VAR, _clean_code, _skill_details
@@ -80,8 +80,10 @@ _OBJECT_RECIPE: dict[str, str] = {
         "chart = skills.trend_chart(s, title=...). Pass chart as main_chart."
     ),
     "kpi": (
-        "A headline number — read it with skills.latest_value(...) and pass "
-        "headlines=[{'label':..., 'value':..., 'basis':...}] (no main_chart)."
+        "A headline number — read it with skills.latest_value(...), which returns "
+        "{'value': float, 'month': 'YYYY-MM'} (a dict, NOT a number), so index it: "
+        "lv = skills.latest_value(...); then pass headlines=[{'label':..., "
+        "'value': lv['value'], 'basis': lv['month']}] (no main_chart)."
     ),
     "insight": ("An insight card — skills.make_insight(heading, body); pass insights=[...]."),
     "text": "A one-sentence summary passed as build_report(summary=...).",
@@ -161,6 +163,13 @@ def _system_prompt() -> str:
         "- `df` (the extract as a DataFrame), `pd`, and `skills` are already in scope — "
         "NEVER import anything. Aggregate with pandas first if the chart needs one row "
         "per x (e.g. a count for volume, a mean/median for price).\n"
+        "- SOME SKILLS RETURN A DICT, NOT A NUMBER. skills.latest_value(...) always "
+        "returns {'value': float, 'month': 'YYYY-MM'}; skills.growth_rate(...) and "
+        "skills.top_growth(...) return {group: ...} as soon as group_col is passed. "
+        "Index before you format or do arithmetic: use f\"{lv['value']:,.0f}\", never "
+        'f"{lv:,.0f}" (that raises `unsupported format string passed to '
+        "dict.__format__`). A skill can also return None when there is not enough "
+        "history or the base is zero — guard before formatting.\n"
         "- Build charts with the house skills; end with "
         "result = skills.build_report(summary=..., headlines=[...], main_chart=<chart>, "
         "insights=[...]). Put the object the curator is editing as the primary chart of "
@@ -376,7 +385,10 @@ async def scaffold_object(
                 outcome = run_code(gen["code"], df=verify_frame, frames={"extract": verify_frame})
                 if _report_ok(outcome):
                     return _result(None)
-                last_error = outcome.error or "run_analysis did not assign a report to `result`"
+                last_error = (
+                    explain_sandbox_error(outcome.error)
+                    or "run_analysis did not assign a report to `result`"
+                )
             if attempt >= _EDIT_MAX_CORRECTIONS:
                 break
             gen = await _call_model(

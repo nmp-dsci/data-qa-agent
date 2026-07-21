@@ -52,8 +52,8 @@ const HORIZON_Y = 500;
  *  and the story column keeps all four lit waypoints — and the plane — on
  *  screen from 1000px up. */
 const ROUTE_D =
-  "M-60 790 C 60 782 150 740 240 700 C 320 668 380 660 430 650 " +
-  "C 500 626 532 540 540 430 C 546 348 553 298 570 240 C 592 166 616 62 640 -60";
+  "M-60 840 C 60 832 150 800 240 770 C 320 744 390 712 450 680 " +
+  "C 510 648 538 570 545 470 C 551 400 558 350 575 300 C 596 240 625 130 650 40";
 
 /** Crossing traffic — other aircraft, other directions, other speeds. The
  *  cap is three aircraft total (hero + these two); hierarchy is held by size
@@ -97,7 +97,7 @@ const WAYPOINTS: Waypoint[] = [
     key: "ask",
     label: "ASK",
     x: 240,
-    y: 700,
+    y: 770,
     title: "Ask in plain English",
     story:
       "The agent plans governed SQL over your warehouse and lands a rich insight report — KPIs, charts, and the queries behind them. Share it the moment it arrives.",
@@ -105,8 +105,8 @@ const WAYPOINTS: Waypoint[] = [
   {
     key: "tune",
     label: "TUNE",
-    x: 430,
-    y: 650,
+    x: 450,
+    y: 680,
     title: "Answers tuned to your business",
     story:
       "Admins coach the agent with golden examples and data knowledge, so every answer reads the way your organisation reads data.",
@@ -114,8 +114,8 @@ const WAYPOINTS: Waypoint[] = [
   {
     key: "explore",
     label: "EXPLORE",
-    x: 540,
-    y: 430,
+    x: 545,
+    y: 470,
     title: "Know your data before you ask",
     story:
       "Profile any dataset, compare cohorts, and track trends in the Explore tool — no SQL required.",
@@ -123,8 +123,8 @@ const WAYPOINTS: Waypoint[] = [
   {
     key: "dig",
     label: "DIG",
-    x: 570,
-    y: 240,
+    x: 575,
+    y: 300,
     title: "Go hands-on when it matters",
     story:
       "A governed SQL editor for ad-hoc investigation. Every chart links back to its query, so an answer is never a black box.",
@@ -147,10 +147,15 @@ function Canopy({ active, reduced }: { active: number; reduced: boolean }) {
   return (
     <div className="canopy" aria-hidden="true">
       <div className="canopy-sky" />
+      {/* yMax, not yMid: the scene is anchored to the ground. On a short, wide
+          laptop (1440×700) a centred crop pushes the run-in — waypoint 1 and
+          the Sortie parked on it — off the bottom edge, so the story's first
+          slide has no visible aircraft. Cropping the empty upper sky instead
+          costs nothing and keeps the whole route on screen. */}
       <svg
         className="canopy-svg"
         viewBox={`0 0 ${SCENE_W} ${SCENE_H}`}
-        preserveAspectRatio="xMidYMid slice"
+        preserveAspectRatio="xMidYMax slice"
         aria-hidden="true"
       >
         <defs>

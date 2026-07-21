@@ -67,8 +67,9 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
                                                   :5434
 ```
 
-- **frontend** — login + chat UI (responsive desktop/mobile layout, light/dark/system theme toggle), fires
-  product-analytics events, includes an admin dashboard and an admin-only Golden Examples authoring page.
+- **frontend** — login + chat UI in the **Flight Deck** cockpit brand (responsive desktop/mobile layout,
+  Night/Day/Auto theme toggle), fires product-analytics events, includes an admin dashboard and an
+  admin-only Golden Examples authoring page.
 - **backend-api** — validates the JWT, sets the per-request RLS context, orchestrates the agent, records
   conversations/messages/events.
 - **data-pipeline** — dlt ingests the CSVs into `raw`; dbt transforms `raw → staging → marts` (tests + docs),

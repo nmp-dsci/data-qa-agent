@@ -12,10 +12,13 @@ import {
 import { formatTime } from "../../lib/format";
 import { setThemePref, ThemePref, useThemePref } from "../../lib/theme";
 
+/** s25: the appearance control speaks the cockpit's language. Labels only —
+ *  the underlying ThemePref values, the <html data-theme> resolution and the
+ *  OS tracking are all unchanged. */
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
-  { value: "dark", label: "Dark" },
-  { value: "light", label: "Light" },
-  { value: "system", label: "System" },
+  { value: "dark", label: "Night" },
+  { value: "light", label: "Day" },
+  { value: "system", label: "Auto" },
 ];
 
 function ThemeSection() {
@@ -36,7 +39,7 @@ function ThemeSection() {
             </button>
           ))}
         </span>
-        <span className="muted">Charts and every panel follow the design tokens · System matches your OS.</span>
+        <span className="muted">Charts and every panel follow the design tokens · Auto matches your OS.</span>
       </div>
     </section>
   );

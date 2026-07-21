@@ -37,6 +37,7 @@ import {
   scaffoldGolden,
   updateGolden,
 } from "../../lib/api";
+import { Annunciator, Annunciators } from "../../ui/flightdeck";
 import { InstructResult, ReportEditor } from "./ReportEditor";
 
 // The dataset list comes from the registry, not a literal (s24 M1). Hardcoding
@@ -1562,9 +1563,17 @@ export function GoldensPage({
               }}
             >
               <span style={{ fontSize: 13 }}>{g.question || "(untitled)"}</span>
-              <span style={{ ...label, display: "block" }}>
-                {g.tier} · {g.authoring_status} · {g.has_report ? "pages ✓" : "no pages"}
-              </span>
+              {/* s25: the status line formalises as annunciators — the tab
+                  now visually rhymes with the login's TUNE waypoint. */}
+              <Annunciators className="golden-lamps">
+                <Annunciator state="off">{g.tier}</Annunciator>
+                <Annunciator state={g.authoring_status === "ready" ? "on" : "warn"}>
+                  {g.authoring_status}
+                </Annunciator>
+                <Annunciator state={g.has_report ? "on" : "off"}>
+                  {g.has_report ? "pages" : "no pages"}
+                </Annunciator>
+              </Annunciators>
             </button>
           ))}
         </div>

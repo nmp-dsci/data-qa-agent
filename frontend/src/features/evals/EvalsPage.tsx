@@ -16,6 +16,7 @@ import {
   getEvalRun,
   getEvalRuns,
 } from "../../lib/api";
+import { Annunciator, HudBox } from "../../ui/flightdeck";
 
 const card: React.CSSProperties = {
   background: "var(--panel)",
@@ -43,35 +44,23 @@ function runTitle(run: EvalRun): string {
   return run.experiment_id ? run.experiment_id : "baseline";
 }
 
+/** Pillar scores are literally instrument readouts, so they get the HUD box
+ *  (s25) rather than a plain card — corner ticks, mono-caps caption, tabular
+ *  value. */
 function Pillar({ name, value, hint }: { name: string; value: string; hint?: string }) {
   return (
-    <div style={card}>
-      <div style={label}>{name}</div>
-      <div style={{ fontFamily: mono, fontSize: 20, marginTop: 4 }}>{value}</div>
-      {hint && (
-        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>{hint}</div>
-      )}
-    </div>
+    <HudBox label={name} value={value}>
+      {hint && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>{hint}</div>}
+    </HudBox>
   );
 }
 
 function GateBadge({ gate, comparable }: { gate: string; comparable: boolean }) {
-  const ok = gate === "PASS";
   return (
-    <span
-      style={{
-        fontFamily: mono,
-        fontSize: 12,
-        padding: "4px 10px",
-        borderRadius: 6,
-        border: `1px solid ${ok ? "var(--good-border)" : "var(--bad-border)"}`,
-        background: ok ? "rgba(158,206,106,0.09)" : "rgba(242,119,122,0.09)",
-        color: ok ? "var(--good)" : "var(--bad)",
-      }}
-    >
-      ● gate {gate}
+    <Annunciator state={gate === "PASS" ? "on" : "bad"}>
+      gate {gate}
       {!comparable && " · packs differ"}
-    </span>
+    </Annunciator>
   );
 }
 
@@ -81,15 +70,9 @@ function CaseRow({ result }: { result: EvalCaseResult }) {
   return (
     <tr style={{ borderBottom: "1px solid var(--border)" }}>
       <td style={{ padding: "8px 6px" }}>
-        <span
-          style={{
-            fontFamily: mono,
-            fontSize: 11,
-            color: result.passed ? "var(--good)" : "var(--bad)",
-          }}
-        >
+        <Annunciator state={result.passed ? "on" : "bad"}>
           {result.passed ? "PASS" : "FAIL"}
-        </span>
+        </Annunciator>
         {result.holdout && (
           <span style={{ fontSize: 10, color: "var(--accent)", marginLeft: 6 }}>holdout</span>
         )}

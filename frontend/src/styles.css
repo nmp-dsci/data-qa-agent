@@ -170,6 +170,20 @@ body::before {
   background-position: top, center top, left bottom, left top;
   opacity: .6;
 }
+/* s25: a whisper-strength ground band at the foot of the canvas — the same
+   dawn horizon the login sits on, dialled right down, so signing in doesn't
+   change sky. Behind everything, and only visible through transparent gutters
+   (rail edges, hero, scroll margins); panels and data keep full contrast. */
+body::after {
+  content: ""; position: fixed; left: 0; right: 0; bottom: 0; height: 190px;
+  z-index: 0; pointer-events: none; opacity: .5;
+  background:
+    linear-gradient(transparent, color-mix(in srgb, var(--accent) 5%, transparent)),
+    repeating-linear-gradient(90deg, transparent 0 46px,
+      color-mix(in srgb, var(--accent) 9%, transparent) 46px 47px);
+  -webkit-mask-image: linear-gradient(transparent, #000);
+  mask-image: linear-gradient(transparent, #000);
+}
 #root { position: relative; z-index: 1; }
 button { cursor: pointer; font: inherit; }
 /* One motion voice: interactive surfaces ease, never cut. */
@@ -179,7 +193,8 @@ button, .chip, a, input, select, textarea {
     box-shadow var(--dur-1) var(--ease);
 }
 /* Numbers line up everywhere they are compared. */
-table, .h-value, .metric strong, .meta, .kpi-growth, .conv-meta, .history-meta {
+table, .h-value, .h-basis, .metric strong, .hud-box-value, .meta, .kpi-growth,
+.conv-meta, .history-meta, .flight-strip-clock, .hud-readout-value {
   font-variant-numeric: tabular-nums;
 }
 code, pre, kbd { font-family: var(--mono); }
@@ -700,9 +715,13 @@ tbody tr:last-child td { border-bottom: none; }
 .admin h3 { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
 .admin-band { display: grid; gap: 14px; }
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.metric { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
-.metric span { display: block; color: var(--muted); font-size: 12px; }
-.metric strong { display: block; margin-top: 3px; font-size: 22px; }
+/* s25: .metric composes with .hud-box — it keeps the solid panel fill and
+   border (the corner ticks need something to sit on), and hud-box supplies
+   the ticks plus the label/value type. The value runs larger here than the
+   kit default because the metrics band is the page's headline row. */
+.metric { background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px; }
+.metric .hud-box-value { font-size: 22px; margin-top: 3px; }
 /* 7-day sparkline (issue #12): real per-day counts give the metric context. */
 .metric-spark { display: block; width: 100%; height: 16px; margin-top: 6px; opacity: .9; }
 /* Wrapping evidence column — capped so the wide feedback/eval tables stay narrow
@@ -781,7 +800,14 @@ section > .agent-demo-canvas { border: 1px solid var(--border); border-radius: v
 .sqled-work { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; }
 .sqled-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 10px 14px; border-bottom: 1px solid var(--border); }
-.kbd-hint { color: var(--muted); font-size: 11px; }
+/* s25: the guarantees bar — lamps, then the run shortcut as a HUD key. Flex
+   so the lamp row and the key stay on one line instead of stacking. */
+.kbd-hint { display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  color: var(--muted); font-size: 11px; }
+.kbd-hint-note { color: var(--faint); }
+.hud-key { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--muted);
+  background: var(--panel-2); border: 1px solid var(--border-2); border-bottom-width: 2px;
+  border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
 .btn-run { background: var(--accent); color: var(--accent-ink); border: none; font-weight: 600; padding: 7px 16px;
   border-radius: var(--radius); font-size: 13px; }
 .btn-run:disabled { opacity: .5; }
@@ -946,9 +972,9 @@ th.sortable:hover { color: var(--text); }
 /* Streaming pages (s10): page slots inside the working bubble — a header per
    planned page, ghost placeholders until its frame lands, locked teasers. */
 .stream-page { margin-top: 12px; animation: working-step-in .18s ease-out; }
-.stream-page-head { display: flex; align-items: center; gap: 8px; font-size: 10.5px;
-  text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: 700;
-  margin: 0 0 8px; }
+.stream-page-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--accent);
+  font-weight: 700; margin: 0 0 8px; }
 .page-status { font-size: 10px; font-weight: 600; padding: 1px 8px; border-radius: 999px;
   border: 1px solid var(--border-2); text-transform: none; letter-spacing: 0; }
 .page-status.done { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
@@ -986,8 +1012,11 @@ th.sortable:hover { color: var(--text); }
 
 /* Insight report (K3) */
 .report { margin-top: 6px; display: flex; flex-direction: column; gap: 10px; position: relative; overflow: visible; }
-.report-sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent);
-  font-weight: 700; margin: 6px 0 0; }
+/* s25: section markers move to the instrument voice — mono, tracked, caps.
+   Type only: no size, spacing or layout change, because report pages have to
+   stay boardroom-neutral when they're exported. */
+.report-sec { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .14em;
+  color: var(--accent); font-weight: 700; margin: 6px 0 0; }
 .report-foot { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
 .related-hint { font-size: 10.5px; color: var(--muted); font-style: italic; margin: 2px 0 0; }
 
@@ -996,6 +1025,17 @@ th.sortable:hover { color: var(--text); }
 .h-tile { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 12px;
   cursor: pointer; position: relative; }
 .h-tile:hover { border-color: var(--accent-2); }
+/* s25: the HUD's corner ticks bracket a tile on hover — the readout you're
+   about to interrogate is the one the instrument frames. Drawn on pseudo-
+   elements so no report markup changes and the export stays clean. */
+.h-tile::before, .h-tile::after { content: ""; position: absolute; width: 8px; height: 8px;
+  pointer-events: none; opacity: 0; border-color: var(--accent-2);
+  transition: opacity var(--dur-1) var(--ease); }
+.h-tile::before { top: 3px; left: 3px; border-top: 1.5px solid; border-left: 1.5px solid;
+  border-top-left-radius: 4px; }
+.h-tile::after { bottom: 3px; right: 3px; border-bottom: 1.5px solid; border-right: 1.5px solid;
+  border-bottom-right-radius: 4px; }
+.h-tile:hover::before, .h-tile:hover::after, .h-tile.sel::before, .h-tile.sel::after { opacity: 1; }
 .h-tile.related { border-style: dashed; }
 .h-tile.sel { outline: 2px solid var(--accent-2); outline-offset: 1px; }
 .h-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
@@ -1294,7 +1334,11 @@ a:focus-visible, [role="option"]:focus-visible {
 
 .ex-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); }
 .ex-tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted);
-  font: inherit; font-size: 13px; padding: 8px 14px; cursor: pointer; }
+  font: inherit; padding: 8px 14px; cursor: pointer;
+  /* s25: the tool tabs take the instrument voice. Declared after `font:
+     inherit`, which is a shorthand and would otherwise reset family+weight. */
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; }
 .ex-tab.on { color: var(--accent-soft); border-bottom-color: var(--accent-soft); }
 
 .ex-tool { display: flex; flex-direction: column; gap: 12px; }
@@ -1381,8 +1425,13 @@ table.dt .dt-num { font-variant-numeric: tabular-nums; }
 /* the two cohort rows form a small tree off a shared trunk (same metric) */
 .ex-setup-cohorts { display: flex; flex-direction: column; border-left: 2px solid var(--border-2, var(--border)); padding-left: 16px; position: relative; }
 .ex-setup-cohorts .ex-cohort-row { position: relative; padding: 8px 0; border-bottom: none; }
+/* s25: the two branches read as contrails — dashed, and coloured by the cohort
+   they carry (Target gold / Comparison blue), so the tree says which is which
+   before you read the labels. */
 .ex-setup-cohorts .ex-cohort-row::before { content: ""; position: absolute; left: -16px; top: 50%;
-  width: 12px; height: 2px; background: var(--border-2, var(--border)); }
+  width: 12px; border-top: 2px dashed var(--border-2, var(--border)); }
+.ex-setup-cohorts .ex-cohort-row:has(.tone-target)::before { border-top-color: var(--cohort-target); }
+.ex-setup-cohorts .ex-cohort-row:has(.tone-comparison)::before { border-top-color: var(--cohort-comparison); }
 .ex-tree-brace { display: none; }
 .ex-copy { background: none; border: 1px dashed var(--border-2, var(--border)); color: var(--muted);
   border-radius: 7px; padding: 3px 9px; font: inherit; font-size: 11.5px; cursor: pointer; margin-left: auto; white-space: nowrap; }
@@ -1428,3 +1477,14 @@ table.dt .dt-num { font-variant-numeric: tabular-nums; }
 .chart-sql { right: 42px; }
 .chart:hover .chart-sql, .chart-sql:focus-visible { opacity: 1; }
 .chart-sql:hover { color: var(--accent-2); border-color: var(--accent-2); opacity: 1; }
+
+/* Goldens list rows: the status lamps sit tight under the question, so they
+   need a slightly quieter scale than a standalone annunciator row. */
+.golden-lamps { margin-top: 4px; gap: 4px; }
+.golden-lamps .annunciator { font-size: 9px; padding: 2px 6px; }
+
+/* Explore's parked plane — the empty state before a flight plan is filed. */
+.ex-empty { display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 46px 20px; text-align: center; }
+.ex-empty-glyph { color: var(--accent); opacity: .32; }
+.ex-empty .ex-hint { margin: 0; max-width: 44ch; }

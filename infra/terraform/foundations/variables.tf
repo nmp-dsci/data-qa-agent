@@ -48,9 +48,9 @@ variable "db_min_acu" {
 }
 
 variable "db_max_acu" {
-  description = "Aurora Serverless v2 maximum capacity (ACUs). 1 ACU (~2 GiB) is ample for this personal app's query + agent load and caps burst cost; raise if heavy pipeline/analytics runs need more headroom."
+  description = "Aurora Serverless v2 maximum capacity (ACUs). Raised 1 → 2 (2026-07-21) for chat latency: the agent's ~6 governed queries per answer ran against full 3.2M-row marts pinned at 1 ACU (~2 GiB), part of a measured 111s prod vs 22s dev gap. min stays 0, so this costs nothing idle — it only doubles the burst ceiling while queries actually run."
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "db_extra_ingress_cidrs" {
@@ -117,13 +117,17 @@ variable "backend_memory" {
 }
 
 # The agent loads a ~130MB ONNX embedding model and runs the Node/Pyodide
-# sandbox — 0.5 GB would OOM. 1 vCPU / 2 GB is the safe start (~+$9/mo idle
-# memory vs the smallest tier); downsize to 1 GB later if it proves roomy.
+# sandbox — 0.5 GB would OOM. Started at 1 vCPU / 2 GB; bumped to 2 vCPU / 4 GB
+# (2026-07-21) after measuring the same chat question at 111s in prod vs 22s in
+# dev: the answer loop is ~20 LLM turns wrapped around CPU-bound sandbox passes,
+# and 1 vCPU was the bottleneck we control. App Runner pairs 2 vCPU with a
+# 4 GB minimum, so memory moves in lockstep (~+$11/mo idle memory). Deliberate
+# spend — approved to get prod answers near the dev experience.
 variable "agent_cpu" {
   type    = string
-  default = "1024"
+  default = "2048"
 }
 variable "agent_memory" {
   type    = string
-  default = "2048"
+  default = "4096"
 }

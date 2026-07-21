@@ -22,7 +22,12 @@ const OBJECT_ID = `obj:${OBJECT}`;
 const FILTER = "property_type = 'house' AND suburb IN ('Hornsby', 'Normanhurst')";
 
 test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", async ({ page }) => {
-  test.setTimeout(420_000);
+  // The budget has to exceed the sum of the allowances this test hands its own
+  // steps: 360s for the live draft + 120s for the sandbox build + 30s save +
+  // 30s reload = 540s of inner waits alone, before any interactive work. At the
+  // previous 420s the test could not pass whenever the draft ran slow — it ran
+  // out of budget mid-flow rather than failing on anything real.
+  test.setTimeout(900_000);
   await login(page, "Admin");
 
   // --- Golden Examples tab ------------------------------------------------
@@ -37,7 +42,12 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
   await expect(page.getByTestId("page-0")).toBeVisible({ timeout: 360_000 });
 
   // --- 2. Build the named presentation object -----------------------------
-  await page.getByText(/Presentation Object builder/).click(); // expand the builder
+  // The structured builder lives in a <details> whose summary reads "advanced
+  // — structured builder…". It was renamed and demoted under the AI panel in
+  // s22 (d70d1dd) and this spec was never updated: "Presentation Object
+  // builder" now survives only in a source comment, so the old locator matched
+  // nothing in the DOM and the test could only ever time out here.
+  await page.getByText(/structured builder/i).click(); // expand the builder
   await page.getByTestId("builder-name").fill(OBJECT);
   await page.getByTestId("builder-type").selectOption({ label: "Line + bar chart" });
   await page.getByTestId("builder-grain").fill("month, suburb, area_band");

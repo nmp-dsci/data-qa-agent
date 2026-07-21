@@ -15,14 +15,25 @@ test("a chat answer renders as column-model pages", async ({ page }) => {
   await page.getByPlaceholder(/Ask about/).fill(QUESTION);
   await page.getByRole("button", { name: "Ask" }).click();
 
-  // The summary page leads the answer (agent may take minutes on live LLM).
-  const pageCols = page.locator('.page-cols[data-template="summary"]');
+  // The summary page leads the answer, so it is the first .page-cols to land
+  // (the agent may take minutes on a live LLM).
+  //
+  // Not [data-template="summary"]: `data-template` carries a TemplateId, and
+  // since the s08 column model those are one-col / two-col / three-col. Page
+  // *kind* (summary / insights) is a separate axis and never appears here, so
+  // the old selector matched nothing and this test could only time out. The
+  // agent was never the problem — a live run lands both pages in ~60s.
+  const pageCols = page.locator(".page-cols").first();
   await expect(pageCols).toBeVisible({ timeout: 300_000 });
 
-  // Column model in the wild: >= 1 column, a KPI headline and a chart svg.
+  // Column model in the wild: a registered column count, a KPI headline and a
+  // chart svg.
   const colCount = Number(await pageCols.getAttribute("data-col-count"));
   expect(colCount).toBeGreaterThanOrEqual(1);
-  expect(colCount).toBeLessThanOrEqual(2);
+  expect(colCount).toBeLessThanOrEqual(3);
+  expect(["one-col", "two-col", "three-col"]).toContain(
+    await pageCols.getAttribute("data-template"),
+  );
   await expect(pageCols.locator('[data-object-type="kpi"]').first()).toBeVisible();
   await expect(pageCols.locator("svg").first()).toBeVisible();
 });

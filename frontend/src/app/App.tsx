@@ -88,6 +88,9 @@ export default function App() {
   // nonce forces the effect to re-fire even when the same id is promoted twice.
   const [goldenSeed, setGoldenSeed] = useState<{ id: string; nonce: number } | null>(null);
   const [working, setWorking] = useState<string | null>(null);
+  // Raw elapsed seconds, kept alongside the display string so the chat flight
+  // strip can render it as a mono clock rather than re-parsing the sentence.
+  const [elapsedS, setElapsedS] = useState<number | null>(null);
   const [progress, setProgress] = useState<AskProgress[]>([]);
   // s10 streaming pages: the answer's page plan (ghost slots + locked teasers)
   // and each page frame as it streams, keyed by page index.
@@ -240,6 +243,7 @@ export default function App() {
     track("question_submitted", { question: q });
     const isNewConversation = conversationId === null;
     setWorking("Agent is working…");
+    setElapsedS(0);
     setProgress([]);
     setPagePlan([]);
     setStreamedPages({});
@@ -252,6 +256,7 @@ export default function App() {
         (s) => {
           if (s.state === "working" && s.elapsed_s != null) {
             setWorking(`Agent is working… ${s.elapsed_s}s`);
+            setElapsedS(s.elapsed_s);
           }
         },
         (p) => setProgress((prev) => [...prev, p]),
@@ -433,6 +438,7 @@ export default function App() {
               messages={messages}
               loading={loading}
               working={working}
+              elapsedS={elapsedS}
               progress={progress}
               pagePlan={pagePlan}
               streamedPages={streamedPages}

@@ -12,6 +12,7 @@ import {
   getAdminUsers,
   getEvalCases,
 } from "../../lib/api";
+import { Annunciator } from "../../ui/flightdeck";
 import { formatTime } from "../../lib/format";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
 import { AgentConfigView } from "./AgentConfigView";
@@ -48,11 +49,14 @@ function Sparkline({ data }: { data: number[] }) {
   );
 }
 
+/** s25: the metric cards get the HUD box's corner ticks — Admin's MFD-panel
+ *  look was already on-brand, this just makes the readouts literal. The 7-day
+ *  sparkline is unchanged. */
 function Metric({ label, value, series }: { label: string; value: number; series?: number[] }) {
   return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="metric hud-box">
+      <span className="hud-box-label">{label}</span>
+      <strong className="hud-box-value">{value}</strong>
       {series && <Sparkline data={series} />}
     </div>
   );
@@ -190,7 +194,11 @@ export function AdminPage() {
                     <tr key={d.id}>
                       <td>{d.slug}</td>
                       <td>{d.name}</td>
-                      <td>{d.status}</td>
+                      <td>
+                        <Annunciator state={d.status === "ready" ? "on" : "warn"}>
+                          {d.status}
+                        </Annunciator>
+                      </td>
                       <td>{d.row_count}</td>
                       <td>{d.access_count}</td>
                     </tr>

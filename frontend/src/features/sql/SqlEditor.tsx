@@ -18,6 +18,7 @@ import {
   type User,
 } from "../../lib/api";
 import { SpecChart } from "../../ui/SpecChart";
+import { Annunciator, Annunciators } from "../../ui/flightdeck";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cssVar } from "../../ui/charts/tokens";
 
@@ -806,7 +807,16 @@ export function SqlEditor({
         </div>
 
         <div className="sqled-bar">
-          <span className="kbd-hint">Read-only · RLS-scoped · Cmd/Ctrl+Enter to run</span>
+          {/* s25: the guarantees become cockpit lamps, the shortcut a HUD key. */}
+          <span className="kbd-hint">
+            <Annunciators>
+              <Annunciator title="Queries run against a read-only role">RO</Annunciator>
+              <Annunciator title="Row-level security scopes every query to your grants">RLS</Annunciator>
+              <Annunciator title="Every query is recorded in the audit trail">Audit</Annunciator>
+            </Annunciators>
+            <kbd className="hud-key">⌘ / Ctrl + ⏎</kbd>
+            <span className="kbd-hint-note">to run</span>
+          </span>
           <div className="run-actions">
             <button className="btn-ghost" onClick={loadHistory}>
               History

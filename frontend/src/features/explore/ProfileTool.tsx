@@ -12,6 +12,7 @@ import {
   ProfileResult,
 } from "../../lib/api";
 import { PageLayout } from "../../report-engine/PageLayout";
+import { PlaneGlyph } from "../../ui/icons";
 import { AskBox } from "./AskBox";
 import { FilterEditor, MetricSelect } from "./controls";
 
@@ -148,10 +149,16 @@ export function ProfileTool({
       {result && isAdmin && <SaveAsGolden dataset={dataset} result={result} />}
       {result && <ProfileResultView result={result} />}
       {!result && !error && (
-        <p className="muted ex-hint">
-          Set the two cohorts and a metric, then Run — or describe it above and let the assistant
-          fill it in.
-        </p>
+        /* s25: a parked plane waiting on a flight plan. The empty state still
+           says what to do, in the interface's own voice — the brand supplies
+           the picture, not the instructions. */
+        <div className="ex-empty">
+          <PlaneGlyph size={30} className="ex-empty-glyph" />
+          <p className="muted ex-hint">
+            Set the two cohorts and a metric, then Run — or describe it above and let the assistant
+            fill it in.
+          </p>
+        </div>
       )}
     </div>
   );

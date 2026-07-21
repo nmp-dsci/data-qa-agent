@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s25 · Flight Deck — Data Pilot cockpit brand &amp; login redesign</title>
+<style>
+/* ============================================================
+   Rendered in Data Pilot's own design system (Night Flight
+   tokens from frontend/src/styles.css) so every mock is the
+   real product's material, not a lookalike.
+   ============================================================ */
+:root {
+  --bg: #0a0d15; --panel: #111522; --panel-2: #171c2b; --panel-3: #1e2434;
+  --border: #242b3d; --border-2: #333d55;
+  --text: #eaecf3; --muted: #9aa4bb; --faint: #7a84a0;
+  --accent: #d9a84e; --accent-soft: #f2ca79; --accent-ink: #1a1204;
+  --accent-2: #7fb0ff; --good: #9ece6a; --warn: #e0af68; --bad: #f2777a;
+  --purple: #c58fff; --info: #7dcfff;
+  --hud: #9ece6a; /* proposed semantic — same pigment as --good, new meaning */
+  --chart-grid: #1d2434; --code-bg: #0a0d13;
+  --radius: 8px; --radius-lg: 10px; --radius-xl: 14px;
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ease: cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
+  font-size: 14.5px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(180deg, rgba(217,168,78,.07), transparent 150px),
+    radial-gradient(720px 340px at 80% -80px, rgba(217,168,78,.13), transparent 62%),
+    radial-gradient(var(--chart-grid) 1px, transparent 1.5px);
+  background-size: 100% 150px, auto, 22px 22px;
+  background-repeat: no-repeat, no-repeat, repeat; opacity: .6; }
+main { position: relative; z-index: 1; max-width: 1160px; margin: 0 auto; padding: 40px 22px 90px; }
+
+/* ---- type & shared furniture ---- */
+.eyebrow { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .17em;
+  text-transform: uppercase; color: var(--accent); }
+h1 { font-size: clamp(26px, 4vw, 34px); font-weight: 750; letter-spacing: -.02em; margin: 8px 0 10px; }
+h1 em { font-style: normal; color: var(--accent-soft); }
+h2 { font-size: 21px; font-weight: 750; letter-spacing: -.015em; margin: 0 0 6px; }
+h3 { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
+p { margin: 6px 0; }
+.lede { color: var(--muted); font-size: 15px; max-width: 72ch; }
+section { margin-top: 64px; }
+.sec-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 18px; }
+.sec-head p { color: var(--muted); max-width: 78ch; margin: 2px 0 0; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 18px 20px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+@media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+.pill { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); }
+.pill.gold { color: var(--accent-soft); border-color: #6b5a2a; }
+.pill.green { color: var(--good); border-color: #33502f; }
+.pill.blue { color: var(--info); border-color: #2f5a7a; }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; }
+.note { color: var(--faint); font-size: 12px; }
+ul.tight { margin: 8px 0; padding-left: 20px; } ul.tight li { margin: 5px 0; }
+a { color: var(--accent-2); }
+
+/* instrument voice (the formalized style this proposal introduces) */
+.instr { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted); }
+
+/* annunciator row */
+.annun { display: flex; gap: 8px; flex-wrap: wrap; }
+.annun span { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono);
+  font-size: 9.5px; font-weight: 700; letter-spacing: .07em; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px 3px 8px; background: var(--panel-2); }
+.annun i { width: 6px; height: 6px; border-radius: 2px; background: var(--hud); box-shadow: 0 0 6px rgba(158,206,106,.7); }
+.annun .off i { background: var(--border-2); box-shadow: none; }
+
+/* hud-box (corner-tick readout) */
+.hud-box { position: relative; display: inline-flex; flex-direction: column; gap: 2px;
+  padding: 10px 14px; background: rgba(17,21,34,.72); min-width: 120px;
+  background-clip: padding-box; border: 1px solid var(--border-2); }
+.hud-box::before, .hud-box::after, .hud-box .tk::before, .hud-box .tk::after {
+  content: ""; position: absolute; width: 9px; height: 9px; border: 2px solid var(--accent); }
+.hud-box::before { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+.hud-box::after { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+.hud-box .tk::before { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+.hud-box .tk::after { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+.hud-box b { font-family: var(--mono); font-size: 19px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.hud-box small { font-family: var(--mono); font-size: 8.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+
+/* ============================================================
+   THE HERO MOCK — redesigned login, live
+   ============================================================ */
+.frame { border: 1px solid var(--border-2); border-radius: 14px; overflow: hidden;
+  background: var(--bg); box-shadow: 0 18px 50px rgba(0,0,0,.45); min-width: 0; }
+.frame-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: var(--panel-2); border-bottom: 1px solid var(--border); }
+.frame-bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--border-2); }
+.frame-bar span { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-left: 6px; }
+.hero-wrap2 { display: grid; grid-template-columns: 1fr; gap: 18px; }
+.hero-sub { display: grid; grid-template-columns: 270px minmax(0,1fr); gap: 18px; align-items: start; }
+.hero-sub .grid-cards { display: grid; gap: 14px; }
+@media (max-width: 860px) { .hero-sub { grid-template-columns: 1fr; } .phone-col { justify-self: center; } }
+
+/* -- scene -- */
+.ml { position: relative; overflow: hidden; min-height: 560px; background: #070a12; }
+.ml-sky { position: absolute; inset: 0;
+  background:
+    radial-gradient(900px 420px at 26% 118%, rgba(217,168,78,.30), transparent 58%),
+    radial-gradient(1200px 520px at 75% 122%, rgba(242,202,121,.14), transparent 60%),
+    linear-gradient(180deg, #05070d 0%, #0a0d15 46%, #141324 68%, #241a20 76%);
+}
+.ml-horizon { position: absolute; left: 0; right: 0; top: 76%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(242,202,121,.75) 30%, rgba(242,202,121,.75) 70%, transparent);
+  box-shadow: 0 0 18px 2px rgba(217,168,78,.55); }
+.ml-ground { position: absolute; left: -12%; right: -12%; top: 76%; bottom: -6%;
+  background-image:
+    linear-gradient(rgba(217,168,78,.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(217,168,78,.13) 1px, transparent 1px);
+  background-size: 46px 34px;
+  transform: perspective(340px) rotateX(58deg); transform-origin: 50% 0;
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.85), transparent 88%);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.85), transparent 88%); }
+.ml-city { position: absolute; border-radius: 50%; background: var(--accent-soft); opacity: .8; }
+.ml-city::after { content: ""; position: absolute; inset: -10px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(242,202,121,.5), transparent 70%); }
+.ml-canopy { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(135% 120% at 50% 42%, transparent 62%, rgba(3,5,9,.85) 100%); }
+.ml-routes { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ml-r-alt { fill: none; stroke: var(--accent-2); stroke-width: 1; stroke-dasharray: 3 7; opacity: .28; }
+.ml-r-alt2 { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 8; opacity: .2; }
+.ml-r-main { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 5; opacity: .34; }
+.ml-r-trail { fill: none; stroke: var(--accent-soft); stroke-width: 2.2; stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(242,202,121,.9)); }
+.ml-wp { fill: #0a0d15; stroke: var(--accent); stroke-width: 1.6; }
+.ml-wp-halo { fill: none; stroke: var(--accent-soft); stroke-width: 1; opacity: 0;
+  transform-box: fill-box; transform-origin: center; animation: ml-halo 26s linear infinite; }
+@keyframes ml-halo { 0%, 100% { opacity: 0; transform: scale(.4); }
+  3% { opacity: .9; transform: scale(1); } 12% { opacity: 0; transform: scale(2.1); } }
+.ml-wl { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; fill: var(--muted); }
+.ml-plane { color: var(--accent-soft); filter: drop-shadow(0 0 7px rgba(242,202,121,.9)); }
+.ml-plane.traffic.t1 { color: #a9c8ff; opacity: .5; filter: drop-shadow(0 0 3px rgba(127,176,255,.6)); }
+.ml-plane.traffic.t2 { color: var(--accent); opacity: .38; filter: drop-shadow(0 0 3px rgba(217,168,78,.5)); }
+.ml-plane-static { display: none; color: var(--accent-soft); }
+.ml-tape { display: inline-block; animation: ml-tape-drift 9s ease-in-out infinite; }
+@keyframes ml-tape-drift { 0%, 100% { transform: translateX(-5px); } 50% { transform: translateX(5px); } }
+.ml-hudstrip { position: absolute; top: 14px; left: 23%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 24px; opacity: .6; pointer-events: none; }
+.ml-hudstrip .instr { color: var(--accent-soft); letter-spacing: .22em; font-size: 9px; }
+.ml-hudbit { font-family: var(--mono); font-size: 9px; color: var(--hud); border: 1px solid rgba(158,206,106,.5);
+  padding: 2px 9px 2px 8px; letter-spacing: .05em; font-variant-numeric: tabular-nums; min-width: 56px; text-align: center; }
+
+/* -- content over scene -- */
+.ml-grid { position: relative; display: grid; grid-template-columns: minmax(0,.92fr) minmax(0,1.08fr);
+  min-height: 560px; }
+.ml-left { display: grid; place-items: center; padding: 44px 26px; }
+.ml-card { width: min(300px, 100%); background: rgba(17,21,34,.86); border: 1px solid var(--border-2);
+  border-radius: 18px; padding: 22px 22px 16px; text-align: center;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.ml-mark { display: grid; place-items: center; margin-bottom: 10px; position: relative; }
+.ml-mark .ret { position: absolute; width: 74px; height: 74px; border-radius: 50%;
+  border: 1px solid rgba(242,202,121,.35); }
+.ml-mark .ret::before { content: ""; position: absolute; inset: 8px; border-radius: 50%;
+  border: 1px dashed rgba(242,202,121,.25); }
+.ml-mark .ret::after { content: ""; position: absolute; top: 50%; left: -14px; right: -14px; height: 1px;
+  background: linear-gradient(90deg, rgba(242,202,121,.5) 0 10px, transparent 10px calc(100% - 10px), rgba(242,202,121,.5) calc(100% - 10px)); }
+.ml-title { font-size: 21px; font-weight: 750; letter-spacing: -.02em; margin: 4px 0 0; }
+.ml-title em { font-style: normal; color: var(--accent-soft); }
+.ml-tag { color: var(--muted); font-size: 12px; margin: 3px 0 14px; }
+.ml-user { display: flex; align-items: center; gap: 10px; background: var(--panel-2);
+  border: 1px solid var(--border); color: var(--text); padding: 8px 11px; border-radius: 11px;
+  text-align: left; margin-bottom: 7px; }
+.ml-user:hover { border-color: var(--accent); }
+.ml-av { width: 25px; height: 25px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  font-size: 10px; font-weight: 750; color: #14100a; background: var(--accent-soft); }
+.ml-user b { display: block; font-size: 12px; } .ml-user span { color: var(--muted); font-size: 10.5px; }
+.ml-card .annun { justify-content: center; margin-top: 12px; }
+.ml-card .annun span { font-size: 8px; padding: 2px 6px; }
+.ml-right { display: flex; flex-direction: column; justify-content: center; gap: 12px;
+  padding: 40px clamp(20px, 4vw, 48px); max-width: 620px;
+  background: rgba(13,16,26,.55); border-left: 1px solid rgba(51,61,85,.5);
+  -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
+.ml-right h4 { font-size: 19px; font-weight: 750; letter-spacing: -.015em; margin: 0; }
+.ml-right .sub { color: var(--muted); font-size: 12.5px; margin: 0; }
+.ml-wps { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 7px; }
+.ml-wpc { border: 1px solid var(--border); background: rgba(23,28,43,.6); border-radius: 11px;
+  padding: 9px 12px; display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px;
+  transition: border-color .2s var(--ease), background .2s var(--ease); }
+.ml-wpc .n { font-family: var(--mono); font-size: 8.5px; font-weight: 700; letter-spacing: .1em;
+  color: var(--faint); padding-top: 3px; width: 58px; flex: none; }
+.ml-wpc b { display: block; font-size: 12.5px; }
+.ml-wpc p { margin: 2px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; display: none; }
+.ml-wpc .mock { display: none; margin-top: 8px; }
+.ml-wpc.lit { border-color: var(--accent); background: rgba(30,36,52,.9); }
+.ml-wpc.lit .n { color: var(--accent-soft); }
+.ml-wpc.lit p, .ml-wpc.lit .mock { display: block; }
+.ml-cap { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.ml-cap b { font-size: 13px; color: var(--accent-soft); letter-spacing: -.01em; }
+.ml-cap span { color: var(--faint); font-size: 11px; }
+.ml-dots { display: flex; gap: 6px; margin-top: 4px; }
+.ml-dot { width: 7px; height: 7px; padding: 0; border: none; border-radius: 50%; background: var(--border-2); cursor: pointer; }
+.ml-dot.on { background: var(--accent); width: 20px; border-radius: 4px; }
+
+/* micro-mocks inside waypoint cards */
+.mm-page { border: 1px solid var(--border-2); border-radius: 9px; background: var(--panel);
+  padding: 8px 10px 9px; display: grid; gap: 6px; box-shadow: 0 3px 12px rgba(0,0,0,.3); }
+.mm-page-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mm-share { font-size: 9px; color: var(--accent); border: 1px solid #6b5a2a; border-radius: 5px;
+  padding: 1px 7px; background: rgba(217,168,78,.08); white-space: nowrap; }
+.mm-headline { font-size: 11.5px; font-weight: 650; line-height: 1.3; }
+.mm-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 6px; }
+.mm-tile { background: var(--panel-3); border: 1px solid var(--border-2); border-radius: 7px; padding: 6px 8px; }
+.mm-tile small { display: block; font-size: 8px; color: var(--muted); font-family: var(--mono);
+  letter-spacing: .08em; text-transform: uppercase; }
+.mm-tile b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.mm-tile em.up { display: block; font-style: normal; font-size: 9px; color: var(--good); margin-top: 2px;
+  font-variant-numeric: tabular-nums; }
+.mm-plot { grid-column: 1 / -1; width: 100%; height: auto; border: 1px solid var(--border-2);
+  border-radius: 7px; background: var(--panel-2); display: block; }
+.mm-ax { font-family: var(--mono); font-size: 7.5px; fill: var(--faint); }
+.mm-legend { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 8.5px;
+  color: var(--muted); }
+.mm-legend i { width: 7px; height: 7px; border-radius: 2px; display: inline-block; margin-left: 7px; }
+.mm-legend i:first-child { margin-left: 0; }
+.mm-tune { display: grid; gap: 3px; }
+.mm-tq { font-family: var(--mono); font-size: 10px; color: var(--info); }
+.mm-ta { font-size: 10.5px; color: var(--muted); line-height: 1.4; }
+.mm-ta b { color: var(--text); }
+.mm-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mm-star { font-size: 10px; color: var(--accent); border: 1px solid #6b5a2a; border-radius: 6px;
+  padding: 2px 8px; background: rgba(217,168,78,.1); white-space: nowrap; }
+.mm-arrow { color: var(--faint); font-size: 11px; }
+.mm-ans { font-size: 10.5px; color: var(--muted); }
+.mm-bars { display: grid; gap: 5px; }
+.mm-bar { display: grid; grid-template-columns: 74px minmax(0,1fr) 34px; gap: 8px; align-items: center; font-size: 10px; }
+.mm-bar small { font-family: var(--mono); font-size: 8.5px; letter-spacing: .08em; color: var(--muted); }
+.mm-bar i { height: 8px; border-radius: 4px; background: var(--accent); display: block; }
+.mm-bar.alt i { background: var(--accent-2); }
+.mm-bar em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--text); font-size: 10px; }
+.mm-sql { font-family: var(--mono); font-size: 10px; color: var(--info); background: var(--code-bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+
+/* -- phone mock -- */
+.phone { width: 250px; border: 1px solid var(--border-2); border-radius: 26px; overflow: hidden;
+  background: #070a12; box-shadow: 0 18px 50px rgba(0,0,0,.45); position: relative; }
+.phone-notch { position: absolute; top: 7px; left: 50%; transform: translateX(-50%); width: 74px; height: 14px;
+  border-radius: 8px; background: #000; z-index: 4; }
+.ph-scene { position: relative; height: 470px; overflow: hidden; }
+.ph-sky { position: absolute; inset: 0;
+  background: radial-gradient(420px 260px at 50% 112%, rgba(217,168,78,.28), transparent 60%),
+  linear-gradient(180deg, #05070d, #0a0d15 52%, #1c1620 84%); }
+.ph-routes { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ph-card { position: relative; margin: 44px 18px 0; background: rgba(17,21,34,.88); border: 1px solid var(--border-2);
+  border-radius: 15px; padding: 14px 14px 11px; text-align: center;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.ph-card .ml-title { font-size: 17px; }
+.ph-card .ml-user { margin: 10px 0 0; }
+.ph-story { position: relative; margin: 12px 16px 0; }
+.ph-story .instr { color: var(--accent-soft); }
+.ph-story b { display: block; font-size: 13px; margin-top: 3px; }
+.ph-story p { color: var(--muted); font-size: 11px; margin: 3px 0 0; }
+.ph-foot { position: relative; display: flex; gap: 5px; padding: 12px 16px 14px; }
+.ph-foot i { width: 5px; height: 5px; border-radius: 50%; background: var(--border-2); }
+.ph-foot i.on { background: var(--accent); width: 14px; border-radius: 3px; }
+
+/* streaming mock */
+.fly-strip { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel);
+  padding: 12px 14px; }
+.fly-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fly-head .instr { color: var(--hud); }
+.fly-elapsed { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+.fly-path { margin: 10px 0 4px; }
+.fly-steps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.fly-steps li { display: flex; gap: 8px; font-size: 11.5px; color: var(--muted); align-items: baseline; }
+.fly-steps b { color: var(--text); font-weight: 600; white-space: nowrap; }
+.fly-steps li.now b { color: var(--accent-soft); }
+.fly-steps .instr { width: 76px; flex: none; }
+
+/* comparison table */
+.cmp { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.15fr); gap: 0; border: 1px solid var(--border);
+  border-radius: var(--radius-xl); overflow: hidden; }
+.cmp > div { padding: 12px 16px; border-bottom: 1px solid var(--border); min-width: 0; }
+.cmp > div:nth-child(odd) { background: var(--panel); border-right: 1px solid var(--border); }
+.cmp > div:nth-child(even) { background: var(--panel-2); }
+.cmp > div:nth-last-child(-n+2) { border-bottom: none; }
+.cmp .h { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); font-weight: 700; background: var(--panel-3) !important; }
+.cmp b.t { display: block; font-size: 13px; }
+.cmp .why { color: var(--accent-2); font-size: 11px; margin-top: 4px; display: block; }
+.cmp p { color: var(--muted); font-size: 12px; margin: 3px 0 0; }
+@media (max-width: 760px) { .cmp { grid-template-columns: 1fr; } .cmp > div:nth-child(odd) { border-right: none; } }
+
+/* carry-through matrix */
+.mtx-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-xl); }
+table.mtx { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 12.5px; }
+.mtx th { text-align: left; font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted); background: var(--panel-2); padding: 9px 12px;
+  border-bottom: 1px solid var(--border); }
+.mtx td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; background: var(--panel); }
+.mtx tr:last-child td { border-bottom: none; }
+.mtx td b { font-size: 12.5px; }
+.mtx td .note { display: block; margin-top: 2px; }
+.eff { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 5px;
+  border: 1px solid var(--border-2); color: var(--muted); white-space: nowrap; }
+.eff.s { color: var(--good); border-color: #33502f; }
+.eff.m { color: var(--warn); border-color: #6b5a2a; }
+
+/* palette swatches */
+.swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.sw { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--panel); }
+.sw i { display: block; height: 52px; }
+.sw div { padding: 8px 11px; }
+.sw b { display: block; font-size: 12px; }
+.sw small { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+.sw .use { display: block; color: var(--faint); font-size: 10.5px; margin-top: 3px; line-height: 1.4; }
+
+/* kit specimen row */
+.kit { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.kit .card { display: flex; flex-direction: column; gap: 10px; }
+.kit .demo { display: grid; place-items: center; min-height: 86px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px; overflow: hidden; }
+.kit .demo > svg { width: 100%; max-width: 170px; height: auto; }
+.kit p { color: var(--muted); font-size: 11.5px; margin: 0; }
+
+/* decisions */
+.q { display: grid; gap: 10px; }
+.q label { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 10px 12px; cursor: pointer; background: var(--panel-2); }
+.q label:has(input:checked) { border-color: var(--accent); background: var(--panel-3); }
+.q input { accent-color: var(--accent); margin-top: 3px; }
+.q b { display: block; font-size: 13px; }
+.q span { color: var(--muted); font-size: 12px; }
+.q button { align-self: flex-start; background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  color: var(--accent-ink); border: none; font-weight: 650; font-size: 12.5px; padding: 7px 16px;
+  border-radius: var(--radius); cursor: pointer; }
+.q button:hover { filter: brightness(1.07); }
+.q .queued { color: var(--good); font-size: 12px; display: none; }
+
+.phase { display: grid; grid-template-columns: 44px minmax(0,1fr); gap: 12px; }
+.phase .n { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--accent);
+  border: 1px solid #6b5a2a; border-radius: 9px; height: 34px; display: grid; place-items: center; }
+.phase p { color: var(--muted); font-size: 12.5px; margin: 3px 0 0; }
+.risk li { margin: 7px 0; }
+.risk b { color: var(--warn); font-weight: 650; }
+
+footer { margin-top: 70px; border-top: 1px solid var(--border); padding-top: 18px; color: var(--faint); font-size: 12px; }
+
+@media (max-width: 860px) {
+  .ml-grid { grid-template-columns: 1fr; min-height: 0; }
+  .ml { min-height: 0; }
+  .ml-right { max-width: none; border-left: none; border-top: 1px solid rgba(51,61,85,.5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0ms !important; }
+  .ml-plane, .ph-plane { display: none; }
+  .ml-plane-static { display: block; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <div class="eyebrow">S25 · Design proposal · Brand + login redesign + app carry-through</div>
+  <h1>Flight Deck — the <em>Data Pilot</em> cockpit brand</h1>
+  <p class="lede">Data Pilot is a data-science front end: plain-English questions in, boardroom-ready insight
+  reports out — governed by RLS, tuned to your business by your admins, with Explore and a SQL editor for
+  hands-on work. <b style="color:var(--text)">The power of a data team, without the back office.</b>
+  This proposal turns that thesis into a brand system, rebuilds the login around it, and carries it through
+  every screen behind the login. Everything below is rendered in the app's real Night Flight tokens.</p>
+  <div class="annun" style="margin-top:12px">
+    <span><i></i>SPLIT LAYOUT KEPT</span>
+    <span><i></i>STACKS ON MOBILE</span>
+    <span><i></i>0 IMAGE ASSETS — CSS/SVG ONLY</span>
+    <span><i></i>REDUCED-MOTION SAFE</span>
+    <span><i></i>E2E CONTRACTS PRESERVED</span>
+    <span><i></i>SHIPS AS ONE PR</span>
+  </div>
+</header>
+
+<!-- ================= HERO MOCK ================= -->
+<section id="mock">
+  <div class="sec-head">
+    <div class="eyebrow">01 · The proposed login — live mock</div>
+    <h2>The Sortie: your logo, freed from its tile, flying the route</h2>
+    <p>The signature element (the one place the design spends its boldness): the airliner silhouette from the
+    Data Pilot mark — inverted out of its gold tile into a luminous, bold glyph — flies a glowing flight path
+    across the <b>whole screen</b>, left panel to right, lighting each waypoint of the product story as it
+    passes. Two more aircraft cross on other airways from other directions (high blue eastbound, low gold
+    westbound), the HUD readouts drift like live instruments in the air, and below it all sit a dawn horizon,
+    perspective ground grid and canopy vignette from the cockpit references. The sign-in card holds the mark
+    in a HUD reticle; the story panel is glass, so routes pass behind it like traffic behind a windshield.</p>
+  </div>
+
+  <div class="hero-wrap2">
+  <div class="frame">
+    <div class="frame-bar"><i></i><i></i><i></i><span>data-pilot.app — desktop ≥ 861px</span></div>
+    <div class="ml" role="img" aria-label="Redesigned Data Pilot login: cockpit scene with flight path crossing the whole screen">
+      <div class="ml-sky"></div>
+      <div class="ml-horizon"></div>
+      <div class="ml-ground"></div>
+      <span class="ml-city" style="left:22%; bottom:14%; width:3px; height:3px;"></span>
+      <span class="ml-city" style="left:58%; bottom:9%; width:2px; height:2px;"></span>
+      <span class="ml-city" style="left:80%; bottom:16%; width:3px; height:3px;"></span>
+
+      <svg class="ml-routes" viewBox="0 0 1200 640" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <g id="mlPlaneGlyph">
+            <!-- the BrandMark airliner, rotated to fly along +x; stroked to
+                 fatten the silhouette so it reads at distance -->
+            <g transform="rotate(90 0 0) scale(0.42) translate(-50 -50)"
+               stroke="currentColor" stroke-width="7" stroke-linejoin="round">
+              <path fill="currentColor" d="M50 15C51.5 15 53 18 53 24L53 46L52 70L51.5 82L50 86L48.5 82L48 70L47 46L47 24C47 18 48.5 15 50 15Z"/>
+              <path fill="currentColor" d="M52.5 40L82 60L82 65L53.5 52Z"/>
+              <path fill="currentColor" d="M47.5 40L18 60L18 65L46.5 52Z"/>
+              <path fill="currentColor" d="M51.5 72L64 80L64 84L51 78Z"/>
+              <path fill="currentColor" d="M48.5 72L36 80L36 84L49 78Z"/>
+              <path fill="currentColor" d="M63 50L68 53L66.5 57L61.5 54Z"/>
+              <path fill="currentColor" d="M37 50L32 53L33.5 57L38.5 54Z"/>
+            </g>
+          </g>
+        </defs>
+
+        <!-- supporting traffic: crossing airways, each flown by its own aircraft
+             from a different direction (high blue eastbound; low gold westbound) -->
+        <path id="mlRouteAlt" class="ml-r-alt" d="M -40 210 C 260 150, 560 120, 820 170 C 1000 205, 1120 190, 1240 150"/>
+        <path id="mlRouteAlt2" class="ml-r-alt2" d="M 1240 300 C 1060 320, 900 380, 700 388 C 480 396, 260 350, -40 330"/>
+        <g class="ml-plane traffic t1">
+          <g transform="scale(.6)"><use href="#mlPlaneGlyph"/></g>
+          <animateMotion dur="38s" repeatCount="indefinite" rotate="auto"><mpath href="#mlRouteAlt"/></animateMotion>
+        </g>
+        <g class="ml-plane traffic t2">
+          <g transform="scale(.5)"><use href="#mlPlaneGlyph"/></g>
+          <animateMotion dur="47s" repeatCount="indefinite" rotate="auto"><mpath href="#mlRouteAlt2"/></animateMotion>
+        </g>
+
+        <!-- the main route: takes off lower-left, climbs the open sky above the
+             card, cruises across the glass story panel -->
+        <path id="mlRoute" class="ml-r-main" pathLength="100"
+          d="M -60 470 C 150 430, 240 320, 330 230 C 430 140, 560 110, 700 120 C 880 133, 1040 95, 1260 60"/>
+        <!-- contrail: a bright window that travels just behind the plane -->
+        <path class="ml-r-trail" pathLength="100" stroke-dasharray="12 88"
+          d="M -60 470 C 150 430, 240 320, 330 230 C 430 140, 560 110, 700 120 C 880 133, 1040 95, 1260 60">
+          <animate attributeName="stroke-dashoffset" from="12" to="-88" dur="26s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- waypoints on the route (fractions ≈ 16% / 43% / 66% / 88%) -->
+        <g>
+          <circle class="ml-wp" cx="77" cy="428" r="4.5"/>
+          <circle class="ml-wp-halo" cx="77" cy="428" r="9" style="animation-delay: 2.2s"/>
+          <text class="ml-wl" x="77" y="451" text-anchor="middle">ASK</text>
+          <circle class="ml-wp" cx="500" cy="138" r="4.5"/>
+          <circle class="ml-wp-halo" cx="500" cy="138" r="9" style="animation-delay: 11.2s"/>
+          <text class="ml-wl" x="500" y="161" text-anchor="middle">TUNE</text>
+          <circle class="ml-wp" cx="806" cy="122" r="4.5"/>
+          <circle class="ml-wp-halo" cx="806" cy="122" r="9" style="animation-delay: 17.2s"/>
+          <text class="ml-wl" x="806" y="145" text-anchor="middle">EXPLORE</text>
+          <circle class="ml-wp" cx="1105" cy="86" r="4.5"/>
+          <circle class="ml-wp-halo" cx="1105" cy="86" r="9" style="animation-delay: 23s"/>
+          <text class="ml-wl" x="1105" y="109" text-anchor="middle">DIG</text>
+        </g>
+
+        <!-- the Sortie -->
+        <g class="ml-plane">
+          <use href="#mlPlaneGlyph"/>
+          <animateMotion dur="26s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#mlRoute"/>
+          </animateMotion>
+        </g>
+        <!-- reduced-motion fallback: parked at final waypoint -->
+        <g class="ml-plane-static" transform="translate(1105 86) rotate(-12)">
+          <use href="#mlPlaneGlyph"/>
+        </g>
+      </svg>
+
+      <div class="ml-canopy"></div>
+
+      <div class="ml-hudstrip">
+        <span class="ml-hudbit" id="gsVal">GS 240</span>
+        <span class="instr ml-tape">‹ 020 · 030 · 040 ›</span>
+        <span class="ml-hudbit" id="flVal">FL 360</span>
+      </div>
+
+      <div class="ml-grid">
+        <div class="ml-left">
+          <div class="ml-card">
+            <div class="ml-mark">
+              <span class="ret"></span>
+              <svg width="40" height="40" viewBox="0 0 100 100" aria-hidden="true" style="border-radius:11px">
+                <rect width="100" height="100" rx="25" fill="url(#mlMarkG)"/>
+                <g transform="rotate(45 50 50)" fill="#1a1204">
+                  <path d="M50 15C51.5 15 53 18 53 24L53 46L52 70L51.5 82L50 86L48.5 82L48 70L47 46L47 24C47 18 48.5 15 50 15Z"/>
+                  <path d="M52.5 40L82 60L82 65L53.5 52Z"/><path d="M47.5 40L18 60L18 65L46.5 52Z"/>
+                  <path d="M51.5 72L64 80L64 84L51 78Z"/><path d="M48.5 72L36 80L36 84L49 78Z"/>
+                  <path d="M63 50L68 53L66.5 57L61.5 54Z"/><path d="M37 50L32 53L33.5 57L38.5 54Z"/>
+                </g>
+                <defs><linearGradient id="mlMarkG" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#f2ca79"/><stop offset="1" stop-color="#d9a84e"/>
+                </linearGradient></defs>
+              </svg>
+            </div>
+            <div class="ml-title">Data <em>Pilot</em></div>
+            <div class="ml-tag">Your data, flown right.</div>
+            <div class="ml-user"><span class="ml-av">AD</span><span><b>Admin</b><span>sees all data · full trace</span></span></div>
+            <div class="ml-user"><span class="ml-av" style="background:var(--good)">U1</span><span><b>User One</b><span>property data access</span></span></div>
+            <div class="ml-user"><span class="ml-av" style="background:var(--info)">U2</span><span><b>User Two</b><span>no data access (isolated)</span></span></div>
+            <div class="annun">
+              <span><i></i>GOOGLE SSO</span><span><i></i>ROW-LEVEL SECURITY</span><span><i></i>AUDITED</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ml-right">
+          <h4>From plain question to shareable insight.</h4>
+          <p class="sub">No analyst queue, no dashboard hunt — ask, and land a boardroom-ready report in about a minute.</p>
+          <ol class="ml-wps" id="mlWps">
+            <li class="ml-wpc lit">
+              <span class="n">01 ASK</span>
+              <div><b>Ask in plain English</b>
+                <p>The agent plans governed SQL over your warehouse and lands a rich insight report — KPIs,
+                charts, and the queries behind them. Share it the moment it arrives.</p>
+                <div class="mock mm-page">
+                  <div class="mm-page-head">
+                    <span class="instr" style="color:var(--accent); font-size:8.5px">Page 1 · Report</span>
+                    <span class="mm-share">★ save as golden</span>
+                  </div>
+                  <div class="mm-headline">Hornsby average sale price — house vs unit, 2010 → 2026</div>
+                  <div class="mm-legend"><i style="background:#f2ca79"></i>house<i style="background:#7fb0ff"></i>unit</div>
+                  <div class="mm-grid">
+                    <div class="mm-tile"><small>House avg price</small><b>$1,182,406</b><em class="up">▲ 33.1% · 5 yr</em></div>
+                    <div class="mm-tile"><small>Unit avg price</small><b>$156,744</b><em class="up">▲ 72.2% · 5 yr</em></div>
+                    <svg class="mm-plot" viewBox="0 0 264 88" aria-hidden="true">
+                      <line x1="8" y1="22" x2="256" y2="22" stroke="#1d2434" stroke-width="1"/>
+                      <line x1="8" y1="46" x2="256" y2="46" stroke="#1d2434" stroke-width="1"/>
+                      <line x1="8" y1="70" x2="256" y2="70" stroke="#1d2434" stroke-width="1"/>
+                      <path d="M8 66 C 60 62, 110 52, 160 38 C 200 27, 236 18, 256 14 L 256 70 L 8 70 Z"
+                        fill="url(#mmArea)" stroke="none"/>
+                      <path d="M8 66 C 60 62, 110 52, 160 38 C 200 27, 236 18, 256 14"
+                        fill="none" stroke="#f2ca79" stroke-width="1.8" stroke-linecap="round"/>
+                      <path d="M8 69 C 70 67.5, 150 62, 256 53"
+                        fill="none" stroke="#7fb0ff" stroke-width="1.4" stroke-linecap="round"/>
+                      <circle cx="256" cy="14" r="2.4" fill="#f2ca79"/>
+                      <circle cx="256" cy="53" r="2.2" fill="#7fb0ff"/>
+                      <text x="10" y="82" class="mm-ax">2010</text>
+                      <text x="254" y="82" text-anchor="end" class="mm-ax">2026</text>
+                      <defs><linearGradient id="mmArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="rgba(242,202,121,.26)"/><stop offset="1" stop-color="rgba(242,202,121,0)"/>
+                      </linearGradient></defs>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </li>
+            <li class="ml-wpc">
+              <span class="n">02 TUNE</span>
+              <div><b>Answers tuned to your business</b>
+                <p>Admins coach the agent with golden examples and data knowledge, so every answer reads the
+                way your organisation reads data.</p>
+                <div class="mock mm-page">
+                  <div class="mm-page-head">
+                    <span class="instr" style="color:var(--accent); font-size:8.5px">Golden example</span>
+                    <span class="mm-share">★ curated by admin</span>
+                  </div>
+                  <div class="mm-tune"><span class="mm-tq">“rent trends 2077 vs 2076”</span>
+                    <span class="mm-ta">→ answers now open with the <b>bedroom-band breakdown</b> — the way your team reads rent.</span></div>
+                </div>
+              </div>
+            </li>
+            <li class="ml-wpc">
+              <span class="n">03 EXPLORE</span>
+              <div><b>Know your data before you ask</b>
+                <p>Profile any dataset, compare cohorts, and track trends in the Explore tool — no SQL required.</p>
+                <div class="mock mm-bars">
+                  <span class="mm-bar"><small>TARGET</small><i style="width:82%"></i><em>$740</em></span>
+                  <span class="mm-bar alt"><small>COMPARE</small><i style="width:58%"></i><em>$525</em></span>
+                </div>
+              </div>
+            </li>
+            <li class="ml-wpc">
+              <span class="n">04 DIG</span>
+              <div><b>Go hands-on when it matters</b>
+                <p>A governed SQL editor for ad-hoc investigation. Every chart links back to its query, so an
+                answer is never a black box.</p>
+                <div class="mock"><div class="mm-sql">select suburb, avg_rent from marts.property_rent …</div>
+                <div class="annun"><span><i></i>READ-ONLY</span><span><i></i>RLS-SCOPED</span><span><i></i>AUDITED</span></div></div>
+              </div>
+            </li>
+          </ol>
+          <div class="ml-cap"><b>“A data team’s power, without the back office.”</b>
+            <span>Row-level security scopes every query to what each user may see.</span></div>
+          <div class="ml-dots" role="tablist" aria-label="Walkthrough slides">
+            <button class="ml-dot on" role="tab" aria-selected="true" aria-label="Ask"></button>
+            <button class="ml-dot" role="tab" aria-selected="false" aria-label="Tune"></button>
+            <button class="ml-dot" role="tab" aria-selected="false" aria-label="Explore"></button>
+            <button class="ml-dot" role="tab" aria-selected="false" aria-label="Dig"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-sub">
+  <!-- phone -->
+  <div class="phone-col">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="ph-scene">
+        <div class="ph-sky"></div>
+        <svg class="ph-routes" viewBox="0 0 250 470" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <path id="phRoute" fill="none" stroke="#d9a84e" stroke-width="1.2" stroke-dasharray="4 4" opacity=".35"
+            d="M 230 -20 C 150 90, 60 130, 52 210 C 45 285, 205 300, 198 380 C 193 440, 110 460, 60 500"/>
+          <path fill="none" stroke="#f2ca79" stroke-width="1.8" stroke-linecap="round" pathLength="100"
+            stroke-dasharray="10 90" style="filter: drop-shadow(0 0 3px rgba(242,202,121,.9))"
+            d="M 230 -20 C 150 90, 60 130, 52 210 C 45 285, 205 300, 198 380 C 193 440, 110 460, 60 500">
+            <animate attributeName="stroke-dashoffset" from="10" to="-90" dur="16s" repeatCount="indefinite"/>
+          </path>
+          <circle cx="52" cy="210" r="3.5" fill="#0a0d15" stroke="#d9a84e" stroke-width="1.4"/>
+          <circle cx="198" cy="380" r="3.5" fill="#0a0d15" stroke="#d9a84e" stroke-width="1.4"/>
+          <g class="ph-plane" color="#f2ca79" style="filter: drop-shadow(0 0 4px rgba(242,202,121,.85))">
+            <use href="#mlPlaneGlyph"/>
+            <animateMotion dur="16s" repeatCount="indefinite" rotate="auto"><mpath href="#phRoute"/></animateMotion>
+          </g>
+        </svg>
+        <div class="ph-card">
+          <div class="ml-mark" style="margin-bottom:6px">
+            <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true" style="border-radius:8px">
+              <rect width="100" height="100" rx="25" fill="#d9a84e"/>
+              <g transform="rotate(45 50 50)" fill="#1a1204">
+                <path d="M50 15C51.5 15 53 18 53 24L53 46L52 70L51.5 82L50 86L48.5 82L48 70L47 46L47 24C47 18 48.5 15 50 15Z"/>
+                <path d="M52.5 40L82 60L82 65L53.5 52Z"/><path d="M47.5 40L18 60L18 65L46.5 52Z"/>
+                <path d="M51.5 72L64 80L64 84L51 78Z"/><path d="M48.5 72L36 80L36 84L49 78Z"/>
+              </g>
+            </svg>
+          </div>
+          <div class="ml-title">Data <em>Pilot</em></div>
+          <div class="ml-tag" style="margin-bottom:0">Your data, flown right.</div>
+          <div class="ml-user"><span class="ml-av">AD</span><span><b>Admin</b><span>sees all data</span></span></div>
+        </div>
+        <div class="ph-story">
+          <span class="instr">01 · ASK</span>
+          <b>Ask in plain English</b>
+          <p>Land a shareable insight report in about a minute.</p>
+        </div>
+        <div class="ph-foot"><i class="on"></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
+    <p class="note" style="margin-top:10px; text-align:center; max-width:250px">≤ 860px: card first, story stacks
+    under it; the route turns vertical and threads the sections together. Sign-in stays above the fold.</p>
+  </div>
+
+  <div class="grid-cards">
+    <div class="card"><h3>What changed vs today — left panel</h3>
+      <ul class="tight" style="color:var(--muted)">
+        <li>Faint scattered props (9px tape, 0.18-opacity “42%” / “SELECT *” glyphs, mini jet, odd canopy
+        triangles) are replaced by <b style="color:var(--text)">one composed scene</b>: dawn horizon, ground grid,
+        canopy vignette, full-screen route + crossing traffic, live-drifting HUD readouts.</li>
+        <li>The mark gets a HUD reticle — the card is the boresight of the page.</li>
+        <li>The muted footer line becomes <b style="color:var(--text)">preflight annunciators</b>: SSO · RLS · AUDITED.</li>
+      </ul>
+    </div>
+    <div class="card"><h3>What changed — right panel</h3>
+      <ul class="tight" style="color:var(--muted)">
+        <li>5 feature slides become <b style="color:var(--text)">4 outcome waypoints + a capstone thesis</b> (copy below).</li>
+        <li>Active card shows a <b style="color:var(--text)">micro-mock of the product</b>, not just words — show, then tell.</li>
+        <li>Panel becomes glass over the scene; content column capped at 620px so ultrawide doesn’t stretch it.</li>
+        <li>Keeps: 4s auto-advance, hover/focus pause, arrow keys, dot tablist, <code>track()</code> events.</li>
+      </ul>
+    </div>
+    <div class="card"><h3>Craft bugs fixed on the way</h3>
+      <ul class="tight" style="color:var(--muted)">
+        <li><b style="color:var(--text)">Corner-cutting plane:</b> today the walkthrough plane translates
+        point-to-point and leaves the curve (visible on slide change). Fix: animate along the path
+        (<code>offset-path</code>/<code>offset-distance</code> in-app; SMIL <code>mpath</code> for loops).</li>
+        <li><b style="color:var(--text)">Unbounded walkthrough width</b> on ultrawide monitors.</li>
+        <li>Google Sign-in button is a GIS iframe — it can’t be restyled, so the card frames it instead.</li>
+      </ul>
+    </div>
+  </div>
+  </div>
+  </div>
+</section>
+
+<!-- ================= BRAND SYSTEM ================= -->
+<section id="brand">
+  <div class="sec-head">
+    <div class="eyebrow">02 · The brand system</div>
+    <h2>Night Flight, taken seriously</h2>
+    <p>The token layer (s17) already names the identity — navy-ink cockpit neutrals, instrument gold. The brand
+    work is not a new palette; it is <b>committing</b> to the cockpit: one kinetic signature, one instrument
+    voice, one scene grammar, reused everywhere. No new fonts, no image assets, no repaint.</p>
+  </div>
+
+  <div class="swatches">
+    <div class="sw"><i style="background:#0a0d15; border-bottom:1px solid var(--border)"></i>
+      <div><b>Navy ink</b><small>#0a0d15 · --bg</small><span class="use">The night sky every scene hangs in. Unchanged.</span></div></div>
+    <div class="sw"><i style="background:linear-gradient(135deg,#f2ca79,#d9a84e)"></i>
+      <div><b>Instrument gold</b><small>#d9a84e / #f2ca79 · --accent</small><span class="use">The brand metal: plane, routes, lit waypoints, primary actions. Unchanged.</span></div></div>
+    <div class="sw"><i style="background:#7fb0ff"></i>
+      <div><b>Sky blue</b><small>#7fb0ff · --accent-2</small><span class="use">Second aircraft: links, focus, comparison cohort, secondary routes. Unchanged.</span></div></div>
+    <div class="sw"><i style="background:#9ece6a"></i>
+      <div><b>HUD phosphor</b><small>#9ece6a · --hud (locked ✓)</small><span class="use">A new meaning, not a new pigment — the same green as --good. Live telemetry only: annunciator lamps, streaming readouts, scene symbology. Never static UI.</span></div></div>
+    <div class="sw"><i style="background:linear-gradient(180deg,#070a12 0%,#101322 50%,#241a20 66%,#4a3320 73%,#d9a84e 76%,#241a20 80%,#0a0d15 100%)"></i>
+      <div><b>Dawn horizon</b><small>scene recipe</small><span class="use">Layered glow + 1px horizon + perspective ground grid. Login at full strength; whisper version behind app gutters.</span></div></div>
+  </div>
+
+  <div class="grid3" style="margin-top:14px">
+    <div class="card">
+      <h3>Type — the instrument voice</h3>
+      <p style="color:var(--muted); font-size:12.5px">No new faces. Inter keeps prose and titles; JetBrains Mono
+      is promoted from “code font” to the <b>instrument voice</b> — a formalized style for everything the
+      cockpit “says”:</p>
+      <div style="margin:10px 0 6px" class="instr">Waypoint · Eyebrow · Readout — 10px / 700 / +0.14em</div>
+      <div class="mono" style="font-size:19px; font-weight:700">$1,182,406 <span style="color:var(--good); font-size:12px">+33.1%</span></div>
+      <p class="note" style="margin-top:8px">Rule: mono-caps-letterspaced text is reserved for labels, telemetry
+      and section markers. Numbers comparing anything are tabular. Prose never wears the costume.</p>
+    </div>
+    <div class="card">
+      <h3>Motion — things fly, instruments sweep</h3>
+      <ul class="tight" style="color:var(--muted); font-size:12.5px; margin:4px 0 0">
+        <li><b style="color:var(--text)">Fly:</b> the plane glyph always moves <i>along a path</i> (SMIL
+        <code>mpath</code> for ambient loops, <code>offset-distance</code> transitions for stepped hops). Never a
+        straight-line translate. Supporting traffic flies other airways at other speeds and directions (26–47s);
+        the hero stays biggest and brightest.</li>
+        <li><b style="color:var(--text)">Sweep:</b> radar conic loops (exists in chat hero) and dash-march on routes (exists) stay the ambient loops, 6–26s.</li>
+        <li><b style="color:var(--text)">Read:</b> HUD numbers jitter inside realistic bounds (GS ±12 kt, FL ±4)
+        on tabular numerals so nothing shifts layout — the cockpit feels airborne, the UI never wobbles.</li>
+        <li><b style="color:var(--text)">Land:</b> UI state changes keep the existing 120/180/260ms token family.</li>
+        <li>All decorative motion freezes under <code>prefers-reduced-motion</code> — the parked-plane composition is designed, not broken.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Voice — one metaphor per surface</h3>
+      <ul class="tight" style="color:var(--muted); font-size:12.5px; margin:4px 0 0">
+        <li>Aviation words appear in <b style="color:var(--text)">instrument-voice labels only</b> (WAYPOINT,
+        PREFLIGHT, IN FLIGHT); buttons and prose stay plain English — “Run query”, never “Take off”.</li>
+        <li>Outcome first, mechanism second: “Share it the moment it lands”, then “governed SQL”.</li>
+        <li>Errors and empty states direct, never decorate: an empty Explore says what to run, in the
+        interface’s voice.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= COPY REWRITE ================= -->
+<section id="copy">
+  <div class="sec-head">
+    <div class="eyebrow">03 · The product story, rewritten</div>
+    <h2>From feature list to reason-to-exist</h2>
+    <p>Today’s five slides describe the plumbing (“All your data, one spot”, “Governed access”) before the
+    payoff. A first-time visitor reads them and still can’t say why they need the app. The rewrite leads with
+    the outcome, gives each pillar you named its own waypoint, and folds governance into proof-points where
+    trust is actually read (the card’s preflight row, the capstone line).</p>
+  </div>
+  <div class="cmp">
+    <div class="h">Today — 5 slides, feature-first</div>
+    <div class="h">Proposed — 4 waypoints + capstone, outcome-first</div>
+
+    <div><b class="t">1 · All your data, one spot</b><p>“Every source landed, modelled and served from a single governed warehouse.”</p></div>
+    <div><b class="t">01 ASK · Ask in plain English</b>
+      <p>“The agent plans governed SQL over your warehouse and lands a rich insight report — KPIs, charts, and
+      the queries behind them. Share it the moment it arrives.”</p>
+      <span class="why">The lede the current copy buries: question in → shareable insight out. Warehouse plumbing becomes a subordinate clause.</span></div>
+
+    <div><b class="t">2 · Ask. Answer. Share.</b><p>“Plain-English questions become high-quality reports you can share instantly.”</p></div>
+    <div><b class="t">02 TUNE · Answers tuned to your business</b>
+      <p>“Admins coach the agent with golden examples and data knowledge, so every answer reads the way your
+      organisation reads data.”</p>
+      <span class="why">Your second pillar, promoted to its own slide: the agent is tailorable to the client — the moat vs a generic chatbot.</span></div>
+
+    <div><b class="t">3 · Governed access</b><p>“Row-level security means every user sees exactly the data they’re allowed to — and every query is audited.”</p></div>
+    <div><b class="t">03 EXPLORE · Know your data before you ask</b>
+      <p>“Profile any dataset, compare cohorts, and track trends in the Explore tool — no SQL required.”</p>
+      <span class="why">Explore earns a slide (it had none). Governance moves to the preflight annunciators + capstone sub-line — read as proof, not pitch.</span></div>
+
+    <div><b class="t">4 · Train it your way</b><p>“Author golden examples so answers arrive the way your business reads data.”</p></div>
+    <div><b class="t">04 DIG · Go hands-on when it matters</b>
+      <p>“A governed SQL editor for ad-hoc investigation. Every chart links back to its query, so an answer is
+      never a black box.”</p>
+      <span class="why">Your third pillar: self-serve depth for the power user, plus the chart→SQL link (s19) as the trust story.</span></div>
+
+    <div><b class="t">5 · Remembers each user</b><p>“Per-user memory tailors how answers are computed and presented over time.”</p></div>
+    <div><b class="t">CAPSTONE · “A data team’s power, without the back office.”</b>
+      <p>+ “Row-level security scopes every query to what each user may see.” Per-user memory folds into TUNE’s
+      story; Settings already surfaces it as “Remembered preferences”.</p>
+      <span class="why">The thesis, stated once, verbatim where every visitor ends the loop. 4 slides × 4s = a 16s story instead of 20s.</span></div>
+  </div>
+</section>
+
+<!-- ================= KIT ================= -->
+<section id="kit">
+  <div class="sec-head">
+    <div class="eyebrow">04 · The Flight Deck kit</div>
+    <h2>Five primitives, built once, carried everywhere</h2>
+    <p>The login must not be a costume the app takes off after sign-in. These five pieces are the reusable
+    kit (one PR) that every screen then picks up in small, cheap touches.</p>
+  </div>
+  <div class="kit">
+    <div class="card">
+      <div class="demo">
+        <svg width="150" height="60" viewBox="0 0 150 60" aria-hidden="true">
+          <path d="M5 52 C 45 44, 85 30, 145 12" fill="none" stroke="var(--accent)" stroke-width="1.3" stroke-dasharray="4 4" opacity=".5"/>
+          <g color="var(--accent-soft)" style="filter:drop-shadow(0 0 5px rgba(242,202,121,.85))" transform="translate(92 28) rotate(-16) scale(1.5)">
+            <use href="#mlPlaneGlyph"/>
+          </g>
+        </svg>
+      </div>
+      <h3>1 · PlaneGlyph</h3>
+      <p>The inverse mark as a <code>currentColor</code> SVG component. Gold in dark, deep gold on paper-cream
+      light. New in <code>icons.tsx</code>; favicon already matches.</p>
+    </div>
+    <div class="card">
+      <div class="demo">
+        <svg width="170" height="60" viewBox="0 0 170 60" aria-hidden="true">
+          <path d="M8 46 C 50 40, 70 22, 110 20 C 135 19, 150 14, 164 12" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="5 4" opacity=".45"/>
+          <circle cx="8" cy="46" r="3.5" fill="var(--accent)"/>
+          <circle cx="110" cy="20" r="3.5" fill="var(--accent)"/>
+          <circle cx="164" cy="12" r="3.5" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.4"/>
+        </svg>
+      </div>
+      <h3>2 · FlightPath</h3>
+      <p>Route + waypoints + optional flying glyph; props for progress (“3 of 5 lit”). Powers login, chat
+      streaming, Explore empty state.</p>
+    </div>
+    <div class="card">
+      <div class="demo"><span class="hud-box"><span class="tk"></span><b>$1,182,406</b><small>House avg · 2026-05</small></span></div>
+      <h3>3 · hud-box</h3>
+      <p>Corner-tick boxed readout (the HUD’s framed airspeed/altitude). KPI tile hover state, eval scores,
+      section markers.</p>
+    </div>
+    <div class="card">
+      <div class="demo"><div class="annun"><span><i></i>READ-ONLY</span><span><i></i>RLS</span><span><i></i>AUDIT</span><span class="off"><i></i>WRITE</span></div></div>
+      <h3>4 · Annunciators</h3>
+      <p>Cockpit status lamps for guarantees and states: login preflight, SQL editor bar, eval pass/fail,
+      service health in Admin.</p>
+    </div>
+    <div class="card">
+      <div class="demo"><div style="display:grid; gap:8px; justify-items:center">
+        <span class="instr" style="color:var(--accent)">Page 1 · Report</span>
+        <span class="instr">Waypoint · 03 · Explore</span>
+        <span class="instr" style="color:var(--hud)">In flight · 12s</span>
+      </div></div>
+      <h3>5 · Instrument label</h3>
+      <p>One CSS class for the mono-caps voice already used ad-hoc in 9 places — formalized so weight,
+      size and tracking stop drifting.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CARRY-THROUGH ================= -->
+<section id="carry">
+  <div class="sec-head">
+    <div class="eyebrow">05 · Carrying it through the app</div>
+    <h2>Behind the login: the run is the flight</h2>
+    <p>The deepest carry isn’t decoration — it’s the mental model. A question’s life in Data Pilot literally is
+    a sortie: <span class="instr" style="color:var(--accent-soft)">PREFLIGHT → CLIMB → CRUISE → APPROACH → LANDED</span>.
+    The streaming answer state (SSE steps + ghost pages, s10) becomes the brand’s best moment:</p>
+  </div>
+
+  <div class="fly-strip" style="max-width:640px">
+    <div class="fly-head">
+      <span class="instr">In flight · answering</span>
+      <span class="fly-elapsed">00:12</span>
+    </div>
+    <div class="fly-path">
+      <svg viewBox="0 0 600 56" style="width:100%; height:auto; display:block" aria-hidden="true">
+        <path d="M 20 40 C 170 33, 320 22, 570 12" fill="none" stroke="var(--accent)" stroke-width="1.3" stroke-dasharray="5 4" opacity=".35"/>
+        <path d="M 20 40 C 110 36, 220 30, 320 25" fill="none" stroke="var(--accent-soft)" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="20" cy="40" r="4" fill="var(--accent)"/>
+        <circle cx="170" cy="32" r="4" fill="var(--accent)"/>
+        <circle cx="320" cy="25" r="4" fill="var(--accent)"/>
+        <circle cx="455" cy="18" r="4" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.4"/>
+        <circle cx="570" cy="12" r="4" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.4"/>
+        <g color="var(--accent-soft)" style="filter:drop-shadow(0 0 4px rgba(242,202,121,.8))" transform="translate(320 25) rotate(-5) scale(.8)">
+          <use href="#mlPlaneGlyph"/>
+        </g>
+        <text x="20" y="53" text-anchor="middle" class="ml-wl" style="font-size:8px">PLAN</text>
+        <text x="170" y="45" text-anchor="middle" class="ml-wl" style="font-size:8px">SQL</text>
+        <text x="320" y="40" text-anchor="middle" class="ml-wl" style="font-size:8px">ANALYZE</text>
+        <text x="455" y="32" text-anchor="middle" class="ml-wl" style="font-size:8px">COMPOSE</text>
+        <text x="570" y="26" text-anchor="middle" class="ml-wl" style="font-size:8px">LANDED</text>
+      </svg>
+    </div>
+    <ul class="fly-steps">
+      <li><span class="instr">02:LANDED</span><b>Ran governed SQL</b><span>— 967 rows from marts.property_sales</span></li>
+      <li class="now"><span class="instr" style="color:var(--hud)">03:NOW</span><b>Computing growth skills</b><span>— rolling 6-mo average…</span></li>
+    </ul>
+    <p class="note" style="margin:8px 0 0">Same SSE progress data, remapped onto a FlightPath; ghost page
+    placeholders keep pulsing below it. The plane the user watched on the login is now doing their work.</p>
+  </div>
+
+  <div class="mtx-wrap" style="margin-top:18px">
+    <table class="mtx">
+      <thead><tr><th>Screen</th><th>Today</th><th>Flight Deck change</th><th>Effort</th><th>Stream</th></tr></thead>
+      <tbody>
+        <tr><td><b>Chat — hero</b></td>
+          <td>Radar reticle + suggestion cards</td>
+          <td>Suggestions become a numbered <span class="instr">FLIGHT PLAN</span> row (01–04) linked by a faint
+          path; greeting sub-line set in instrument voice; plane glyph idles by the composer and takes off on send.<span class="note">Radar stays — it already lands.</span></td>
+          <td><span class="eff s">S</span></td><td>W3</td></tr>
+        <tr><td><b>Chat — streaming</b></td>
+          <td>“Agent is working… 12s” + step list + ghost pages</td>
+          <td>The flight-plan strip above (the flagship carry). Steps keep their text; elapsed becomes a mono readout.</td>
+          <td><span class="eff m">M</span></td><td>W3</td></tr>
+        <tr><td><b>Report pages</b></td>
+          <td>“PAGE 1 · REPORT” text labels, KPI tiles, insight cards</td>
+          <td>Section markers + KPI hover in hud-box corner ticks; tabular numerals audit. No layout change —
+          reports must stay boardroom-neutral when exported.</td>
+          <td><span class="eff s">S</span></td><td>W4</td></tr>
+        <tr><td><b>Explore</b></td>
+          <td>Cohort tree, Profile/Trends/Dictionary tabs</td>
+          <td>Target/Comparison rows read as two contrails (gold/blue dashes on the tree trunk); empty state = parked
+          plane + “file a flight plan”; tabs get instrument labels.</td>
+          <td><span class="eff s">S</span></td><td>W4</td></tr>
+        <tr><td><b>SQL editor</b></td>
+          <td>“Read-only · RLS-scoped · Cmd/Ctrl+Enter” text bar</td>
+          <td>That bar becomes annunciators (<span class="instr">RO · RLS · AUDIT</span>) + kbd hud-box. AI-assist
+          spark → PlaneGlyph. Catalog header in instrument voice.</td>
+          <td><span class="eff s">S</span></td><td>W4</td></tr>
+        <tr><td><b>Goldens</b></td>
+          <td>Status text chips (T2 · READY · PAGES ✓)</td>
+          <td>Chips formalize as annunciators; “Draft with agent” button carries the glyph; the tab now visually
+          rhymes with the login’s TUNE waypoint.</td>
+          <td><span class="eff s">S</span></td><td>W4</td></tr>
+        <tr><td><b>Evals</b></td>
+          <td>Score tiles (100%, 1.00, 19.5), pass/fail text</td>
+          <td>Scores in hud-boxes (they are literally instrument readouts); PASS/FAIL as green/red lamps; run list
+          = mission log.</td>
+          <td><span class="eff s">S</span></td><td>W4</td></tr>
+        <tr><td><b>Admin</b></td>
+          <td>Metric cards + sparklines; config cards</td>
+          <td>Metrics get corner ticks + 7-day spark kept; each service card gets a health lamp. Its MFD-panel look
+          is already on-brand.</td>
+          <td><span class="eff s">S</span></td><td>W4</td></tr>
+        <tr><td><b>Settings</b></td>
+          <td>Dark / Light / System segmented control</td>
+          <td>Relabel <span class="instr">NIGHT / DAY / AUTO</span> (locked); memory cards get a
+          “FLIGHT LOG” eyebrow. Nothing else moves.</td>
+          <td><span class="eff s">S</span></td><td>W4</td></tr>
+        <tr><td><b>Shell / rail</b></td>
+          <td>Icon rail, gold active edge; app-wide canvas glow</td>
+          <td>Already on-brand (s17). Only addition: the whisper-strength ground-grid band at the canvas foot so
+          app and login share one sky.</td>
+          <td><span class="eff s">S</span></td><td>W4</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= RESPONSIVE + GUARANTEES ================= -->
+<section id="spec">
+  <div class="sec-head">
+    <div class="eyebrow">06 · Every screen type, first-class</div>
+    <h2>Responsive, accessible, weightless</h2>
+  </div>
+  <div class="grid3">
+    <div class="card">
+      <h3>Breakpoints</h3>
+      <ul class="tight" style="color:var(--muted); font-size:12.5px">
+        <li><b style="color:var(--text)">≥1200</b> — full scene: 3 routes, ground grid, glass story panel (620px column).</li>
+        <li><b style="color:var(--text)">861–1199</b> — 2 routes, HUD strip hides, same split.</li>
+        <li><b style="color:var(--text)">≤860 (stack)</b> — card first (sign-in above the fold), vertical route
+        threads card → story; blur drops for perf; auto-advance untouched.</li>
+        <li><b style="color:var(--text)">Short laptops (≤740px tall)</b> — scene anchors to edges; card never
+        collides with the HUD strip.</li>
+        <li><b style="color:var(--text)">Touch</b> — dots ≥44px hit area (padding, not size); auto-advance pauses
+        on touch; 16px inputs (existing rule).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Accessibility</h3>
+      <ul class="tight" style="color:var(--muted); font-size:12.5px">
+        <li>Scene is one <code>aria-hidden</code> layer; the story remains a keyboard-navigable
+        <code>role=tablist</code> (arrow keys, Home/End — existing contract).</li>
+        <li><code>prefers-reduced-motion</code>: plane parks at the last waypoint with full contrail — a designed
+        still, not a stripped page. Visual-baseline screenshots stay deterministic.</li>
+        <li>Contrast: waypoint labels move from <code>--faint</code> to <code>--muted</code> on the glass panel;
+        annunciator text ≥4.5:1; axe-clean login test kept green.</li>
+        <li>Light theme is a real variant, not an afterthought: the same scene reads as an aeronautical chart on
+        chart-paper cream (routes in deep gold, grid in warm gray). Tuned in its own pass.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Weight &amp; contracts</h3>
+      <ul class="tight" style="color:var(--muted); font-size:12.5px">
+        <li>Still ~0 KB of assets: pure CSS/SVG, no images, no new fonts, no libraries.</li>
+        <li>SMIL <code>animateMotion</code> + CSS <code>offset-path</code> both ship in all evergreen browsers;
+        fallback is the current translate hop.</li>
+        <li>e2e kept: <code>login(page, "Admin")</code> profile-button names, dot tablist roles,
+        <code>login_walkthrough_view</code> / <code>login_success</code> events, axe-clean check.
+        <b style="color:var(--text)">Visual baselines regenerate once</b> — expected churn.</li>
+        <li>Backdrop blur limited to two panels, disabled ≤860px (mobile GPU cost).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PLAN ================= -->
+<section id="plan">
+  <div class="sec-head">
+    <div class="eyebrow">07 · Build plan</div>
+    <h2>One PR, five workstreams — the whole brand lands at once</h2>
+    <p>Locked: every phase ships in a single pull request on <code>s25-flight-deck-brand</code>, so the app is
+    never half-branded. The workstreams below are commit boundaries inside that PR, ordered so each one builds
+    on the last and the branch is reviewable commit-by-commit. The <span class="instr">Stream</span> column in
+    the matrix above says which one every screen lands in.</p>
+  </div>
+  <div class="grid2">
+    <div class="card phase"><span class="n">W1</span>
+      <div><h3>Tokens &amp; the Canopy <span class="pill gold" style="margin-left:6px">the login</span></h3>
+        <p><code>--hud</code> token + instrument-label/hud-box/annunciator CSS, PlaneGlyph in
+        <code>icons.tsx</code>, then the login itself: scene layer, full-screen route + Sortie, crossing traffic,
+        live HUD readout jitter, reticle card, preflight annunciators, 4-waypoint story + capstone copy with the
+        ASK mini-report, responsive + reduced-motion, ultrawide cap, corner-cut fix.
+        Files: <code>styles.css</code>, <code>icons.tsx</code>, <code>Login.tsx</code>.</p></div></div>
+    <div class="card phase"><span class="n">W2</span>
+      <div><h3>The kit</h3>
+        <p>FlightPath component (route + waypoints + optional flying glyph, progress prop) and the shared
+        primitives extracted so every later stream consumes them rather than re-rolling markup.
+        Files: <code>ui/</code>, <code>styles.css</code>.</p></div></div>
+    <div class="card phase"><span class="n">W3</span>
+      <div><h3>Chat — hero &amp; in flight</h3>
+        <p>Hero suggestions become a numbered flight plan; the SSE streaming state becomes the flight strip
+        (PLAN → SQL → ANALYZE → COMPOSE → LANDED) over the same progress data, ghost pages intact.
+        Files: <code>ChatPage.tsx</code>, <code>ResultView.tsx</code>, <code>styles.css</code>.</p></div></div>
+    <div class="card phase"><span class="n">W4</span>
+      <div><h3>Screen sweep</h3>
+        <p>The eight remaining matrix rows: report-page section markers + KPI corner ticks, Explore contrails and
+        empty state, SQL annunciator bar, Goldens chips, Evals hud-box scores + lamps, Admin health lamps,
+        Settings <span class="instr">NIGHT / DAY / AUTO</span> relabel, shell ground-grid band. Mechanical, one
+        commit per surface.</p></div></div>
+    <div class="card phase"><span class="n">W5</span>
+      <div><h3>Day theme, a11y &amp; baselines</h3>
+        <p>Light-theme scene tuning (the aeronautical-chart variant on chart-paper cream), contrast + axe pass,
+        reduced-motion stills, perf check on low-end mobile, then regenerate Playwright visual baselines once for
+        the whole branch and refresh the <code>.lavish</code> screenshots.</p></div></div>
+    <div class="card phase"><span class="n">✓</span>
+      <div><h3>Ship</h3>
+        <p>Run <code>/no-mistakes</code> over the branch — review, tests, lint, docs, push, PR, CI — then merge to
+        <code>main</code>, which triggers <code>deploy-aws.yml</code>. Verify the GIS button styling on the real
+        Google Sign-in in prod once deployed.</p></div></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h3>Risks &amp; honest costs</h3>
+    <ul class="tight risk" style="color:var(--muted); font-size:12.5px">
+      <li><b>PR size — the cost of shipping it all at once:</b> this is the one real downside of the locked scope.
+      A brand-wide diff is harder to review and harder to bisect than four small ones. Mitigations: strict commit
+      boundaries (W1–W5 above), no behavior changes riding along, visual baselines regenerated in exactly one
+      commit so the diff noise is isolated, and each screen’s change kept to tokens/markup rather than logic.</li>
+      <li><b>Scene overwhelm:</b> the biggest visual failure mode is the login reading “busy”. The cap is three
+      aircraft — one hero Sortie plus two dim traffic planes on crossing airways — with hierarchy held by size and
+      brightness, glyph smudges deleted, and the canopy vignette pulling eyes to card + story. If it ever reads
+      busy, traffic goes first.</li>
+      <li><b>GIS button:</b> Google’s iframe button cannot adopt the brand; the card design treats it as a
+      framed foreign instrument (label above, annunciators below). Verify prod styling right after deploy.</li>
+      <li><b>Metaphor fatigue:</b> guarded by the voice rule — instrument labels only, plain-English controls.
+      If a tester ever asks “what does DIG mean?”, the waypoint word changes, not the structure.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= DECISIONS ================= -->
+<section id="decide">
+  <div class="sec-head">
+    <div class="eyebrow">08 · Decisions to lock</div>
+    <h2>All three decisions locked — cleared for takeoff</h2>
+    <p>Locked 2026-07-21 via this review. The whole brand ships in one PR on branch
+    <code>s25-flight-deck-brand</code>; annotate anything above if direction changes.</p>
+  </div>
+  <div class="grid3">
+    <div class="card">
+      <div class="q">
+        <h3>1 · The --hud semantic</h3>
+        <div class="annun"><span><i></i>LOCKED</span></div>
+        <p style="color:var(--muted); font-size:12.5px; margin:2px 0 0"><b style="color:var(--text)">Add --hud.</b>
+        Same green pigment as --good, new semantic name with a live-telemetry-only usage rule — annunciator
+        lamps, streaming readouts, scene symbology; never static UI. Ships in Phase 1’s token block.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="q">
+        <h3>2 · PR scope</h3>
+        <div class="annun"><span><i></i>LOCKED</span></div>
+        <p style="color:var(--muted); font-size:12.5px; margin:2px 0 0"><b style="color:var(--text)">Every phase in
+        one PR.</b> W1–W5 land together on <code>s25-flight-deck-brand</code>: Canopy login, kit, chat flight
+        plan + streaming strip, the full screen sweep, and the day-theme pass. No half-branded state in
+        <code>main</code>; visual baselines regenerate once for the whole branch.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="q">
+        <h3>3 · Theme naming</h3>
+        <div class="annun"><span><i></i>LOCKED</span></div>
+        <p style="color:var(--muted); font-size:12.5px; margin:2px 0 0"><b style="color:var(--text)">NIGHT / DAY /
+        AUTO.</b> The Settings appearance control relabels; token behavior is unchanged (same
+        <code>data-theme</code> dark/light resolution and OS tracking).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  s25 · Flight Deck proposal — rendered in Data Pilot’s Night Flight tokens (frontend/src/styles.css), matching the
+  product’s own design system per lavish design rules. Mocks are faithful to real components: BrandMark path from
+  <span class="mono">ui/icons.tsx</span>, walkthrough contracts from <span class="mono">app/Login.tsx</span>, token values
+  from <span class="mono">styles.css</span>. All three decisions locked 2026-07-21 — the complete brand ships as
+  one PR on <span class="mono">s25-flight-deck-brand</span>.
+</footer>
+
+</main>
+
+<script>
+// waypoint card cycling (4s), pausable on hover/focus like the real component
+(function () {
+  var wps = Array.prototype.slice.call(document.querySelectorAll('#mlWps .ml-wpc'));
+  var dots = Array.prototype.slice.call(document.querySelectorAll('.ml-dots .ml-dot'));
+  if (!wps.length) return;
+  var i = 0, paused = false, timer = null;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function show(n) {
+    i = (n + wps.length) % wps.length;
+    wps.forEach(function (el, k) { el.classList.toggle('lit', k === i); });
+    dots.forEach(function (el, k) {
+      el.classList.toggle('on', k === i);
+      el.setAttribute('aria-selected', k === i ? 'true' : 'false');
+    });
+  }
+  function tick() {
+    if (timer) clearTimeout(timer);
+    if (paused || reduced.matches) return;
+    timer = setTimeout(function () { show(i + 1); tick(); }, 4000);
+  }
+  dots.forEach(function (d, k) { d.addEventListener('click', function () { show(k); tick(); }); });
+  var host = document.getElementById('mlWps');
+  ['mouseenter', 'focusin'].forEach(function (ev) { host.addEventListener(ev, function () { paused = true; }); });
+  ['mouseleave', 'focusout'].forEach(function (ev) { host.addEventListener(ev, function () { paused = false; tick(); }); });
+  tick();
+})();
+
+// live HUD readouts: GS/FL drift inside realistic bounds like instruments in
+// the air; frozen under reduced motion (the tape drift is CSS, same guard)
+(function () {
+  var gs = document.getElementById('gsVal'), fl = document.getElementById('flVal');
+  if (!gs || !fl) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var g = 240, f = 360;
+  setInterval(function () {
+    g = Math.max(228, Math.min(252, g + Math.round((Math.random() - 0.5) * 5)));
+    if (Math.random() < 0.25) f = Math.max(356, Math.min(364, f + (Math.random() < 0.5 ? -1 : 1)));
+    gs.textContent = 'GS ' + g;
+    fl.textContent = 'FL ' + f;
+  }, 900);
+})();
+
+// decision forms: local until submitted, queue exactly once per submit
+function qSubmit(e, key, label) {
+  e.preventDefault();
+  var f = e.currentTarget;
+  var v = new FormData(f).get('v');
+  if (!v) return;
+  if (window.lavish && window.lavish.queuePrompt) {
+    window.lavish.queuePrompt(label + ': ' + v, {
+      tag: 'choice', text: label + ': ' + v, element: f, queueKey: key,
+      data: { question: key, answer: v }
+    });
+  }
+  var q = f.querySelector('.queued'); if (q) q.style.display = 'inline';
+}
+</script>
+</body>
+</html>

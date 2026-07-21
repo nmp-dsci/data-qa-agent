@@ -110,6 +110,54 @@ export const IconSend = () => (
   </I>
 );
 
+/** The airliner path from the Data Pilot mark, in the mark's own 100×100 space.
+ *  Drawn nose-up (fuselage runs y=15 → y=86); the tile rotates it 45°, the
+ *  PlaneGlyph rotates it 90° to fly nose-right. Shared by both. */
+export const PLANE_PATH_D = [
+  "M50 15C51.5 15 53 18 53 24L53 46L52 70L51.5 82L50 86L48.5 82L48 70L47 46L47 24C47 18 48.5 15 50 15Z",
+  "M52.5 40L82 60L82 65L53.5 52Z",
+  "M47.5 40L18 60L18 65L46.5 52Z",
+  "M51.5 72L64 80L64 84L51 78Z",
+  "M48.5 72L36 80L36 84L49 78Z",
+  "M63 50L68 53L66.5 57L61.5 54Z",
+  "M37 50L32 53L33.5 57L38.5 54Z",
+].join(" ");
+
+/** PlaneGlyph (s25) — the Sortie. The mark's airliner inverted out of its gold
+ *  tile into a bare `currentColor` silhouette, so it can fly across scenes,
+ *  idle beside a composer, or sit inside a button. Nose points right at 0°;
+ *  callers rotate or drive it along a path. `bold` thickens the silhouette
+ *  with a stroke rather than a second path, so the shape stays identical. */
+export function PlaneGlyph({
+  size = 22,
+  bold = false,
+  className,
+}: {
+  size?: number;
+  bold?: boolean;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      className={className}
+      aria-hidden="true"
+      fill="currentColor"
+    >
+      <g
+        transform="rotate(90 50 50)"
+        stroke={bold ? "currentColor" : undefined}
+        strokeWidth={bold ? 4 : undefined}
+        strokeLinejoin={bold ? "round" : undefined}
+      >
+        <path d={PLANE_PATH_D} />
+      </g>
+    </svg>
+  );
+}
+
 /** The Data Pilot mark (s17): a flat filled airliner — swept wings, wing
  *  engines, tail stabilisers — angled 45° (nose upper-right), cut from the
  *  accent-ink over the accent gradient tile. Theme-aware: the tile + plane read
@@ -122,13 +170,7 @@ export function BrandMark({ size = 30 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
       <rect width="100" height="100" rx="25" fill={`url(#${gid})`} />
       <g transform="rotate(45 50 50)" fill="var(--accent-ink, #1a1204)">
-        <path d="M50 15C51.5 15 53 18 53 24L53 46L52 70L51.5 82L50 86L48.5 82L48 70L47 46L47 24C47 18 48.5 15 50 15Z" />
-        <path d="M52.5 40L82 60L82 65L53.5 52Z" />
-        <path d="M47.5 40L18 60L18 65L46.5 52Z" />
-        <path d="M51.5 72L64 80L64 84L51 78Z" />
-        <path d="M48.5 72L36 80L36 84L49 78Z" />
-        <path d="M63 50L68 53L66.5 57L61.5 54Z" />
-        <path d="M37 50L32 53L33.5 57L38.5 54Z" />
+        <path d={PLANE_PATH_D} />
       </g>
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">

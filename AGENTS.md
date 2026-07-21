@@ -259,6 +259,35 @@ instructions there.
 
 ---
 
+## The Flight Deck brand (s25)
+
+The frontend — login through every authenticated surface — reads as a glass cockpit. The kit
+(`frontend/src/ui/flightdeck.tsx`) is five primitives every surface consumes instead of re-rolling markup:
+`PlaneGlyph` (the mark, `ui/icons.tsx`), `FlightPath` (route + waypoints + an optional flying Sortie),
+`HudBox` (a corner-ticked readout frame), `Annunciator`/`Annunciators` (status lamps for guarantees like
+RLS/AUDIT and live states like PASS/FAIL), and `InstrumentLabel` (the mono-caps voice). Instrument type is
+reserved for labels, telemetry, and section markers — enforced by convention, not code — and aviation words
+never reach interactive copy ("Run query", never "Take off").
+
+`--hud` is a semantic token in `styles.css` that aliases the `--good` pigment, reserved for live telemetry
+only (HUD readouts, the lit flight path, "on" annunciators); anything gated on request success/failure keeps
+using `--good`/`--bad` directly so the two can be retinted independently later. The Settings appearance
+control reads **NIGHT / DAY / AUTO** instead of Dark/Light/System — labels only, the underlying `ThemePref`
+values, `<html data-theme>` resolution, and OS tracking are unchanged.
+
+`Login.tsx` replaced the static split screen with a departure-profile climb-out driving a walkthrough of
+product micro-mocks (a full-width diagonal sweep was mocked but dropped — it flew waypoints behind the story
+cards); the chat hero's flight-plan strip is a single column rather than the mocked four-across row, since
+four columns at the hero's 620px cap leave no room for the question text. The rebrand shipped as one PR
+across all eight app surfaces (chat, SQL editor, Explore, Goldens, Evaluations, Admin, Settings, login) plus
+the day theme and an a11y/contrast pass, so `main` was never left half-branded.
+
+The login's Playwright visual baselines force `reducedMotion: "reduce"`: `animations: "disabled"` stops
+CSS/SMIL but not JS timers, and the walkthrough's auto-advance (each waypoint renders a different product
+micro-mock) would otherwise make the screenshot nondeterministic.
+
+---
+
 ## Data model (Postgres)
 
 All capabilities live in one Postgres, all under RLS.
@@ -405,7 +434,9 @@ control in the report editor for columns the registry doesn't cover.
 - ESM modules, TypeScript throughout.
 - Keep auth/token logic in a dedicated module; components stay presentational.
 - Styling is hand-rolled CSS with design tokens in `frontend/src/styles.css` — **no CSS framework or component
-  library** (no Tailwind). Fonts are self-hosted via `@fontsource`.
+  library** (no Tailwind). Fonts are self-hosted via `@fontsource`. Cockpit-brand markup (see "The Flight
+  Deck brand (s25)" above) goes through the `frontend/src/ui/flightdeck.tsx` kit rather than bespoke
+  per-surface CSS.
 
 ### Secrets & config
 

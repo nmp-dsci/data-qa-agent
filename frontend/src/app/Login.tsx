@@ -19,10 +19,11 @@
 // on the dev-auth stub — same card. E2E contracts kept: the profile buttons'
 // accessible names, the dot `role=tablist`, and the login_walkthrough_view
 // track() events are unchanged from s17.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { track, User } from "../lib/api";
 import { renderGoogleButton } from "../lib/auth";
 import { useMediaQuery } from "../lib/useMediaQuery";
+import { useRouteFractions } from "../ui/flightdeck";
 import { BrandMark, PLANE_PATH_D } from "../ui/icons";
 
 const TEST_USERS = [
@@ -130,55 +131,11 @@ const WAYPOINTS: Waypoint[] = [
   },
 ];
 
-/** Where each waypoint sits along the route, as a 0–1 fraction of its length.
- *  Measured from the real path once on mount (rather than hardcoded) so the
- *  Sortie parks precisely on the dot and the lit contrail ends there too. */
-function useRouteFractions(pathRef: React.RefObject<SVGPathElement | null>): number[] {
-  const fallback = useMemo(
-    () => WAYPOINTS.map((_, i) => (i + 1) / (WAYPOINTS.length + 1)),
-    [],
-  );
-  const [fracs, setFracs] = useState<number[]>(fallback);
-
-  useEffect(() => {
-    const path = pathRef.current;
-    if (!path || typeof path.getTotalLength !== "function") return;
-    const total = path.getTotalLength();
-    if (!total) return;
-    // Sample the path once and take, for each waypoint, the closest sample.
-    // 400 steps ≈ 0.25% precision — visually exact and fully deterministic,
-    // so visual baselines don't move between runs.
-    const STEPS = 400;
-    const samples: { len: number; x: number; y: number }[] = [];
-    for (let i = 0; i <= STEPS; i++) {
-      const len = (total * i) / STEPS;
-      const p = path.getPointAtLength(len);
-      samples.push({ len, x: p.x, y: p.y });
-    }
-    setFracs(
-      WAYPOINTS.map((w) => {
-        let best = samples[0];
-        let bestD = Infinity;
-        for (const s of samples) {
-          const d = (s.x - w.x) ** 2 + (s.y - w.y) ** 2;
-          if (d < bestD) {
-            bestD = d;
-            best = s;
-          }
-        }
-        return best.len / total;
-      }),
-    );
-  }, [pathRef]);
-
-  return fracs;
-}
-
 /** The Sortie and its traffic, plus the sky they fly in. Entirely decorative:
  *  one aria-hidden layer, never focusable, never announced. */
 function Canopy({ active, reduced }: { active: number; reduced: boolean }) {
   const routeRef = useRef<SVGPathElement>(null);
-  const fracs = useRouteFractions(routeRef);
+  const fracs = useRouteFractions(routeRef, WAYPOINTS);
   // The contrail ends where the Sortie is, always. Under reduced motion this
   // composition simply stops moving — the plane parks on whichever waypoint
   // the reader has navigated to, contrail burned in behind it, traffic holding

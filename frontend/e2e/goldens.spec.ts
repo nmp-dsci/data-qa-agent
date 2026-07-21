@@ -22,7 +22,12 @@ const OBJECT_ID = `obj:${OBJECT}`;
 const FILTER = "property_type = 'house' AND suburb IN ('Hornsby', 'Normanhurst')";
 
 test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", async ({ page }) => {
-  test.setTimeout(420_000);
+  // The budget has to exceed the sum of the allowances this test hands its own
+  // steps: 360s for the live draft + 120s for the sandbox build + 30s save +
+  // 30s reload = 540s of inner waits alone, before any interactive work. At the
+  // previous 420s the test could not pass whenever the draft ran slow — it ran
+  // out of budget mid-flow rather than failing on anything real.
+  test.setTimeout(900_000);
   await login(page, "Admin");
 
   // --- Golden Examples tab ------------------------------------------------

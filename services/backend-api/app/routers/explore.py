@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from typing import Any
 
@@ -26,6 +27,8 @@ from ..explore.manifest import Dataset, get_dataset
 from ..explore.pages_builder import build_profile_pages
 
 router = APIRouter(prefix="/explore", tags=["explore"])
+
+log = logging.getLogger("uvicorn.error")
 
 # Dimensions too high-cardinality to ship a full domain for — the UI uses the
 # typeahead endpoint for these instead.
@@ -112,24 +115,52 @@ async def list_datasets(user: CurrentUser = Depends(get_current_user)) -> dict[s
             "max": jsonable(row["hi"]) if row else None,
         }
 
-    datasets = [get_dataset(s) for s in key]
-    domain_tasks = [
-        domain(ds, d.name)
+    datasets = [ds for ds in (get_dataset(s) for s in key) if ds is not None]
+    domain_pairs = [
+        (ds, d.name)
         for ds in datasets
-        if ds
         for d in ds.dimensions
         if d.kind != "time" and d.name not in _TYPEAHEAD_DIMS
     ]
-    time_tasks = [time_range(ds) for ds in datasets if ds]
-    domain_results = await asyncio.gather(*domain_tasks)
-    time_results = await asyncio.gather(*time_tasks)
+    # return_exceptions so one dataset whose mart is missing or broken degrades
+    # to "that dataset is hidden", not "Explore is down". Incident (2026-07-21):
+    # prod's pipeline had never built marts.property_yield, and the resulting
+    # UndefinedTableError here 500'd the whole endpoint — the Explore tab was
+    # unusable for every dataset the user *did* have, and the unhandled 500
+    # carried no CORS headers so the browser only ever showed "Failed to fetch".
+    domain_results = await asyncio.gather(
+        *(domain(ds, name) for ds, name in domain_pairs), return_exceptions=True
+    )
+    time_results = await asyncio.gather(
+        *(time_range(ds) for ds in datasets), return_exceptions=True
+    )
 
-    domains: dict[tuple[str, str], list[Any]] = {(s, n): vals for s, n, vals in domain_results}
-    ranges: dict[str, dict[str, Any]] = dict(time_results)
+    broken: dict[str, str] = {}
+    domains: dict[tuple[str, str], list[Any]] = {}
+    for (ds, _name), res in zip(domain_pairs, domain_results, strict=True):
+        if isinstance(res, BaseException):
+            broken.setdefault(ds.slug, str(res))
+        else:
+            domains[(res[0], res[1])] = res[2]
+    ranges: dict[str, dict[str, Any]] = {}
+    for ds, tres in zip(datasets, time_results, strict=True):
+        if isinstance(tres, BaseException):
+            broken.setdefault(ds.slug, str(tres))
+        else:
+            ranges[tres[0]] = tres[1]
+
+    for slug, why in broken.items():
+        log.warning("explore: excluding dataset %r from /datasets: %s", slug, why)
+    if broken and len(broken) == len(datasets):
+        # Nothing usable at all (e.g. the pipeline has never run here) — say so
+        # with a handled status the frontend can render, not a bare 500.
+        raise HTTPException(
+            status_code=503, detail="Explore data is not built yet — try again shortly"
+        )
 
     out: list[dict[str, Any]] = []
     for ds in datasets:
-        if ds is None:
+        if ds.slug in broken:
             continue
         public = ds.to_public()
         public["dimensions"] = [
@@ -154,7 +185,10 @@ async def list_datasets(user: CurrentUser = Depends(get_current_user)) -> dict[s
         public["time_range"] = ranges.get(ds.slug, {"min": None, "max": None})
         out.append(public)
     out.sort(key=lambda d: d["slug"])
-    _datasets_cache[key] = (time.monotonic(), out)
+    # A partial answer (some dataset excluded) is served but never cached, so a
+    # freshly rebuilt mart reappears on the next request instead of after TTL.
+    if not broken:
+        _datasets_cache[key] = (time.monotonic(), out)
     return {"datasets": out}
 
 

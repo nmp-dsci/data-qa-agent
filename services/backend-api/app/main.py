@@ -4,8 +4,9 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .config import settings
 from .db import engine, rls_connection
@@ -52,6 +53,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+    """Return unhandled errors as JSON 500s that still carry CORS headers.
+
+    Starlette runs this handler in ServerErrorMiddleware — *outside*
+    CORSMiddleware — so without the manual header below a browser on another
+    origin (the CloudFront frontend) is forbidden from reading the response and
+    reports only "TypeError: Failed to fetch". That turned a plain
+    UndefinedTableError into an undiagnosable blank Explore tab in prod
+    (2026-07-21); with this handler the client sees a real 500 + detail.
+    The exception is re-logged with its traceback, same as the default handler.
+    """
+    log.exception("unhandled error on %s %s", request.method, request.url.path)
+    response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    origin = request.headers.get("origin")
+    if origin and origin in settings.all_cors_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    return response
+
 
 app.include_router(auth.router)
 app.include_router(ask.router)

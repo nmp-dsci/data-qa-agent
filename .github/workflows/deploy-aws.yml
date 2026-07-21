@@ -12,6 +12,11 @@ on:
       - ".lavish/**"
       - "**.md"
   workflow_dispatch:
+    inputs:
+      skip_pipeline:
+        description: "Skip the dlt+dbt pipeline job (marts stay as-is) — for code-only redeploys"
+        type: boolean
+        default: false
 
 permissions:
   id-token: write # OIDC token for AWS
@@ -59,6 +64,19 @@ jobs:
 
       - name: Run database migrations (ECS one-shot)
         run: ./scripts/run_job.sh migrate
+
+      # The marts must be rebuilt whenever the dbt models change, and nothing
+      # else does it: this workflow used to run only `migrate`, so prod marts
+      # silently froze at whatever the last manual pipeline run produced. That
+      # is exactly how prod went 12 days stale and `marts.property_yield` never
+      # got built — the Explore tab then 500'd on every load (UndefinedTableError)
+      # while dev, whose pipeline runs on every `make up`, was fine. Running it
+      # on every deploy costs ~15 minutes; a deploy that ships current code
+      # against stale marts costs an outage. workflow_dispatch can skip it for
+      # code-only redeploys.
+      - name: Run data pipeline (ECS one-shot, dlt + dbt)
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_pipeline }}
+        run: ./scripts/run_job.sh pipeline
 
       - name: Wait for App Runner deployments
         # Pushing :latest auto-deploys both services; wait until they settle so

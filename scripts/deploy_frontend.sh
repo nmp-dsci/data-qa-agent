@@ -30,7 +30,17 @@ echo "==> building frontend (VITE_API_URL=$VITE_API_URL)"
 echo "==> syncing dist/ -> s3://$BUCKET"
 # Hashed assets get a long cache; index.html must never be cached (it points at
 # the current asset hashes).
-aws s3 sync frontend/dist "s3://$BUCKET" --delete \
+#
+# Deliberately NO --delete: hashed chunks are immutable, and a browser tab
+# opened before this deploy still lazy-imports the *previous* deploy's
+# ExplorePage/SqlEditor/Choropleth chunk on first click. With --delete (plus the
+# full CloudFront invalidation below) that request fell through to the SPA
+# fallback — index.html served as HTTP 200 text/html — and the import failed
+# with "Failed to fetch dynamically imported module": the Explore tab silently
+# refused to open until a manual reload (prod incident, 2026-07-21). Keeping a
+# few deploys' worth of stale chunks costs cents; deleting them breaks every
+# open session on every deploy.
+aws s3 sync frontend/dist "s3://$BUCKET" \
   --exclude index.html --cache-control "public,max-age=31536000,immutable"
 aws s3 cp frontend/dist/index.html "s3://$BUCKET/index.html" \
   --cache-control "no-cache"

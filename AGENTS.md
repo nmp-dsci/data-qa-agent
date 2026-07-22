@@ -439,7 +439,7 @@ the UI can never show a bare traceback.
 
 **Question tiers (s27).** Every golden carries a `tier` (`app.eval_cases.tier`, free-text; the Golden tab
 picker and the pack lint both accept `T1`–`T7`). A tier classifies *what kind of question* the golden is, so
-the pack's coverage can be read at a glance and `make eval --tier T3` / the Evaluations tab can break scores
+the pack's coverage can be read at a glance and `make eval TIER=T3` / the Evaluations tab can break scores
 down by difficulty. The ladder:
 
 | Tier | Kind | What it tests |
@@ -454,7 +454,8 @@ down by difficulty. The ladder:
 
 The s27 coverage pack seeds 10 draft goldens per mart against this ladder (one per direction, T2 carrying the
 four time-series shapes). Drafts (`authoring_status='draft'`) are skipped by `make eval` unless
-`--include-drafts` is passed, so an un-curated question is never scored against empty ground truth.
+`INCLUDE_DRAFTS=1` is passed (the runner's `--include-drafts`; naming one directly via `CASE=` also runs
+it), so an un-curated question is never scored against empty ground truth.
 
 ---
 

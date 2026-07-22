@@ -187,7 +187,10 @@ repo is the source of truth, the DB a working surface), redacting anything promo
 — remapped user, size-capped rows — and `make eval-import` seeds any environment from the pack. `make eval`
 (down to a single `CASE=`) scores the pack against the running agent, including an LLM-as-judge for insight
 quality that refuses to grade a model of its own family and records a `skipped` verdict rather than a faked
-score when no cross-family judge key is configured. `make eval-compare A=<run> B=<run>` is the regression
+score when no cross-family judge key is configured. Every golden carries a question tier (`T1`–`T7`, the
+coverage ladder documented in `AGENTS.md`), and `draft` goldens — agent-drafted first passes not yet curated
+to `ready` — are skipped by `make eval` unless `INCLUDE_DRAFTS=1` is passed, so an un-curated question is
+never scored against empty ground truth. `make eval-compare A=<run> B=<run>` is the regression
 gate: it blocks on **any** case flipping pass → fail, not on the headline average moving, and CI runs a
 free, zero-LLM-cost lint of the pack itself on every merge (`tests/test_eval_pack.py`). `make eval-diagnose`
 reads a scored run's traces and proposes one-lever hypotheses — read-only, it never writes a fix. An

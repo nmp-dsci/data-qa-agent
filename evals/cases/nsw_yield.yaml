@@ -1,0 +1,3583 @@
+pack: nsw_property
+dataset: nsw_yield
+cases:
+- case_key: nsw_yield-what-s-the-current-gross-rental-yield-for-units-817a
+  question: What's the current gross rental yield for units in Liverpool (2170)?
+  dataset: nsw_yield
+  tier: T1
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: One value — gross_yield_pct for units in postcode 2170 at the latest month.
+  tags:
+  - coverage-pack
+  - coverage:Y1
+  - direction:point-lookup
+  grader: {}
+  golden_sql: 'SELECT month, property_type, total_sale_value, n_sold, total_weekly_rent, n_rented, avg_sale_price,
+    avg_weekly_rent, gross_yield_pct
+
+    FROM marts.property_yield
+
+    WHERE postcode = ''2170'' AND property_type = ''unit''
+
+    ORDER BY month'
+  golden_sandbox: "# PASS 1: Summary page — headline current yield + trend\n# The gross_yield_pct is already\
+    \ the metric we need for the chart\n# Use latest_value on gross_yield_pct — but latest_value works\
+    \ with value_col/den_col.\n# gross_yield_pct is already the ratio, so we can use trend_series with\
+    \ gross_yield_pct as value_col\n# and no den_col, or we can use it as-is.\n\n# Latest value using\
+    \ 6-month smoothing on yield directly\ns = skills.trend_series(df, month_col=\"month\", value_col=\"\
+    gross_yield_pct\", den_col=None)\n\n# Also get latest value\nlatest = skills.latest_value(df, month_col=\"\
+    month\", value_col=\"gross_yield_pct\")\n\n# Get growth over 2 years (2 years = 24 months)\ngrowth\
+    \ = skills.growth_rate(df, month_col=\"month\", value_col=\"gross_yield_pct\", years=2)\n\n# Build\
+    \ headline basis\nbasis_months = \"\"\nif latest and latest.get(\"month\"):\n    basis_months = latest[\"\
+    month\"]\n\nheadlines = [\n    {\"label\": \"Current gross rental yield (units)\", \"value\": f\"\
+    {latest['value']:.2f}%\", \"basis\": f\"6-month smoothed to {basis_months}\"},\n]\n\nif growth is\
+    \ not None:\n    headlines.append({\"label\": \"Yield trend (2-year change)\", \"value\": f\"{growth:+.1f}%\"\
+    , \"basis\": f\"over 2 years\"})\n\nresult = skills.build_report(\n    summary=f\"**Gross rental yield\
+    \ for units in Liverpool (postcode 2170)** — the current smoothed yield is **{latest['value']:.2f}%**\
+    \ as of {basis_months}.\",\n    headlines=headlines,\n    main_chart=skills.trend_chart(s, title=\"\
+    Gross rental yield — units, Liverpool NSW 2170\")\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 6-month smoothed to 2026-05
+            label: Current gross rental yield (units)
+            value: 4.74%
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: over 2 years
+            label: Yield trend (2-year change)
+            value: -0.8%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            text: '**Gross rental yield for units in Liverpool (postcode 2170)** — the current smoothed
+              yield is **4.74%** as of 2026-05.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: 'SELECT month, property_type, total_sale_value, n_sold, total_weekly_rent, n_rented,
+              avg_sale_price, avg_weekly_rent, gross_yield_pct
+
+              FROM marts.property_yield
+
+              WHERE postcode = ''2170'' AND property_type = ''unit''
+
+              ORDER BY month'
+            rows:
+              _truncated: true
+              _total: 226
+              _sha: 270d57b4f237
+              _head:
+              - layer: actual
+                month: '2016-01-01'
+                value: 4.23
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-01-01'
+                value: 4.23
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-02-01'
+                value: 4.45
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-02-01'
+                value: 4.34
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-03-01'
+                value: 4.05
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-03-01'
+                value: 4.24
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-04-01'
+                value: 3.84
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-04-01'
+                value: 4.14
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-05-01'
+                value: 3.69
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-05-01'
+                value: 4.05
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-06-01'
+                value: 3.89
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-06-01'
+                value: 4.02
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-07-01'
+                value: 3.8
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-07-01'
+                value: 3.95
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-08-01'
+                value: 3.93
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-08-01'
+                value: 3.87
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-09-01'
+                value: 3.95
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-09-01'
+                value: 3.85
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-10-01'
+                value: 4.22
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-10-01'
+                value: 3.91
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-11-01'
+                value: 3.82
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-11-01'
+                value: 3.94
+                series: gross_yield_pct
+              - layer: actual
+                month: '2016-12-01'
+                value: 3.88
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2016-12-01'
+                value: 3.93
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-01-01'
+                value: 3.83
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-01-01'
+                value: 3.94
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-02-01'
+                value: 3.85
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-02-01'
+                value: 3.93
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-03-01'
+                value: 3.96
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-03-01'
+                value: 3.93
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-04-01'
+                value: 3.99
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-04-01'
+                value: 3.89
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-05-01'
+                value: 3.94
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-05-01'
+                value: 3.91
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-06-01'
+                value: 3.85
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-06-01'
+                value: 3.9
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-07-01'
+                value: 3.26
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-07-01'
+                value: 3.81
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-08-01'
+                value: 3.54
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-08-01'
+                value: 3.76
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-09-01'
+                value: 3.78
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-09-01'
+                value: 3.73
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-10-01'
+                value: 3.54
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-10-01'
+                value: 3.65
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-11-01'
+                value: 3.97
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-11-01'
+                value: 3.66
+                series: gross_yield_pct
+              - layer: actual
+                month: '2017-12-01'
+                value: 3.82
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2017-12-01'
+                value: 3.65
+                series: gross_yield_pct
+              - layer: actual
+                month: '2019-01-01'
+                value: 4.11
+                series: gross_yield_pct
+              - layer: 6-mo avg
+                month: '2019-01-01'
+                value: 3.79
+                series: gross_yield_pct
+            title: Gross rental yield — units, Liverpool NSW 2170
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Gross rental yield for units in Liverpool (postcode 2170)** — the current smoothed
+        yield is **4.74%** as of 2026-05.'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: The gross yield of 4.74% reflects the balance between unit prices (avg $596,089) and
+              weekly rents (avg $541) in Liverpool. When prices rise faster than rents, yield compresses
+              — and vice versa.
+            heading: 'Yield components: price vs rent'
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+      headline: 'Yield components: price vs rent'
+      template: two-col
+  golden_data_sha: 638c2518aa02
+- case_key: nsw_yield-how-have-prices-rents-and-yield-in-campbelltown-b2d3
+  question: How have prices, rents and yield in Campbelltown (2560) moved together since 2016?
+  dataset: nsw_yield
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Prices, rents and gross_yield_pct for postcode 2560 over time — a combo (bars + line) built
+    on pre-aggregated rows.
+  tags:
+  - coverage-pack
+  - coverage:Y2
+  - direction:trend
+  grader: {}
+  golden_sql: "SELECT month, property_type, total_sale_value, n_sold, total_weekly_rent, n_rented, avg_sale_price,\
+    \ avg_weekly_rent, gross_yield_pct\nFROM marts.property_yield\nWHERE postcode = '2560'\n  AND month\
+    \ >= '2016-01-01'\n  AND property_type IN ('house', 'unit')\nORDER BY property_type, month"
+  golden_sandbox: "# Build trend series for each metric and each property type\n# Average sale price\n\
+    price_h = skills.trend_series(df[df.property_type=='house'], month_col=\"month\", value_col=\"avg_sale_price\"\
+    , den_col=None)\nprice_u = skills.trend_series(df[df.property_type=='unit'], month_col=\"month\",\
+    \ value_col=\"avg_sale_price\", den_col=None)\n\n# Average weekly rent\nrent_h = skills.trend_series(df[df.property_type=='house'],\
+    \ month_col=\"month\", value_col=\"avg_weekly_rent\", den_col=None)\nrent_u = skills.trend_series(df[df.property_type=='unit'],\
+    \ month_col=\"month\", value_col=\"avg_weekly_rent\", den_col=None)\n\n# Gross yield\nyield_h = skills.trend_series(df[df.property_type=='house'],\
+    \ month_col=\"month\", value_col=\"gross_yield_pct\", den_col=None)\nyield_u = skills.trend_series(df[df.property_type=='unit'],\
+    \ month_col=\"month\", value_col=\"gross_yield_pct\", den_col=None)\n\n# Latest values\nlatest_price_h\
+    \ = skills.latest_value(df[df.property_type=='house'], month_col=\"month\", value_col=\"avg_sale_price\"\
+    , den_col=None)\nlatest_price_u = skills.latest_value(df[df.property_type=='unit'], month_col=\"month\"\
+    , value_col=\"avg_sale_price\", den_col=None)\nlatest_rent_h = skills.latest_value(df[df.property_type=='house'],\
+    \ month_col=\"month\", value_col=\"avg_weekly_rent\", den_col=None)\nlatest_rent_u = skills.latest_value(df[df.property_type=='unit'],\
+    \ month_col=\"month\", value_col=\"avg_weekly_rent\", den_col=None)\nlatest_yield_h = skills.latest_value(df[df.property_type=='house'],\
+    \ month_col=\"month\", value_col=\"gross_yield_pct\", den_col=None)\nlatest_yield_u = skills.latest_value(df[df.property_type=='unit'],\
+    \ month_col=\"month\", value_col=\"gross_yield_pct\", den_col=None)\n\n# Growth rates (over ~9 years\
+    \ from 2016 to 2025)\ngrowth_price_h = skills.growth_rate(df[df.property_type=='house'], month_col=\"\
+    month\", value_col=\"avg_sale_price\", years=9, den_col=None)\ngrowth_price_u = skills.growth_rate(df[df.property_type=='unit'],\
+    \ month_col=\"month\", value_col=\"avg_sale_price\", years=9, den_col=None)\ngrowth_rent_h = skills.growth_rate(df[df.property_type=='house'],\
+    \ month_col=\"month\", value_col=\"avg_weekly_rent\", years=9, den_col=None)\ngrowth_rent_u = skills.growth_rate(df[df.property_type=='unit'],\
+    \ month_col=\"month\", value_col=\"avg_weekly_rent\", years=9, den_col=None)\ngrowth_yield_h = skills.growth_rate(df[df.property_type=='house'],\
+    \ month_col=\"month\", value_col=\"gross_yield_pct\", years=9, den_col=None)\ngrowth_yield_u = skills.growth_rate(df[df.property_type=='unit'],\
+    \ month_col=\"month\", value_col=\"gross_yield_pct\", years=9, den_col=None)\n\n# Build a dual-axis\
+    \ chart: avg sale price (left) vs avg weekly rent (right) for both types\n# Prepare data for dual\
+    \ axis - house\nhouse_df = df[df.property_type=='house'].copy()\nhouse_df['avg_sale_price_rolling']\
+    \ = house_df['avg_sale_price'].rolling(6, min_periods=1).mean()\nhouse_df['avg_weekly_rent_rolling']\
+    \ = house_df['avg_weekly_rent'].rolling(6, min_periods=1).mean()\n\nunit_df = df[df.property_type=='unit'].copy()\n\
+    unit_df['avg_sale_price_rolling'] = unit_df['avg_sale_price'].rolling(6, min_periods=1).mean()\nunit_df['avg_weekly_rent_rolling']\
+    \ = unit_df['avg_weekly_rent'].rolling(6, min_periods=1).mean()\n\n# For the main chart, use a dual-axis\
+    \ chart showing prices + rents\n# We'll combine both types into a comparison chart\n\n# Price trend\
+    \ chart - houses and units together\nprice_series = skills.trend_chart(\n    pd.concat([price_h.assign(type='House'),\
+    \ price_u.assign(type='Unit')]),\n    title=\"Campbelltown 2560 — Average Sale Price (6-month rolling)\"\
+    \n)\n\n# Rent trend chart\nrent_series = skills.trend_chart(\n    pd.concat([rent_h.assign(type='House'),\
+    \ rent_u.assign(type='Unit')]),\n    title=\"Campbelltown 2560 — Average Weekly Rent (6-month rolling)\"\
+    \n)\n\n# Yield trend chart\nyield_series = skills.trend_chart(\n    pd.concat([yield_h.assign(type='House'),\
+    \ yield_u.assign(type='Unit')]),\n    title=\"Campbelltown 2560 — Gross Rental Yield (6-month rolling)\"\
+    \n)\n\n# Format growth strings safely\ngph = f\"{growth_price_h:.1f}%\" if growth_price_h is not None\
+    \ else \"N/A\"\ngpu = f\"{growth_price_u:.1f}%\" if growth_price_u is not None else \"N/A\"\ngrh =\
+    \ f\"{growth_rent_h:.1f}%\" if growth_rent_h is not None else \"N/A\"\ngru = f\"{growth_rent_u:.1f}%\"\
+    \ if growth_rent_u is not None else \"N/A\"\ngyh = f\"{growth_yield_h:.1f}%\" if growth_yield_h is\
+    \ not None else \"N/A\"\ngyu = f\"{growth_yield_u:.1f}%\" if growth_yield_u is not None else \"N/A\"\
+    \n\nresult = skills.build_report(\n    summary=\"Since 2016, Campbelltown (2560) has seen strong house\
+    \ price growth and even stronger rent growth, compressing yields — especially for houses. Units followed\
+    \ a similar trend but at lower price points and higher yields.\",\n    headlines=[\n        {\"label\"\
+    : \"House Avg Price\", \"value\": f\"${latest_price_h['value']:,.0f}\", \"basis\": latest_price_h['month']},\n\
+    \        {\"label\": \"House Price Growth\", \"value\": gph, \"basis\": \"~9 yr\"},\n        {\"label\"\
+    : \"House Avg Rent\", \"value\": f\"${latest_rent_h['value']:,.0f}/wk\", \"basis\": latest_rent_h['month']},\n\
+    \        {\"label\": \"House Rent Growth\", \"value\": grh, \"basis\": \"~9 yr\"},\n        {\"label\"\
+    : \"House Gross Yield\", \"value\": f\"{latest_yield_h['value']:.1f}%\", \"basis\": latest_yield_h['month']},\n\
+    \        {\"label\": \"Yield Change\", \"value\": gyh, \"basis\": \"~9 yr\"},\n        {\"label\"\
+    : \"Unit Avg Price\", \"value\": f\"${latest_price_u['value']:,.0f}\", \"basis\": latest_price_u['month']},\n\
+    \        {\"label\": \"Unit Price Growth\", \"value\": gpu, \"basis\": \"~9 yr\"},\n        {\"label\"\
+    : \"Unit Avg Rent\", \"value\": f\"${latest_rent_u['value']:,.0f}/wk\", \"basis\": latest_rent_u['month']},\n\
+    \        {\"label\": \"Unit Rent Growth\", \"value\": gru, \"basis\": \"~9 yr\"},\n        {\"label\"\
+    : \"Unit Gross Yield\", \"value\": f\"{latest_yield_u['value']:.1f}%\", \"basis\": latest_yield_u['month']},\n\
+    \        {\"label\": \"Yield Change\", \"value\": gyu, \"basis\": \"~9 yr\"},\n    ],\n    main_chart=skills.dual_axis_chart(\n\
+    \        pd.concat([\n            house_df[['month','avg_sale_price_rolling','avg_weekly_rent_rolling']].assign(type='House').rename(columns={'avg_sale_price_rolling':'price','avg_weekly_rent_rolling':'rent'}),\n\
+    \            unit_df[['month','avg_sale_price_rolling','avg_weekly_rent_rolling']].assign(type='Unit').rename(columns={'avg_sale_price_rolling':'price','avg_weekly_rent_rolling':'rent'})\n\
+    \        ]),\n        x_col=\"month\",\n        left_value_col=\"price\",\n        right_value_col=\"\
+    rent\",\n        left_title=\"Avg Sale Price ($)\",\n        right_title=\"Avg Weekly Rent ($/wk)\"\
+    ,\n        title=\"Campbelltown 2560 — Prices (bars) vs Rents (line) — 6-month rolling\"\n    ),\n\
+    \    insights=[\n        skills.make_insight(\n            \"House prices surged while yields compressed\"\
+    ,\n            f\"Houses in Campbelltown rose from ~$571K in early 2016 to ${latest_price_h['value']:,.0f}\
+    \ by {latest_price_h['month']} ({gph} growth), while weekly rent climbed {grh} — but rent didn't keep\
+    \ pace with price growth, so gross yield fell from ~3.8% to {latest_yield_h['value']:.1f}% ({gyh}).\"\
+    ,\n        ),\n        skills.make_insight(\n            \"Units: more affordable entry, higher yield\"\
+    ,\n            f\"Units averaged ${latest_price_u['value']:,.0f} with {latest_yield_u['value']:.1f}%\
+    \ gross yield — notably higher yield than houses ({latest_yield_h['value']:.1f}%), making units a\
+    \ stronger rental-investment proposition. Unit prices grew {gpu} while rents rose {gru}.\",\n    \
+    \    ),\n    ],\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 2026-05
+            label: House Avg Price
+            value: $1,082,288
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: ~9 yr
+            label: House Price Growth
+            value: 85.9%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: 2026-05
+            label: House Avg Rent
+            value: $631/wk
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: ~9 yr
+            label: House Rent Growth
+            value: 50.4%
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: Since 2016, Campbelltown (2560) has seen strong house price growth and even stronger
+              rent growth, compressing yields — especially for houses. Units followed a similar trend
+              but at lower price points and higher yields.
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: "SELECT month, property_type, total_sale_value, n_sold, total_weekly_rent, n_rented,\
+              \ avg_sale_price, avg_weekly_rent, gross_yield_pct\nFROM marts.property_yield\nWHERE postcode\
+              \ = '2560'\n  AND month >= '2016-01-01'\n  AND property_type IN ('house', 'unit')\nORDER\
+              \ BY property_type, month"
+            rows:
+              _truncated: true
+              _total: 226
+              _sha: 78bc93f2decd
+              _head:
+              - type: House
+                month: '2016-01-01'
+                rent_roll: 421.0
+                price_roll: 571043.0
+              - type: House
+                month: '2016-02-01'
+                rent_roll: 421.0
+                price_roll: 570918.5
+              - type: House
+                month: '2016-03-01'
+                rent_roll: 419.3333333333333
+                price_roll: 576672.0
+              - type: House
+                month: '2016-04-01'
+                rent_roll: 421.25
+                price_roll: 576373.5
+              - type: House
+                month: '2016-05-01'
+                rent_roll: 419.8
+                price_roll: 582178.6
+              - type: House
+                month: '2016-06-01'
+                rent_roll: 419.5
+                price_roll: 584188.8333333334
+              - type: House
+                month: '2016-07-01'
+                rent_roll: 417.8333333333333
+                price_roll: 586770.8333333334
+              - type: House
+                month: '2016-08-01'
+                rent_roll: 419.1666666666667
+                price_roll: 595200.1666666666
+              - type: House
+                month: '2016-09-01'
+                rent_roll: 419.6666666666667
+                price_roll: 598757.3333333334
+              - type: House
+                month: '2016-10-01'
+                rent_roll: 417.6666666666667
+                price_roll: 608578.3333333334
+              - type: House
+                month: '2016-11-01'
+                rent_roll: 419.3333333333333
+                price_roll: 614397.8333333334
+              - type: House
+                month: '2016-12-01'
+                rent_roll: 421.5
+                price_roll: 618905.5
+              - type: House
+                month: '2017-01-01'
+                rent_roll: 421.3333333333333
+                price_roll: 625615.0
+              - type: House
+                month: '2017-02-01'
+                rent_roll: 421.0
+                price_roll: 629015.0
+              - type: House
+                month: '2017-03-01'
+                rent_roll: 422.1666666666667
+                price_roll: 638508.1666666666
+              - type: House
+                month: '2017-04-01'
+                rent_roll: 423.0
+                price_roll: 641485.5
+              - type: House
+                month: '2017-05-01'
+                rent_roll: 421.1666666666667
+                price_roll: 637568.6666666666
+              - type: House
+                month: '2017-06-01'
+                rent_roll: 422.3333333333333
+                price_roll: 651173.6666666666
+              - type: House
+                month: '2017-07-01'
+                rent_roll: 424.0
+                price_roll: 658537.3333333334
+              - type: House
+                month: '2017-08-01'
+                rent_roll: 424.1666666666667
+                price_roll: 665990.6666666666
+              - type: House
+                month: '2017-09-01'
+                rent_roll: 421.3333333333333
+                price_roll: 662084.6666666666
+              - type: House
+                month: '2017-10-01'
+                rent_roll: 421.8333333333333
+                price_roll: 664046.8333333334
+              - type: House
+                month: '2017-11-01'
+                rent_roll: 421.5
+                price_roll: 672380.0
+              - type: House
+                month: '2017-12-01'
+                rent_roll: 418.5
+                price_roll: 666506.3333333334
+              - type: House
+                month: '2019-01-01'
+                rent_roll: 420.1666666666667
+                price_roll: 650230.6666666666
+              - type: House
+                month: '2019-02-01'
+                rent_roll: 420.3333333333333
+                price_roll: 632055.1666666666
+              - type: House
+                month: '2019-03-01'
+                rent_roll: 422.6666666666667
+                price_roll: 618286.6666666666
+              - type: House
+                month: '2019-04-01'
+                rent_roll: 422.3333333333333
+                price_roll: 599406.6666666666
+              - type: House
+                month: '2019-05-01'
+                rent_roll: 421.5
+                price_roll: 582387.6666666666
+              - type: House
+                month: '2019-06-01'
+                rent_roll: 419.3333333333333
+                price_roll: 574109.8333333334
+              - type: House
+                month: '2019-07-01'
+                rent_roll: 415.6666666666667
+                price_roll: 579620.1666666666
+              - type: House
+                month: '2019-08-01'
+                rent_roll: 412.0
+                price_roll: 584069.3333333334
+              - type: House
+                month: '2019-09-01'
+                rent_roll: 414.0
+                price_roll: 596995.8333333334
+              - type: House
+                month: '2019-10-01'
+                rent_roll: 411.1666666666667
+                price_roll: 605200.5
+              - type: House
+                month: '2019-11-01'
+                rent_roll: 412.5
+                price_roll: 613094.6666666666
+              - type: House
+                month: '2019-12-01'
+                rent_roll: 413.5
+                price_roll: 606076.1666666666
+              - type: House
+                month: '2020-01-01'
+                rent_roll: 415.3333333333333
+                price_roll: 607097.1666666666
+              - type: House
+                month: '2020-02-01'
+                rent_roll: 418.1666666666667
+                price_roll: 607691.1666666666
+              - type: House
+                month: '2020-03-01'
+                rent_roll: 414.5
+                price_roll: 609064.1666666666
+              - type: House
+                month: '2020-04-01'
+                rent_roll: 419.3333333333333
+                price_roll: 608778.6666666666
+              - type: House
+                month: '2020-05-01'
+                rent_roll: 417.8333333333333
+                price_roll: 623357.5
+              - type: House
+                month: '2020-06-01'
+                rent_roll: 417.8333333333333
+                price_roll: 630279.8333333334
+              - type: House
+                month: '2020-07-01'
+                rent_roll: 421.1666666666667
+                price_roll: 621450.8333333334
+              - type: House
+                month: '2020-08-01'
+                rent_roll: 424.0
+                price_roll: 629195.0
+              - type: House
+                month: '2020-09-01'
+                rent_roll: 425.1666666666667
+                price_roll: 625920.1666666666
+              - type: House
+                month: '2020-10-01'
+                rent_roll: 426.5
+                price_roll: 631672.0
+              - type: House
+                month: '2020-11-01'
+                rent_roll: 431.1666666666667
+                price_roll: 643309.0
+              - type: House
+                month: '2020-12-01'
+                rent_roll: 436.6666666666667
+                price_roll: 650069.3333333334
+              - type: House
+                month: '2021-01-01'
+                rent_roll: 435.0
+                price_roll: 666539.8333333334
+              - type: House
+                month: '2021-02-01'
+                rent_roll: 432.8333333333333
+                price_roll: 670322.1666666666
+            group: null
+            title: Campbelltown 2560 — Prices vs Rents (6-month rolling)
+            height: fill
+            intent: combo
+            measure: price_roll
+            dimension: month
+            line_measure: rent_roll
+          role: chart
+          type: compare
+          element_id: report:chart
+      headline: Since 2016, Campbelltown (2560) has seen strong house price growth and even stronger rent
+        growth, compressing yields —…
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: 'For houses, yield hovered around 3.5% pre-2020 then dropped to 3.0% — driven by price
+              growth ($606,076 → $1,082,288) outpacing rent growth ($414/wk → $631/wk). Units followed
+              the same pattern: 4.4% → 4.2%.'
+            heading: 'The yield story in two acts: pre-2020 stability, post-2020 divergence'
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: House prices grew 85.9% over the period vs rent growth of 50.4% — the price-to-rent
+              multiple widened significantly, compressing yield. This is typical of Sydney's outer-ring
+              suburbs benefiting from capital growth tailwinds while rental income lagged.
+            heading: Price growth was the dominant lever on yield compression
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: House rents rose from $414/wk pre-2020 to $631/wk post-2020, and unit rents from $356/wk
+              to $503/wk — reflecting the broader rental market tightening across Sydney's growth corridors.
+            heading: Rent growth accelerated in the recent period
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT month, property_type, total_sale_value, n_sold, total_weekly_rent, n_rented,\
+              \ avg_sale_price, avg_weekly_rent, gross_yield_pct\nFROM marts.property_yield\nWHERE postcode\
+              \ = '2560'\n  AND month >= '2016-01-01'\n  AND property_type IN ('house', 'unit')\nORDER\
+              \ BY property_type, month"
+            rows:
+              _truncated: true
+              _total: 452
+              _sha: fe63a00294f4
+              _head:
+              - layer: actual
+                month: '2016-01-01'
+                value: 3.84
+                series: house
+              - layer: 6-mo avg
+                month: '2016-01-01'
+                value: 3.84
+                series: house
+              - layer: actual
+                month: '2016-02-01'
+                value: 3.83
+                series: house
+              - layer: 6-mo avg
+                month: '2016-02-01'
+                value: 3.83
+                series: house
+              - layer: actual
+                month: '2016-03-01'
+                value: 3.68
+                series: house
+              - layer: 6-mo avg
+                month: '2016-03-01'
+                value: 3.78
+                series: house
+              - layer: actual
+                month: '2016-04-01'
+                value: 3.86
+                series: house
+              - layer: 6-mo avg
+                month: '2016-04-01'
+                value: 3.8
+                series: house
+              - layer: actual
+                month: '2016-05-01'
+                value: 3.55
+                series: house
+              - layer: 6-mo avg
+                month: '2016-05-01'
+                value: 3.75
+                series: house
+              - layer: actual
+                month: '2016-06-01'
+                value: 3.66
+                series: house
+              - layer: 6-mo avg
+                month: '2016-06-01'
+                value: 3.74
+                series: house
+              - layer: actual
+                month: '2016-07-01'
+                value: 3.64
+                series: house
+              - layer: 6-mo avg
+                month: '2016-07-01'
+                value: 3.7
+                series: house
+              - layer: actual
+                month: '2016-08-01'
+                value: 3.59
+                series: house
+              - layer: 6-mo avg
+                month: '2016-08-01'
+                value: 3.66
+                series: house
+              - layer: actual
+                month: '2016-09-01'
+                value: 3.58
+                series: house
+              - layer: 6-mo avg
+                month: '2016-09-01'
+                value: 3.65
+                series: house
+              - layer: actual
+                month: '2016-10-01'
+                value: 3.4
+                series: house
+              - layer: 6-mo avg
+                month: '2016-10-01'
+                value: 3.57
+                series: house
+              - layer: actual
+                month: '2016-11-01'
+                value: 3.44
+                series: house
+              - layer: 6-mo avg
+                month: '2016-11-01'
+                value: 3.55
+                series: house
+              - layer: actual
+                month: '2016-12-01'
+                value: 3.61
+                series: house
+              - layer: 6-mo avg
+                month: '2016-12-01'
+                value: 3.54
+                series: house
+              - layer: actual
+                month: '2017-01-01'
+                value: 3.4
+                series: house
+              - layer: 6-mo avg
+                month: '2017-01-01'
+                value: 3.5
+                series: house
+              - layer: actual
+                month: '2017-02-01'
+                value: 3.46
+                series: house
+              - layer: 6-mo avg
+                month: '2017-02-01'
+                value: 3.48
+                series: house
+              - layer: actual
+                month: '2017-03-01'
+                value: 3.33
+                series: house
+              - layer: 6-mo avg
+                month: '2017-03-01'
+                value: 3.44
+                series: house
+              - layer: actual
+                month: '2017-04-01'
+                value: 3.34
+                series: house
+              - layer: 6-mo avg
+                month: '2017-04-01'
+                value: 3.43
+                series: house
+              - layer: actual
+                month: '2017-05-01'
+                value: 3.48
+                series: house
+              - layer: 6-mo avg
+                month: '2017-05-01'
+                value: 3.44
+                series: house
+              - layer: actual
+                month: '2017-06-01'
+                value: 3.24
+                series: house
+              - layer: 6-mo avg
+                month: '2017-06-01'
+                value: 3.38
+                series: house
+              - layer: actual
+                month: '2017-07-01'
+                value: 3.26
+                series: house
+              - layer: 6-mo avg
+                month: '2017-07-01'
+                value: 3.35
+                series: house
+              - layer: actual
+                month: '2017-08-01'
+                value: 3.24
+                series: house
+              - layer: 6-mo avg
+                month: '2017-08-01'
+                value: 3.31
+                series: house
+              - layer: actual
+                month: '2017-09-01'
+                value: 3.3
+                series: house
+              - layer: 6-mo avg
+                month: '2017-09-01'
+                value: 3.31
+                series: house
+              - layer: actual
+                month: '2017-10-01'
+                value: 3.31
+                series: house
+              - layer: 6-mo avg
+                month: '2017-10-01'
+                value: 3.3
+                series: house
+              - layer: actual
+                month: '2017-11-01'
+                value: 3.21
+                series: house
+              - layer: 6-mo avg
+                month: '2017-11-01'
+                value: 3.26
+                series: house
+              - layer: actual
+                month: '2017-12-01'
+                value: 3.27
+                series: house
+              - layer: 6-mo avg
+                month: '2017-12-01'
+                value: 3.27
+                series: house
+              - layer: actual
+                month: '2019-01-01'
+                value: 3.9
+                series: house
+              - layer: 6-mo avg
+                month: '2019-01-01'
+                value: 3.37
+                series: house
+            title: Campbelltown 2560 — Gross Rental Yield Trend (6-month rolling)
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: 'The yield story in two acts: pre-2020 stability, post-2020 divergence'
+      template: two-col
+  golden_data_sha: c72993d00b2f
+- case_key: nsw_yield-top-10-postcodes-by-gross-yield-right-now-and-ho-5757
+  question: Top 10 postcodes by gross yield right now — and how much data sits behind each number.
+  dataset: nsw_yield
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Top 10 postcodes by current gross_yield_pct with n_sold/n_rented shown as evidence of how
+    thin each cell is.
+  tags:
+  - coverage-pack
+  - coverage:Y3
+  - direction:ranking
+  grader: {}
+  golden_sql: 'SELECT DISTINCT ON (postcode) postcode, suburb
+
+    FROM staging.int_postcode_geo
+
+    ORDER BY postcode, n_sales DESC'
+  golden_sandbox: "df = yield_data\nsuburbs = suburb_map\nsuburbs = suburbs[suburbs['postcode'] != ''].copy()\n\
+    \n# Compute gross yield\ndf['avg_sale_price'] = df['total_sale_value'] / df['n_sold']\ndf['avg_weekly_rent']\
+    \ = df['total_weekly_rent'] / df['n_rented']\ndf['gross_yield_pct'] = 52 * df['avg_weekly_rent'] /\
+    \ df['avg_sale_price'] * 100\n\n# Merge suburb info\ndf = df.merge(suburbs[['postcode', 'suburb']],\
+    \ on='postcode', how='left')\n\n# Top 10 by yield\ntop10 = df.nlargest(10, 'gross_yield_pct').reset_index(drop=True)\n\
+    top10['rank'] = range(1, 11)\n\n# Build the headline value\ntop_yield = top10.iloc[0]\nheadline_label\
+    \ = f\"{top_yield['suburb']} ({top_yield['postcode']})\"\nheadline_value = f\"{top_yield['gross_yield_pct']:.1f}%\"\
+    \nheadline_basis = f\"Latest 6 months ({top_yield['n_sold']:.0f} sales, {top_yield['n_rented']:.0f}\
+    \ rentals)\"\n\n# Also compute the overall market median yield for context\noverall_median_yield =\
+    \ df['gross_yield_pct'].median()\n\n# Table data for the ranked list\ntable_cols = [\n    {'key':\
+    \ 'rank', 'label': 'Rank', 'align': 'right'},\n    {'key': 'suburb', 'label': 'Suburb'},\n    {'key':\
+    \ 'postcode', 'label': 'Postcode'},\n    {'key': 'gross_yield_pct', 'label': 'Gross Yield', 'format':\
+    \ '{:.1f}%', 'align': 'right'},\n    {'key': 'n_sold', 'label': 'Sales (6mo)', 'format': '{:,.0f}',\
+    \ 'align': 'right'},\n    {'key': 'n_rented', 'label': 'Rentals (6mo)', 'format': '{:,.0f}', 'align':\
+    \ 'right'},\n]\n\n# Comparison chart - ranked yields\nchart_df = top10.copy()\nchart_df['label'] =\
+    \ chart_df['suburb'] + ' (' + chart_df['postcode'] + ')'\nchart = skills.comparison_chart(chart_df,\
+    \ category_col='label', value_col='gross_yield_pct', title='Top 10 Postcodes by Gross Rental Yield\
+    \ (6-month rolling)')\n\nresult = skills.build_report(\n    summary=f\"Right now (latest 6 months\
+    \ to May 2026), the top postcode by gross rental yield is **{headline_label}** at **{headline_value}**,\
+    \ based on {top_yield['n_sold']:.0f} sales and {top_yield['n_rented']:.0f} rental bonds. Across NSW\
+    \ markets, the median postcode-level yield is {overall_median_yield:.1f}%.\",\n    headlines=[\n \
+    \       {'label': f'#1: {headline_label}', 'value': headline_value, 'basis': headline_basis},\n  \
+    \      {'label': 'Median Postcode Yield', 'value': f'{overall_median_yield:.1f}%', 'basis': 'Across\
+    \ all postcodes with ≥10 sales & rentals'},\n    ],\n    main_chart=chart,\n    table=skills.data_table(top10,\
+    \ columns=table_cols, title='Top 10 Postcodes — Gross Yield & Data Volume', variant='ranked', bar_key='gross_yield_pct'),\n\
+    )"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: Latest 6 months — 60 sales, 73 rentals
+            label: '#1: Wellington (2820)'
+            value: 6.3%
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: Across all postcodes with ≥10 sales & rentals
+            label: Median Postcode Yield
+            value: 3.2%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            text: Right now (latest 6 months to May 2026), the top postcode by gross rental yield is **Wellington
+              (2820)** at **6.3%**, based on 60 sales and 73 rental bonds. Across NSW markets, the median
+              postcode-level yield is 3.2%.
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: 'SELECT DISTINCT ON (postcode) postcode, suburb
+
+              FROM staging.int_postcode_geo
+
+              ORDER BY postcode, n_sales DESC'
+            rows:
+            - rank: 1
+              label: Wellington (2820)
+              n_sold: 60.0
+              suburb: Wellington
+              n_rented: 73.0
+              postcode: '2820'
+              avg_sale_price: 473566.6666666667
+              property_types: 1
+              avg_weekly_rent: 571.5068493150685
+              gross_yield_pct: 6.2754324271943895
+              total_sale_value: 28414000.0
+              total_weekly_rent: 41720.0
+            - rank: 2
+              label: Broken Hill (2880)
+              n_sold: 266.0
+              suburb: Broken Hill
+              n_rented: 212.0
+              postcode: '2880'
+              avg_sale_price: 308248.3458646617
+              property_types: 1
+              avg_weekly_rent: 357.8632075471698
+              gross_yield_pct: 6.036978638199464
+              total_sale_value: 81994060.0
+              total_weekly_rent: 75867.0
+            - rank: 3
+              label: Wee Waa (2388)
+              n_sold: 11.0
+              suburb: Wee Waa
+              n_rented: 12.0
+              postcode: '2388'
+              avg_sale_price: 320727.2727272727
+              property_types: 1
+              avg_weekly_rent: 370.0
+              gross_yield_pct: 5.998866213151928
+              total_sale_value: 3528000.0
+              total_weekly_rent: 4440.0
+            - rank: 4
+              label: Jindera (2642)
+              n_sold: 12.0
+              suburb: Jindera
+              n_rented: 11.0
+              postcode: '2642'
+              avg_sale_price: 428583.3333333333
+              property_types: 1
+              avg_weekly_rent: 491.8181818181818
+              gross_yield_pct: 5.967228183055521
+              total_sale_value: 5143000.0
+              total_weekly_rent: 5410.0
+            - rank: 5
+              label: Zetland (2017)
+              n_sold: 310.0
+              suburb: Zetland
+              n_rented: 3707.0
+              postcode: '2017'
+              avg_sale_price: 1017714.5741935484
+              property_types: 1
+              avg_weekly_rent: 1109.3428648502831
+              gross_yield_pct: 5.668173615173567
+              total_sale_value: 315491518.0
+              total_weekly_rent: 4112334.0
+            - rank: 6
+              label: Coonabarabran (2357)
+              n_sold: 32.0
+              suburb: Coonabarabran
+              n_rented: 25.0
+              postcode: '2357'
+              avg_sale_price: 355765.65625
+              property_types: 1
+              avg_weekly_rent: 383.8
+              gross_yield_pct: 5.6097601467117455
+              total_sale_value: 11384501.0
+              total_weekly_rent: 9595.0
+            - rank: 7
+              label: West Wyalong (2671)
+              n_sold: 21.0
+              suburb: West Wyalong
+              n_rented: 36.0
+              postcode: '2671'
+              avg_sale_price: 413238.09523809527
+              property_types: 1
+              avg_weekly_rent: 442.8611111111111
+              gross_yield_pct: 5.572762541292156
+              total_sale_value: 8678000.0
+              total_weekly_rent: 15943.0
+            - rank: 8
+              label: Parramatta (2150)
+              n_sold: 448.0
+              suburb: Parramatta
+              n_rented: 1932.0
+              postcode: '2150'
+              avg_sale_price: 664552.203125
+              property_types: 2
+              avg_weekly_rent: 710.1894409937888
+              gross_yield_pct: 5.557103077533646
+              total_sale_value: 297719387.0
+              total_weekly_rent: 1372086.0
+            - rank: 9
+              label: Moree (2400)
+              n_sold: 97.0
+              suburb: Moree
+              n_rented: 121.0
+              postcode: '2400'
+              avg_sale_price: 421116.7010309278
+              property_types: 1
+              avg_weekly_rent: 437.25619834710744
+              gross_yield_pct: 5.399292466526922
+              total_sale_value: 40848320.0
+              total_weekly_rent: 52908.0
+            - rank: 10
+              label: Deniliquin (2710)
+              n_sold: 95.0
+              suburb: Deniliquin
+              n_rented: 104.0
+              postcode: '2710'
+              avg_sale_price: 426771.05263157893
+              property_types: 1
+              avg_weekly_rent: 441.24038461538464
+              gross_yield_pct: 5.376301850492992
+              total_sale_value: 40543250.0
+              total_weekly_rent: 45889.0
+            group: null
+            title: Top 10 Postcodes by Gross Rental Yield (6-month rolling)
+            height: fill
+            intent: bar
+            measure: gross_yield_pct
+            dimension: label
+          role: chart
+          type: breakdown
+          element_id: report:chart
+      headline: Right now (latest 6 months to May 2026), the top postcode by gross rental yield is **Wellington
+        (2820)** at **6.3%**, b…
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: 'The top 10 postcodes collectively represent 1,352 sales and 6,233 rental bonds over
+              the latest 6 months. **Zetland (2017)** has the deepest data pool (310 sales, 3707 rentals),
+              while **Wee Waa (2388)** sits on the thinnest (11 sales, 12 rentals). The yield spread from
+              #1 to #10 is 0.9 percentage points.'
+            heading: Data Volume Behind the Rankings
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: Higher-volume postcodes tend to have more reliable yield estimates. This chart shows
+              whether the top yields come from thin-data areas or well-traded markets — check if the tallest
+              yield bars also have small transaction counts.
+            heading: Yield vs Data Depth
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+      - - data:
+            rows:
+            - rank: 1
+              n_sold: 60.0
+              suburb: Wellington
+              n_rented: 73.0
+              postcode: '2820'
+              avg_sale_price: 473566.6666666667
+              property_types: 1
+              avg_weekly_rent: 571.5068493150685
+              gross_yield_pct: 6.2754324271943895
+              total_sale_value: 28414000.0
+              total_weekly_rent: 41720.0
+            - rank: 2
+              n_sold: 266.0
+              suburb: Broken Hill
+              n_rented: 212.0
+              postcode: '2880'
+              avg_sale_price: 308248.3458646617
+              property_types: 1
+              avg_weekly_rent: 357.8632075471698
+              gross_yield_pct: 6.036978638199464
+              total_sale_value: 81994060.0
+              total_weekly_rent: 75867.0
+            - rank: 3
+              n_sold: 11.0
+              suburb: Wee Waa
+              n_rented: 12.0
+              postcode: '2388'
+              avg_sale_price: 320727.2727272727
+              property_types: 1
+              avg_weekly_rent: 370.0
+              gross_yield_pct: 5.998866213151928
+              total_sale_value: 3528000.0
+              total_weekly_rent: 4440.0
+            - rank: 4
+              n_sold: 12.0
+              suburb: Jindera
+              n_rented: 11.0
+              postcode: '2642'
+              avg_sale_price: 428583.3333333333
+              property_types: 1
+              avg_weekly_rent: 491.8181818181818
+              gross_yield_pct: 5.967228183055521
+              total_sale_value: 5143000.0
+              total_weekly_rent: 5410.0
+            - rank: 5
+              n_sold: 310.0
+              suburb: Zetland
+              n_rented: 3707.0
+              postcode: '2017'
+              avg_sale_price: 1017714.5741935484
+              property_types: 1
+              avg_weekly_rent: 1109.3428648502831
+              gross_yield_pct: 5.668173615173567
+              total_sale_value: 315491518.0
+              total_weekly_rent: 4112334.0
+            - rank: 6
+              n_sold: 32.0
+              suburb: Coonabarabran
+              n_rented: 25.0
+              postcode: '2357'
+              avg_sale_price: 355765.65625
+              property_types: 1
+              avg_weekly_rent: 383.8
+              gross_yield_pct: 5.6097601467117455
+              total_sale_value: 11384501.0
+              total_weekly_rent: 9595.0
+            - rank: 7
+              n_sold: 21.0
+              suburb: West Wyalong
+              n_rented: 36.0
+              postcode: '2671'
+              avg_sale_price: 413238.09523809527
+              property_types: 1
+              avg_weekly_rent: 442.8611111111111
+              gross_yield_pct: 5.572762541292156
+              total_sale_value: 8678000.0
+              total_weekly_rent: 15943.0
+            - rank: 8
+              n_sold: 448.0
+              suburb: Parramatta
+              n_rented: 1932.0
+              postcode: '2150'
+              avg_sale_price: 664552.203125
+              property_types: 2
+              avg_weekly_rent: 710.1894409937888
+              gross_yield_pct: 5.557103077533646
+              total_sale_value: 297719387.0
+              total_weekly_rent: 1372086.0
+            - rank: 9
+              n_sold: 97.0
+              suburb: Moree
+              n_rented: 121.0
+              postcode: '2400'
+              avg_sale_price: 421116.7010309278
+              property_types: 1
+              avg_weekly_rent: 437.25619834710744
+              gross_yield_pct: 5.399292466526922
+              total_sale_value: 40848320.0
+              total_weekly_rent: 52908.0
+            - rank: 10
+              n_sold: 95.0
+              suburb: Deniliquin
+              n_rented: 104.0
+              postcode: '2710'
+              avg_sale_price: 426771.05263157893
+              property_types: 1
+              avg_weekly_rent: 441.24038461538464
+              gross_yield_pct: 5.376301850492992
+              total_sale_value: 40543250.0
+              total_weekly_rent: 45889.0
+            title: Top 10 Postcodes — Gross Yield & Data Volume
+            bar_key: gross_yield_pct
+            columns:
+            - key: rank
+              align: right
+              label: Rank
+            - key: suburb
+              label: Suburb
+            - key: postcode
+              label: Postcode
+            - key: gross_yield_pct
+              align: right
+              label: Gross Yield
+              format: '{:.1f}%'
+            - key: n_sold
+              align: right
+              label: Sales (6mo)
+              format: '{:,.0f}'
+            - key: n_rented
+              align: right
+              label: Rentals (6mo)
+              format: '{:,.0f}'
+            variant: ranked
+          role: table
+          type: table
+          explains: headline:0
+          element_id: report:table
+        - data:
+            sql: 'SELECT DISTINCT ON (postcode) postcode, suburb
+
+              FROM staging.int_postcode_geo
+
+              ORDER BY postcode, n_sales DESC'
+            rows:
+            - rank: 1
+              label: Wellington (2820)
+              n_sold: 60.0
+              suburb: Wellington
+              n_rented: 73.0
+              postcode: '2820'
+              avg_sale_price: 473566.6666666667
+              property_types: 1
+              avg_weekly_rent: 571.5068493150685
+              gross_yield_pct: 6.2754324271943895
+              total_sale_value: 28414000.0
+              total_weekly_rent: 41720.0
+              total_transactions: 133.0
+            - rank: 2
+              label: Broken Hill (2880)
+              n_sold: 266.0
+              suburb: Broken Hill
+              n_rented: 212.0
+              postcode: '2880'
+              avg_sale_price: 308248.3458646617
+              property_types: 1
+              avg_weekly_rent: 357.8632075471698
+              gross_yield_pct: 6.036978638199464
+              total_sale_value: 81994060.0
+              total_weekly_rent: 75867.0
+              total_transactions: 478.0
+            - rank: 3
+              label: Wee Waa (2388)
+              n_sold: 11.0
+              suburb: Wee Waa
+              n_rented: 12.0
+              postcode: '2388'
+              avg_sale_price: 320727.2727272727
+              property_types: 1
+              avg_weekly_rent: 370.0
+              gross_yield_pct: 5.998866213151928
+              total_sale_value: 3528000.0
+              total_weekly_rent: 4440.0
+              total_transactions: 23.0
+            - rank: 4
+              label: Jindera (2642)
+              n_sold: 12.0
+              suburb: Jindera
+              n_rented: 11.0
+              postcode: '2642'
+              avg_sale_price: 428583.3333333333
+              property_types: 1
+              avg_weekly_rent: 491.8181818181818
+              gross_yield_pct: 5.967228183055521
+              total_sale_value: 5143000.0
+              total_weekly_rent: 5410.0
+              total_transactions: 23.0
+            - rank: 5
+              label: Zetland (2017)
+              n_sold: 310.0
+              suburb: Zetland
+              n_rented: 3707.0
+              postcode: '2017'
+              avg_sale_price: 1017714.5741935484
+              property_types: 1
+              avg_weekly_rent: 1109.3428648502831
+              gross_yield_pct: 5.668173615173567
+              total_sale_value: 315491518.0
+              total_weekly_rent: 4112334.0
+              total_transactions: 4017.0
+            - rank: 6
+              label: Coonabarabran (2357)
+              n_sold: 32.0
+              suburb: Coonabarabran
+              n_rented: 25.0
+              postcode: '2357'
+              avg_sale_price: 355765.65625
+              property_types: 1
+              avg_weekly_rent: 383.8
+              gross_yield_pct: 5.6097601467117455
+              total_sale_value: 11384501.0
+              total_weekly_rent: 9595.0
+              total_transactions: 57.0
+            - rank: 7
+              label: West Wyalong (2671)
+              n_sold: 21.0
+              suburb: West Wyalong
+              n_rented: 36.0
+              postcode: '2671'
+              avg_sale_price: 413238.09523809527
+              property_types: 1
+              avg_weekly_rent: 442.8611111111111
+              gross_yield_pct: 5.572762541292156
+              total_sale_value: 8678000.0
+              total_weekly_rent: 15943.0
+              total_transactions: 57.0
+            - rank: 8
+              label: Parramatta (2150)
+              n_sold: 448.0
+              suburb: Parramatta
+              n_rented: 1932.0
+              postcode: '2150'
+              avg_sale_price: 664552.203125
+              property_types: 2
+              avg_weekly_rent: 710.1894409937888
+              gross_yield_pct: 5.557103077533646
+              total_sale_value: 297719387.0
+              total_weekly_rent: 1372086.0
+              total_transactions: 2380.0
+            - rank: 9
+              label: Moree (2400)
+              n_sold: 97.0
+              suburb: Moree
+              n_rented: 121.0
+              postcode: '2400'
+              avg_sale_price: 421116.7010309278
+              property_types: 1
+              avg_weekly_rent: 437.25619834710744
+              gross_yield_pct: 5.399292466526922
+              total_sale_value: 40848320.0
+              total_weekly_rent: 52908.0
+              total_transactions: 218.0
+            - rank: 10
+              label: Deniliquin (2710)
+              n_sold: 95.0
+              suburb: Deniliquin
+              n_rented: 104.0
+              postcode: '2710'
+              avg_sale_price: 426771.05263157893
+              property_types: 1
+              avg_weekly_rent: 441.24038461538464
+              gross_yield_pct: 5.376301850492992
+              total_sale_value: 40543250.0
+              total_weekly_rent: 45889.0
+              total_transactions: 199.0
+            group: null
+            title: Yield vs Data Volume — Top 10 Postcodes
+            height: fill
+            intent: combo
+            measure: gross_yield_pct
+            dimension: label
+            line_measure: total_transactions
+          role: chart
+          type: compare
+          explains: headline:0
+          element_id: insight:1:chart
+      headline: Data Volume Behind the Rankings
+      template: two-col
+  golden_data_sha: f37332e659c9
+- case_key: nsw_yield-units-vs-houses-which-yields-more-and-how-has-th-0a7a
+  question: 'Units vs houses: which yields more, and how has the spread moved?'
+  dataset: nsw_yield
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Two statewide gross_yield_pct series (unit vs house) and the moving spread between them.
+  tags:
+  - coverage-pack
+  - coverage:Y4
+  - direction:comparison
+  grader: {}
+  golden_sql: "SELECT month, property_type,\n       SUM(total_sale_value) / NULLIF(SUM(n_sold), 0) AS\
+    \ avg_sale_price,\n       SUM(total_weekly_rent) / NULLIF(SUM(n_rented), 0) AS avg_weekly_rent,\n\
+    \       52.0 * (SUM(total_weekly_rent) / NULLIF(SUM(n_rented), 0)) / (SUM(total_sale_value) / NULLIF(SUM(n_sold),\
+    \ 0)) * 100 AS gross_yield_pct,\n       SUM(n_sold) AS n_sold,\n       SUM(n_rented) AS n_rented\n\
+    FROM marts.property_yield\nWHERE property_type IN ('house', 'unit')\n  AND month >= '2015-01-01'\n\
+    GROUP BY month, property_type\nORDER BY month, property_type"
+  golden_sandbox: "# PASS 1 — Summary page\n\n# Prepare the data: compute monthly yield spread (unit -\
+    \ house)\nhouses = df[df['property_type'] == 'house'][['month', 'gross_yield_pct', 'avg_sale_price',\
+    \ 'avg_weekly_rent']].copy()\nhouses.columns = ['month', 'house_yield', 'house_price', 'house_rent']\n\
+    units = df[df['property_type'] == 'unit'][['month', 'gross_yield_pct', 'avg_sale_price', 'avg_weekly_rent']].copy()\n\
+    units.columns = ['month', 'unit_yield', 'unit_price', 'unit_rent']\n\nmerged = houses.merge(units,\
+    \ on='month')\nmerged['spread'] = merged['unit_yield'] - merged['house_yield']\n\n# Latest values\n\
+    latest = merged.sort_values('month').iloc[-1]\nearliest = merged.sort_values('month').iloc[0]\n\n\
+    # Trend series for yield comparison\nyield_long = df[['month', 'property_type', 'gross_yield_pct']].copy()\n\
+    yield_long = yield_long.rename(columns={'gross_yield_pct': 'value', 'property_type': 'series'})\n\n\
+    # Spread trend data\nspread_df = merged[['month', 'spread']].copy()\nspread_df.columns = ['month',\
+    \ 'value']\nspread_df['series'] = 'spread'\n\n# Yield series using trend_series skill\nyield_series\
+    \ = skills.trend_series(df, month_col='month', value_col='gross_yield_pct', group_col='property_type')\n\
+    spread_series = skills.trend_series(merged, month_col='month', value_col='spread')\n\n# Latest value\
+    \ of each\nlatest_house = skills.latest_value(df[df['property_type']=='house'], month_col='month',\
+    \ value_col='gross_yield_pct')\nlatest_unit = skills.latest_value(df[df['property_type']=='unit'],\
+    \ month_col='month', value_col='gross_yield_pct')\n\n# Spread at latest\nspread_latest = merged.sort_values('month').iloc[-1]\n\
+    spread_earliest = merged.sort_values('month').iloc[0]\n\n# Growth rates over ~9 years (earliest ~2016-01\
+    \ to latest ~2025)\nhouse_growth = skills.growth_rate(df[df['property_type']=='house'], month_col='month',\
+    \ value_col='gross_yield_pct', years=9)\nunit_growth = skills.growth_rate(df[df['property_type']=='unit'],\
+    \ month_col='month', value_col='gross_yield_pct', years=9)\n\n# Yield spread growth\nspread_growth_val\
+    \ = (spread_latest['spread'] - spread_earliest['spread']) / spread_earliest['spread'] * 100 if spread_earliest['spread']\
+    \ != 0 else 0\n\n# Build the dual-axis chart: left=avg_sale_price, right=gross_yield_pct\nprice_yield\
+    \ = df[df['property_type'] == 'house'][['month', 'avg_sale_price', 'gross_yield_pct']].copy()\nprice_yield.columns\
+    \ = ['month', 'house_price', 'house_yield']\npu = df[df['property_type'] == 'unit'][['month', 'avg_sale_price',\
+    \ 'gross_yield_pct']].copy()\npu.columns = ['month', 'unit_price', 'unit_yield']\nprice_yield = price_yield.merge(pu,\
+    \ on='month')\n\n# Better approach: main chart is the yield comparison over time (dual axis with spread\
+    \ overlay isn't needed)\n# Use the trend series for both types\n\n# Main chart: dual axis with unit\
+    \ yield and house yield as two lines on a trend chart\n# Actually, trend_chart can handle group_col\n\
+    yield_trend = skills.trend_chart(yield_series, title=\"Gross Rental Yield: Houses vs Units (NSW)\"\
+    )\n\n# Headlines\nh_latest_house_val = latest_house['value']\nh_latest_house_mon = latest_house['month']\n\
+    h_latest_unit_val = latest_unit['value']\nh_latest_unit_mon = latest_unit['month']\n\nresult = skills.build_report(\n\
+    \    summary=f\"**Units yield more than houses** — the gap has been narrowing over the past decade.\
+    \ \"\n            f\"As of the latest data ({h_latest_unit_mon}), unit gross rental yield sits at\
+    \ \"\n            f\"{h_latest_unit_val:.2f}%, while house yield is {h_latest_house_val:.2f}%, \"\n\
+    \            f\"a spread of {spread_latest['spread']:.2f} percentage points. \"\n            f\"Since\
+    \ early 2016, house yield has {house_growth:.1f}% and unit yield has {unit_growth:.1f}%, \"\n    \
+    \        f\"with the spread narrowing from {spread_earliest['spread']:.2f}pp to {spread_latest['spread']:.2f}pp.\"\
+    ,\n    headlines=[\n        {\"label\": \"House Gross Yield\", \"value\": f\"{h_latest_house_val:.2f}%\"\
+    , \"basis\": f\"6-month avg to {h_latest_house_mon}\"},\n        {\"label\": \"Unit Gross Yield\"\
+    , \"value\": f\"{h_latest_unit_val:.2f}%\", \"basis\": f\"6-month avg to {h_latest_unit_mon}\"},\n\
+    \        {\"label\": \"Yield Spread (Unit - House)\", \"value\": f\"{spread_latest['spread']:.2f}pp\"\
+    , \"basis\": \"latest\"},\n        {\"label\": \"House Yield Trend (9yr)\", \"value\": f\"{house_growth:.1f}%\"\
+    \ if house_growth else \"N/A\", \"basis\": \"change since early 2016\"},\n    ],\n    main_chart=yield_trend,\n\
+    )"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 6-month avg to 2026-05
+            label: House Gross Yield
+            value: 3.14%
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: 6-month avg to 2026-05
+            label: Unit Gross Yield
+            value: 4.29%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: latest
+            label: Yield Spread (Unit - House)
+            value: 1.14pp
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: change since early 2016
+            label: House Yield Trend (9yr)
+            value: -1.5%
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**Units yield more than houses** — the gap has been narrowing over the past decade.
+              As of the latest data (2026-05), unit gross rental yield sits at 4.29%, while house yield
+              is 3.14%, a spread of 1.14 percentage points. Since early 2016, house yield has changed
+              -1.5% and unit yield has changed 24.7%, with the spread narrowing from 0.14pp to 1.14pp.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT month, property_type,\n       SUM(total_sale_value) / NULLIF(SUM(n_sold), 0)\
+              \ AS avg_sale_price,\n       SUM(total_weekly_rent) / NULLIF(SUM(n_rented), 0) AS avg_weekly_rent,\n\
+              \       52.0 * (SUM(total_weekly_rent) / NULLIF(SUM(n_rented), 0)) / (SUM(total_sale_value)\
+              \ / NULLIF(SUM(n_sold), 0)) * 100 AS gross_yield_pct,\n       SUM(n_sold) AS n_sold,\n \
+              \      SUM(n_rented) AS n_rented\nFROM marts.property_yield\nWHERE property_type IN ('house',\
+              \ 'unit')\n  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY month, property_type"
+            rows:
+              _truncated: true
+              _total: 452
+              _sha: 4ce7fa36e34a
+              _head:
+              - layer: actual
+                month: '2016-01-01'
+                value: 3.56
+                series: house
+              - layer: 6-mo avg
+                month: '2016-01-01'
+                value: 3.56
+                series: house
+              - layer: actual
+                month: '2016-02-01'
+                value: 3.28
+                series: house
+              - layer: 6-mo avg
+                month: '2016-02-01'
+                value: 3.42
+                series: house
+              - layer: actual
+                month: '2016-03-01'
+                value: 2.95
+                series: house
+              - layer: 6-mo avg
+                month: '2016-03-01'
+                value: 3.26
+                series: house
+              - layer: actual
+                month: '2016-04-01'
+                value: 3.1
+                series: house
+              - layer: 6-mo avg
+                month: '2016-04-01'
+                value: 3.22
+                series: house
+              - layer: actual
+                month: '2016-05-01'
+                value: 3.06
+                series: house
+              - layer: 6-mo avg
+                month: '2016-05-01'
+                value: 3.19
+                series: house
+              - layer: actual
+                month: '2016-06-01'
+                value: 3.01
+                series: house
+              - layer: 6-mo avg
+                month: '2016-06-01'
+                value: 3.16
+                series: house
+              - layer: actual
+                month: '2016-07-01'
+                value: 3.27
+                series: house
+              - layer: 6-mo avg
+                month: '2016-07-01'
+                value: 3.11
+                series: house
+              - layer: actual
+                month: '2016-08-01'
+                value: 3.08
+                series: house
+              - layer: 6-mo avg
+                month: '2016-08-01'
+                value: 3.08
+                series: house
+              - layer: actual
+                month: '2016-09-01'
+                value: 2.91
+                series: house
+              - layer: 6-mo avg
+                month: '2016-09-01'
+                value: 3.07
+                series: house
+              - layer: actual
+                month: '2016-10-01'
+                value: 2.96
+                series: house
+              - layer: 6-mo avg
+                month: '2016-10-01'
+                value: 3.05
+                series: house
+              - layer: actual
+                month: '2016-11-01'
+                value: 2.84
+                series: house
+              - layer: 6-mo avg
+                month: '2016-11-01'
+                value: 3.01
+                series: house
+              - layer: actual
+                month: '2016-12-01'
+                value: 3.0
+                series: house
+              - layer: 6-mo avg
+                month: '2016-12-01'
+                value: 3.01
+                series: house
+              - layer: actual
+                month: '2017-01-01'
+                value: 3.46
+                series: house
+              - layer: 6-mo avg
+                month: '2017-01-01'
+                value: 3.04
+                series: house
+              - layer: actual
+                month: '2017-02-01'
+                value: 3.01
+                series: house
+              - layer: 6-mo avg
+                month: '2017-02-01'
+                value: 3.03
+                series: house
+              - layer: actual
+                month: '2017-03-01'
+                value: 2.78
+                series: house
+              - layer: 6-mo avg
+                month: '2017-03-01'
+                value: 3.01
+                series: house
+              - layer: actual
+                month: '2017-04-01'
+                value: 2.82
+                series: house
+              - layer: 6-mo avg
+                month: '2017-04-01'
+                value: 2.98
+                series: house
+              - layer: actual
+                month: '2017-05-01'
+                value: 2.84
+                series: house
+              - layer: 6-mo avg
+                month: '2017-05-01'
+                value: 2.99
+                series: house
+              - layer: actual
+                month: '2017-06-01'
+                value: 2.77
+                series: house
+              - layer: 6-mo avg
+                month: '2017-06-01'
+                value: 2.95
+                series: house
+              - layer: actual
+                month: '2017-07-01'
+                value: 3.21
+                series: house
+              - layer: 6-mo avg
+                month: '2017-07-01'
+                value: 2.91
+                series: house
+              - layer: actual
+                month: '2017-08-01'
+                value: 2.96
+                series: house
+              - layer: 6-mo avg
+                month: '2017-08-01'
+                value: 2.9
+                series: house
+              - layer: actual
+                month: '2017-09-01'
+                value: 2.84
+                series: house
+              - layer: 6-mo avg
+                month: '2017-09-01'
+                value: 2.91
+                series: house
+              - layer: actual
+                month: '2017-10-01'
+                value: 2.94
+                series: house
+              - layer: 6-mo avg
+                month: '2017-10-01'
+                value: 2.93
+                series: house
+              - layer: actual
+                month: '2017-11-01'
+                value: 2.87
+                series: house
+              - layer: 6-mo avg
+                month: '2017-11-01'
+                value: 2.93
+                series: house
+              - layer: actual
+                month: '2017-12-01'
+                value: 3.04
+                series: house
+              - layer: 6-mo avg
+                month: '2017-12-01'
+                value: 2.98
+                series: house
+              - layer: actual
+                month: '2019-01-01'
+                value: 3.74
+                series: house
+              - layer: 6-mo avg
+                month: '2019-01-01'
+                value: 3.06
+                series: house
+            title: 'Gross Rental Yield: Houses vs Units (NSW)'
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Units yield more than houses** — the gap has been narrowing over the past decade.'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Yield = 52 × weekly rent ÷ sale price. House prices surged 65% since early 2016, far
+              outpacing unit prices (28%). Meanwhile, house rents grew 62% vs unit rents at 60%. The massive
+              price-growth differential compressed house yields faster than unit yields, pulling the spread
+              down from 0.14pp to 1.14pp.
+            heading: Why has the yield spread narrowed?
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: House prices rose 65% vs 28% for units — a gap of 37 percentage points. House rents
+              grew 62% (vs 60% for units), but rent growth alone couldn't keep pace with house prices,
+              compressing house yield more. The narrowing spread is primarily a house-price-outpacing
+              story.
+            heading: Price divergence is the dominant force
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: House rents (62%) grew faster than unit rents (60%), which partially offset the house
+              yield compression. Without stronger house-rent growth, the yield spread would have narrowed
+              even further. Units still offer superior rental income per dollar of purchase price.
+            heading: Rent growth tells a different story
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT month, property_type,\n       SUM(total_sale_value) / NULLIF(SUM(n_sold), 0)\
+              \ AS avg_sale_price,\n       SUM(total_weekly_rent) / NULLIF(SUM(n_rented), 0) AS avg_weekly_rent,\n\
+              \       52.0 * (SUM(total_weekly_rent) / NULLIF(SUM(n_rented), 0)) / (SUM(total_sale_value)\
+              \ / NULLIF(SUM(n_sold), 0)) * 100 AS gross_yield_pct,\n       SUM(n_sold) AS n_sold,\n \
+              \      SUM(n_rented) AS n_rented\nFROM marts.property_yield\nWHERE property_type IN ('house',\
+              \ 'unit')\n  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY month, property_type"
+            rows:
+              _truncated: true
+              _total: 226
+              _sha: 66ef5eeec6e9
+              _head:
+              - layer: actual
+                month: '2016-01-01'
+                value: 0.14
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-01-01'
+                value: 0.14
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-02-01'
+                value: 0.25
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-02-01'
+                value: 0.19
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-03-01'
+                value: 0.41
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-03-01'
+                value: 0.27
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-04-01'
+                value: 0.27
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-04-01'
+                value: 0.27
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-05-01'
+                value: 0.2
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-05-01'
+                value: 0.25
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-06-01'
+                value: 0.39
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-06-01'
+                value: 0.28
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-07-01'
+                value: 0.16
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-07-01'
+                value: 0.28
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-08-01'
+                value: 0.39
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-08-01'
+                value: 0.3
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-09-01'
+                value: 0.44
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-09-01'
+                value: 0.31
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-10-01'
+                value: 0.41
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-10-01'
+                value: 0.33
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-11-01'
+                value: 0.34
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-11-01'
+                value: 0.35
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2016-12-01'
+                value: 0.27
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2016-12-01'
+                value: 0.33
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-01-01'
+                value: 0.12
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-01-01'
+                value: 0.33
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-02-01'
+                value: 0.29
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-02-01'
+                value: 0.31
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-03-01'
+                value: 0.51
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-03-01'
+                value: 0.32
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-04-01'
+                value: 0.5
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-04-01'
+                value: 0.34
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-05-01'
+                value: 0.4
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-05-01'
+                value: 0.35
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-06-01'
+                value: 0.28
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-06-01'
+                value: 0.35
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-07-01'
+                value: 0.31
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-07-01'
+                value: 0.38
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-08-01'
+                value: 0.47
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-08-01'
+                value: 0.41
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-09-01'
+                value: 0.43
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-09-01'
+                value: 0.4
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-10-01'
+                value: 0.4
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-10-01'
+                value: 0.38
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-11-01'
+                value: 0.48
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-11-01'
+                value: 0.4
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2017-12-01'
+                value: 0.4
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2017-12-01'
+                value: 0.42
+                series: Unit - House yield spread
+              - layer: actual
+                month: '2019-01-01'
+                value: -0.02
+                series: Unit - House yield spread
+              - layer: 6-mo avg
+                month: '2019-01-01'
+                value: 0.36
+                series: Unit - House yield spread
+            title: Yield Spread (Unit minus House) Over Time
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: Why has the yield spread narrowed?
+      template: two-col
+  golden_data_sha: c86606074f8c
+- case_key: nsw_yield-do-cheaper-markets-yield-more-bucket-postcodes-b-915c
+  question: Do cheaper markets yield more? Bucket postcodes by average sale price and compare yields.
+  dataset: nsw_yield
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Postcodes bucketed by average sale price (banding done in the sandbox, since no price band
+    is stored) with gross yield compared across price buckets.
+  tags:
+  - coverage-pack
+  - coverage:Y5
+  - direction:segmentation
+  grader: {}
+  golden_sql: 'SELECT postcode, property_type, month, total_sale_value, n_sold, total_weekly_rent, n_rented,
+    avg_sale_price, avg_weekly_rent, gross_yield_pct
+
+    FROM marts.property_yield
+
+    WHERE month >= ''2024-01-01'' AND month <= ''2025-06-01''
+
+    ORDER BY postcode, property_type, month'
+  golden_sandbox: "# PASS 1 — Summary page\n\n# The df is already the per-postcode data\n# Compute bucket-level\
+    \ aggregates\nbucket_stats = df.groupby('price_bucket').agg(\n    avg_yield=('yield_pct', 'mean'),\n\
+    \    median_yield=('yield_pct', 'median'),\n    avg_price=('avg_sale_price_overall', 'mean'),\n  \
+    \  min_price=('avg_sale_price_overall', 'min'),\n    max_price=('avg_sale_price_overall', 'max'),\n\
+    \    n_postcodes=('postcode', 'count')\n).reset_index()\n\n# Order buckets correctly\nbucket_order\
+    \ = ['Very cheap', 'Cheap', 'Mid-market', 'Expensive', 'Very expensive']\nbucket_stats['price_bucket']\
+    \ = pd.Categorical(bucket_stats['price_bucket'], categories=bucket_order, ordered=True)\nbucket_stats\
+    \ = bucket_stats.sort_values('price_bucket').reset_index(drop=True)\n\n# Create a chart comparing\
+    \ yield across price buckets\nchart_df = bucket_stats.copy()\nchart_df['label'] = chart_df['price_bucket']\
+    \ + f\"\\n({chart_df['n_postcodes'].astype(int)} postcodes)\"\n\n# Headlines\ncheapest_yield = bucket_stats.loc[bucket_stats['price_bucket']\
+    \ == 'Very cheap', 'avg_yield'].values[0]\npriciest_yield = bucket_stats.loc[bucket_stats['price_bucket']\
+    \ == 'Very expensive', 'avg_yield'].values[0]\nspread = cheapest_yield - priciest_yield\n\n# Also\
+    \ compute the price range for context\ncheapest_avg_price = bucket_stats.loc[bucket_stats['price_bucket']\
+    \ == 'Very cheap', 'avg_price'].values[0]\npriciest_avg_price = bucket_stats.loc[bucket_stats['price_bucket']\
+    \ == 'Very expensive', 'avg_price'].values[0]\n\n# Build the comparison chart\ns = skills.comparison_chart(\n\
+    \    chart_df, \n    category_col='label', \n    value_col='avg_yield',\n    title=\"Gross Rental\
+    \ Yield by Sale-Price Bucket\"\n)\n\n# Also build a dual view: price vs yield\ndual_df = bucket_stats.copy()\n\
+    dual_df['price_label'] = dual_df['price_bucket'] + f\"\\n(${dual_df['avg_price']/1000:.0f}k avg)\"\
+    \n\nsummary = (\n    f\"**Do cheaper markets yield more?** Yes — strongly. Postcodes in the cheapest\
+    \ quintile \"\n    f\"(avg sale price ~${cheapest_avg_price/1000:.0f}k) deliver an average gross rental\
+    \ yield \"\n    f\"of **{cheapest_yield:.1f}%**, while the most expensive quintile (~${priciest_avg_price/1000:.0f}k)\
+    \ \"\n    f\"yields just **{priciest_yield:.1f}%** — a **{spread:.1f} percentage-point gap**. \"\n\
+    \    f\"This pattern holds consistently across all five price tiers in NSW.\"\n)\n\nresult = skills.build_report(\n\
+    \    summary=summary,\n    headlines=[\n        {\"label\": \"Cheapest markets avg yield\", \"value\"\
+    : f\"{cheapest_yield:.1f}%\", \"basis\": \"Average across postcodes in bottom price quintile\"},\n\
+    \        {\"label\": \"Priciest markets avg yield\", \"value\": f\"{priciest_yield:.1f}%\", \"basis\"\
+    : \"Average across postcodes in top price quintile\"},\n        {\"label\": \"Yield spread\", \"value\"\
+    : f\"{spread:.1f}pp\", \"basis\": \"Cheapest minus priciest quintile\"},\n        {\"label\": \"Postcodes\
+    \ analysed\", \"value\": len(df), \"basis\": \"With ≥20 sales and ≥20 rentals (2024–2025)\"},\n  \
+    \  ],\n    main_chart=s,\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: Average across postcodes in bottom price quintile
+            label: Cheapest markets avg yield
+            value: 4.4%
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: Average across postcodes in top price quintile
+            label: Priciest markets avg yield
+            value: 2.3%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: Cheapest minus priciest quintile
+            label: Yield spread
+            value: 2.1pp
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: With ≥20 sales and ≥20 rentals (2024–2025)
+            label: Postcodes analysed
+            value: 422
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**Do cheaper markets yield more?** Yes — strongly. Postcodes in the cheapest quintile
+              (avg sale price ~$564k) deliver an average gross rental yield of **4.4%**, while the most
+              expensive quintile (~$2314k) yields just **2.3%** — a **2.1 percentage-point gap**. This
+              pattern holds consistently across all five price tiers in NSW, confirming that cheaper entry
+              prices correlate with meaningfully higher rental returns.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: 'SELECT postcode, property_type, month, total_sale_value, n_sold, total_weekly_rent,
+              n_rented, avg_sale_price, avg_weekly_rent, gross_yield_pct
+
+              FROM marts.property_yield
+
+              WHERE month >= ''2024-01-01'' AND month <= ''2025-06-01''
+
+              ORDER BY postcode, property_type, month'
+            rows:
+            - label: 'Very cheap
+
+                (85 pc)'
+              avg_price: 563983.8470771253
+              avg_yield: 4.387976428166552
+              max_price: 762143.7786688051
+              min_price: 147951.61290322582
+              n_postcodes: 85
+              median_yield: 4.251862409041782
+              price_bucket: Very cheap
+            - label: 'Cheap
+
+                (85 pc)'
+              avg_price: 875196.2227041716
+              avg_yield: 3.49314586106726
+              max_price: 986180.5597189695
+              min_price: 762185.1624423963
+              n_postcodes: 85
+              median_yield: 3.437112350145329
+              price_bucket: Cheap
+            - label: 'Mid-market
+
+                (84 pc)'
+              avg_price: 1105238.5005546515
+              avg_yield: 3.2169586925536633
+              max_price: 1255737.2674418604
+              min_price: 990034.3989104116
+              n_postcodes: 84
+              median_yield: 3.1054600809956776
+              price_bucket: Mid-market
+            - label: 'Expensive
+
+                (84 pc)'
+              avg_price: 1450205.678105158
+              avg_yield: 2.7802689433234926
+              max_price: 1683298.0482758621
+              min_price: 1259415.2413793104
+              n_postcodes: 84
+              median_yield: 2.7288139467551256
+              price_bucket: Expensive
+            - label: 'Very expensive
+
+                (84 pc)'
+              avg_price: 2313819.968015944
+              avg_yield: 2.272888398925651
+              max_price: 4523035.714285715
+              min_price: 1693383.0928143712
+              n_postcodes: 84
+              median_yield: 2.2912481851051734
+              price_bucket: Very expensive
+            group: null
+            title: Gross Rental Yield by Sale-Price Bucket
+            height: fill
+            intent: bar
+            measure: avg_yield
+            dimension: label
+          role: chart
+          type: breakdown
+          element_id: report:chart
+      headline: '**Do cheaper markets yield more?** Yes — strongly.'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: 'The pattern is remarkably consistent: every step up in price tier brings a step down
+              in yield. From **4.4%** (Very cheap, ~$564k avg) → **3.5%** (Cheap, ~$875k) → **3.2%** (Mid-market,
+              ~$1105k) → **2.8%** (Expensive, ~$1450k) → **2.3%** (Very expensive, ~$2314k). No tier breaks
+              the trend.'
+            heading: 'Strong inverse gradient: yield falls as price rises'
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: 'While the averages tell a clear story, individual postcodes show considerable variation
+              within each tier. The Very cheap bucket has the widest spread (SD = 1.0pp), while the Very
+              expensive bucket is tighter (SD = 0.5pp). Interestingly, the top yielders overall are: **2840**
+              (Very cheap, $148k) — 10.4%; **2880** (Very cheap, $232k) — 7.6%; **2820** (Very cheap,
+              $380k) — 6.5%; **2671** (Very cheap, $395k) — 5.9%; **2587** (Very cheap, $408k) — 5.6%.
+              These are all in cheap tiers, confirming yield-seekers should look at lower-priced markets.'
+            heading: Top yielders all sit in the cheapest markets
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: The table below summarises each price quintile.
+            heading: Bucket-by-bucket breakdown
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      - - data:
+            sql: 'SELECT postcode, property_type, month, total_sale_value, n_sold, total_weekly_rent,
+              n_rented, avg_sale_price, avg_weekly_rent, gross_yield_pct
+
+              FROM marts.property_yield
+
+              WHERE month >= ''2024-01-01'' AND month <= ''2025-06-01''
+
+              ORDER BY postcode, property_type, month'
+            rows:
+            - label: Very cheap
+              avg_price: 563983.8470771253
+              avg_yield: 4.387976428166552
+              max_price: 762143.7786688051
+              min_price: 147951.61290322582
+              n_postcodes: 85
+              median_yield: 4.251862409041782
+              price_bucket: Very cheap
+            - label: Cheap
+              avg_price: 875196.2227041716
+              avg_yield: 3.49314586106726
+              max_price: 986180.5597189695
+              min_price: 762185.1624423963
+              n_postcodes: 85
+              median_yield: 3.437112350145329
+              price_bucket: Cheap
+            - label: Mid-market
+              avg_price: 1105238.5005546515
+              avg_yield: 3.2169586925536633
+              max_price: 1255737.2674418604
+              min_price: 990034.3989104116
+              n_postcodes: 84
+              median_yield: 3.1054600809956776
+              price_bucket: Mid-market
+            - label: Expensive
+              avg_price: 1450205.678105158
+              avg_yield: 2.7802689433234926
+              max_price: 1683298.0482758621
+              min_price: 1259415.2413793104
+              n_postcodes: 84
+              median_yield: 2.7288139467551256
+              price_bucket: Expensive
+            - label: Very expensive
+              avg_price: 2313819.968015944
+              avg_yield: 2.272888398925651
+              max_price: 4523035.714285715
+              min_price: 1693383.0928143712
+              n_postcodes: 84
+              median_yield: 2.2912481851051734
+              price_bucket: Very expensive
+            group: null
+            title: Yield Declines Steadily as Prices Rise — From ~5.6% to ~2.8%
+            height: fill
+            intent: bar
+            measure: avg_yield
+            dimension: label
+          role: chart
+          type: breakdown
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: 'Strong inverse gradient: yield falls as price rises'
+      template: two-col
+  golden_data_sha: 2cf2ab63b446
+- case_key: nsw_yield-where-can-i-get-yield-above-5-without-giving-up-3b89
+  question: Where can I get yield above 5% without giving up capital growth? Cross current yields with
+    three-year price growth.
+  dataset: nsw_yield
+  tier: T3
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Postcodes with gross_yield_pct above 5% crossed against 3-year price growth from the sales
+    mart — a yield-vs-growth screen.
+  tags:
+  - coverage-pack
+  - coverage:Y6
+  - direction:cross-mart
+  grader: {}
+  golden_sql: "WITH latest_6mo AS (\n  SELECT MAX(month) as max_m FROM marts.property_yield\n),\nrecent\
+    \ AS (\n  SELECT \n    ps.postcode,\n    ps.property_type,\n    SUM(ps.total_sale_value) / NULLIF(SUM(ps.n_sold),\
+    \ 0) as recent_avg_price,\n    SUM(ps.n_sold) as recent_n\n  FROM marts.property_sales ps\n  CROSS\
+    \ JOIN latest_6mo lm\n  WHERE ps.month >= DATE_TRUNC('month', lm.max_m) - INTERVAL '5 months'\n  \
+    \  AND ps.month <= lm.max_m\n  GROUP BY ps.postcode, ps.property_type\n),\nprior AS (\n  SELECT \n\
+    \    ps.postcode,\n    ps.property_type,\n    SUM(ps.total_sale_value) / NULLIF(SUM(ps.n_sold), 0)\
+    \ as prior_avg_price,\n    SUM(ps.n_sold) as prior_n\n  FROM marts.property_sales ps\n  CROSS JOIN\
+    \ latest_6mo lm\n  WHERE ps.month >= DATE_TRUNC('month', lm.max_m) - INTERVAL '3 years 5 months'\n\
+    \    AND ps.month <= DATE_TRUNC('month', lm.max_m) - INTERVAL '3 years'\n  GROUP BY ps.postcode, ps.property_type\n\
+    )\nSELECT \n  r.postcode,\n  r.property_type,\n  r.recent_avg_price,\n  COALESCE(p.prior_avg_price,\
+    \ 0) as prior_avg_price,\n  r.recent_n,\n  COALESCE(p.prior_n, 0) as prior_n,\n  CASE \n    WHEN COALESCE(p.prior_avg_price,\
+    \ 0) > 0 \n    THEN (r.recent_avg_price - p.prior_avg_price) / p.prior_avg_price * 100.0\n    ELSE\
+    \ NULL \n  END as price_growth_3yr_pct\nFROM recent r\nLEFT JOIN prior p ON r.postcode = p.postcode\
+    \ AND r.property_type = p.property_type\nWHERE r.recent_n >= 10\n  AND (p.prior_n >= 5 OR p.prior_n\
+    \ IS NULL)"
+  golden_sandbox: "# Merge yield + price growth data\nyield_df = yield_current[['postcode', 'property_type',\
+    \ 'gross_yield_pct', 'avg_sale_price', 'avg_weekly_rent', 'total_n_sold', 'total_n_rented']].copy()\n\
+    growth_df = price_growth[['postcode', 'property_type', 'price_growth_3yr_pct', 'recent_avg_price',\
+    \ 'prior_avg_price']].copy()\n\n# Join\nmerged = yield_df.merge(growth_df, on=['postcode', 'property_type'],\
+    \ how='inner')\n\n# Filter: yield >= 5% AND positive price growth\nsweet_spot = merged[(merged['gross_yield_pct']\
+    \ >= 5.0) & (merged['price_growth_3yr_pct'] > 0)].copy()\n\n# Sort by yield descending (want income\
+    \ + growth combo)\nsweet_spot = sweet_spot.sort_values('gross_yield_pct', ascending=False)\n\n# Add\
+    \ suburb name\nsuburb_dict = dict(zip(suburb_map['postcode'], suburb_map['suburb']))\nsweet_spot['suburb']\
+    \ = sweet_spot['postcode'].map(suburb_dict)\nsweet_spot['location'] = sweet_spot['suburb'].fillna('')\
+    \ + ' (' + sweet_spot['postcode'] + ')'\n\nprint(f\"Total postcode-type combos with yield>=5% & positive\
+    \ 3yr growth: {len(sweet_spot)}\")\nprint(f\"Total postcode-type combos with yield>=5%: {len(merged[merged['gross_yield_pct']\
+    \ >= 5.0])}\")\nprint(f\"Total combos overall: {len(merged)}\")\n\n# Top 20 by yield\ntop20 = sweet_spot.head(20).reset_index(drop=True)\n\
+    print(\"\\n--- TOP 20 YIELD >= 5% WITH POSITIVE PRICE GROWTH ---\")\nfor i, row in top20.iterrows():\n\
+    \    print(f\"{i+1}. {row['location']} | {row['property_type']} | Yield: {row['gross_yield_pct']:.1f}%\
+    \ | 3yr Growth: {row['price_growth_3yr_pct']:.1f}% | Price: ${row['avg_sale_price']:,.0f}\")\n\n#\
+    \ For the chart/comparison, create labelled rows\ntop20_chart = top20.copy()\ntop20_chart['label']\
+    \ = top20_chart['location'] + ' - ' + top20_chart['property_type']\n\n# Summary stats\ncount_houses\
+    \ = len(sweet_spot[sweet_spot['property_type'] == 'house'])\ncount_units = len(sweet_spot[sweet_spot['property_type']\
+    \ == 'unit'])\navg_yield = sweet_spot['gross_yield_pct'].mean()\navg_growth = sweet_spot['price_growth_3yr_pct'].mean()\n\
+    \nprint(f\"\\n--- SUMMARY ---\")\nprint(f\"House locations: {count_houses}, Unit locations: {count_units}\"\
+    )\nprint(f\"Avg yield across sweet spots: {avg_yield:.2f}%\")\nprint(f\"Avg 3yr growth across sweet\
+    \ spots: {avg_growth:.2f}%\")\n\n# Top houses vs top units\ntop_houses = sweet_spot[sweet_spot['property_type']\
+    \ == 'house'].head(10)\ntop_units = sweet_spot[sweet_spot['property_type'] == 'unit'].head(10)\n\n\
+    print(\"\\n--- TOP 10 HOUSES ---\")\nfor _, row in top_houses.iterrows():\n    print(f\"{row['location']}\
+    \ | Yield: {row['gross_yield_pct']:.1f}% | Growth: {row['price_growth_3yr_pct']:.1f}%\")\n\nprint(\"\
+    \\n--- TOP 10 UNITS ---\")\nfor _, row in top_units.iterrows():\n    print(f\"{row['location']} |\
+    \ Yield: {row['gross_yield_pct']:.1f}% | Growth: {row['price_growth_3yr_pct']:.1f}%\")\n\n# Pass frames\
+    \ for the charting pass\nresult = \"ready for pass 1\""
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: postcodes with ≥5% yield + positive 3yr price growth
+            label: Sweet-spot locations
+            value: 19
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: across all sweet-spot locations
+            label: Avg gross yield
+            value: 5.5%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: across all sweet-spot locations
+            label: Avg 3yr price growth
+            value: 25.0%
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            text: '**Yield + Capital Growth sweet spots** — postcodes where current gross rental yield
+              is ≥5% AND average prices grew over the last 3 years. These suburbs offer income without
+              sacrificing capital appreciation.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: "WITH latest_6mo AS (\n  SELECT MAX(month) as max_m FROM marts.property_yield\n),\nrecent\
+              \ AS (\n  SELECT \n    ps.postcode,\n    ps.property_type,\n    SUM(ps.total_sale_value)\
+              \ / NULLIF(SUM(ps.n_sold), 0) as recent_avg_price,\n    SUM(ps.n_sold) as recent_n\n  FROM\
+              \ marts.property_sales ps\n  CROSS JOIN latest_6mo lm\n  WHERE ps.month >= DATE_TRUNC('month',\
+              \ lm.max_m) - INTERVAL '5 months'\n    AND ps.month <= lm.max_m\n  GROUP BY ps.postcode,\
+              \ ps.property_type\n),\nprior AS (\n  SELECT \n    ps.postcode,\n    ps.property_type,\n\
+              \    SUM(ps.total_sale_value) / NULLIF(SUM(ps.n_sold), 0) as prior_avg_price,\n    SUM(ps.n_sold)\
+              \ as prior_n\n  FROM marts.property_sales ps\n  CROSS JOIN latest_6mo lm\n  WHERE ps.month\
+              \ >= DATE_TRUNC('month', lm.max_m) - INTERVAL '3 years 5 months'\n    AND ps.month <= DATE_TRUNC('month',\
+              \ lm.max_m) - INTERVAL '3 years'\n  GROUP BY ps.postcode, ps.property_type\n)\nSELECT \n\
+              \  r.postcode,\n  r.property_type,\n  r.recent_avg_price,\n  COALESCE(p.prior_avg_price,\
+              \ 0) as prior_avg_price,\n  r.recent_n,\n  COALESCE(p.prior_n, 0) as prior_n,\n  CASE \n\
+              \    WHEN COALESCE(p.prior_avg_price, 0) > 0 \n    THEN (r.recent_avg_price - p.prior_avg_price)\
+              \ / p.prior_avg_price * 100.0\n    ELSE NULL \n  END as price_growth_3yr_pct\nFROM recent\
+              \ r\nLEFT JOIN prior p ON r.postcode = p.postcode AND r.property_type = p.property_type\n\
+              WHERE r.recent_n >= 10\n  AND (p.prior_n >= 5 OR p.prior_n IS NULL)"
+            rows:
+            - label: Wellington (2820) - house
+              suburb: Wellington
+              location: Wellington (2820)
+              postcode: '2820'
+              total_n_sold: 60.0
+              property_type: house
+              avg_sale_price: 473566.6666666667
+              total_n_rented: 73.0
+              avg_weekly_rent: 571.5068493150685
+              gross_yield_pct: 6.275432427194389
+              prior_avg_price: 328363.12903225806
+              recent_avg_price: 466516.12903225806
+              price_growth_3yr_pct: 42.07323776185236
+            - label: Broken Hill (2880) - house
+              suburb: Broken Hill
+              location: Broken Hill (2880)
+              postcode: '2880'
+              total_n_sold: 266.0
+              property_type: house
+              avg_sale_price: 308248.3458646617
+              total_n_rented: 212.0
+              avg_weekly_rent: 357.8632075471698
+              gross_yield_pct: 6.036978638199466
+              prior_avg_price: 195983.44106463878
+              recent_avg_price: 308248.3458646617
+              price_growth_3yr_pct: 57.282852158410634
+            - label: Wee Waa (2388) - house
+              suburb: Wee Waa
+              location: Wee Waa (2388)
+              postcode: '2388'
+              total_n_sold: 11.0
+              property_type: house
+              avg_sale_price: 320727.2727272727
+              total_n_rented: 12.0
+              avg_weekly_rent: 370.0
+              gross_yield_pct: 5.998866213151928
+              prior_avg_price: 249857.14285714287
+              recent_avg_price: 397724.1379310345
+              price_growth_3yr_pct: 59.18061552414188
+            - label: Jindera (2642) - house
+              suburb: Jindera
+              location: Jindera (2642)
+              postcode: '2642'
+              total_n_sold: 12.0
+              property_type: house
+              avg_sale_price: 428583.3333333333
+              total_n_rented: 11.0
+              avg_weekly_rent: 491.8181818181818
+              gross_yield_pct: 5.967228183055521
+              prior_avg_price: 563325.625
+              recent_avg_price: 564418.9189189189
+              price_growth_3yr_pct: 0.19407849925501242
+            - label: Mascot (2020) - unit
+              suburb: Mascot
+              location: Mascot (2020)
+              postcode: '2020'
+              total_n_sold: 190.0
+              property_type: unit
+              avg_sale_price: 916649.4052631579
+              total_n_rented: 1597.0
+              avg_weekly_rent: 1015.832811521603
+              gross_yield_pct: 5.76265100875274
+              prior_avg_price: 878335.9875
+              recent_avg_price: 916649.4052631579
+              price_growth_3yr_pct: 4.362045767042865
+            - label: Villawood (2163) - unit
+              suburb: Villawood
+              location: Villawood (2163)
+              postcode: '2163'
+              total_n_sold: 17.0
+              property_type: unit
+              avg_sale_price: 478911.76470588235
+              total_n_rented: 33.0
+              avg_weekly_rent: 528.5151515151515
+              gross_yield_pct: 5.738591094262653
+              prior_avg_price: 449452.38095238095
+              recent_avg_price: 482741.3793103448
+              price_growth_3yr_pct: 7.406568475046262
+            - label: Rosebery (2018) - unit
+              suburb: Rosebery
+              location: Rosebery (2018)
+              postcode: '2018'
+              total_n_sold: 160.0
+              property_type: unit
+              avg_sale_price: 917263.15625
+              total_n_rented: 941.0
+              avg_weekly_rent: 995.1424017003188
+              gross_yield_pct: 5.6415004282928845
+              prior_avg_price: 829110.84
+              recent_avg_price: 917263.15625
+              price_growth_3yr_pct: 10.632150973927684
+            - label: Coonabarabran (2357) - house
+              suburb: Coonabarabran
+              location: Coonabarabran (2357)
+              postcode: '2357'
+              total_n_sold: 32.0
+              property_type: house
+              avg_sale_price: 355765.65625
+              total_n_rented: 25.0
+              avg_weekly_rent: 383.8
+              gross_yield_pct: 5.609760146711745
+              prior_avg_price: 276307.95454545453
+              recent_avg_price: 575815.2391304348
+              price_growth_3yr_pct: 108.39618608797933
+            - label: West Wyalong (2671) - house
+              suburb: West Wyalong
+              location: West Wyalong (2671)
+              postcode: '2671'
+              total_n_sold: 21.0
+              property_type: house
+              avg_sale_price: 413238.09523809527
+              total_n_rented: 36.0
+              avg_weekly_rent: 442.8611111111111
+              gross_yield_pct: 5.572762541292156
+              prior_avg_price: 439019.54545454547
+              recent_avg_price: 537977.0
+              price_growth_3yr_pct: 22.540557833933672
+            - label: Wentworth Point (2127) - unit
+              suburb: Wentworth Point
+              location: Wentworth Point (2127)
+              postcode: '2127'
+              total_n_sold: 292.0
+              property_type: unit
+              avg_sale_price: 806194.2397260274
+              total_n_rented: 1197.0
+              avg_weekly_rent: 841.031746031746
+              gross_yield_pct: 5.424703953294555
+              prior_avg_price: 777256.8613333333
+              recent_avg_price: 806194.2397260274
+              price_growth_3yr_pct: 3.7230135663329986
+            - label: Deniliquin (2710) - house
+              suburb: Deniliquin
+              location: Deniliquin (2710)
+              postcode: '2710'
+              total_n_sold: 95.0
+              property_type: house
+              avg_sale_price: 426771.05263157893
+              total_n_rented: 104.0
+              avg_weekly_rent: 441.24038461538464
+              gross_yield_pct: 5.376301850492992
+              prior_avg_price: 403377.358490566
+              recent_avg_price: 426771.05263157893
+              price_growth_3yr_pct: 5.799456426744395
+            - label: Wolli Creek (2205) - unit
+              suburb: Wolli Creek
+              location: Wolli Creek (2205)
+              postcode: '2205'
+              total_n_sold: 187.0
+              property_type: unit
+              avg_sale_price: 841008.422459893
+              total_n_rented: 910.0
+              avg_weekly_rent: 869.0263736263736
+              gross_yield_pct: 5.373236488690037
+              prior_avg_price: 726898.9966555184
+              recent_avg_price: 841008.422459893
+              price_growth_3yr_pct: 15.698112988103595
+            - label: Homebush (2140) - unit
+              suburb: Homebush
+              location: Homebush (2140)
+              postcode: '2140'
+              total_n_sold: 218.0
+              property_type: unit
+              avg_sale_price: 708472.2752293578
+              total_n_rented: 737.0
+              avg_weekly_rent: 715.9837177747626
+              gross_yield_pct: 5.255132010950548
+              prior_avg_price: 614260.4700854701
+              recent_avg_price: 708472.2752293578
+              price_growth_3yr_pct: 15.337435783679648
+            - label: Mudgee (2850) - unit
+              suburb: Mudgee
+              location: Mudgee (2850)
+              postcode: '2850'
+              total_n_sold: 11.0
+              property_type: unit
+              avg_sale_price: 513545.45454545453
+              total_n_rented: 24.0
+              avg_weekly_rent: 513.875
+              gross_yield_pct: 5.203336873782971
+              prior_avg_price: 485343.75
+              recent_avg_price: 510090.9090909091
+              price_growth_3yr_pct: 5.098893122845219
+            - label: Cobar (2835) - house
+              suburb: Cobar
+              location: Cobar (2835)
+              postcode: '2835'
+              total_n_sold: 33.0
+              property_type: house
+              avg_sale_price: 352066.6666666667
+              total_n_rented: 33.0
+              avg_weekly_rent: 350.5151515151515
+              gross_yield_pct: 5.177084229915133
+              prior_avg_price: 223680.0
+              recent_avg_price: 369205.0
+              price_growth_3yr_pct: 65.05945994277539
+            - label: South Tamworth (2340) - unit
+              suburb: South Tamworth
+              location: South Tamworth (2340)
+              postcode: '2340'
+              total_n_sold: 51.0
+              property_type: unit
+              avg_sale_price: 416690.1960784314
+              total_n_rented: 194.0
+              avg_weekly_rent: 414.79896907216494
+              gross_yield_pct: 5.176398819734327
+              prior_avg_price: 388378.0487804878
+              recent_avg_price: 417966.6666666667
+              price_growth_3yr_pct: 7.618509331072524
+            - label: Matraville (2036) - unit
+              suburb: Matraville
+              location: Matraville (2036)
+              postcode: '2036'
+              total_n_sold: 145.0
+              property_type: unit
+              avg_sale_price: 1166462.5448275863
+              total_n_rented: 1140.0
+              avg_weekly_rent: 1130.240350877193
+              gross_yield_pct: 5.038524254913058
+              prior_avg_price: 1083259.496855346
+              recent_avg_price: 1166462.5448275863
+              price_growth_3yr_pct: 7.680804849971317
+            - label: Hurstville (2220) - unit
+              suburb: Hurstville
+              location: Hurstville (2220)
+              postcode: '2220'
+              total_n_sold: 204.0
+              property_type: unit
+              avg_sale_price: 770802.6274509804
+              total_n_rented: 624.0
+              avg_weekly_rent: 744.9727564102565
+              gross_yield_pct: 5.025746144825763
+              prior_avg_price: 718093.1037735849
+              recent_avg_price: 770802.6274509804
+              price_growth_3yr_pct: 7.340207474547037
+            - label: Temora (2666) - house
+              suburb: Temora
+              location: Temora (2666)
+              postcode: '2666'
+              total_n_sold: 55.0
+              property_type: house
+              avg_sale_price: 484076.36363636365
+              total_n_rented: 63.0
+              avg_weekly_rent: 465.4761904761905
+              gross_yield_pct: 5.000194953320306
+              prior_avg_price: 371700.0
+              recent_avg_price: 484076.36363636365
+              price_growth_3yr_pct: 30.233081419522097
+            group: null
+            title: 'Top 20: Gross rental yield ≥5% with positive 3‑year price growth (sorted by yield)'
+            height: fill
+            intent: bar
+            measure: gross_yield_pct
+            dimension: label
+          role: chart
+          type: breakdown
+          element_id: report:chart
+      headline: '**Yield + Capital Growth sweet spots** — postcodes where current gross rental yield is
+        ≥5% AND average prices grew over…'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: 'Of the 19 locations passing both filters, average yield is **5.5%** and average 3‑year
+              price growth is **25.0%**. Top pick: **Wellington (2820) - house** at 6.3% yield with 42.1%
+              price growth over 3 years.'
+            heading: Where to look
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+      headline: Where to look
+      template: two-col
+  golden_data_sha: 205cb1b76674
+- case_key: nsw_yield-compare-gross-yields-across-sa4-regions-greater-4ebf
+  question: Compare gross yields across SA4 regions — Greater Sydney vs Rest of NSW.
+  dataset: nsw_yield
+  tier: T6
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Gross yield by sa4_name via dim_postcode_geo, recomputed from totals (52 × Σweekly_rent
+    / Σsale_value), never averaged from gross_yield_pct; Greater Sydney vs Rest of NSW.
+  tags:
+  - coverage-pack
+  - coverage:Y7
+  - direction:geo-rollup
+  grader: {}
+  golden_sql: "SELECT\n  g.sa4_name,\n  g.gcc_name,\n  y.property_type,\n  y.month,\n  SUM(y.total_sale_value)\
+    \ AS total_sale_value,\n  SUM(y.n_sold) AS n_sold,\n  SUM(y.total_weekly_rent) AS total_weekly_rent,\n\
+    \  SUM(y.n_rented) AS n_rented\nFROM marts.property_yield y\nJOIN marts.dim_postcode_geo g ON y.postcode\
+    \ = g.postcode\nWHERE g.sa4_name IS NOT NULL\n  AND g.gcc_name IN ('Greater Sydney', 'Rest of NSW')\n\
+    GROUP BY g.sa4_name, g.gcc_name, y.property_type, y.month\nORDER BY y.month, g.gcc_name, g.sa4_name,\
+    \ y.property_type"
+  golden_sandbox: "# Compute yield at the GCC x property_type x month level, then compare Greater Sydney\
+    \ vs Rest of NSW\n\n\n# --- Compute yield per row ---\n# yield = 52 * total_weekly_rent / n_rented\
+    \ / (total_sale_value / n_sold) * 100\ndf['avg_weekly_rent'] = df['total_weekly_rent'] / df['n_rented']\n\
+    df['avg_sale_price'] = df['total_sale_value'] / df['n_sold']\ndf['yield_pct'] = 52.0 * df['avg_weekly_rent']\
+    \ / df['avg_sale_price'] * 100.0\n\n# --- For headline: aggregate all property types at GCC level\
+    \ ---\ngcc_monthly = df.groupby(['gcc_name', 'month'], as_index=False).apply(\n    lambda g: pd.Series({\n\
+    \        'total_sale_value': g['total_sale_value'].sum(),\n        'n_sold': g['n_sold'].sum(),\n\
+    \        'total_weekly_rent': g['total_weekly_rent'].sum(),\n        'n_rented': g['n_rented'].sum()\n\
+    \    })).reset_index()\ngcc_monthly['avg_weekly_rent'] = gcc_monthly['total_weekly_rent'] / gcc_monthly['n_rented']\n\
+    gcc_monthly['avg_sale_price'] = gcc_monthly['total_sale_value'] / gcc_monthly['n_sold']\ngcc_monthly['yield_pct']\
+    \ = 52.0 * gcc_monthly['avg_weekly_rent'] / gcc_monthly['avg_sale_price'] * 100.0\n\n# Latest month\n\
+    latest_month = gcc_monthly['month'].max()\nprint(f\"Data range: {gcc_monthly['month'].min()} to {latest_month}\"\
+    )\n\n# Latest values\ngcc_latest = gcc_monthly[gcc_monthly['month'] == latest_month].copy()\ngreater_syd_latest\
+    \ = gcc_latest[gcc_latest['gcc_name'] == 'Greater Sydney']['yield_pct'].values[0]\nrest_nsw_latest\
+    \ = gcc_latest[gcc_latest['gcc_name'] == 'Rest of NSW']['yield_pct'].values[0]\n\n# Growth: compare\
+    \ latest vs same month 3 years earlier\n\nref_month = (datetime.datetime.strptime(latest_month, '%Y-%m-%d')\
+    \ - relativedelta(years=3)).strftime('%Y-%m-%d')\n\ngcc_ref = gcc_monthly[gcc_monthly['month'] ==\
+    \ ref_month]\nif len(gcc_ref) > 0:\n    gs_ref = gcc_ref[gcc_ref['gcc_name'] == 'Greater Sydney']['yield_pct'].values[0]\n\
+    \    rn_ref = gcc_ref[gcc_ref['gcc_name'] == 'Rest of NSW']['yield_pct'].values[0]\n    gs_growth\
+    \ = (greater_syd_latest - gs_ref) / gs_ref * 100\n    rn_growth = (rest_nsw_latest - rn_ref) / rn_ref\
+    \ * 100\nelse:\n    gs_growth = None\n    rn_growth = None\n\nprint(f\"Greater Sydney yield: {greater_syd_latest:.2f}%\
+    \ (vs {gs_ref:.2f}% 3yr ago)\")\nprint(f\"Rest of NSW yield: {rest_nsw_latest:.2f}% (vs {rn_ref:.2f}%\
+    \ 3yr ago)\")\nprint(f\"Growth: GS={gs_growth:.1f}%, RoNSW={rn_growth:.1f}%\")\n\n# --- Trend series\
+    \ ---\ns = skills.trend_series(gcc_monthly, month_col='month', value_col='yield_pct', group_col='gcc_name')\n\
+    \nresult = skills.build_report(\n    summary=\"**Greater Sydney vs Rest of NSW: Gross Rental Yield**\
+    \ — comparing the annualised gross rental yield (52× weekly rent ÷ sale price) across the two Greater\
+    \ Capital City regions. Data is aggregated from postcode-level yield marts up to GCC Statistical Areas,\
+    \ covering all property types (houses + units) from 2016 to present.\",\n    headlines=[\n       \
+    \ {\"label\": \"Greater Sydney Yield\", \"value\": f\"{greater_syd_latest:.2f}%\", \"basis\": latest_month},\n\
+    \        {\"label\": \"Rest of NSW Yield\", \"value\": f\"{rest_nsw_latest:.2f}%\", \"basis\": latest_month},\n\
+    \        {\"label\": \"Greater Sydney 3yr Change\", \"value\": f\"{gs_growth:+.1f}%\" if gs_growth\
+    \ is not None else \"N/A\", \"basis\": f\"{ref_month} → {latest_month}\"},\n        {\"label\": \"\
+    Rest of NSW 3yr Change\", \"value\": f\"{rn_growth:+.1f}%\" if rn_growth is not None else \"N/A\"\
+    , \"basis\": f\"{ref_month} → {latest_month}\"},\n    ],\n    main_chart=skills.trend_chart(s, title=\"\
+    Gross Rental Yield — Greater Sydney vs Rest of NSW\"),\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: debug
+            label: debug
+            value: '0'
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            text: debug
+          role: note
+          type: text
+          element_id: report:summary
+      headline: debug
+      template: two-col
+  golden_data_sha: f212938d456b
+- case_key: nsw_yield-where-should-i-buy-next-under-800k-yield-at-leas-00d8
+  question: Where should I buy next? Under $800k, yield at least 4.5%, rents still rising — shortlist
+    Greater Sydney postcodes and justify each.
+  dataset: nsw_yield
+  tier: T7
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: 'The capstone: Greater Sydney postcodes with avg sale price under $800k AND gross_yield_pct
+    at least 4.5% AND rising rents, each pick justified with its numbers.'
+  tags:
+  - coverage-pack
+  - coverage:Y8
+  - direction:recommendation
+  grader: {}
+  golden_sql: "WITH gs_postcodes AS (\n  SELECT postcode FROM marts.dim_postcode_geo WHERE gcc_name =\
+    \ 'Greater Sydney'\n),\nrecent_window AS (\n  SELECT \n    py.postcode,\n    py.property_type,\n \
+    \   SUM(py.total_sale_value) AS total_sale_value,\n    SUM(py.n_sold) AS n_sold,\n    SUM(py.total_weekly_rent)\
+    \ AS total_weekly_rent,\n    SUM(py.n_rented) AS n_rented,\n    52.0 * SUM(py.total_weekly_rent) /\
+    \ NULLIF(SUM(py.total_sale_value), 0) * 100 AS yield_pct,\n    MAX(py.month) AS latest_month\n  FROM\
+    \ marts.property_yield py\n  JOIN gs_postcodes gs ON py.postcode = gs.postcode\n  WHERE py.month >=\
+    \ (SELECT MAX(month) - INTERVAL '5 months' FROM marts.property_yield)\n  GROUP BY py.postcode, py.property_type\n\
+    \  HAVING SUM(py.n_sold) >= 10 AND SUM(py.n_rented) >= 10\n    AND SUM(py.total_sale_value) / NULLIF(SUM(py.n_sold),\
+    \ 0) < 800000\n    AND 52.0 * SUM(py.total_weekly_rent) / NULLIF(SUM(py.total_sale_value), 0) * 100\
+    \ >= 4.5\n),\nearlier_window AS (\n  SELECT \n    py.postcode,\n    py.property_type,\n    SUM(py.total_weekly_rent)\
+    \ AS total_weekly_rent_early,\n    SUM(py.n_rented) AS n_rented_early\n  FROM marts.property_yield\
+    \ py\n  JOIN gs_postcodes gs ON py.postcode = gs.postcode\n  WHERE py.month BETWEEN \n    (SELECT\
+    \ MAX(month) - INTERVAL '17 months' FROM marts.property_yield) \n    AND (SELECT MAX(month) - INTERVAL\
+    \ '12 months' FROM marts.property_yield)\n  GROUP BY py.postcode, py.property_type\n),\ndominant_suburb\
+    \ AS (\n  SELECT DISTINCT ON (postcode) postcode, suburb\n  FROM staging.int_postcode_geo\n  ORDER\
+    \ BY postcode, n_sales DESC\n)\nSELECT \n  rw.postcode,\n  ds.suburb,\n  rw.property_type,\n  rw.yield_pct,\n\
+    \  rw.total_sale_value / NULLIF(rw.n_sold, 0) AS avg_sale_price,\n  rw.total_weekly_rent / NULLIF(rw.n_rented,\
+    \ 0) AS avg_weekly_rent,\n  rw.n_sold,\n  rw.n_rented,\n  rw.latest_month,\n  CASE \n    WHEN ew.total_weekly_rent_early\
+    \ IS NOT NULL AND ew.n_rented_early > 0 AND rw.n_rented > 0\n    THEN ((rw.total_weekly_rent / rw.n_rented)\
+    \ / (ew.total_weekly_rent_early / ew.n_rented_early) - 1) * 100\n    ELSE NULL \n  END AS rent_growth_pct\n\
+    FROM recent_window rw\nLEFT JOIN earlier_window ew ON rw.postcode = ew.postcode AND rw.property_type\
+    \ = ew.property_type\nJOIN dominant_suburb ds ON rw.postcode = ds.postcode\nORDER BY rw.yield_pct\
+    \ DESC"
+  golden_sandbox: '# First, let''s look at the data
+
+    print("Total rows:", len(df))
+
+    print("\n--- property_type distribution ---")
+
+    print(df[''property_type''].value_counts())
+
+    print("\n--- Top by yield ---")
+
+    print(df.head(10))
+
+    print("\n--- Sample rows ---")
+
+    print(df.to_string())'
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: ''
+            label: test
+            value: 0
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            text: peek2
+          role: note
+          type: text
+          element_id: report:summary
+      headline: peek2
+      template: two-col
+  golden_data_sha: e337c7ad0fca
+- case_key: nsw_yield-postcode-2840-shows-a-14-gross-yield-can-i-trust-5c2a
+  question: Postcode 2840 shows a ~14% gross yield — can I trust that number?
+  dataset: nsw_yield
+  tier: T5
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Thin-cell interrogation — n_sold/n_rented near the >=5 floor, remote-area volatility, single-month
+    artifacts — the answer should caveat the number, not just repeat it.
+  tags:
+  - coverage-pack
+  - coverage:Y10
+  - direction:adversarial
+  grader: {}
+  golden_sql: 'SELECT month, property_type, total_sale_value, n_sold, total_weekly_rent, n_rented, avg_sale_price,
+    avg_weekly_rent, gross_yield_pct
+
+    FROM marts.property_yield
+
+    WHERE postcode = ''2840''
+
+    ORDER BY month, property_type'
+  golden_sandbox: "# The frame df_all_rows has all 15 rows for postcode 2840\ndf = df_all_rows\n\n# Print\
+    \ all rows for my reference\nprint(\"=== ALL ROWS FOR POSTCODE 2840 (houses only) ===\")\nfor _, r\
+    \ in df.iterrows():\n    print(f\"{r['month']} | n_sold={r['n_sold']}, n_rented={r['n_rented']} |\
+    \ avg_sale=${r['avg_sale_price']:.0f}, avg_rent=${r['avg_weekly_rent']:.0f}/wk | yield={r['gross_yield_pct']:.2f}%\"\
+    )\n\nprint()\n\n# Compute a rolling yield using the additive components over the most recent ~6 months\n\
+    # The yield is recomputed as: 52 * sum(total_weekly_rent)/sum(n_rented) / (sum(total_sale_value)/sum(n_sold))\
+    \ * 100\n# But we only have the averages in this frame, and total_sale_value/total_weekly_rent were\
+    \ in the original df\n# Let's use the yield values directly since the table already computed them\
+    \ correctly\n\n# Sort by month\ndf_sorted = df.sort_values('month')\n\n# Check the min and max months\n\
+    print(f\"Data spans: {df_sorted['month'].min()} to {df_sorted['month'].max()}\")\nprint(f\"Total rows:\
+    \ {len(df_sorted)}\")\n\n# The ~14% is likely referring to Jun 2025 (16.28%) or nearby. Let's see\
+    \ the recent months\nrecent = df_sorted[df_sorted['month'] >= '2024-01-01']\nprint()\nprint(\"===\
+    \ RECENT DATA (2024-2025) ===\")\nfor _, r in recent.iterrows():\n    print(f\"{r['month']} | n_sold={r['n_sold']},\
+    \ n_rented={r['n_rented']} | avg_sale=${r['avg_sale_price']:.0f}, avg_rent=${r['avg_weekly_rent']:.0f}/wk\
+    \ | yield={r['gross_yield_pct']:.2f}%\")\n\n# The 14% could be an average of recent months\nrecent_yields\
+    \ = recent['gross_yield_pct'].values\nprint(f\"\\nRecent months yield range: {recent_yields.min():.2f}%\
+    \ to {recent_yields.max():.2f}%\")\nprint(f\"Average of recent months: {recent_yields.mean():.2f}%\"\
+    )\n\n# Let's look at the full series\nprint(\"\\n=== FULL SERIES ===\")\nfor _, r in df_sorted.iterrows():\n\
+    \    print(f\"{r['month']} | yield={r['gross_yield_pct']:.2f}% | n_sold={r['n_sold']}, n_rented={r['n_rented']}\"\
+    )\n\n# Compute 6-month rolling average yield\n# Weighted: sum of totals / sum of counts over rolling\
+    \ window, then yield formula\n# But we only have avg values here. Let's compute a simple rolling avg\
+    \ of yields\nrolling = df_sorted['gross_yield_pct'].rolling(window=3, min_periods=1).mean()\nprint(f\"\
+    \\n3-month rolling avg yield: {rolling.iloc[-1]:.2f}% (most recent period)\")\nrolling6 = df_sorted['gross_yield_pct'].rolling(window=5,\
+    \ min_periods=1).mean()\nprint(f\"5-month rolling avg yield: {rolling6.iloc[-1]:.2f}% (most recent)\"\
+    )\n\n# Key concerns: low volumes (n_sold as low as 5-14), high volatility, \n# and avg sale prices\
+    \ as low as $90k-$200k which is very cheap housing stock\nprint(\"\\n=== RISK INDICATORS ===\")\n\
+    print(f\"Min n_sold in any month: {df['n_sold'].min()}\")\nprint(f\"Max n_sold in any month: {df['n_sold'].max()}\"\
+    )\nprint(f\"Min n_rented in any month: {df['n_rented'].min()}\")\nprint(f\"Max n_rented in any month:\
+    \ {df['n_rented'].max()}\")\nprint(f\"Avg sale price range: ${df['avg_sale_price'].min():.0f} - ${df['avg_sale_price'].max():.0f}\"\
+    )\nprint(f\"Yield range: {df['gross_yield_pct'].min():.2f}% - {df['gross_yield_pct'].max():.2f}%\"\
+    )\nprint(f\"Yield std dev: {df['gross_yield_pct'].std():.2f}%\")\n\n# Build the report\nresult = skills.build_report(\n\
+    \    summary=(\n        \"**Postcode 2840 (Bourke region, NSW) — Gross Rental Yield Assessment**\\\
+    n\\n\"\n        \"The ~14% gross yield figure for postcode 2840 is **real but unreliable** as a \"\
+    \n        \"stable investment indicator. Here's why:\"\n    ),\n    headlines=[\n        skills.latest_value(df_sorted,\
+    \ month_col='month', value_col='gross_yield_pct', den_col=None),\n        {\"label\": \"6-month rolling\
+    \ avg yield\", \"value\": f\"{rolling6.iloc[-1]:.1f}\", \"basis\": \"%\"},\n        {\"label\": \"\
+    Yield volatility (std dev)\", \"value\": f\"{df['gross_yield_pct'].std():.1f}\", \"basis\": \"pp\"\
+    },\n        {\"label\": \"Avg sale price (recent)\", \"value\": f\"${df_sorted[df_sorted['month']>='2024-01-01']['avg_sale_price'].mean():.0f}\"\
+    , \"basis\": \"\"},\n    ],\n    main_chart=skills.trend_chart(\n        skills.trend_series(df_sorted,\
+    \ month_col='month', value_col='gross_yield_pct'),\n        title=\"Postcode 2840 — Gross Rental Yield\
+    \ Over Time\"\n    ),\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: '%'
+            label: Latest monthly yield
+            value: '12.4'
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: '%'
+            label: 5-month rolling avg
+            value: '12.0'
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: '%'
+            label: Yield range (low→high)
+            value: 3.7→17.4
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: sales
+            label: Typical n_sold/month
+            value: '7'
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**Postcode 2840 (Bourke region, NSW) — Gross Rental Yield Assessment**
+
+
+              The ~14% gross yield figure for postcode 2840 is **real but unreliable as a stable investment
+              indicator.** The data shows a genuine high-yield pattern, but extreme volatility and very
+              thin transaction volumes mean a single month can swing the number dramatically.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: 'SELECT month, property_type, total_sale_value, n_sold, total_weekly_rent, n_rented,
+              avg_sale_price, avg_weekly_rent, gross_yield_pct
+
+              FROM marts.property_yield
+
+              WHERE postcode = ''2840''
+
+              ORDER BY month, property_type'
+            rows:
+            - layer: actual
+              month: '2017-09-01'
+              value: 7.52
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-09-01'
+              value: 7.52
+              series: gross_yield_pct
+            - layer: actual
+              month: '2019-06-01'
+              value: 5.46
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2019-06-01'
+              value: 6.49
+              series: gross_yield_pct
+            - layer: actual
+              month: '2020-08-01'
+              value: 8.82
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2020-08-01'
+              value: 7.27
+              series: gross_yield_pct
+            - layer: actual
+              month: '2021-06-01'
+              value: 7.41
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2021-06-01'
+              value: 7.3
+              series: gross_yield_pct
+            - layer: actual
+              month: '2021-07-01'
+              value: 7.39
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2021-07-01'
+              value: 7.32
+              series: gross_yield_pct
+            - layer: actual
+              month: '2021-08-01'
+              value: 12.79
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2021-08-01'
+              value: 8.23
+              series: gross_yield_pct
+            - layer: actual
+              month: '2022-03-01'
+              value: 3.68
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2022-03-01'
+              value: 7.59
+              series: gross_yield_pct
+            - layer: actual
+              month: '2022-05-01'
+              value: 5.94
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2022-05-01'
+              value: 7.67
+              series: gross_yield_pct
+            - layer: actual
+              month: '2022-09-01'
+              value: 7.44
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2022-09-01'
+              value: 7.44
+              series: gross_yield_pct
+            - layer: actual
+              month: '2023-11-01'
+              value: 14.41
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2023-11-01'
+              value: 8.61
+              series: gross_yield_pct
+            - layer: actual
+              month: '2024-01-01'
+              value: 4.53
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2024-01-01'
+              value: 8.13
+              series: gross_yield_pct
+            - layer: actual
+              month: '2024-03-01'
+              value: 17.45
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2024-03-01'
+              value: 8.91
+              series: gross_yield_pct
+            - layer: actual
+              month: '2024-07-01'
+              value: 9.12
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2024-07-01'
+              value: 9.81
+              series: gross_yield_pct
+            - layer: actual
+              month: '2025-06-01'
+              value: 16.28
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2025-06-01'
+              value: 11.54
+              series: gross_yield_pct
+            - layer: actual
+              month: '2025-09-01'
+              value: 12.44
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2025-09-01'
+              value: 12.37
+              series: gross_yield_pct
+            title: Postcode 2840 — Gross Rental Yield (Houses) — Each dot = 5–14 sales
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Postcode 2840 (Bourke region, NSW) — Gross Rental Yield Assessment**  The ~14% gross
+        yield figure for postcode 2840 i…'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Postcode 2840 averages only 7 sales and 7 rental bonds per month. 14 out of 15 months
+              have fewer than 10 sales — meaning a single property sale can swing the average sale price
+              by tens of thousands of dollars, and with it the yield. For context, the Bourke region (dominant
+              locality in postcode 2840) is a remote outback area with a small property market.
+            heading: ⚠️ Thin transaction volumes make every month a lottery
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: Recent average sale prices range from ~$90667 to ~$424000 — very low by NSW standards.
+              A property selling for $90,000 with $300/week rent gives 52×300/90,000 = 17.3% yield, while
+              the same rent on a $290,000 property gives only 5.4%. The yield is high largely because
+              house prices are extremely low, not because rents are exceptional.
+            heading: 📉 Low sale prices inflate yield mechanically
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: 'The yield has ranged from 3.7% to 17.4% across available months — a spread of 13.8
+              percentage points. The most recent months show: 2024-01-01=4.5%, 2024-03-01=17.4%, 2024-07-01=9.1%,
+              2025-06-01=16.3%, 2025-09-01=12.4%. The 5-month rolling average of ~12.0% is a more stable
+              reference.'
+            heading: 📊 Yield swings wildly month to month
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      - - data:
+            x: month
+            y: value
+            sql: 'SELECT month, property_type, total_sale_value, n_sold, total_weekly_rent, n_rented,
+              avg_sale_price, avg_weekly_rent, gross_yield_pct
+
+              FROM marts.property_yield
+
+              WHERE postcode = ''2840''
+
+              ORDER BY month, property_type'
+            rows:
+            - layer: actual
+              month: '2017-09-01'
+              value: 7.52
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-09-01'
+              value: 7.52
+              series: gross_yield_pct
+            - layer: actual
+              month: '2019-06-01'
+              value: 5.46
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2019-06-01'
+              value: 6.49
+              series: gross_yield_pct
+            - layer: actual
+              month: '2020-08-01'
+              value: 8.82
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2020-08-01'
+              value: 7.27
+              series: gross_yield_pct
+            - layer: actual
+              month: '2021-06-01'
+              value: 7.41
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2021-06-01'
+              value: 7.3
+              series: gross_yield_pct
+            - layer: actual
+              month: '2021-07-01'
+              value: 7.39
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2021-07-01'
+              value: 7.32
+              series: gross_yield_pct
+            - layer: actual
+              month: '2021-08-01'
+              value: 12.79
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2021-08-01'
+              value: 8.23
+              series: gross_yield_pct
+            - layer: actual
+              month: '2022-03-01'
+              value: 3.68
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2022-03-01'
+              value: 7.59
+              series: gross_yield_pct
+            - layer: actual
+              month: '2022-05-01'
+              value: 5.94
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2022-05-01'
+              value: 7.67
+              series: gross_yield_pct
+            - layer: actual
+              month: '2022-09-01'
+              value: 7.44
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2022-09-01'
+              value: 7.44
+              series: gross_yield_pct
+            - layer: actual
+              month: '2023-11-01'
+              value: 14.41
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2023-11-01'
+              value: 8.61
+              series: gross_yield_pct
+            - layer: actual
+              month: '2024-01-01'
+              value: 4.53
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2024-01-01'
+              value: 8.13
+              series: gross_yield_pct
+            - layer: actual
+              month: '2024-03-01'
+              value: 17.45
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2024-03-01'
+              value: 8.91
+              series: gross_yield_pct
+            - layer: actual
+              month: '2024-07-01'
+              value: 9.12
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2024-07-01'
+              value: 9.81
+              series: gross_yield_pct
+            - layer: actual
+              month: '2025-06-01'
+              value: 16.28
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2025-06-01'
+              value: 11.54
+              series: gross_yield_pct
+            - layer: actual
+              month: '2025-09-01'
+              value: 12.44
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2025-09-01'
+              value: 12.37
+              series: gross_yield_pct
+            title: Postcode 2840 — Gross Rental Yield (Houses)
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          explains: headline:0
+          element_id: insight:2:chart
+      headline: ⚠️ Thin transaction volumes make every month a lottery
+      template: two-col
+  golden_data_sha: '060245060346'
+- case_key: nsw_yield-what-s-the-best-safe-high-yield-area-a331
+  question: What's the best safe high-yield area?
+  dataset: nsw_yield
+  tier: T4
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: '''Safe'' is undefined (the data has no vacancy or volatility measure) — the agent should
+    define safe (e.g. via data volume n_sold/n_rented) or ask, then answer.'
+  tags:
+  - coverage-pack
+  - coverage:Y9
+  - direction:ambiguous
+  grader: {}
+  golden_sql: "WITH\ndominant_suburb AS (\n    SELECT DISTINCT ON (postcode) postcode, suburb\n    FROM\
+    \ staging.int_postcode_geo\n    ORDER BY postcode, n_sales DESC\n),\nrecent_yield AS (\n    SELECT\n\
+    \        y.postcode,\n        y.property_type,\n        SUM(y.total_sale_value) AS total_sale_value,\n\
+    \        SUM(y.n_sold) AS n_sold,\n        SUM(y.total_weekly_rent) AS total_weekly_rent,\n      \
+    \  SUM(y.n_rented) AS n_rented\n    FROM marts.property_yield y\n    WHERE y.month >= (SELECT MAX(month)\
+    \ - INTERVAL '6 months' FROM marts.property_yield)\n    GROUP BY y.postcode, y.property_type\n)\n\
+    SELECT\n    ry.postcode,\n    ds.suburb,\n    ry.property_type,\n    ry.total_sale_value,\n    ry.n_sold,\n\
+    \    ry.total_weekly_rent,\n    ry.n_rented,\n    (ry.total_sale_value / NULLIF(ry.n_sold, 0)) AS\
+    \ avg_sale_price,\n    (ry.total_weekly_rent / NULLIF(ry.n_rented, 0)) AS avg_weekly_rent,\n    52.0\
+    \ * (ry.total_weekly_rent / NULLIF(ry.n_rented, 0)) / NULLIF((ry.total_sale_value / NULLIF(ry.n_sold,\
+    \ 0)), 0) * 100 AS gross_yield_pct,\n    COALESCE(dg.sa3_name, 'Unknown') AS sa3_name,\n    COALESCE(dg.sa4_name,\
+    \ 'Unknown') AS sa4_name,\n    COALESCE(dg.gcc_name, 'Unknown') AS gcc_name\nFROM recent_yield ry\n\
+    LEFT JOIN dominant_suburb ds ON ry.postcode = ds.postcode\nLEFT JOIN marts.dim_postcode_geo dg ON\
+    \ ry.postcode = dg.postcode\nWHERE ry.n_sold >= 10 AND ry.n_rented >= 10\nORDER BY gross_yield_pct\
+    \ DESC"
+  golden_sandbox: "# PASS 1 — Summary page\n\n# --- Explore the data ---\nprint(f\"Total postcode-property_type\
+    \ rows: {len(df)}\")\nprint(f\"Date range (from yield mart): N/A — we used latest 6 months\")\nprint(f\"\
+    Columns: {list(df.columns)}\")\n\n# Overall yield stats\nprint(f\"\\nYield stats overall:\")\nprint(df.groupby('property_type')['gross_yield_pct'].describe())\n\
+    \n# --- For \"safe\" let's define \"Greater Sydney\" (gcc_name = 'Greater Sydney') with high volume\
+    \ ---\n# Filter to Greater Sydney with good transaction volumes\nsafe = df[(df['gcc_name'] == 'Greater\
+    \ Sydney') & (df['n_sold'] >= 30) & (df['n_rented'] >= 30)].copy()\n\nprint(f\"\\nSafe areas (Greater\
+    \ Sydney, n_sold>=30, n_rented>=30): {len(safe)} rows\")\n\n# Top safe areas overall\nsafe_agg = safe.groupby(['postcode','suburb','property_type'],\
+    \ as_index=False).agg({\n    'gross_yield_pct': 'first',\n    'n_sold': 'first',\n    'n_rented':\
+    \ 'first',\n    'avg_sale_price': 'first',\n    'avg_weekly_rent': 'first',\n    'sa3_name': 'first',\n\
+    })\n\n# Top 10 for houses in Greater Sydney\ntop_houses = safe_agg[safe_agg['property_type'] == 'house'].nlargest(10,\
+    \ 'gross_yield_pct')\nprint(f\"\\nTop safe high-yield houses in Greater Sydney:\")\nprint(top_houses[['suburb','postcode','gross_yield_pct','n_sold','n_rented','avg_sale_price','avg_weekly_rent','sa3_name']])\n\
+    \n# Top 10 for units in Greater Sydney\ntop_units = safe_agg[safe_agg['property_type'] == 'unit'].nlargest(10,\
+    \ 'gross_yield_pct')\nprint(f\"\\nTop safe high-yield units in Greater Sydney:\")\nprint(top_units[['suburb','postcode','gross_yield_pct','n_sold','n_rented','avg_sale_price','avg_weekly_rent','sa3_name']])\n\
+    \n# --- Compute latest overall yield for Greater Sydney ---\n# Reaggregate at Greater Sydney level\
+    \ by property_type\ngs = df[df['gcc_name'] == 'Greater Sydney'].copy()\ngs_agg = gs.groupby('property_type',\
+    \ as_index=False).agg({\n    'total_sale_value': 'sum',\n    'n_sold': 'sum',\n    'total_weekly_rent':\
+    \ 'sum',\n    'n_rented': 'sum'\n})\ngs_agg['avg_sale_price'] = gs_agg['total_sale_value'] / gs_agg['n_sold']\n\
+    gs_agg['avg_weekly_rent'] = gs_agg['total_weekly_rent'] / gs_agg['n_rented']\ngs_agg['yield_pct']\
+    \ = 52 * gs_agg['avg_weekly_rent'] / gs_agg['avg_sale_price'] * 100\nprint(f\"\\nGreater Sydney overall\
+    \ yield by type:\")\nprint(gs_agg[['property_type','yield_pct','n_sold','n_rented']])\n\n# --- Build\
+    \ the report ---\n# Headlines\nheadlines = []\nfor _, row in gs_agg.iterrows():\n    t = row['property_type']\n\
+    \    y = round(row['yield_pct'], 2)\n    n = int(row['n_sold'] + row['n_rented'])\n    headlines.append({\n\
+    \        \"label\": f\"Greater Sydney {t.title()} Yield\",\n        \"value\": f\"{y:.1f}%\",\n  \
+    \      \"basis\": f\"6-month rolling | {n:,} total transactions\"\n    })\n\n# Top safe Sydney area\
+    \ headline\nbest_house = top_houses.iloc[0]\nbest_unit = top_units.iloc[0] if len(top_units) > 0 else\
+    \ None\n\nsafe_suburbs_text = f\"Top safe high-yield suburbs in Greater Sydney — filtered for depth\
+    \ (≥30 sales & ≥30 rentals in latest 6 months).\"\n\n# Main chart: top houses in safe Greater Sydney\n\
+    chart_df = top_houses[['suburb', 'gross_yield_pct', 'n_sold']].copy()\nchart_df.columns = ['suburb',\
+    \ 'gross_yield_pct', 'n_sold']\nchart_df = chart_df.sort_values('gross_yield_pct', ascending=True)\n\
+    \nmain_chart = skills.comparison_chart(\n    chart_df,\n    category_col='suburb',\n    value_col='gross_yield_pct',\n\
+    \    title=\"Top 10 Safe High-Yield Suburbs — Houses (Greater Sydney)\"\n)\n\n# Also build a units\
+    \ chart if we have units\nif best_unit is not None:\n    chart_df_u = top_units[['suburb', 'gross_yield_pct',\
+    \ 'n_sold']].copy()\n    chart_df_u.columns = ['suburb', 'gross_yield_pct', 'n_sold']\n    chart_df_u\
+    \ = chart_df_u.sort_values('gross_yield_pct', ascending=True)\n    \n    units_chart = skills.comparison_chart(\n\
+    \        chart_df_u,\n        category_col='suburb',\n        value_col='gross_yield_pct',\n     \
+    \   title=\"Top 10 Safe High-Yield Suburbs — Units (Greater Sydney)\"\n    )\nelse:\n    units_chart\
+    \ = None\n\nsummary_text = f\"**Safe high-yield areas** in Greater Sydney, filtered for market depth:\
+    \ at least 30 sales and 30 rental bonds in the latest 6 months. **Houses** average {gs_agg[gs_agg['property_type']=='house']['yield_pct'].values[0]:.1f}%\
+    \ gross yield; **units** average {gs_agg[gs_agg['property_type']=='unit']['yield_pct'].values[0]:.1f}%.\
+    \ Top house suburb: **{best_house['suburb']}** ({best_house['gross_yield_pct']:.1f}% yield, {int(best_house['n_sold'])}\
+    \ sales, postcode {best_house['postcode']}).\"\n\nresult = skills.build_report(\n    summary=summary_text,\n\
+    \    headlines=headlines,\n    main_chart=main_chart,\n    table=skills.data_table(\n        top_houses[['suburb','postcode','gross_yield_pct','n_sold','n_rented','avg_sale_price','avg_weekly_rent','sa3_name']].rename(columns={\n\
+    \            'suburb': 'Suburb',\n            'postcode': 'Postcode',\n            'gross_yield_pct':\
+    \ 'Gross Yield %',\n            'n_sold': 'Sales (6mo)',\n            'n_rented': 'Rentals (6mo)',\n\
+    \            'avg_sale_price': 'Avg Sale Price',\n            'avg_weekly_rent': 'Avg Weekly Rent',\n\
+    \            'sa3_name': 'SA3 Region'\n        }),\n        columns=[\n            {'key': 'Suburb',\
+    \ 'label': 'Suburb'},\n            {'key': 'Postcode', 'label': 'Postcode'},\n            {'key':\
+    \ 'Gross Yield %', 'label': 'Yield', 'format': '.1f', 'align': 'right'},\n            {'key': 'Sales\
+    \ (6mo)', 'label': 'Sales', 'format': ',.0f', 'align': 'right'},\n            {'key': 'Rentals (6mo)',\
+    \ 'label': 'Rentals', 'format': ',.0f', 'align': 'right'},\n            {'key': 'Avg Sale Price',\
+    \ 'label': 'Avg Price', 'format': '$,.0f', 'align': 'right'},\n            {'key': 'Avg Weekly Rent',\
+    \ 'label': 'Avg Rent', 'format': '$,.0f', 'align': 'right'},\n            {'key': 'SA3 Region', 'label':\
+    \ 'Region'},\n        ],\n        title=\"Top 10 Safe High-Yield House Suburbs — Greater Sydney\"\
+    ,\n        variant=\"ranked\",\n        bar_key='Gross Yield %'\n    )\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 6-month rolling | 35,992 total transactions
+            label: Greater Sydney House Yield
+            value: 2.5%
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: 6-month rolling | 38,508 total transactions
+            label: Greater Sydney Unit Yield
+            value: 3.8%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            text: '**Safe high-yield areas** in Greater Sydney, filtered for market depth (≥30 sales &
+              ≥30 rentals in latest 6 months). Overall house yield: **2.6%**; unit yield: **3.8%**. Top
+              safe house suburb: **Austral** (3.7% yield, 383 sales). Top unit suburb: **Fairfield** (5.4%
+              yield).'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: "WITH\ndominant_suburb AS (\n    SELECT DISTINCT ON (postcode) postcode, suburb\n   \
+              \ FROM staging.int_postcode_geo\n    ORDER BY postcode, n_sales DESC\n),\nrecent_yield AS\
+              \ (\n    SELECT\n        y.postcode,\n        y.property_type,\n        SUM(y.total_sale_value)\
+              \ AS total_sale_value,\n        SUM(y.n_sold) AS n_sold,\n        SUM(y.total_weekly_rent)\
+              \ AS total_weekly_rent,\n        SUM(y.n_rented) AS n_rented\n    FROM marts.property_yield\
+              \ y\n    WHERE y.month >= (SELECT MAX(month) - INTERVAL '6 months' FROM marts.property_yield)\n\
+              \    GROUP BY y.postcode, y.property_type\n)\nSELECT\n    ry.postcode,\n    ds.suburb,\n\
+              \    ry.property_type,\n    ry.total_sale_value,\n    ry.n_sold,\n    ry.total_weekly_rent,\n\
+              \    ry.n_rented,\n    (ry.total_sale_value / NULLIF(ry.n_sold, 0)) AS avg_sale_price,\n\
+              \    (ry.total_weekly_rent / NULLIF(ry.n_rented, 0)) AS avg_weekly_rent,\n    52.0 * (ry.total_weekly_rent\
+              \ / NULLIF(ry.n_rented, 0)) / NULLIF((ry.total_sale_value / NULLIF(ry.n_sold, 0)), 0) *\
+              \ 100 AS gross_yield_pct,\n    COALESCE(dg.sa3_name, 'Unknown') AS sa3_name,\n    COALESCE(dg.sa4_name,\
+              \ 'Unknown') AS sa4_name,\n    COALESCE(dg.gcc_name, 'Unknown') AS gcc_name\nFROM recent_yield\
+              \ ry\nLEFT JOIN dominant_suburb ds ON ry.postcode = ds.postcode\nLEFT JOIN marts.dim_postcode_geo\
+              \ dg ON ry.postcode = dg.postcode\nWHERE ry.n_sold >= 10 AND ry.n_rented >= 10\nORDER BY\
+              \ gross_yield_pct DESC"
+            rows:
+            - suburb: Rooty Hill
+              gross_yield_pct: 3.1833356832841764
+            - suburb: Thirlmere
+              gross_yield_pct: 3.1895716533032106
+            - suburb: Springwood
+              gross_yield_pct: 3.192382681630135
+            - suburb: Georges Hall
+              gross_yield_pct: 3.2362933222705825
+            - suburb: Gorokan
+              gross_yield_pct: 3.311758420710338
+            - suburb: Tahmoor
+              gross_yield_pct: 3.483635955058962
+            - suburb: Blue Haven
+              gross_yield_pct: 3.6053246959537355
+            - suburb: Menangle Park
+              gross_yield_pct: 3.6144884362695855
+            - suburb: Hamlyn Terrace
+              gross_yield_pct: 3.6231272195831594
+            - suburb: Austral
+              gross_yield_pct: 3.6852253405822117
+            group: null
+            title: Top 10 Safe High-Yield Suburbs — Houses (Greater Sydney)
+            height: fill
+            intent: bar
+            measure: gross_yield_pct
+            dimension: suburb
+          role: chart
+          type: breakdown
+          element_id: report:chart
+      headline: '**Safe high-yield areas** in Greater Sydney, filtered for market depth (≥30 sales & ≥30
+        rentals in latest 6 months).'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: The **Bringelly - Green Valley** SA3 region leads safe house yields in Greater Sydney
+              at **3.7%** average, with 383 sales and 762 rentals across 1 postcodes. These are established
+              outer-ring suburbs where entry prices remain lower while rental demand stays solid.
+            heading: Where the Yield Comes From — SA3 Regions
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: Units across safe Greater Sydney average **3.8%** vs houses at **2.6%**. But some suburbs
+              defy the gap — **Fairfield** leads at 5.4% (postcode 2165), proving affordable units in
+              the right location can compete with house yields.
+            heading: Units Can Also Deliver Strong Returns
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: The most liquid safe Sydney suburbs (highest total transactions) include **Campbelltown**
+              (1,671 transactions, 3.1% yield), **Hamlyn Terrace** (1,596 transactions, 3.6% yield), and
+              **Oran Park** (1,584 transactions, 2.9% yield). These offer strong market depth — easier
+              entry and exit — while still delivering above-average rental returns.
+            heading: Safety in Depth — High-Volume Suburbs
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      - - data:
+            rows:
+            - n_sold: 383.0
+              suburb: Austral
+              n_rented: 762.0
+              postcode: '2179'
+              sa3_name: Bringelly - Green Valley
+              avg_sale_price: 1165154.1618798955
+              avg_weekly_rent: 825.7414698162729
+              gross_yield_pct: 3.6852253405822117
+            - n_sold: 648.0
+              suburb: Hamlyn Terrace
+              n_rented: 948.0
+              postcode: '2259'
+              sa3_name: Wyong
+              avg_sale_price: 1002118.0725308642
+              avg_weekly_rent: 698.2310126582279
+              gross_yield_pct: 3.6231272195831594
+            - n_sold: 40.0
+              suburb: Menangle Park
+              n_rented: 66.0
+              postcode: '2563'
+              sa3_name: Campbelltown (NSW)
+              avg_sale_price: 1082587.5
+              avg_weekly_rent: 752.5
+              gross_yield_pct: 3.6144884362695855
+            - n_sold: 225.0
+              suburb: Blue Haven
+              n_rented: 279.0
+              postcode: '2262'
+              sa3_name: Wyong
+              avg_sale_price: 879473.7777777778
+              avg_weekly_rent: 609.7670250896057
+              gross_yield_pct: 3.6053246959537355
+            - n_sold: 116.0
+              suburb: Tahmoor
+              n_rented: 182.0
+              postcode: '2573'
+              sa3_name: Wollondilly
+              avg_sale_price: 914996.3793103448
+              avg_weekly_rent: 612.9835164835165
+              gross_yield_pct: 3.483635955058962
+            - n_sold: 251.0
+              suburb: Gorokan
+              n_rented: 471.0
+              postcode: '2263'
+              sa3_name: Wyong
+              avg_sale_price: 966900.2749003984
+              avg_weekly_rent: 615.796178343949
+              gross_yield_pct: 3.311758420710338
+            - n_sold: 60.0
+              suburb: Georges Hall
+              n_rented: 77.0
+              postcode: '2198'
+              sa3_name: Bankstown
+              avg_sale_price: 1539166.6666666667
+              avg_weekly_rent: 957.922077922078
+              gross_yield_pct: 3.2362933222705825
+            - n_sold: 129.0
+              suburb: Springwood
+              n_rented: 89.0
+              postcode: '2777'
+              sa3_name: Blue Mountains
+              avg_sale_price: 1177422.1317829457
+              avg_weekly_rent: 722.8426966292135
+              gross_yield_pct: 3.192382681630135
+            - n_sold: 67.0
+              suburb: Thirlmere
+              n_rented: 67.0
+              postcode: '2572'
+              sa3_name: Wollondilly
+              avg_sale_price: 1076858.208955224
+              avg_weekly_rent: 660.5223880597015
+              gross_yield_pct: 3.1895716533032106
+            - n_sold: 62.0
+              suburb: Rooty Hill
+              n_rented: 180.0
+              postcode: '2766'
+              sa3_name: Mount Druitt
+              avg_sale_price: 1121048.3870967743
+              avg_weekly_rent: 686.2833333333333
+              gross_yield_pct: 3.1833356832841764
+            title: Top 10 Safe High-Yield House Suburbs — Greater Sydney
+            bar_key: gross_yield_pct
+            columns:
+            - key: suburb
+              label: Suburb
+            - key: postcode
+              label: Postcode
+            - key: gross_yield_pct
+              align: right
+              label: Yield %
+              format: .1f
+            - key: n_sold
+              align: right
+              label: Sales (6mo)
+              format: ',.0f'
+            - key: n_rented
+              align: right
+              label: Rentals (6mo)
+              format: ',.0f'
+            - key: avg_sale_price
+              align: right
+              label: Avg Price
+              format: $,.0f
+            - key: avg_weekly_rent
+              align: right
+              label: Avg Rent
+              format: $,.0f
+            - key: sa3_name
+              label: Region
+            variant: ranked
+          role: table
+          type: table
+          explains: headline:0
+          element_id: report:table
+        - data:
+            sql: "WITH\ndominant_suburb AS (\n    SELECT DISTINCT ON (postcode) postcode, suburb\n   \
+              \ FROM staging.int_postcode_geo\n    ORDER BY postcode, n_sales DESC\n),\nrecent_yield AS\
+              \ (\n    SELECT\n        y.postcode,\n        y.property_type,\n        SUM(y.total_sale_value)\
+              \ AS total_sale_value,\n        SUM(y.n_sold) AS n_sold,\n        SUM(y.total_weekly_rent)\
+              \ AS total_weekly_rent,\n        SUM(y.n_rented) AS n_rented\n    FROM marts.property_yield\
+              \ y\n    WHERE y.month >= (SELECT MAX(month) - INTERVAL '6 months' FROM marts.property_yield)\n\
+              \    GROUP BY y.postcode, y.property_type\n)\nSELECT\n    ry.postcode,\n    ds.suburb,\n\
+              \    ry.property_type,\n    ry.total_sale_value,\n    ry.n_sold,\n    ry.total_weekly_rent,\n\
+              \    ry.n_rented,\n    (ry.total_sale_value / NULLIF(ry.n_sold, 0)) AS avg_sale_price,\n\
+              \    (ry.total_weekly_rent / NULLIF(ry.n_rented, 0)) AS avg_weekly_rent,\n    52.0 * (ry.total_weekly_rent\
+              \ / NULLIF(ry.n_rented, 0)) / NULLIF((ry.total_sale_value / NULLIF(ry.n_sold, 0)), 0) *\
+              \ 100 AS gross_yield_pct,\n    COALESCE(dg.sa3_name, 'Unknown') AS sa3_name,\n    COALESCE(dg.sa4_name,\
+              \ 'Unknown') AS sa4_name,\n    COALESCE(dg.gcc_name, 'Unknown') AS gcc_name\nFROM recent_yield\
+              \ ry\nLEFT JOIN dominant_suburb ds ON ry.postcode = ds.postcode\nLEFT JOIN marts.dim_postcode_geo\
+              \ dg ON ry.postcode = dg.postcode\nWHERE ry.n_sold >= 10 AND ry.n_rented >= 10\nORDER BY\
+              \ gross_yield_pct DESC"
+            rows:
+            - sa3_name: Bringelly - Green Valley
+              gross_yield_pct: 3.6852253405822117
+            - sa3_name: Wollondilly
+              gross_yield_pct: 3.2338385467342214
+            - sa3_name: Wyong
+              gross_yield_pct: 3.4201809735534034
+            group: null
+            title: Top SA3 Regions by House Yield in Greater Sydney
+            height: fill
+            intent: bar
+            measure: gross_yield_pct
+            dimension: sa3_name
+          role: chart
+          type: breakdown
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: Where the Yield Comes From — SA3 Regions
+      template: two-col
+  golden_data_sha: 66f60b057d9c

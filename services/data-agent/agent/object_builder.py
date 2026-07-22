@@ -30,7 +30,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .schema import RENT_MART, SALES_MART
+from .schema import RENT_MART, SALES_MART, YIELD_MART
 
 # ---------------------------------------------------------------------------
 # Mart profiles (s22 P2) — the deterministic builder is dataset-aware. Each
@@ -71,6 +71,20 @@ _PROFILES: dict[str, MartProfile] = {
         ratio_col="avg_weekly_rent",
         default_grain=("postcode", "bedroom_band", "month"),
         carry_cols=("postcode", "property_type", "bedroom_band"),
+    ),
+    # The yield mart is sales ⨝ rent at postcode/type/month — it has no suburb or
+    # band columns, so without its own profile the builder fell back to sales and
+    # emitted SQL over columns property_yield doesn't have. The additive legs
+    # recompose avg_weekly_rent (= Σweekly_rent / Σrented); gross_yield_pct is a
+    # compound ratio the structured builder can't recompose from one pair, so a
+    # curator wanting the yield line supplies an explicit num/den line_measure.
+    "nsw_yield": MartProfile(
+        table=YIELD_MART,
+        count_col="n_rented",
+        value_col="total_weekly_rent",
+        ratio_col="avg_weekly_rent",
+        default_grain=("postcode", "property_type", "month"),
+        carry_cols=("postcode", "property_type"),
     ),
 }
 

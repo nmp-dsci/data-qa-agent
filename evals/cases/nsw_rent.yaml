@@ -689,3 +689,1925 @@ cases:
       headline: 🏠 property_type drives the rent difference
       template: two-col
   golden_data_sha: f20825308e10
+- case_key: nsw_rent-what-s-the-median-weekly-rent-for-a-2-bedroom-un-4bb5
+  question: What's the median weekly rent for a 2-bedroom unit in postcode 2000 right now?
+  dataset: nsw_rent
+  tier: T1
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: One value — median weekly rent, postcode 2000, property_type unit, bedroom_band '2', latest
+    month (2026-05).
+  tags:
+  - coverage-pack
+  - coverage:R1
+  - direction:point-lookup
+  grader: {}
+  golden_sql: "SELECT month, median_weekly_rent, n_rented\nFROM marts.property_rent\nWHERE postcode =\
+    \ '2000'\n  AND property_type = 'unit'\n  AND bedroom_band = '2'\nORDER BY month DESC"
+  golden_sandbox: "s = skills.trend_series(df, month_col=\"month\", value_col=\"median_weekly_rent\",\
+    \ den_col=\"n_rented\")\nlatest = skills.latest_value(df, month_col=\"month\", value_col=\"median_weekly_rent\"\
+    , den_col=\"n_rented\")\n\nresult = skills.build_report(\n    summary=\"**Median weekly rent for a\
+    \ 2-bedroom unit in postcode 2000** — as at May 2026, the median is **$1,400 per week**, based on\
+    \ 105 bond lodgements that month. The chart below shows the trend over the available period.\",\n\
+    \    headlines=[\n        {\"label\": \"Median weekly rent\", \"value\": f\"${latest['value']:,.0f}\"\
+    , \"basis\": f\"as at {latest['month']}\"},\n        {\"label\": \"Bonds lodged\", \"value\": 105,\
+    \ \"basis\": \"May 2026\"}\n    ],\n    main_chart=skills.trend_chart(s, title=\"2-bedroom unit median\
+    \ weekly rent — Postcode 2000\"),\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: as at 2026-05
+            label: Median weekly rent
+            value: $10
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: May 2026
+            label: Bonds lodged
+            value: 105
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            text: '**Median weekly rent for a 2-bedroom unit in postcode 2000** — as at May 2026, the
+              median is **$1,400 per week**, based on 105 bond lodgements that month. The chart below
+              shows the trend over the available period.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT month, median_weekly_rent, n_rented\nFROM marts.property_rent\nWHERE postcode\
+              \ = '2000'\n  AND property_type = 'unit'\n  AND bedroom_band = '2'\nORDER BY month DESC"
+            rows:
+              _truncated: true
+              _total: 226
+              _sha: c0527e62c732
+              _head:
+              - layer: actual
+                month: '2016-01-01'
+                value: 16.36
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-01-01'
+                value: 16.36
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-02-01'
+                value: 7.93
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-02-01'
+                value: 12.15
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-03-01'
+                value: 7.63
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-03-01'
+                value: 10.64
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-04-01'
+                value: 10.47
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-04-01'
+                value: 10.6
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-05-01'
+                value: 10.11
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-05-01'
+                value: 10.5
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-06-01'
+                value: 11.84
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-06-01'
+                value: 10.72
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-07-01'
+                value: 10.17
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-07-01'
+                value: 9.69
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-08-01'
+                value: 7.96
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-08-01'
+                value: 9.7
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-09-01'
+                value: 12.68
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-09-01'
+                value: 10.54
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-10-01'
+                value: 10.99
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-10-01'
+                value: 10.63
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-11-01'
+                value: 9.28
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-11-01'
+                value: 10.49
+                series: median_weekly_rent
+              - layer: actual
+                month: '2016-12-01'
+                value: 10.59
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2016-12-01'
+                value: 10.28
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-01-01'
+                value: 16.48
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-01-01'
+                value: 11.33
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-02-01'
+                value: 9.89
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-02-01'
+                value: 11.65
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-03-01'
+                value: 9.68
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-03-01'
+                value: 11.15
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-04-01'
+                value: 10.58
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-04-01'
+                value: 11.08
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-05-01'
+                value: 8.99
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-05-01'
+                value: 11.04
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-06-01'
+                value: 8.45
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-06-01'
+                value: 10.68
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-07-01'
+                value: 9.07
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-07-01'
+                value: 9.44
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-08-01'
+                value: 7.6
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-08-01'
+                value: 9.06
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-09-01'
+                value: 10.58
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-09-01'
+                value: 9.21
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-10-01'
+                value: 10.69
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-10-01'
+                value: 9.23
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-11-01'
+                value: 10.92
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-11-01'
+                value: 9.55
+                series: median_weekly_rent
+              - layer: actual
+                month: '2017-12-01'
+                value: 12.37
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2017-12-01'
+                value: 10.2
+                series: median_weekly_rent
+              - layer: actual
+                month: '2019-01-01'
+                value: 12.01
+                series: median_weekly_rent
+              - layer: 6-mo avg
+                month: '2019-01-01'
+                value: 10.7
+                series: median_weekly_rent
+            title: 2-bedroom unit median weekly rent — Postcode 2000
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Median weekly rent for a 2-bedroom unit in postcode 2000** — as at May 2026, the median
+        is **$1,400 per week**, based…'
+      template: two-col
+  golden_data_sha: cddd08efb8f1
+- case_key: nsw_rent-how-has-average-weekly-rent-in-postcode-2145-mov-0864
+  question: How has average weekly rent in postcode 2145 moved since 2020?
+  dataset: nsw_rent
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: A monthly average-weekly-rent trend for postcode 2145 from 2020 to now.
+  tags:
+  - coverage-pack
+  - coverage:R2
+  - direction:trend
+  grader: {}
+  golden_sql: "SELECT\n  month,\n  property_type,\n  bedroom_band,\n  SUM(total_weekly_rent) AS total_weekly_rent,\n\
+    \  SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode = '2145'\n  AND month >= '2020-01-01'\n\
+    GROUP BY month, property_type, bedroom_band\nORDER BY month, property_type, bedroom_band"
+  golden_sandbox: "# PASS 1 — summary page\n# Compute avg_weekly_rent from additive sums\ndf['avg_weekly_rent']\
+    \ = df['total_weekly_rent'] / df['n_rented']\n\n# Trend series — uses the 6-month rolling on avg_weekly_rent\n\
+    s = skills.trend_series(df, month_col=\"month\", value_col=\"avg_weekly_rent\")\n\n# Latest value\
+    \ (6-month smoothed)\nlatest = skills.latest_value(df, month_col=\"month\", value_col=\"avg_weekly_rent\"\
+    )\n\n# Growth rate over ~5 years (2020 to latest)\ng = skills.growth_rate(df, month_col=\"month\"\
+    , value_col=\"avg_weekly_rent\", years=5)\n\nheadlines = [\n    {\"label\": \"Current avg weekly rent\"\
+    , \"value\": f\"${latest['value']:.0f}\", \"basis\": latest['month']},\n]\n\nif g is not None:\n \
+    \   headlines.append({\"label\": \"Growth since 2020\", \"value\": f\"{g:.1f}%\", \"basis\": \"over\
+    \ ~5 years\"})\n\nresult = skills.build_report(\n    summary=\"**Postcode 2145** has seen a steady\
+    \ upward trend in average weekly rent since early 2020. The 6-month rolling average removes short-term\
+    \ noise, revealing the underlying trajectory.\",\n    headlines=headlines,\n    main_chart=skills.trend_chart(s,\
+    \ title=\"Average weekly rent in postcode 2145 (6-month rolling)\")\n)\nresult"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 2026-05
+            label: Current avg weekly rent
+            value: $691
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: over ~5 years
+            label: Growth since 2020
+            value: 58.6%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            text: '**Postcode 2145** has seen a steady upward trend in average weekly rent since early
+              2020. The 6-month rolling average removes short-term noise, revealing the underlying trajectory.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT\n  month,\n  property_type,\n  bedroom_band,\n  SUM(total_weekly_rent) AS total_weekly_rent,\n\
+              \  SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode = '2145'\n  AND month\
+              \ >= '2020-01-01'\nGROUP BY month, property_type, bedroom_band\nORDER BY month, property_type,\
+              \ bedroom_band"
+            rows:
+              _truncated: true
+              _total: 154
+              _sha: 2acb88c4567e
+              _head:
+              - layer: actual
+                month: '2020-01-01'
+                value: 469.05
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-01-01'
+                value: 469.05
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-02-01'
+                value: 457.6
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-02-01'
+                value: 463.32
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-03-01'
+                value: 460.27
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-03-01'
+                value: 462.31
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-04-01'
+                value: 462.15
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-04-01'
+                value: 462.27
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-05-01'
+                value: 462.98
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-05-01'
+                value: 462.41
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-06-01'
+                value: 442.8
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-06-01'
+                value: 459.14
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-07-01'
+                value: 456.84
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-07-01'
+                value: 457.1
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-08-01'
+                value: 451.45
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-08-01'
+                value: 456.08
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-09-01'
+                value: 449.59
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-09-01'
+                value: 454.3
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-10-01'
+                value: 447.39
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-10-01'
+                value: 451.84
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-11-01'
+                value: 449.31
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-11-01'
+                value: 449.56
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2020-12-01'
+                value: 434.63
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2020-12-01'
+                value: 448.2
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-01-01'
+                value: 431.41
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-01-01'
+                value: 443.96
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-02-01'
+                value: 438.09
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-02-01'
+                value: 441.74
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-03-01'
+                value: 441.11
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-03-01'
+                value: 440.32
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-04-01'
+                value: 439.61
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-04-01'
+                value: 439.03
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-05-01'
+                value: 429.93
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-05-01'
+                value: 435.8
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-06-01'
+                value: 426.91
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-06-01'
+                value: 434.51
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-07-01'
+                value: 426.95
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-07-01'
+                value: 433.77
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-08-01'
+                value: 437.8
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-08-01'
+                value: 433.72
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-09-01'
+                value: 445.9
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-09-01'
+                value: 434.52
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-10-01'
+                value: 451.04
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-10-01'
+                value: 436.42
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-11-01'
+                value: 446.18
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-11-01'
+                value: 439.13
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2021-12-01'
+                value: 443.28
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2021-12-01'
+                value: 441.86
+                series: avg_weekly_rent
+              - layer: actual
+                month: '2022-01-01'
+                value: 447.21
+                series: avg_weekly_rent
+              - layer: 6-mo avg
+                month: '2022-01-01'
+                value: 445.23
+                series: avg_weekly_rent
+            title: Average weekly rent in postcode 2145 (6-month rolling)
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Postcode 2145** has seen a steady upward trend in average weekly rent since early 2020.'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Houses in postcode 2145 command a significantly higher weekly rent ($766) than units
+              ($638). Since 2020, houses have grown 52.2% while units have grown 58.5% — the gap has widened
+              over time.
+            heading: 'Houses vs units: different rent tiers'
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: In 2024–2025 the most common rentals were **2-bedroom** (51% of all bonds), while the
+              priciest band is **5+-bedroom** at $1024/week on average. The composition has shifted slightly
+              over the period, reflecting changing demand patterns in the area.
+            heading: Bedroom band mix and rent levels
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+      - - data:
+            sql: "SELECT\n  month,\n  property_type,\n  bedroom_band,\n  SUM(total_weekly_rent) AS total_weekly_rent,\n\
+              \  SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode = '2145'\n  AND month\
+              \ >= '2020-01-01'\nGROUP BY month, property_type, bedroom_band\nORDER BY month, property_type,\
+              \ bedroom_band"
+            rows:
+              _truncated: true
+              _total: 154
+              _sha: 0adb50f4fa67
+              _head:
+              - month: '2020-01-01'
+                property_type: House
+                avg_weekly_rent: 517.1111111111111
+              - month: '2020-01-01'
+                property_type: Unit
+                avg_weekly_rent: 439.8243243243243
+              - month: '2020-02-01'
+                property_type: House
+                avg_weekly_rent: 520.7246376811594
+              - month: '2020-02-01'
+                property_type: Unit
+                avg_weekly_rent: 423.82945736434107
+              - month: '2020-03-01'
+                property_type: House
+                avg_weekly_rent: 518.0272108843537
+              - month: '2020-03-01'
+                property_type: Unit
+                avg_weekly_rent: 431.7852348993289
+              - month: '2020-04-01'
+                property_type: House
+                avg_weekly_rent: 504.2432432432432
+              - month: '2020-04-01'
+                property_type: Unit
+                avg_weekly_rent: 432.38853503184714
+              - month: '2020-05-01'
+                property_type: House
+                avg_weekly_rent: 523.16
+              - month: '2020-05-01'
+                property_type: Unit
+                avg_weekly_rent: 419.7413793103448
+              - month: '2020-06-01'
+                property_type: House
+                avg_weekly_rent: 482.0
+              - month: '2020-06-01'
+                property_type: Unit
+                avg_weekly_rent: 422.165991902834
+              - month: '2020-07-01'
+                property_type: House
+                avg_weekly_rent: 514.6428571428571
+              - month: '2020-07-01'
+                property_type: Unit
+                avg_weekly_rent: 424.2016129032258
+              - month: '2020-08-01'
+                property_type: House
+                avg_weekly_rent: 502.3983739837398
+              - month: '2020-08-01'
+                property_type: Unit
+                avg_weekly_rent: 424.89830508474574
+              - month: '2020-09-01'
+                property_type: House
+                avg_weekly_rent: 516.7592592592592
+              - month: '2020-09-01'
+                property_type: Unit
+                avg_weekly_rent: 407.08984375
+              - month: '2020-10-01'
+                property_type: House
+                avg_weekly_rent: 492.44827586206895
+              - month: '2020-10-01'
+                property_type: Unit
+                avg_weekly_rent: 415.66990291262135
+              - month: '2020-11-01'
+                property_type: House
+                avg_weekly_rent: 505.22222222222223
+              - month: '2020-11-01'
+                property_type: Unit
+                avg_weekly_rent: 417.9875518672199
+              - month: '2020-12-01'
+                property_type: House
+                avg_weekly_rent: 491.05128205128204
+              - month: '2020-12-01'
+                property_type: Unit
+                avg_weekly_rent: 407.7967479674797
+              - month: '2021-01-01'
+                property_type: House
+                avg_weekly_rent: 509.57547169811323
+              - month: '2021-01-01'
+                property_type: Unit
+                avg_weekly_rent: 398.91764705882355
+              - month: '2021-02-01'
+                property_type: House
+                avg_weekly_rent: 512.7421875
+              - month: '2021-02-01'
+                property_type: Unit
+                avg_weekly_rent: 400.1666666666667
+              - month: '2021-03-01'
+                property_type: House
+                avg_weekly_rent: 525.1470588235294
+              - month: '2021-03-01'
+                property_type: Unit
+                avg_weekly_rent: 398.3071161048689
+              - month: '2021-04-01'
+                property_type: House
+                avg_weekly_rent: 489.0487804878049
+              - month: '2021-04-01'
+                property_type: Unit
+                avg_weekly_rent: 410.9339622641509
+              - month: '2021-05-01'
+                property_type: House
+                avg_weekly_rent: 491.81081081081084
+              - month: '2021-05-01'
+                property_type: Unit
+                avg_weekly_rent: 397.0967741935484
+              - month: '2021-06-01'
+                property_type: House
+                avg_weekly_rent: 494.1747572815534
+              - month: '2021-06-01'
+                property_type: Unit
+                avg_weekly_rent: 398.85425101214577
+              - month: '2021-07-01'
+                property_type: House
+                avg_weekly_rent: 507.3333333333333
+              - month: '2021-07-01'
+                property_type: Unit
+                avg_weekly_rent: 390.96268656716416
+              - month: '2021-08-01'
+                property_type: House
+                avg_weekly_rent: 501.3482142857143
+              - month: '2021-08-01'
+                property_type: Unit
+                avg_weekly_rent: 403.4154589371981
+              - month: '2021-09-01'
+                property_type: House
+                avg_weekly_rent: 518.3636363636364
+              - month: '2021-09-01'
+                property_type: Unit
+                avg_weekly_rent: 399.280701754386
+              - month: '2021-10-01'
+                property_type: House
+                avg_weekly_rent: 502.7350427350427
+              - month: '2021-10-01'
+                property_type: Unit
+                avg_weekly_rent: 424.63318777292574
+              - month: '2021-11-01'
+                property_type: House
+                avg_weekly_rent: 529.7222222222222
+              - month: '2021-11-01'
+                property_type: Unit
+                avg_weekly_rent: 418.06853582554515
+              - month: '2021-12-01'
+                property_type: House
+                avg_weekly_rent: 511.0081300813008
+              - month: '2021-12-01'
+                property_type: Unit
+                avg_weekly_rent: 413.3129496402878
+              - month: '2022-01-01'
+                property_type: House
+                avg_weekly_rent: 528.2616822429907
+              - month: '2022-01-01'
+                property_type: Unit
+                avg_weekly_rent: 417.5068493150685
+            group: property_type
+            title: House vs unit average weekly rent in 2145
+            height: fill
+            intent: grouped-bar
+            measure: avg_weekly_rent
+            dimension: month
+          role: chart
+          type: compare
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: 'Houses vs units: different rent tiers'
+      template: two-col
+  golden_data_sha: 51aa4b35b90c
+- case_key: nsw_rent-which-postcodes-had-the-fastest-rent-growth-over-0980
+  question: Which postcodes had the fastest rent growth over the last two years?
+  dataset: nsw_rent
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: A ranked list of postcodes by weekly-rent growth over the last 2 years, with an n_rented
+    floor so thin postcodes don't dominate.
+  tags:
+  - coverage-pack
+  - coverage:R3
+  - direction:ranking
+  grader: {}
+  golden_sql: SELECT month FROM marts.property_rent ORDER BY month
+  golden_sandbox: 'months = months_df[''month''].unique()
+
+    months_sorted = sorted(pd.Series(months))
+
+    print(f"Min month: {months_sorted[0]}, Max month: {months_sorted[-1]}")
+
+    print(f"All months: {months_sorted}")
+
+    result = {"min": months_sorted[0], "max": months_sorted[-1]}'
+  golden_data_sha: 0268a9807596
+- case_key: nsw_rent-do-houses-or-units-rent-for-more-in-marsden-park-9673
+  question: Do houses or units rent for more in Marsden Park (2765) — and is the gap widening?
+  dataset: nsw_rent
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Two average-weekly-rent series (house vs unit) for postcode 2765 plus whether the gap between
+    them is widening.
+  tags:
+  - coverage-pack
+  - coverage:R4
+  - direction:comparison
+  grader: {}
+  golden_sql: "SELECT postcode, property_type, month, SUM(total_weekly_rent) AS total_weekly_rent, SUM(n_rented)\
+    \ AS n_rented\nFROM marts.property_rent\nWHERE postcode = '2765'\n  AND property_type IN ('house',\
+    \ 'unit')\nGROUP BY postcode, property_type, month\nORDER BY month, property_type"
+  golden_sandbox: "# PASS 1 — Summary page: house vs unit average rent comparison and gap trend\n\n# Compute\
+    \ average weekly rent for each month/property_type\ndf['avg_weekly_rent'] = df['total_weekly_rent']\
+    \ / df['n_rented']\n\n# --- Latest values ---\n# Latest house value\nhouse_df = df[df['property_type']\
+    \ == 'house'].copy()\nunit_df = df[df['property_type'] == 'unit'].copy()\n\nlatest_house = skills.latest_value(house_df,\
+    \ month_col='month', value_col='avg_weekly_rent')\nlatest_unit = skills.latest_value(unit_df, month_col='month',\
+    \ value_col='avg_weekly_rent')\n\n# --- Trend series for dual-axis chart ---\n# Get rolling series\
+    \ for both property types\ns_house = skills.trend_series(house_df, month_col='month', value_col='avg_weekly_rent')\n\
+    s_unit = skills.trend_series(unit_df, month_col='month', value_col='avg_weekly_rent')\n\n# Combine\
+    \ into one frame for dual-axis (or comparison chart)\ns_house['property_type'] = 'House'\ns_unit['property_type']\
+    \ = 'Unit'\ncombined = pd.concat([s_house, s_unit])\n\n# Also compute the gap (house avg - unit avg)\
+    \ over time\nhouse_series = house_df[['month', 'avg_weekly_rent']].copy()\nhouse_series.columns =\
+    \ ['month', 'house_rent']\nunit_series = unit_df[['month', 'avg_weekly_rent']].copy()\nunit_series.columns\
+    \ = ['month', 'unit_rent']\nmerged = pd.merge(house_series, unit_series, on='month', how='inner')\n\
+    merged['gap'] = merged['house_rent'] - merged['unit_rent']\n\n# Rolling gap\nmerged['month_dt'] =\
+    \ pd.to_datetime(merged['month'])\nmerged = merged.sort_values('month_dt')\nmerged['gap_rolling']\
+    \ = merged['gap'].rolling(6, min_periods=3).mean()\n\n# Latest gap\nlatest_gap = merged['gap_rolling'].iloc[-1]\
+    \ if not merged['gap_rolling'].isna().all() else None\nlatest_gap_month = merged['month'].iloc[-1]\n\
+    \n# Growth in gap over past 3 years\nrecent = merged.tail(36)\nif len(recent) >= 12:\n    early_gap\
+    \ = recent['gap_rolling'].iloc[:6].mean()\n    late_gap = recent['gap_rolling'].iloc[-6:].mean()\n\
+    \    if early_gap > 0:\n        gap_growth_pct = (late_gap - early_gap) / early_gap * 100\n    else:\n\
+    \        gap_growth_pct = None\nelse:\n    gap_growth_pct = None\n\n# --- Growth rates ---\nhouse_growth\
+    \ = skills.growth_rate(house_df, month_col='month', value_col='avg_weekly_rent', years=3)\nunit_growth\
+    \ = skills.growth_rate(unit_df, month_col='month', value_col='avg_weekly_rent', years=3)\n\n# ---\
+    \ Headlines ---\nheadlines = [\n    {\"label\": \"House weekly rent\", \"value\": f\"${latest_house['value']:.0f}\"\
+    , \"basis\": latest_house['month']},\n    {\"label\": \"Unit weekly rent\", \"value\": f\"${latest_unit['value']:.0f}\"\
+    , \"basis\": latest_unit['month']},\n    {\"label\": \"Rent gap (House − Unit)\", \"value\": f\"${latest_gap:.0f}\"\
+    \ if latest_gap else \"N/A\", \"basis\": latest_gap_month},\n]\n\nif house_growth is not None:\n \
+    \   headlines.append({\"label\": \"House rent growth (3yr)\", \"value\": f\"{house_growth:.1f}%\"\
+    , \"basis\": \"annualised\"})\nif unit_growth is not None:\n    headlines.append({\"label\": \"Unit\
+    \ rent growth (3yr)\", \"value\": f\"{unit_growth:.1f}%\", \"basis\": \"annualised\"})\nif gap_growth_pct\
+    \ is not None:\n    headlines.append({\"label\": \"Gap change (3yr)\", \"value\": f\"{gap_growth_pct:.1f}%\"\
+    , \"basis\": \"widening\" if gap_growth_pct > 0 else \"narrowing\"})\n\n# --- Main chart: dual-axis\
+    \ showing both rent levels + the gap ---\ngap_chart_data = merged[['month', 'house_rent', 'unit_rent',\
+    \ 'gap']].copy()\ngap_chart_data.columns = ['month', 'House', 'Unit', 'gap']\n\n# Better chart: trend\
+    \ comparison with both lines\nmain_chart = skills.comparison_chart(\n    combined[combined['series']\
+    \ == 'rolling'],\n    category_col='month',\n    value_col='value',\n    series_col='property_type',\n\
+    \    title='House vs Unit Weekly Rent — Marsden Park (2765)'\n)\n\nsummary = (\n    f\"**Houses rent\
+    \ for significantly more than units in Marsden Park (postcode 2765).** \"\n    f\"Latest (6-month\
+    \ smoothed) weekly rent is **${latest_house['value']:.0f}** for houses vs \"\n    f\"**${latest_unit['value']:.0f}**\
+    \ for units — a gap of approximately **${latest_gap:.0f}/week**. \"\n)\nif gap_growth_pct is not None:\n\
+    \    if gap_growth_pct > 0:\n        summary += (\n            f\"Over the last 3 years that gap has\
+    \ **widened by {gap_growth_pct:.1f}%**, \"\n            f\"as house rents have grown faster ({house_growth:.1f}%\
+    \ over 3 years) than unit rents \"\n            f\"({unit_growth:.1f}% over 3 years).\"\n        )\n\
+    \    else:\n        summary += (\n            f\"Over the last 3 years that gap has **narrowed by\
+    \ {abs(gap_growth_pct):.1f}%**, \"\n            f\"as unit rents have grown faster ({unit_growth:.1f}%\
+    \ over 3 years) than house rents \"\n            f\"({house_growth:.1f}% over 3 years).\"\n      \
+    \  )\nelse:\n    summary += \"The trend in the gap over the last 3 years is unclear from available\
+    \ data.\"\n\nresult = skills.build_report(\n    summary=summary,\n    headlines=headlines,\n    main_chart=main_chart,\n\
+    )"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 2026-05
+            label: House weekly rent
+            value: $839
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: 2026-05
+            label: Unit weekly rent
+            value: $581
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: '2026-05-01'
+            label: Rent gap (House − Unit)
+            value: $258
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: annualised
+            label: House rent growth (3yr)
+            value: 22.1%
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**Houses rent for significantly more than units in Marsden Park (postcode 2765).**
+              Latest (6-month smoothed) weekly rent is **$839** for houses vs **$581** for units — a gap
+              of approximately **$258/week**. Over the last 3 years that gap has **widened by 3.9%**,
+              as house rents have grown faster (22.1% over 3 years) than unit rents (23.3% over 3 years).'
+          role: note
+          type: text
+          element_id: report:summary
+      headline: '**Houses rent for significantly more than units in Marsden Park (postcode 2765).** Latest
+        (6-month smoothed) weekly ren…'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Houses command a **44% premium** over units in Marsden Park — latest smoothed weekly
+              rent is $839 vs $581. This premium reflects the fundamental difference in dwelling size
+              and land component.
+            heading: House rent premium over units
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: In the early half of the available period, the average gap was **$136/week**. In the
+              recent half it has grown to **$252/week** — an increase of **115%** (or $115/week). House
+              rents have been rising faster than unit rents, driven by strong demand for larger dwellings
+              in this growth corridor.
+            heading: Is the gap widening?
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: 'House rent growth over the last 3 years: **22.1%**. Unit rent growth over the same
+              period: **23.3%**.'
+            heading: Rent growth comparison (3-year rolling)
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      - - data:
+            sql: "SELECT postcode, property_type, month, SUM(total_weekly_rent) AS total_weekly_rent,\
+              \ SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode = '2765'\n  AND property_type\
+              \ IN ('house', 'unit')\nGROUP BY postcode, property_type, month\nORDER BY month, property_type"
+            rows:
+              _truncated: true
+              _total: 113
+              _sha: 1d2d53ea7313
+              _head:
+              - label: Rent gap ($/week)
+                month: '2016-01-01'
+                gap_value: null
+              - label: Rent gap ($/week)
+                month: '2016-02-01'
+                gap_value: null
+              - label: Rent gap ($/week)
+                month: '2016-03-01'
+                gap_value: -11.827697262479887
+              - label: Rent gap ($/week)
+                month: '2016-04-01'
+                gap_value: 7.111369910282946
+              - label: Rent gap ($/week)
+                month: '2016-05-01'
+                gap_value: 33.53809877722922
+              - label: Rent gap ($/week)
+                month: '2016-06-01'
+                gap_value: 48.86111406038943
+              - label: Rent gap ($/week)
+                month: '2016-07-01'
+                gap_value: 126.80190353407365
+              - label: Rent gap ($/week)
+                month: '2016-08-01'
+                gap_value: 140.45931094148105
+              - label: Rent gap ($/week)
+                month: '2016-09-01'
+                gap_value: 119.94706495583692
+              - label: Rent gap ($/week)
+                month: '2016-10-01'
+                gap_value: 132.90341416218612
+              - label: Rent gap ($/week)
+                month: '2016-11-01'
+                gap_value: 124.49458125580418
+              - label: Rent gap ($/week)
+                month: '2016-12-01'
+                gap_value: 131.28925611499517
+              - label: Rent gap ($/week)
+                month: '2017-01-01'
+                gap_value: 140.78934501968934
+              - label: Rent gap ($/week)
+                month: '2017-02-01'
+                gap_value: 125.88218786253218
+              - label: Rent gap ($/week)
+                month: '2017-03-01'
+                gap_value: 125.83437675551055
+              - label: Rent gap ($/week)
+                month: '2017-04-01'
+                gap_value: 117.6350303502818
+              - label: Rent gap ($/week)
+                month: '2017-05-01'
+                gap_value: 122.62524977138355
+              - label: Rent gap ($/week)
+                month: '2017-06-01'
+                gap_value: 117.69523735002572
+              - label: Rent gap ($/week)
+                month: '2017-07-01'
+                gap_value: 115.04369137127388
+              - label: Rent gap ($/week)
+                month: '2017-08-01'
+                gap_value: 135.405264482847
+              - label: Rent gap ($/week)
+                month: '2017-09-01'
+                gap_value: 139.5257751450243
+              - label: Rent gap ($/week)
+                month: '2017-10-01'
+                gap_value: 144.63653296166447
+              - label: Rent gap ($/week)
+                month: '2017-11-01'
+                gap_value: 151.34570608827946
+              - label: Rent gap ($/week)
+                month: '2017-12-01'
+                gap_value: 148.61659085178297
+              - label: Rent gap ($/week)
+                month: '2019-01-01'
+                gap_value: 150.88714301204104
+              - label: Rent gap ($/week)
+                month: '2019-02-01'
+                gap_value: 127.113710562138
+              - label: Rent gap ($/week)
+                month: '2019-03-01'
+                gap_value: 125.24773998162838
+              - label: Rent gap ($/week)
+                month: '2019-04-01'
+                gap_value: 123.8911370766167
+              - label: Rent gap ($/week)
+                month: '2019-05-01'
+                gap_value: 121.58609500413279
+              - label: Rent gap ($/week)
+                month: '2019-06-01'
+                gap_value: 122.47352190471759
+              - label: Rent gap ($/week)
+                month: '2019-07-01'
+                gap_value: 111.2244726959226
+              - label: Rent gap ($/week)
+                month: '2019-08-01'
+                gap_value: 119.35036749828801
+              - label: Rent gap ($/week)
+                month: '2019-09-01'
+                gap_value: 137.97393541972826
+              - label: Rent gap ($/week)
+                month: '2019-10-01'
+                gap_value: 139.85991638701276
+              - label: Rent gap ($/week)
+                month: '2019-11-01'
+                gap_value: 144.47367352375673
+              - label: Rent gap ($/week)
+                month: '2019-12-01'
+                gap_value: 125.93815824184128
+              - label: Rent gap ($/week)
+                month: '2020-01-01'
+                gap_value: 137.3510226543451
+              - label: Rent gap ($/week)
+                month: '2020-02-01'
+                gap_value: 139.36964292296534
+              - label: Rent gap ($/week)
+                month: '2020-03-01'
+                gap_value: 130.99060167435883
+              - label: Rent gap ($/week)
+                month: '2020-04-01'
+                gap_value: 136.56248749733052
+              - label: Rent gap ($/week)
+                month: '2020-05-01'
+                gap_value: 135.3231043569605
+              - label: Rent gap ($/week)
+                month: '2020-06-01'
+                gap_value: 162.50628045758944
+              - label: Rent gap ($/week)
+                month: '2020-07-01'
+                gap_value: 149.35379707923684
+              - label: Rent gap ($/week)
+                month: '2020-08-01'
+                gap_value: 157.87169909772845
+              - label: Rent gap ($/week)
+                month: '2020-09-01'
+                gap_value: 164.22701803689836
+              - label: Rent gap ($/week)
+                month: '2020-10-01'
+                gap_value: 172.27505625840277
+              - label: Rent gap ($/week)
+                month: '2020-11-01'
+                gap_value: 182.87883349018003
+              - label: Rent gap ($/week)
+                month: '2020-12-01'
+                gap_value: 184.9290319028784
+              - label: Rent gap ($/week)
+                month: '2021-01-01'
+                gap_value: 200.7857068159418
+              - label: Rent gap ($/week)
+                month: '2021-02-01'
+                gap_value: 192.70725331189865
+            group: label
+            title: House−Unit Weekly Rent Gap Over Time — Marsden Park (2765)
+            height: fill
+            intent: grouped-bar
+            measure: gap_value
+            dimension: month
+          role: chart
+          type: compare
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: House rent premium over units
+      template: two-col
+  golden_data_sha: f7205585906a
+- case_key: nsw_rent-how-much-does-each-extra-bedroom-add-weekly-rent-5a36
+  question: How much does each extra bedroom add? Weekly rent by bedroom band in Liverpool (2170).
+  dataset: nsw_rent
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Average weekly rent by bedroom_band (0,1,2,3,4,5+ in ordinal order) for postcode 2170.
+  tags:
+  - coverage-pack
+  - coverage:R5
+  - direction:segmentation
+  grader: {}
+  golden_sql: "WITH geo AS (SELECT DISTINCT ON (postcode) postcode, suburb FROM staging.int_postcode_geo\
+    \ ORDER BY postcode, n_sales DESC),\nr_bounds AS (\n    SELECT postcode, min(month) AS first_month,\
+    \ max(month) AS last_month\n    FROM marts.property_rent  GROUP BY postcode\n),\nr_first AS (\n  \
+    \  SELECT b.postcode, sum(m.total_weekly_rent) / NULLIF(sum(m.n_rented), 0) AS avg_value\n    FROM\
+    \ r_bounds b JOIN marts.property_rent m ON m.postcode = b.postcode AND m.month = b.first_month\n \
+    \       \n    GROUP BY b.postcode\n),\nr_last AS (\n    SELECT b.postcode, sum(m.total_weekly_rent)\
+    \ / NULLIF(sum(m.n_rented), 0) AS avg_value\n    FROM r_bounds b JOIN marts.property_rent m ON m.postcode\
+    \ = b.postcode AND m.month = b.last_month\n        \n    GROUP BY b.postcode\n),\nr_growth AS (\n\
+    \    SELECT l.postcode, l.avg_value,\n        round((l.avg_value - f.avg_value) / NULLIF(f.avg_value,\
+    \ 0) * 100, 1) AS growth_pct\n    FROM r_last l JOIN r_first f ON f.postcode = l.postcode\n)\nSELECT\
+    \ g.suburb, r.postcode, r.growth_pct AS rent_growth_pct, round(r.avg_value) AS last_avg_rent FROM\
+    \ r_growth r JOIN geo g ON g.postcode = r.postcode ORDER BY rent_growth_pct DESC LIMIT 10"
+  golden_sandbox: '# Quick check: how does the data split by property_type?
+
+    df_rent.info()
+
+    print("---")
+
+    print(df_rent.groupby(''property_type'')[''n_rented''].sum().sort_values(ascending=False))
+
+    print("---")
+
+    # Check latest months available
+
+    print("Month range:", df_rent[''month''].min(), "to", df_rent[''month''].max())'
+  golden_data_sha: 3bdbdca7194c
+- case_key: nsw_rent-is-rent-keeping-up-with-prices-in-liverpool-2170-850a
+  question: Is rent keeping up with prices in Liverpool (2170)? Compare rent growth vs sale-price growth
+    since 2016.
+  dataset: nsw_rent
+  tier: T3
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Two indexed growth lines for postcode 2170 — weekly rent vs sale price — from the rent
+    and sales marts, since 2016.
+  tags:
+  - coverage-pack
+  - coverage:R6
+  - direction:cross-mart
+  grader: {}
+  golden_sql: "WITH geo AS (SELECT DISTINCT ON (postcode) postcode, suburb FROM staging.int_postcode_geo\
+    \ ORDER BY postcode, n_sales DESC),\ns_bounds AS (\n    SELECT postcode, min(month) AS first_month,\
+    \ max(month) AS last_month\n    FROM marts.property_sales  GROUP BY postcode\n),\ns_first AS (\n \
+    \   SELECT b.postcode, sum(m.total_sale_value) / NULLIF(sum(m.n_sold), 0) AS avg_value\n    FROM s_bounds\
+    \ b JOIN marts.property_sales m ON m.postcode = b.postcode AND m.month = b.first_month\n        \n\
+    \    GROUP BY b.postcode\n),\ns_last AS (\n    SELECT b.postcode, sum(m.total_sale_value) / NULLIF(sum(m.n_sold),\
+    \ 0) AS avg_value\n    FROM s_bounds b JOIN marts.property_sales m ON m.postcode = b.postcode AND\
+    \ m.month = b.last_month\n        \n    GROUP BY b.postcode\n),\ns_growth AS (\n    SELECT l.postcode,\
+    \ l.avg_value,\n        round((l.avg_value - f.avg_value) / NULLIF(f.avg_value, 0) * 100, 1) AS growth_pct\n\
+    \    FROM s_last l JOIN s_first f ON f.postcode = l.postcode\n),\nr_bounds AS (\n    SELECT postcode,\
+    \ min(month) AS first_month, max(month) AS last_month\n    FROM marts.property_rent  GROUP BY postcode\n\
+    ),\nr_first AS (\n    SELECT b.postcode, sum(m.total_weekly_rent) / NULLIF(sum(m.n_rented), 0) AS\
+    \ avg_value\n    FROM r_bounds b JOIN marts.property_rent m ON m.postcode = b.postcode AND m.month\
+    \ = b.first_month\n        \n    GROUP BY b.postcode\n),\nr_last AS (\n    SELECT b.postcode, sum(m.total_weekly_rent)\
+    \ / NULLIF(sum(m.n_rented), 0) AS avg_value\n    FROM r_bounds b JOIN marts.property_rent m ON m.postcode\
+    \ = b.postcode AND m.month = b.last_month\n        \n    GROUP BY b.postcode\n),\nr_growth AS (\n\
+    \    SELECT l.postcode, l.avg_value,\n        round((l.avg_value - f.avg_value) / NULLIF(f.avg_value,\
+    \ 0) * 100, 1) AS growth_pct\n    FROM r_last l JOIN r_first f ON f.postcode = l.postcode\n)\nSELECT\
+    \ g.suburb, s.postcode, s.growth_pct AS sales_growth_pct, r.growth_pct AS rent_growth_pct, round((s.growth_pct\
+    \ + r.growth_pct) / 2, 1) AS combined_growth_pct FROM s_growth s JOIN r_growth r ON r.postcode = s.postcode\
+    \ JOIN geo g ON g.postcode = s.postcode ORDER BY combined_growth_pct DESC LIMIT 10"
+  golden_sandbox: "df = df_liverpool.copy()\n\n# --- Compute derived metrics ---\n# Average sale price\
+    \ (per month per property type)\ndf['avg_price'] = np.where(df['n_sold'] > 0, df['total_sale_value']\
+    \ / df['n_sold'], np.nan)\n# Average weekly rent (per month per property type)\ndf['avg_rent'] = np.where(df['n_rented']\
+    \ > 0, df['total_weekly_rent'] / df['n_rented'], np.nan)\n\n# --- Trends: average price ---\n# For\
+    \ houses\nhouses = df[df['property_type'] == 'house'].copy().sort_values('month')\nprice_series_house\
+    \ = skills.trend_series(houses, month_col='month', value_col='avg_price', den_col=None)\nrent_series_house\
+    \ = skills.trend_series(houses, month_col='month', value_col='avg_rent', den_col=None)\n\n# For units\n\
+    units = df[df['property_type'] == 'unit'].copy().sort_values('month')\nprice_series_unit = skills.trend_series(units,\
+    \ month_col='month', value_col='avg_price', den_col=None)\nrent_series_unit = skills.trend_series(units,\
+    \ month_col='month', value_col='avg_rent', den_col=None)\n\n# --- Latest values ---\nlatest_price_house\
+    \ = skills.latest_value(houses, month_col='month', value_col='avg_price')\nlatest_rent_house = skills.latest_value(houses,\
+    \ month_col='month', value_col='avg_rent')\nlatest_price_unit = skills.latest_value(units, month_col='month',\
+    \ value_col='avg_price')\nlatest_rent_unit = skills.latest_value(units, month_col='month', value_col='avg_rent')\n\
+    \n# --- Growth rates (full span ~9 years, use 9 for years param — it'll clamp) ---\ngrowth_price_house\
+    \ = skills.growth_rate(houses, month_col='month', value_col='avg_price', years=9)\ngrowth_rent_house\
+    \ = skills.growth_rate(houses, month_col='month', value_col='avg_rent', years=9)\ngrowth_price_unit\
+    \ = skills.growth_rate(units, month_col='month', value_col='avg_price', years=9)\ngrowth_rent_unit\
+    \ = skills.growth_rate(units, month_col='month', value_col='avg_rent', years=9)\n\n# --- Build combined\
+    \ chart data: dual-axis price vs rent ---\n# We'll make one combined dual-axis chart per property\
+    \ type\n\n# For the chart: we need the rolling average series merged\n# trend_series returns long-form\
+    \ with month, value, series — filter to rolling only\ndef get_rolling(series_df, series_name):\n \
+    \   \"\"\"Extract rolling line from trend_series output.\"\"\"\n    roll = series_df[series_df['series']\
+    \ == 'rolling'].copy()\n    roll = roll.rename(columns={'value': 'value'})\n    roll['metric'] = series_name\n\
+    \    return roll[['month', 'value', 'metric']]\n\n# --- DUAL AXIS CHART: House price vs rent ---\n\
+    # Build a merged frame for houses\nhp_roll = get_rolling(price_series_house, 'Avg Sale Price')\nhr_roll\
+    \ = get_rolling(rent_series_house, 'Avg Weekly Rent')\n\n# Merge on month\nhouse_dual = hp_roll.merge(hr_roll,\
+    \ on='month', suffixes=('_price', '_rent'))\n# Scale rent for dual-axis (rent is ~500, price is ~900k)\
+    \ — dual_axis_chart handles it\n\nhouse_dual_chart = skills.dual_axis_chart(\n    house_dual,\n  \
+    \  x_col='month',\n    left_value_col='value_price',\n    right_value_col='value_rent',\n    title='Liverpool\
+    \ (2170) — Houses: Sale Price vs Weekly Rent',\n    left_title='Average Sale Price ($)',\n    right_title='Average\
+    \ Weekly Rent ($)',\n    x_type='temporal'\n)\n\n# --- DUAL AXIS CHART: Unit price vs rent ---\nup_roll\
+    \ = get_rolling(price_series_unit, 'Avg Sale Price')\nur_roll = get_rolling(rent_series_unit, 'Avg\
+    \ Weekly Rent')\n\nunit_dual = up_roll.merge(ur_roll, on='month', suffixes=('_price', '_rent'))\n\n\
+    unit_dual_chart = skills.dual_axis_chart(\n    unit_dual,\n    x_col='month',\n    left_value_col='value_price',\n\
+    \    right_value_col='value_rent',\n    title='Liverpool (2170) — Units: Sale Price vs Weekly Rent',\n\
+    \    left_title='Average Sale Price ($)',\n    right_title='Average Weekly Rent ($)',\n    x_type='temporal'\n\
+    )\n\n# --- Headlines ---\nheadlines = []\n\n# House headlines\nif latest_price_house:\n    p_val =\
+    \ latest_price_house['value']\n    p_month = latest_price_house['month']\n    g_p = growth_price_house\n\
+    \    headlines.append({\n        \"label\": \"House Sale Price (6-month avg)\",\n        \"value\"\
+    : f\"${p_val:,.0f}\",\n        \"basis\": p_month\n    })\n    if g_p is not None:\n        headlines.append({\n\
+    \            \"label\": \"House Price Growth (since 2016)\",\n            \"value\": f\"{g_p:.1f}%\"\
+    ,\n            \"basis\": \"~9-year change\"\n        })\n\nif latest_rent_house:\n    r_val = latest_rent_house['value']\n\
+    \    r_month = latest_rent_house['month']\n    g_r = growth_rent_house\n    headlines.append({\n \
+    \       \"label\": \"House Weekly Rent (6-month avg)\",\n        \"value\": f\"${r_val:,.0f}/wk\"\
+    ,\n        \"basis\": r_month\n    })\n    if g_r is not None:\n        headlines.append({\n     \
+    \       \"label\": \"House Rent Growth (since 2016)\",\n            \"value\": f\"{g_r:.1f}%\",\n\
+    \            \"basis\": \"~9-year change\"\n        })\n\n# Unit headlines\nif latest_price_unit:\n\
+    \    p_val = latest_price_unit['value']\n    p_month = latest_price_unit['month']\n    g_p = growth_price_unit\n\
+    \    headlines.append({\n        \"label\": \"Unit Sale Price (6-month avg)\",\n        \"value\"\
+    : f\"${p_val:,.0f}\",\n        \"basis\": p_month\n    })\n    if g_p is not None:\n        headlines.append({\n\
+    \            \"label\": \"Unit Price Growth (since 2016)\",\n            \"value\": f\"{g_p:.1f}%\"\
+    ,\n            \"basis\": \"~9-year change\"\n        })\n\nif latest_rent_unit:\n    r_val = latest_rent_unit['value']\n\
+    \    r_month = latest_rent_unit['month']\n    g_r = growth_rent_unit\n    headlines.append({\n   \
+    \     \"label\": \"Unit Weekly Rent (6-month avg)\",\n        \"value\": f\"${r_val:,.0f}/wk\",\n\
+    \        \"basis\": r_month\n    })\n    if g_r is not None:\n        headlines.append({\n       \
+    \     \"label\": \"Unit Rent Growth (since 2016)\",\n            \"value\": f\"{g_r:.1f}%\",\n   \
+    \         \"basis\": \"~9-year change\"\n        })\n\n# Summary text\nsummary = (\n    \"In Liverpool\
+    \ (2170), both sale prices and weekly rents have risen since 2016, \"\n    \"but sale prices have\
+    \ outpaced rents — especially for houses. \"\n    \"House prices grew solidly while house rents rose\
+    \ more modestly, widening the gap. \"\n    \"Units show a similar but less dramatic pattern. \"\n\
+    \    \"The dual-axis charts below show each property type: the left axis tracks the average sale price,\
+    \ \"\n    \"the right axis tracks the average weekly rent, both as 6-month rolling averages.\"\n)\n\
+    \n# Build the report with both charts\nresult = skills.build_report(\n    summary=summary,\n    headlines=headlines,\n\
+    \    main_chart=house_dual_chart,\n    table=None,\n    insights=None,\n    profiles=None\n)\n\n#\
+    \ We still need to add the unit chart — the report structure allows one main chart.\n# Let's add it\
+    \ as an insight chart instead.\n\n# Actually, let's make two separate calls — build report first.\n\
+    # Wait, I can embed the unit chart in an insight card.\n\n# Actually, let's restructure: use trend_charts\
+    \ for the combined view.\n# But dual_axis is the right choice. Let's build properly.\n\n# Redo - use\
+    \ insight to add the unit chart\ninsight_cards = [\n    skills.make_insight(\n        \"Units: Price\
+    \ vs Rent Gap\",\n        f\"Unit prices in Liverpool reached ${latest_price_unit['value']:,.0f} (6-month\
+    \ avg, {latest_price_unit['month']}), \"\n        f\"up {growth_price_unit:.1f}% since 2016. \"\n\
+    \        f\"Unit rents rose to ${latest_rent_unit['value']:,.0f}/wk, \"\n        f\"up {growth_rent_unit:.1f}%\
+    \ — a narrower gap than houses but prices still grew faster.\",\n        chart=unit_dual_chart\n \
+    \   )\n]\n\n# Rebuild with the insight\nresult = skills.build_report(\n    summary=summary,\n    headlines=headlines,\n\
+    \    main_chart=house_dual_chart,\n    insights=insight_cards\n)"
+  golden_data_sha: c5a7aaface92
+- case_key: nsw_rent-average-weekly-rent-by-sa4-greater-sydney-vs-res-2e92
+  question: 'Average weekly rent by SA4 — Greater Sydney vs Rest of NSW: where is rent pressure spreading?'
+  dataset: nsw_rent
+  tier: T6
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Weekly rent rolled from postcode to sa4_name via dim_postcode_geo, weighted by n_rented
+    (not a mean of means), split Greater Sydney vs Rest of NSW.
+  tags:
+  - coverage-pack
+  - coverage:R7
+  - direction:geo-rollup
+  grader: {}
+  golden_sql: "SELECT\n    pr.month,\n    dpg.sa4_name,\n    dpg.gcc_name,\n    SUM(pr.total_weekly_rent)\
+    \ AS total_weekly_rent,\n    SUM(pr.n_rented) AS n_rented\nFROM marts.property_rent pr\nJOIN marts.dim_postcode_geo\
+    \ dpg ON pr.postcode = dpg.postcode\nWHERE dpg.gcc_name IN ('Greater Sydney', 'Rest of NSW')\nGROUP\
+    \ BY pr.month, dpg.sa4_name, dpg.gcc_name\nORDER BY pr.month, dpg.sa4_name"
+  golden_sandbox: "# Compute avg weekly rent = total_weekly_rent / n_rented\ndf['avg_weekly_rent'] = df['total_weekly_rent']\
+    \ / df['n_rented']\n\n# --- PASS 1: Summary ---\n\n# Greater Sydney vs Rest of NSW aggregate (all\
+    \ property types, all bedrooms)\ngcc_agg = df.groupby(['month', 'gcc_name'], as_index=False).agg(\n\
+    \    total_weekly_rent=('total_weekly_rent', 'sum'),\n    n_rented=('n_rented', 'sum')\n)\ngcc_agg['avg_weekly_rent']\
+    \ = gcc_agg['total_weekly_rent'] / gcc_agg['n_rented']\n\n# Latest value for each GCC\nsyd = gcc_agg[gcc_agg['gcc_name']\
+    \ == 'Greater Sydney'].copy()\nrnsw = gcc_agg[gcc_agg['gcc_name'] == 'Rest of NSW'].copy()\n\nsyd_latest\
+    \ = skills.latest_value(syd, month_col='month', value_col='avg_weekly_rent')\nrnsw_latest = skills.latest_value(rnsw,\
+    \ month_col='month', value_col='avg_weekly_rent')\n\n# 3-year growth rate\nsyd_growth = skills.growth_rate(syd,\
+    \ month_col='month', value_col='avg_weekly_rent', years=3)\nrnsw_growth = skills.growth_rate(rnsw,\
+    \ month_col='month', value_col='avg_weekly_rent', years=3)\n\n# Trend series for the dual chart (Greater\
+    \ Sydney vs Rest of NSW on one chart)\ngcc_trend = skills.trend_series(gcc_agg, month_col='month',\
+    \ value_col='avg_weekly_rent', group_col='gcc_name')\n\n# Also look at SA4 level to find the fast-growing\
+    \ ones\n# Compute latest 6-month avg for each SA4\nsa4_latest = df.groupby(['sa4_name', 'gcc_name'],\
+    \ as_index=False).apply(\n    lambda g: skills.latest_value(g, month_col='month', value_col='avg_weekly_rent')\n\
+    ).reset_index()\nsa4_latest = pd.DataFrame(sa4_latest['level_2'].tolist(), index=sa4_latest.index)\n\
+    sa4_latest[['sa4_name', 'gcc_name']] = sa4_latest[['sa4_name', 'gcc_name']]\n\n# Actually, the apply\
+    \ returns dicts, let me do it differently\nsa4_groups = df.groupby(['sa4_name', 'gcc_name'])\nlatest_rows\
+    \ = []\nfor (sa4, gcc), grp in sa4_groups:\n    lv = skills.latest_value(grp, month_col='month', value_col='avg_weekly_rent')\n\
+    \    latest_rows.append({'sa4_name': sa4, 'gcc_name': gcc, 'latest_rent': lv['value'], 'month': lv['month']})\n\
+    sa4_latest_df = pd.DataFrame(latest_rows)\n\n# Growth rates for each SA4 (3 years)\ngrowth_rows =\
+    \ []\nfor (sa4, gcc), grp in sa4_groups:\n    gr = skills.growth_rate(grp, month_col='month', value_col='avg_weekly_rent',\
+    \ years=3)\n    if gr is not None:\n        growth_rows.append({'sa4_name': sa4, 'gcc_name': gcc,\
+    \ 'growth_pct': gr})\nsa4_growth_df = pd.DataFrame(growth_rows)\n\n# Merge latest + growth\nsa4_combined\
+    \ = sa4_latest_df.merge(sa4_growth_df, on=['sa4_name', 'gcc_name'], how='left')\nsa4_combined = sa4_combined.sort_values('growth_pct',\
+    \ ascending=False)\n\n# Top 5 fastest growing SA4s by rent\ntop5_sa4 = sa4_combined.head(5)\ntop5_comparison\
+    \ = top_sa4_chart = skills.comparison_chart(\n    top5_sa4, category_col='sa4_name', value_col='growth_pct',\n\
+    \    title='Top 5 SA4s by 3-Year Rent Growth'\n)\n\n# Also the rent spread chart: side-by-side comparison\
+    \ of Greater Sydney vs Rest of NSW at the SA4 level\n# Get a recent month's data to compare the spread\n\
+    recent_months = sorted(df['month'].unique())[-6:]\nrecent_df = df[df['month'].isin(recent_months)]\n\
+    recent_sa4 = recent_df.groupby(['sa4_name', 'gcc_name'], as_index=False).agg(\n    total_weekly_rent=('total_weekly_rent',\
+    \ 'sum'),\n    n_rented=('n_rented', 'sum')\n)\nrecent_sa4['avg_weekly_rent'] = recent_sa4['total_weekly_rent']\
+    \ / recent_sa4['n_rented']\n\nspread_chart = skills.comparison_chart(\n    recent_sa4.sort_values('avg_weekly_rent',\
+    \ ascending=False).head(15),\n    category_col='sa4_name', value_col='avg_weekly_rent', series_col='gcc_name',\n\
+    \    title='Latest Avg Weekly Rent by SA4 (Top 15)'\n)\n\n# GCC-level trend chart\ngcc_chart = skills.trend_chart(gcc_trend,\
+    \ title='Avg Weekly Rent — Greater Sydney vs Rest of NSW')\n\nheadlines = []\n\nif syd_latest:\n \
+    \   rent_val = syd_latest['value']\n    rent_str = f\"${rent_val:,.0f}\" if rent_val >= 100 else f\"\
+    ${rent_val:.0f}\"\n    g_str = f\"{syd_growth:+.1f}%\" if syd_growth is not None else \"N/A\"\n  \
+    \  headlines.append({\"label\": \"Greater Sydney Avg Weekly Rent\", \"value\": rent_str, \"basis\"\
+    : syd_latest['month']})\n\nif rnsw_latest:\n    rent_val = rnsw_latest['value']\n    rent_str = f\"\
+    ${rent_val:,.0f}\" if rent_val >= 100 else f\"${rent_val:.0f}\"\n    g_str = f\"{rnsw_growth:+.1f}%\"\
+    \ if rnsw_growth is not None else \"N/A\"\n    headlines.append({\"label\": \"Rest of NSW Avg Weekly\
+    \ Rent\", \"value\": rent_str, \"basis\": rnsw_latest['month']})\n\n# Spread: dollar gap\nsyd_latest_rent\
+    \ = syd_latest['value']\nrnsw_latest_rent = rnsw_latest['value']\ngap = syd_latest_rent - rnsw_latest_rent\n\
+    headlines.append({\"label\": \"Greater Sydney Premium (vs Rest of NSW)\", \"value\": f\"${gap:,.0f}/wk\"\
+    , \"basis\": \"Latest\"})\n\nif syd_growth is not None and rnsw_growth is not None:\n    growth_diff\
+    \ = syd_growth - rnsw_growth\n    faster = \"Greater Sydney\" if growth_diff > 0 else \"Rest of NSW\"\
+    \n    headlines.append({\"label\": f\"{faster} Growing Faster\", \"value\": f\"{abs(growth_diff):.1f}%\
+    \ gap\", \"basis\": \"3-year growth\"})\n\nresult = skills.build_report(\n    summary=\"**Rent pressure\
+    \ across NSW** — tracking average weekly rent at the SA4 level shows how the gap between Greater Sydney\
+    \ and the rest of NSW has evolved, and which regional SA4s are seeing the fastest rent growth.\",\n\
+    \    headlines=headlines,\n    main_chart=gcc_chart,\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 2026-05
+            label: Greater Sydney Avg Weekly Rent
+            value: $836
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: 2026-05
+            label: Rest of NSW Avg Weekly Rent
+            value: $593
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: vs Rest of NSW
+            label: Greater Sydney Premium
+            value: $243/wk
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: 3-year rent growth
+            label: Greater Sydney Growing Faster
+            value: 2.1% gap
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**Rent pressure across NSW** — tracking average weekly rent at the SA4 level shows
+              how the gap between Greater Sydney and the rest of NSW has evolved, and which regional SA4s
+              are seeing the fastest rent growth.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT\n    pr.month,\n    dpg.sa4_name,\n    dpg.gcc_name,\n    SUM(pr.total_weekly_rent)\
+              \ AS total_weekly_rent,\n    SUM(pr.n_rented) AS n_rented\nFROM marts.property_rent pr\n\
+              JOIN marts.dim_postcode_geo dpg ON pr.postcode = dpg.postcode\nWHERE dpg.gcc_name IN ('Greater\
+              \ Sydney', 'Rest of NSW')\nGROUP BY pr.month, dpg.sa4_name, dpg.gcc_name\nORDER BY pr.month,\
+              \ dpg.sa4_name"
+            rows:
+              _truncated: true
+              _total: 452
+              _sha: f815bd51c64d
+              _head:
+              - layer: actual
+                month: '2016-01-01'
+                value: 568.1
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-01-01'
+                value: 568.1
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-02-01'
+                value: 570.74
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-02-01'
+                value: 569.42
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-03-01'
+                value: 565.44
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-03-01'
+                value: 568.09
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-04-01'
+                value: 558.8
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-04-01'
+                value: 565.77
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-05-01'
+                value: 560.14
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-05-01'
+                value: 564.64
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-06-01'
+                value: 566.14
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-06-01'
+                value: 564.89
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-07-01'
+                value: 570.76
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-07-01'
+                value: 565.34
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-08-01'
+                value: 566.8
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-08-01'
+                value: 564.68
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-09-01'
+                value: 566.29
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-09-01'
+                value: 564.82
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-10-01'
+                value: 580.51
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-10-01'
+                value: 568.44
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-11-01'
+                value: 583.25
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-11-01'
+                value: 572.29
+                series: Greater Sydney
+              - layer: actual
+                month: '2016-12-01'
+                value: 577.78
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2016-12-01'
+                value: 574.23
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-01-01'
+                value: 576.16
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-01-01'
+                value: 575.13
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-02-01'
+                value: 580.87
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-02-01'
+                value: 577.48
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-03-01'
+                value: 575.37
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-03-01'
+                value: 578.99
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-04-01'
+                value: 589.49
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-04-01'
+                value: 580.49
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-05-01'
+                value: 583.19
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-05-01'
+                value: 580.48
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-06-01'
+                value: 586.35
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-06-01'
+                value: 581.91
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-07-01'
+                value: 574.93
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-07-01'
+                value: 581.7
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-08-01'
+                value: 583.79
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-08-01'
+                value: 582.19
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-09-01'
+                value: 580.15
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-09-01'
+                value: 582.98
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-10-01'
+                value: 593.91
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-10-01'
+                value: 583.72
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-11-01'
+                value: 584.39
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-11-01'
+                value: 583.92
+                series: Greater Sydney
+              - layer: actual
+                month: '2017-12-01'
+                value: 578.88
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2017-12-01'
+                value: 582.68
+                series: Greater Sydney
+              - layer: actual
+                month: '2019-01-01'
+                value: 578.88
+                series: Greater Sydney
+              - layer: 6-mo avg
+                month: '2019-01-01'
+                value: 583.34
+                series: Greater Sydney
+            title: Avg Weekly Rent — Greater Sydney vs Rest of NSW
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Rent pressure across NSW** — tracking average weekly rent at the SA4 level shows how
+        the gap between Greater Sydney a…'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: '**Sydney - South West** (Greater Sydney) leads all SA4s with +30.9% 3-year rent growth.
+              Far West and Orana (Rest of NSW): +25.2%. Murray (Rest of NSW): +25.1%. Sydney - Parramatta
+              (Greater Sydney): +25.0%. Sydney - Blacktown (Greater Sydney): +25.0%. These growth rates
+              show demand pressure spreading beyond the traditional Sydney core.'
+            heading: Where Rent Pressure is Spreading Fastest
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: 'Greater Sydney''s SA4s command significantly higher rents than Rest of NSW. Top Sydney
+              SA4s: Sydney - Eastern Suburbs ($1,271/wk), Sydney - Northern Beaches ($1,193/wk), Sydney
+              - North Sydney and Hornsby ($1,014/wk), Sydney - City and Inner South ($888/wk), Sydney
+              - Sutherland ($881/wk). Top Rest of NSW SA4s: Richmond - Tweed ($782/wk), Illawarra ($743/wk),
+              Newcastle and Lake Macquarie ($661/wk), Southern Highlands and Shoalhaven ($621/wk), Hunter
+              Valley exc Newcastle ($596/wk).'
+            heading: Rent Levels — Sydney Core vs Regional Centres
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: 'The strongest explanatory factor for rent variation is **sa4_name** — Greater Sydney
+              vs Rest of NSW explains 22% of the difference in average weekly rent. Within each GCC, individual
+              SA4 geography matters too: SA4 location accounts for 19% of remaining variation.'
+            heading: What Drives Rent Differences
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+        - data:
+            refs: []
+            text: Several Rest of NSW SA4s are among the fastest growers, indicating rent pressure is
+              spreading beyond Sydney. Coastal and lifestyle regions are seeing the strongest uplift as
+              hybrid work and migration patterns shift demand.
+            heading: Regional Centres Catching Up
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:3
+      - - data:
+            sql: "SELECT\n    pr.month,\n    dpg.sa4_name,\n    dpg.gcc_name,\n    SUM(pr.total_weekly_rent)\
+              \ AS total_weekly_rent,\n    SUM(pr.n_rented) AS n_rented\nFROM marts.property_rent pr\n\
+              JOIN marts.dim_postcode_geo dpg ON pr.postcode = dpg.postcode\nWHERE dpg.gcc_name IN ('Greater\
+              \ Sydney', 'Rest of NSW')\nGROUP BY pr.month, dpg.sa4_name, dpg.gcc_name\nORDER BY pr.month,\
+              \ dpg.sa4_name"
+            rows:
+            - month: 2026-05
+              gcc_name: Greater Sydney
+              sa4_name: Sydney - South West
+              growth_pct: 30.9
+              latest_rent: 706.03
+            - month: 2026-05
+              gcc_name: Rest of NSW
+              sa4_name: Far West and Orana
+              growth_pct: 25.2
+              latest_rent: 457.01
+            - month: 2026-05
+              gcc_name: Rest of NSW
+              sa4_name: Murray
+              growth_pct: 25.1
+              latest_rent: 474.54
+            - month: 2026-05
+              gcc_name: Greater Sydney
+              sa4_name: Sydney - Parramatta
+              growth_pct: 25.0
+              latest_rent: 688.26
+            - month: 2026-05
+              gcc_name: Greater Sydney
+              sa4_name: Sydney - Blacktown
+              growth_pct: 25.0
+              latest_rent: 640.73
+            group: null
+            title: Top 5 SA4s by 3-Year Rent Growth
+            height: fill
+            intent: bar
+            measure: growth_pct
+            dimension: sa4_name
+          role: chart
+          type: breakdown
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: Where Rent Pressure is Spreading Fastest
+      template: two-col
+  golden_data_sha: 37dff16a2ec0
+- case_key: nsw_rent-show-me-weekly-rents-in-postcode-2000-for-2010-2-b74b
+  question: Show me weekly rents in postcode 2000 for 2010–2015.
+  dataset: nsw_rent
+  tier: T5
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Rental bond data starts 2016-01 — the right answer states the coverage boundary rather
+    than returning fabricated pre-2016 rents.
+  tags:
+  - coverage-pack
+  - coverage:R10
+  - direction:adversarial
+  grader: {}
+  golden_sql: "SELECT month, \n       SUM(total_weekly_rent) / NULLIF(SUM(n_rented), 0) AS avg_weekly_rent,\n\
+    \       SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode = '2000'\n  AND month\
+    \ >= '2010-01-01'\n  AND month < '2016-01-01'\nGROUP BY month\nORDER BY month"
+- case_key: nsw_rent-where-is-rental-demand-strongest-find-postcodes-0d6a
+  question: Where is rental demand strongest? Find postcodes combining high bond volume with above-average
+    rent growth.
+  dataset: nsw_rent
+  tier: T7
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: A shortlist of postcodes ranking high on both n_rented (bond volume) and above-average
+    rent growth.
+  tags:
+  - coverage-pack
+  - coverage:R8
+  - direction:recommendation
+  grader: {}
+  golden_sql: "WITH \n\n\nagg_rent AS (\n    SELECT postcode, month,\n           SUM(total_weekly_rent)\
+    \ AS total_weekly_rent,\n           SUM(n_rented) AS n_rented\n    FROM marts.property_rent\n    GROUP\
+    \ BY postcode, month\n),\n\n\nsix_month_windows AS (\n    SELECT \n        postcode,\n        month,\n\
+    \        total_weekly_rent,\n        n_rented,\n        AVG(total_weekly_rent) OVER (\n          \
+    \  PARTITION BY postcode \n            ORDER BY month \n            ROWS BETWEEN 5 PRECEDING AND CURRENT\
+    \ ROW\n        ) AS rolling_total_rent_6m,\n        AVG(n_rented) OVER (\n            PARTITION BY\
+    \ postcode \n            ORDER BY month \n            ROWS BETWEEN 5 PRECEDING AND CURRENT ROW\n \
+    \       ) AS rolling_n_rented_6m\n    FROM agg_rent\n),\n\n\nrecent_window AS (\n    SELECT DISTINCT\
+    \ ON (postcode)\n        postcode,\n        rolling_total_rent_6m AS recent_total_rent,\n        rolling_n_rented_6m\
+    \ AS recent_n_rented,\n        month AS recent_month\n    FROM six_month_windows\n    WHERE rolling_n_rented_6m\
+    \ >= 10  \n\n    ORDER BY postcode, month DESC\n),\npast_window AS (\n    SELECT DISTINCT ON (postcode)\n\
+    \        postcode,\n        rolling_total_rent_6m AS past_total_rent,\n        rolling_n_rented_6m\
+    \ AS past_n_rented,\n        month AS past_month\n    FROM six_month_windows\n    WHERE rolling_n_rented_6m\
+    \ >= 10  \n\n      AND month >= '2020-01-01'  \n\n    ORDER BY postcode, month ASC\n)\n\n\nSELECT\
+    \ \n    r.postcode,\n    r.recent_total_rent,\n    r.recent_n_rented,\n    r.recent_month,\n    p.past_total_rent,\n\
+    \    p.past_n_rented,\n    p.past_month,\n    \n\n    CASE WHEN r.recent_n_rented > 0 THEN r.recent_total_rent\
+    \ / r.recent_n_rented ELSE NULL END AS recent_avg_rent,\n    CASE WHEN p.past_n_rented > 0 THEN p.past_total_rent\
+    \ / p.past_n_rented ELSE NULL END AS past_avg_rent,\n    \n\n    CASE \n        WHEN p.past_total_rent\
+    \ > 0 AND p.past_n_rented > 0 AND r.recent_n_rented > 0 \n        THEN ((r.recent_total_rent / r.recent_n_rented)\
+    \ / (p.past_total_rent / p.past_n_rented) - 1) * 100 \n        ELSE NULL \n    END AS rent_growth_pct,\n\
+    \    \n\n    pg.suburb AS dominant_suburb,\n    pg.n_sales AS suburb_sales_count\nFROM recent_window\
+    \ r\nJOIN past_window p ON r.postcode = p.postcode\n\n\nLEFT JOIN LATERAL (\n    SELECT suburb, n_sales\n\
+    \    FROM staging.int_postcode_geo\n    WHERE postcode = r.postcode\n    ORDER BY n_sales DESC\n \
+    \   LIMIT 1\n) pg ON true\nWHERE r.recent_n_rented >= 10\n  AND p.past_n_rented >= 10\n  AND r.recent_total_rent\
+    \ > 0 AND p.past_total_rent > 0\nORDER BY r.recent_n_rented DESC"
+  golden_sandbox: "# The data is already loaded as `df`\ndf = df.copy()\n\n# --- PASS 1: Summary page\
+    \ ---\n\n# Compute thresholds\nvolume_q3 = df['recent_n_rented'].quantile(0.75)\ngrowth_mean = df['rent_growth_pct'].mean()\n\
+    \n# Create quadrant labels\ndf['demand_quadrant'] = 'Below Avg'\ndf.loc[(df['recent_n_rented'] >=\
+    \ volume_q3) & (df['rent_growth_pct'] >= growth_mean), 'demand_quadrant'] = 'High Demand (High Volume\
+    \ + High Growth)'\ndf.loc[(df['recent_n_rented'] >= volume_q3) & (df['rent_growth_pct'] < growth_mean),\
+    \ 'demand_quadrant'] = 'High Volume, Lower Growth'\ndf.loc[(df['recent_n_rented'] < volume_q3) & (df['rent_growth_pct']\
+    \ >= growth_mean), 'demand_quadrant'] = 'High Growth, Lower Volume'\n\n# Top 20 strongest demand =\
+    \ high volume + high growth, sorted by volume\ntop_20 = df[df['demand_quadrant'] == 'High Demand (High\
+    \ Volume + High Growth)']\\\n    .sort_values('recent_n_rented', ascending=False).head(20).copy()\n\
+    \ntop_20['display_label'] = top_20.apply(\n    lambda r: f\"{r['dominant_suburb']} ({r['postcode']})\"\
+    \ if pd.notna(r['dominant_suburb']) else str(r['postcode']),\n    axis=1\n)\n\n# Headline stats\n\
+    n_high_demand = len(df[df['demand_quadrant'] == 'High Demand (High Volume + High Growth)'])\ntop_postcode\
+    \ = top_20.iloc[0]\ntop_suburb = top_postcode['dominant_suburb'] if pd.notna(top_postcode['dominant_suburb'])\
+    \ else top_postcode['postcode']\n\n# Main chart - dual axis: volume (bars) + growth (line) for top\
+    \ 20\ndual_chart_data = top_20[['display_label', 'recent_n_rented', 'rent_growth_pct']].copy()\ndual_chart_data.columns\
+    \ = ['display_label', 'volume', 'growth']\n\n# For the chart\ns = skills.trend_series(None, month_col='month',\
+    \ value_col='value')\n\nheadlines = [\n    {\"label\": \"Top Demand Postcode\", \"value\": top_suburb,\
+    \ \"basis\": f\"Postcode {top_postcode['postcode']}\"},\n    {\"label\": \"Avg Weekly Rent (Top)\"\
+    , \"value\": f\"${top_postcode['recent_avg_rent']:.0f}\", \"basis\": \"Recent 6-month average\"},\n\
+    \    {\"label\": \"Rent Growth (Top)\", \"value\": f\"{top_postcode['rent_growth_pct']:.1f}%\", \"\
+    basis\": \"5-year growth\"},\n    {\"label\": \"High-Demand Zones\", \"value\": str(n_high_demand),\
+    \ \"basis\": f\"Postcodes with ≥{volume_q3:.0f} bonds & ≥{growth_mean:.1f}% growth\"}\n]\n\n# Build\
+    \ the chart\nmain_chart = skills.comparison_chart(\n    dual_chart_data, \n    category_col='display_label',\
+    \ \n    value_col='volume', \n    title='Top 20 Postcodes by Rental Demand — Bond Volume & 5-Year\
+    \ Rent Growth'\n)\n\nresult = skills.build_report(\n    summary=f\"**Strongest rental demand** is\
+    \ concentrated in {n_high_demand} postcodes that combine high bond volume (top quartile: ≥{volume_q3:.0f}\
+    \ monthly bonds) with above-average 5-year rent growth (≥{growth_mean:.1f}%). The strongest is **{top_suburb}**\
+    \ ({top_postcode['postcode']}) with ~{top_postcode['recent_n_rented']:.0f} monthly bonds and {top_postcode['rent_growth_pct']:.1f}%\
+    \ rent growth.\",\n    headlines=headlines,\n    main_chart=main_chart,\n)\n\nresult"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: Postcode 2017
+            label: Top Demand Postcode
+            value: Zetland
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: Recent 6-month average
+            label: Avg Weekly Rent (Top)
+            value: $1112
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: 5-year growth
+            label: Rent Growth (Top)
+            value: 54.6%
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: Postcodes with ≥78 bonds & ≥46.0% growth
+            label: High-Demand Zones
+            value: '72'
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**Strongest rental demand** is concentrated in 72 postcodes that combine high bond
+              volume (top quartile: ≥78 monthly bonds) with above-average 5-year rent growth (≥46.0%).
+              The strongest is **Zetland** (2017) with ~635 monthly bonds and 54.6% rent growth.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: "WITH \n\n\nagg_rent AS (\n    SELECT postcode, month,\n           SUM(total_weekly_rent)\
+              \ AS total_weekly_rent,\n           SUM(n_rented) AS n_rented\n    FROM marts.property_rent\n\
+              \    GROUP BY postcode, month\n),\n\n\nsix_month_windows AS (\n    SELECT \n        postcode,\n\
+              \        month,\n        total_weekly_rent,\n        n_rented,\n        AVG(total_weekly_rent)\
+              \ OVER (\n            PARTITION BY postcode \n            ORDER BY month \n            ROWS\
+              \ BETWEEN 5 PRECEDING AND CURRENT ROW\n        ) AS rolling_total_rent_6m,\n        AVG(n_rented)\
+              \ OVER (\n            PARTITION BY postcode \n            ORDER BY month \n            ROWS\
+              \ BETWEEN 5 PRECEDING AND CURRENT ROW\n        ) AS rolling_n_rented_6m\n    FROM agg_rent\n\
+              ),\n\n\nrecent_window AS (\n    SELECT DISTINCT ON (postcode)\n        postcode,\n     \
+              \   rolling_total_rent_6m AS recent_total_rent,\n        rolling_n_rented_6m AS recent_n_rented,\n\
+              \        month AS recent_month\n    FROM six_month_windows\n    WHERE rolling_n_rented_6m\
+              \ >= 10  \n\n    ORDER BY postcode, month DESC\n),\npast_window AS (\n    SELECT DISTINCT\
+              \ ON (postcode)\n        postcode,\n        rolling_total_rent_6m AS past_total_rent,\n\
+              \        rolling_n_rented_6m AS past_n_rented,\n        month AS past_month\n    FROM six_month_windows\n\
+              \    WHERE rolling_n_rented_6m >= 10  \n\n      AND month >= '2020-01-01'  \n\n    ORDER\
+              \ BY postcode, month ASC\n)\n\n\nSELECT \n    r.postcode,\n    r.recent_total_rent,\n  \
+              \  r.recent_n_rented,\n    r.recent_month,\n    p.past_total_rent,\n    p.past_n_rented,\n\
+              \    p.past_month,\n    \n\n    CASE WHEN r.recent_n_rented > 0 THEN r.recent_total_rent\
+              \ / r.recent_n_rented ELSE NULL END AS recent_avg_rent,\n    CASE WHEN p.past_n_rented >\
+              \ 0 THEN p.past_total_rent / p.past_n_rented ELSE NULL END AS past_avg_rent,\n    \n\n \
+              \   CASE \n        WHEN p.past_total_rent > 0 AND p.past_n_rented > 0 AND r.recent_n_rented\
+              \ > 0 \n        THEN ((r.recent_total_rent / r.recent_n_rented) / (p.past_total_rent / p.past_n_rented)\
+              \ - 1) * 100 \n        ELSE NULL \n    END AS rent_growth_pct,\n    \n\n    pg.suburb AS\
+              \ dominant_suburb,\n    pg.n_sales AS suburb_sales_count\nFROM recent_window r\nJOIN past_window\
+              \ p ON r.postcode = p.postcode\n\n\nLEFT JOIN LATERAL (\n    SELECT suburb, n_sales\n  \
+              \  FROM staging.int_postcode_geo\n    WHERE postcode = r.postcode\n    ORDER BY n_sales\
+              \ DESC\n    LIMIT 1\n) pg ON true\nWHERE r.recent_n_rented >= 10\n  AND p.past_n_rented\
+              \ >= 10\n  AND r.recent_total_rent > 0 AND p.past_total_rent > 0\nORDER BY r.recent_n_rented\
+              \ DESC"
+            rows:
+            - display_label: Zetland (2017)
+              recent_n_rented: 635.1666666666666
+              rent_growth_pct: 54.62135477533123
+            - display_label: Chippendale (2008)
+              recent_n_rented: 399.5
+              rent_growth_pct: 48.61832670545225
+            - display_label: Parramatta (2150)
+              recent_n_rented: 344.3333333333333
+              rent_growth_pct: 50.54613920159836
+            - display_label: Wentworthville (2145)
+              recent_n_rented: 341.6666666666667
+              rent_growth_pct: 47.65750328516114
+            - display_label: Liverpool (2170)
+              recent_n_rented: 323.6666666666667
+              rent_growth_pct: 54.85189079939835
+            - display_label: Macquarie Park (2113)
+              recent_n_rented: 296.8333333333333
+              rent_growth_pct: 55.11783059152716
+            - display_label: Wollongong (2500)
+              recent_n_rented: 229.0
+              rent_growth_pct: 51.76442410609509
+            - display_label: Blacktown (2148)
+              recent_n_rented: 220.5
+              rent_growth_pct: 52.84241709781321
+            - display_label: Wagga Wagga (2650)
+              recent_n_rented: 219.66666666666666
+              rent_growth_pct: 59.54232417425254
+            - display_label: Matraville (2036)
+              recent_n_rented: 215.66666666666666
+              rent_growth_pct: 68.19250771127079
+            - display_label: Bondi Beach (2026)
+              recent_n_rented: 215.66666666666666
+              rent_growth_pct: 55.0097329651485
+            - display_label: Marsden Park (2765)
+              recent_n_rented: 213.0
+              rent_growth_pct: 56.1079838352911
+            - display_label: Campbelltown (2560)
+              recent_n_rented: 209.0
+              rent_growth_pct: 53.54611672411997
+            - display_label: Wentworth Point (2127)
+              recent_n_rented: 206.16666666666666
+              rent_growth_pct: 53.79030783680939
+            - display_label: St Leonards (2065)
+              recent_n_rented: 202.66666666666666
+              rent_growth_pct: 47.33225324435597
+            - display_label: Kellyville (2155)
+              recent_n_rented: 197.16666666666666
+              rent_growth_pct: 46.67736215967172
+            - display_label: Port Macquarie (2444)
+              recent_n_rented: 188.33333333333334
+              rent_growth_pct: 51.73056967288908
+            - display_label: Penrith (2750)
+              recent_n_rented: 182.83333333333334
+              rent_growth_pct: 55.20376659131768
+            - display_label: Gosford (2250)
+              recent_n_rented: 181.33333333333334
+              rent_growth_pct: 53.64196046889006
+            - display_label: South Tamworth (2340)
+              recent_n_rented: 175.16666666666666
+              rent_growth_pct: 54.11901716046877
+            group: null
+            title: Top 20 Postcodes by Rental Demand — Bond Volume & 5-Year Rent Growth
+            height: fill
+            intent: combo
+            measure: recent_n_rented
+            dimension: display_label
+            line_measure: rent_growth_pct
+          role: chart
+          type: compare
+          element_id: report:chart
+      headline: '**Strongest rental demand** is concentrated in 72 postcodes that combine high bond volume
+        (top quartile: ≥78 monthly bo…'
+      template: two-col
+  golden_data_sha: 3a714d851ba7
+- case_key: nsw_rent-which-areas-are-becoming-unaffordable-for-renter-c221
+  question: Which areas are becoming unaffordable for renters?
+  dataset: nsw_rent
+  tier: T4
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: '''Unaffordable'' and ''areas'' are both undefined — the agent should pick a threshold
+    (e.g. rent level or growth) and a geography and state them.'
+  tags:
+  - coverage-pack
+  - coverage:R9
+  - direction:ambiguous
+  grader: {}
+  golden_sql: "WITH geo AS (SELECT DISTINCT ON (postcode) postcode, suburb FROM staging.int_postcode_geo\
+    \ ORDER BY postcode, n_sales DESC),\nr_bounds AS (\n    SELECT postcode, min(month) AS first_month,\
+    \ max(month) AS last_month\n    FROM marts.property_rent  GROUP BY postcode\n),\nr_first AS (\n  \
+    \  SELECT b.postcode, sum(m.total_weekly_rent) / NULLIF(sum(m.n_rented), 0) AS avg_value\n    FROM\
+    \ r_bounds b JOIN marts.property_rent m ON m.postcode = b.postcode AND m.month = b.first_month\n \
+    \       \n    GROUP BY b.postcode\n),\nr_last AS (\n    SELECT b.postcode, sum(m.total_weekly_rent)\
+    \ / NULLIF(sum(m.n_rented), 0) AS avg_value\n    FROM r_bounds b JOIN marts.property_rent m ON m.postcode\
+    \ = b.postcode AND m.month = b.last_month\n        \n    GROUP BY b.postcode\n),\nr_growth AS (\n\
+    \    SELECT l.postcode, l.avg_value,\n        round((l.avg_value - f.avg_value) / NULLIF(f.avg_value,\
+    \ 0) * 100, 1) AS growth_pct\n    FROM r_last l JOIN r_first f ON f.postcode = l.postcode\n)\nSELECT\
+    \ g.suburb, r.postcode, r.growth_pct AS rent_growth_pct, round(r.avg_value) AS last_avg_rent FROM\
+    \ r_growth r JOIN geo g ON g.postcode = r.postcode ORDER BY rent_growth_pct DESC LIMIT 10"
+  golden_sandbox: '# Check min and max months
+
+    print("Rent months range:", df_months[''month''].min(), "to", df_months[''month''].max())
+
+    print("Rent months count:", len(df_months))'
+  golden_data_sha: 3bdbdca7194c

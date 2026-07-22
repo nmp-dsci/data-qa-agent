@@ -18,6 +18,7 @@ Usage (from the repo root; the DB is reached via `docker compose exec db`):
     uv run python scripts/eval_run.py --experiment kb-yield-method \
         --hypothesis "annualising rent over median price fixes T2 yield cases"
     uv run python scripts/eval_run.py --no-judge               # skip the LLM half of G3
+    uv run python scripts/eval_run.py --include-drafts         # also score draft goldens
 
 An ``--experiment`` run records its id and links to the most recent baseline, so
 the Evaluations tab can render it as base vs experiment.
@@ -110,8 +111,19 @@ def _lit(value: Any) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def load_cases(dataset: str | None, tier: str | None, case_key: str | None) -> list[dict[str, Any]]:
-    """Read the pack from disk — the repo is the source of truth, not the DB."""
+def load_cases(
+    dataset: str | None,
+    tier: str | None,
+    case_key: str | None,
+    include_drafts: bool = False,
+) -> list[dict[str, Any]]:
+    """Read the pack from disk — the repo is the source of truth, not the DB.
+
+    A ``draft`` golden has no reviewed golden_sql/grader yet, so replaying it
+    scores the agent against empty ground truth and looks like a failure. Drafts
+    are therefore skipped unless ``--include-drafts`` is passed (or the case is
+    named explicitly via ``--case``, where the intent is unambiguous).
+    """
     if not CASES_DIR.is_dir():
         sys.exit("no pack at evals/cases — run `make eval-export` first")
     cases: list[dict[str, Any]] = []
@@ -123,6 +135,8 @@ def load_cases(dataset: str | None, tier: str | None, case_key: str | None) -> l
             if tier and case.get("tier") != tier:
                 continue
             if case_key and case.get("case_key") != case_key:
+                continue
+            if not include_drafts and not case_key and case.get("authoring_status") == "draft":
                 continue
             cases.append(case)
     return cases
@@ -476,9 +490,14 @@ def main() -> None:
         help="eval_run id this attempt argues against (default: newest run on the same pack)",
     )
     parser.add_argument("--no-judge", action="store_true", help="skip the LLM half of G3")
+    parser.add_argument(
+        "--include-drafts",
+        action="store_true",
+        help="also score draft goldens (skipped by default — no reviewed benchmark)",
+    )
     args = parser.parse_args()
 
-    cases = load_cases(args.dataset, args.tier, args.case_key)
+    cases = load_cases(args.dataset, args.tier, args.case_key, include_drafts=args.include_drafts)
     if not cases:
         sys.exit("no cases matched the filters")
 

@@ -365,7 +365,7 @@ cases:
       headline: '**Postcode 2077 vs 2076 — Rent Trends**  Comparing average weekly rent trends across
         all property types and bedroom ban…'
       template: two-col
-  golden_data_sha: 5d6c6bed9f94
+  golden_data_sha: 66e78059fa4e
 - case_key: nsw_rent-what-s-the-median-weekly-rent-for-a-2-bedroom-un-4bb5
   question: What's the median weekly rent for a 2-bedroom unit in postcode 2000 right now?
   dataset: nsw_rent

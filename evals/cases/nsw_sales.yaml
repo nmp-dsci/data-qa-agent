@@ -391,3 +391,3125 @@ cases:
       headline: Price Gap & Growth Comparison
       template: two-col
   golden_data_sha: 89684f800665
+- case_key: nsw_sales-which-suburbs-had-the-strongest-house-price-grow-4d9b
+  question: Which suburbs had the strongest house-price growth over the last three years?
+  dataset: nsw_sales
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: A ranked list of suburbs by first-vs-last median-price growth over the last 3 years, with
+    an n_sold volume floor so thin suburbs don't dominate.
+  tags:
+  - coverage-pack
+  - coverage:S3
+  - direction:ranking
+  grader: {}
+  golden_sql: "WITH recent AS (\n    SELECT suburb,\n           SUM(total_sale_value) / NULLIF(SUM(n_sold),\
+    \ 0) AS avg_price_recent\n    FROM marts.property_sales\n    WHERE property_type = 'house'\n     \
+    \ AND month >= '2026-01-01' AND month <= '2026-06-01'\n    GROUP BY suburb\n    HAVING SUM(n_sold)\
+    \ >= 10\n),\npast AS (\n    SELECT suburb,\n           SUM(total_sale_value) / NULLIF(SUM(n_sold),\
+    \ 0) AS avg_price_past\n    FROM marts.property_sales\n    WHERE property_type = 'house'\n      AND\
+    \ month >= '2023-01-01' AND month <= '2023-06-01'\n    GROUP BY suburb\n    HAVING SUM(n_sold) >=\
+    \ 10\n)\nSELECT r.suburb,\n       r.avg_price_recent,\n       p.avg_price_past,\n       CASE \n  \
+    \         WHEN p.avg_price_past > 0 \n           THEN (r.avg_price_recent - p.avg_price_past) / p.avg_price_past\
+    \ * 100 \n           ELSE NULL \n       END AS growth_pct\nFROM recent r\nJOIN past p ON r.suburb\
+    \ = p.suburb\nWHERE r.avg_price_recent > 0 AND p.avg_price_past > 0\nORDER BY growth_pct DESC"
+  golden_sandbox: "# PASS 1 — Summary page: top growth suburbs for house prices\n\n# Get top 20 suburbs\
+    \ for the report\ntop20 = df.nlargest(20, 'growth_pct').reset_index(drop=True)\n\n# Headlines\ntop1\
+    \ = top20.iloc[0]\nbottom1 = df.nsmallest(1, 'growth_pct').iloc[0]\n\nheadlines = [\n    {\"label\"\
+    : \"Top growth suburb\", \"value\": top1['suburb'], \"basis\": f\"{top1['growth_pct']:.1f}% over 3\
+    \ years\"},\n    {\"label\": \"Average price (recent)\", \"value\": f\"${top1['avg_price_recent']:,.0f}\"\
+    , \"basis\": top1['suburb']},\n    {\"label\": \"Strongest growth\", \"value\": f\"{top1['growth_pct']:.1f}%\"\
+    , \"basis\": f\"3-year growth (vs {bottom1['growth_pct']:.1f}% weakest)\"},\n    {\"label\": \"Suburbs\
+    \ tracked\", \"value\": len(df), \"basis\": \"with ≥10 sales in both windows\"},\n]\n\n# Comparison\
+    \ chart: top 15\nchart_data = top20.head(15).copy()\nchart_data['label'] = chart_data['suburb']\n\
+    s = skills.comparison_chart(chart_data, category_col='suburb', value_col='growth_pct', title=\"Top\
+    \ 15 Suburbs by 3-Year House Price Growth\")\n\nsummary = (\n    f\"House price growth across NSW\
+    \ suburbs over the 3 years to mid-2026. \"\n    f\"Growth is measured as the change in average sale\
+    \ price (total_sale_value / n_sold) \"\n    f\"between a 6-month window in early 2023 and early 2026.\
+    \ \"\n    f\"The top suburb is {top1['suburb']} with {top1['growth_pct']:.1f}% growth.\"\n)\n\nresult\
+    \ = skills.build_report(\n    summary=summary,\n    headlines=headlines,\n    main_chart=s,\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 143.9% over 3 years
+            label: Top growth suburb
+            value: Crangan Bay
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: Crangan Bay
+            label: Average price (recent)
+            value: $1,161,286
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: 3-year growth (vs -60.4% weakest)
+            label: Strongest growth
+            value: 143.9%
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: with ≥10 sales in both windows
+            label: Suburbs tracked
+            value: 890
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: House price growth across NSW suburbs over the 3 years to mid-2026. Growth is measured
+              as the change in average sale price (total_sale_value / n_sold) between a 6-month window
+              in early 2023 and early 2026. The top suburb is Crangan Bay with 143.9% growth.
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: "WITH recent AS (\n    SELECT suburb,\n           SUM(total_sale_value) / NULLIF(SUM(n_sold),\
+              \ 0) AS avg_price_recent\n    FROM marts.property_sales\n    WHERE property_type = 'house'\n\
+              \      AND month >= '2026-01-01' AND month <= '2026-06-01'\n    GROUP BY suburb\n    HAVING\
+              \ SUM(n_sold) >= 10\n),\npast AS (\n    SELECT suburb,\n           SUM(total_sale_value)\
+              \ / NULLIF(SUM(n_sold), 0) AS avg_price_past\n    FROM marts.property_sales\n    WHERE property_type\
+              \ = 'house'\n      AND month >= '2023-01-01' AND month <= '2023-06-01'\n    GROUP BY suburb\n\
+              \    HAVING SUM(n_sold) >= 10\n)\nSELECT r.suburb,\n       r.avg_price_recent,\n       p.avg_price_past,\n\
+              \       CASE \n           WHEN p.avg_price_past > 0 \n           THEN (r.avg_price_recent\
+              \ - p.avg_price_past) / p.avg_price_past * 100 \n           ELSE NULL \n       END AS growth_pct\n\
+              FROM recent r\nJOIN past p ON r.suburb = p.suburb\nWHERE r.avg_price_recent > 0 AND p.avg_price_past\
+              \ > 0\nORDER BY growth_pct DESC"
+            rows:
+            - label: Crangan Bay
+              suburb: Crangan Bay
+              growth_pct: 143.9270179404436
+              avg_price_past: 476079.1666666667
+              avg_price_recent: 1161285.7142857143
+            - label: Kurrajong Heights
+              suburb: Kurrajong Heights
+              growth_pct: 92.24203066332663
+              avg_price_past: 837580.5294117647
+              avg_price_recent: 1610181.8181818181
+            - label: Bourke
+              suburb: Bourke
+              growth_pct: 87.74187398722715
+              avg_price_past: 126093.75
+              avg_price_recent: 236730.76923076922
+            - label: Gilead
+              suburb: Gilead
+              growth_pct: 85.47034685791294
+              avg_price_past: 635805.5555555555
+              avg_price_recent: 1179230.7692307692
+            - label: Condobolin
+              suburb: Condobolin
+              growth_pct: 78.13644521298168
+              avg_price_past: 230080.45454545456
+              avg_price_recent: 409857.14285714284
+            - label: Lismore
+              suburb: Lismore
+              growth_pct: 76.868537450809
+              avg_price_past: 373944.44444444444
+              avg_price_recent: 661390.0697674418
+            - label: Cobar
+              suburb: Cobar
+              growth_pct: 73.00897460378079
+              avg_price_past: 218208.33333333334
+              avg_price_recent: 377520.0
+            - label: Hillston
+              suburb: Hillston
+              growth_pct: 71.103195164076
+              avg_price_past: 210545.45454545456
+              avg_price_recent: 360250.0
+            - label: Bellbird
+              suburb: Bellbird
+              growth_pct: 67.69305728370247
+              avg_price_past: 471850.8333333333
+              avg_price_recent: 791261.0882352941
+            - label: Menangle Park
+              suburb: Menangle Park
+              growth_pct: 65.94807558274607
+              avg_price_past: 662205.1282051282
+              avg_price_recent: 1098916.6666666667
+            - label: Airds
+              suburb: Airds
+              growth_pct: 64.24705001068124
+              avg_price_past: 613386.2068965518
+              avg_price_recent: 1007468.75
+            - label: Belmont North
+              suburb: Belmont North
+              growth_pct: 63.61392304097037
+              avg_price_past: 760227.659574468
+              avg_price_recent: 1243838.2978723405
+            - label: Werris Creek
+              suburb: Werris Creek
+              growth_pct: 63.13950248756219
+              avg_price_past: 261718.75
+              avg_price_recent: 426966.6666666667
+            - label: Kootingal
+              suburb: Kootingal
+              growth_pct: 62.54019533061127
+              avg_price_past: 363375.0
+              avg_price_recent: 590630.4347826086
+            - label: Lightning Ridge
+              suburb: Lightning Ridge
+              growth_pct: 62.382075471698116
+              avg_price_past: 84800.0
+              avg_price_recent: 137700.0
+            group: null
+            title: Top 15 Suburbs by 3-Year House Price Growth
+            height: fill
+            intent: bar
+            measure: growth_pct
+            dimension: suburb
+          role: chart
+          type: breakdown
+          element_id: report:chart
+      headline: House price growth across NSW suburbs over the 3 years to mid-2026.
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: The five strongest growers — Crangan Bay, Kurrajong Heights, Bourke, Gilead, Condobolin
+              — averaged 97.5% growth. These are largely regional/outer areas outside Sydney's core. Among
+              the top 20, suburbs like Crangan Bay, Kurrajong Heights, Gilead, Menangle Park, Airds combine
+              strong growth with established high prices ($1,161,286+). Several more affordable suburbs
+              also made the top 20 — Bourke, Condobolin, Cobar, Hillston, Werris Creek — where prices
+              remain under $426,967.
+            heading: 🏆 Top growers are regional & outer suburbs
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: Across all 890 suburbs tracked, the median 3-year growth was 17.4%. The median house
+              price rose from $988,833 (early 2023) to $1,168,330 (early 2026).
+            heading: 📊 Market-wide perspective
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+      headline: 🏆 Top growers are regional & outer suburbs
+      template: two-col
+  golden_data_sha: 5013992cc3bb
+- case_key: nsw_sales-how-have-unit-prices-in-liverpool-2170-moved-ove-f705
+  question: How have unit prices in Liverpool (2170) moved over the last five years?
+  dataset: nsw_sales
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: A monthly median-sale-price trend line for units in postcode 2170 over roughly 2021→2026.
+  tags:
+  - coverage-pack
+  - coverage:S2
+  - direction:trend
+  grader: {}
+  golden_sql: "SELECT \n  month,\n  SUM(total_sale_value) AS total_sale_value,\n  SUM(n_sold) AS n_sold\n\
+    FROM marts.property_sales\nWHERE postcode = '2170'\n  AND suburb = 'Liverpool'\n  AND property_type\
+    \ = 'unit'\n  AND month >= (SELECT MAX(month) - INTERVAL '5 years' FROM marts.property_sales WHERE\
+    \ postcode = '2170' AND suburb = 'Liverpool' AND property_type = 'unit')\nGROUP BY month\nORDER BY\
+    \ month"
+  golden_sandbox: "# PASS 1 — Summary page for Liverpool unit price trend over 5 years\n\n# Compute average\
+    \ price per month\ndf['avg_price'] = df['total_sale_value'] / df['n_sold']\n\n# Get the trend series\n\
+    s = skills.trend_series(df, month_col=\"month\", value_col=\"total_sale_value\", den_col=\"n_sold\"\
+    )\n\n# Latest value\nlatest = skills.latest_value(df, month_col=\"month\", value_col=\"total_sale_value\"\
+    , den_col=\"n_sold\")\n\n# Growth over ~5 years (the data goes from 2021-05 to ~2026-04/05, so ~5\
+    \ years)\ng = skills.growth_rate(df, month_col=\"month\", value_col=\"total_sale_value\", den_col=\"\
+    n_sold\", years=5)\n\n# Format growth safely\nif g is not None:\n    growth_str = f\"{g:.1f}%\"\n\
+    else:\n    growth_str = \"N/A\"\n\n# Headlines\nheadlines = [\n    {\"label\": \"Latest unit price\
+    \ (6-mth avg)\", \"value\": f\"${latest['value']:,.0f}\", \"basis\": latest['month']},\n]\n\nif g\
+    \ is not None:\n    headlines.append({\"label\": \"5-year price change\", \"value\": growth_str, \"\
+    basis\": f\"over 5 years to {latest['month']}\"})\n\n# Total sales volume\ntotal_sold = int(df['n_sold'].sum())\n\
+    headlines.append({\"label\": \"Total unit sales (5 yr)\", \"value\": f\"{total_sold:,}\", \"basis\"\
+    : \"May 2021 – latest\"})\n\nresult = skills.build_report(\n    summary=\"**Unit prices in Liverpool\
+    \ (postcode 2170)** have been analysed over the last five years using monthly sales data. The chart\
+    \ below shows the average unit sale price trend (6-month rolling average to smooth month-to-month\
+    \ volatility), along with raw monthly average prices.\",\n    headlines=headlines,\n    main_chart=skills.trend_chart(s,\
+    \ title=\"Liverpool Unit Price Trend (5 Years)\"),\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 2026-05
+            label: Latest unit price (6-mth avg)
+            value: $536,246
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: over 5 years to 2026-05
+            label: 5-year price change
+            value: 12.1%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: May 2021 – latest
+            label: Total unit sales (5 yr)
+            value: 3,938
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            text: '**Unit prices in Liverpool (postcode 2170)** have been analysed over the last five
+              years using monthly sales data. The chart below shows the average unit sale price trend
+              (6-month rolling average to smooth month-to-month volatility), along with raw monthly average
+              prices.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT \n  month,\n  SUM(total_sale_value) AS total_sale_value,\n  SUM(n_sold) AS n_sold\n\
+              FROM marts.property_sales\nWHERE postcode = '2170'\n  AND suburb = 'Liverpool'\n  AND property_type\
+              \ = 'unit'\n  AND month >= (SELECT MAX(month) - INTERVAL '5 years' FROM marts.property_sales\
+              \ WHERE postcode = '2170' AND suburb = 'Liverpool' AND property_type = 'unit')\nGROUP BY\
+              \ month\nORDER BY month"
+            rows:
+              _truncated: true
+              _total: 122
+              _sha: ea9a5153ca90
+              _head:
+              - layer: actual
+                month: '2021-05-01'
+                value: 478294.44
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2021-05-01'
+                value: 478294.44
+                series: total_sale_value
+              - layer: actual
+                month: '2021-06-01'
+                value: 620612.42
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2021-06-01'
+                value: 549453.43
+                series: total_sale_value
+              - layer: actual
+                month: '2021-07-01'
+                value: 502247.14
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2021-07-01'
+                value: 533718.0
+                series: total_sale_value
+              - layer: actual
+                month: '2021-08-01'
+                value: 460829.27
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2021-08-01'
+                value: 515495.82
+                series: total_sale_value
+              - layer: actual
+                month: '2021-09-01'
+                value: 462411.76
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2021-09-01'
+                value: 504879.01
+                series: total_sale_value
+              - layer: actual
+                month: '2021-10-01'
+                value: 517681.25
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2021-10-01'
+                value: 507012.71
+                series: total_sale_value
+              - layer: actual
+                month: '2021-11-01'
+                value: 977286.6
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2021-11-01'
+                value: 590178.07
+                series: total_sale_value
+              - layer: actual
+                month: '2021-12-01'
+                value: 522640.0
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2021-12-01'
+                value: 573849.34
+                series: total_sale_value
+              - layer: actual
+                month: '2022-01-01'
+                value: 516341.46
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-01-01'
+                value: 576198.39
+                series: total_sale_value
+              - layer: actual
+                month: '2022-02-01'
+                value: 502505.98
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-02-01'
+                value: 583144.51
+                series: total_sale_value
+              - layer: actual
+                month: '2022-03-01'
+                value: 500016.67
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-03-01'
+                value: 589411.99
+                series: total_sale_value
+              - layer: actual
+                month: '2022-04-01'
+                value: 511431.03
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-04-01'
+                value: 588370.29
+                series: total_sale_value
+              - layer: actual
+                month: '2022-05-01'
+                value: 489399.23
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-05-01'
+                value: 507055.73
+                series: total_sale_value
+              - layer: actual
+                month: '2022-06-01'
+                value: 491192.98
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-06-01'
+                value: 501814.56
+                series: total_sale_value
+              - layer: actual
+                month: '2022-07-01'
+                value: 492577.78
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-07-01'
+                value: 497853.95
+                series: total_sale_value
+              - layer: actual
+                month: '2022-08-01'
+                value: 501940.48
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-08-01'
+                value: 497759.69
+                series: total_sale_value
+              - layer: actual
+                month: '2022-09-01'
+                value: 485492.96
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-09-01'
+                value: 495339.08
+                series: total_sale_value
+              - layer: actual
+                month: '2022-10-01'
+                value: 480326.09
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-10-01'
+                value: 490154.92
+                series: total_sale_value
+              - layer: actual
+                month: '2022-11-01'
+                value: 494551.56
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-11-01'
+                value: 491013.64
+                series: total_sale_value
+              - layer: actual
+                month: '2022-12-01'
+                value: 510641.3
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2022-12-01'
+                value: 494255.03
+                series: total_sale_value
+              - layer: actual
+                month: '2023-01-01'
+                value: 477000.0
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2023-01-01'
+                value: 491658.73
+                series: total_sale_value
+              - layer: actual
+                month: '2023-02-01'
+                value: 501038.27
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2023-02-01'
+                value: 491508.36
+                series: total_sale_value
+              - layer: actual
+                month: '2023-03-01'
+                value: 471586.4
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2023-03-01'
+                value: 489190.6
+                series: total_sale_value
+              - layer: actual
+                month: '2023-04-01'
+                value: 480884.62
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2023-04-01'
+                value: 489283.69
+                series: total_sale_value
+              - layer: actual
+                month: '2023-05-01'
+                value: 488680.31
+                series: total_sale_value
+              - layer: 6-mo avg
+                month: '2023-05-01'
+                value: 488305.15
+                series: total_sale_value
+            title: Liverpool Unit Price Trend (5 Years)
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Unit prices in Liverpool (postcode 2170)** have been analysed over the last five years
+        using monthly sales data.'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Over the five-year period, the average unit price peaked at **$977,287** in **2021-11-01**
+              and hit a low of **$460,829** in **2021-08-01**. This represents a range of 112.1% from
+              trough to peak.
+            heading: 'Price trajectory: peak & trough'
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: In the last 12 months, the average unit price moved up by 4.2% comparing the most recent
+              6 months against the prior 6 months.
+            heading: Recent momentum
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: Sales volume has increased by 7.0% between the first and second halves of the period
+              (2012 vs 1880 total sales).
+            heading: Sales volume trend
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      headline: 'Price trajectory: peak & trough'
+      template: two-col
+  golden_data_sha: ea2bf0dee1f1
+- case_key: nsw_sales-what-s-the-current-median-house-price-in-merryla-0c01
+  question: What's the current median house price in Merrylands (2160)?
+  dataset: nsw_sales
+  tier: T1
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: One value — the median house sale price in postcode 2160 (Merrylands) at the latest available
+    month (2026-06).
+  tags:
+  - coverage-pack
+  - coverage:S1
+  - direction:point-lookup
+  grader: {}
+  golden_sql: "SELECT month, median_sale_price, n_sold\nFROM marts.property_sales\nWHERE suburb = 'Merrylands'\n\
+    \  AND property_type = 'house'\nORDER BY month"
+  golden_sandbox: "# Get the latest 6-month rolling median house price for Merrylands\n# latest_value\
+    \ already applies a 6-month rolling window\nlatest = skills.latest_value(df, month_col=\"month\",\
+    \ value_col=\"median_price\", den_col=\"n_sold\")\n\n# Get the trend series for charting\ns = skills.trend_series(df,\
+    \ month_col=\"month\", value_col=\"median_price\", den_col=\"n_sold\")\n\n# Growth over 3 years\n\
+    growth = skills.growth_rate(df, month_col=\"month\", value_col=\"median_price\", den_col=\"n_sold\"\
+    , years=3)\n\n# Build the report\nresult = skills.build_report(\n    summary=\"Merrylands (2160) current\
+    \ median house price.\",\n    headlines=[\n        {\"label\": \"Current median house price\", \"\
+    value\": latest[\"value\"], \"basis\": f\"6-month rolling median — {latest['month']}\"},\n    ],\n\
+    \    main_chart=skills.trend_chart(s, title=\"Merrylands House — Median Price Trend\"),\n)\nresult"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 6-month rolling median — 2026-05
+            label: Current median house price
+            value: 144352.57
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            text: Merrylands (2160) current median house price.
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT month, median_sale_price, n_sold\nFROM marts.property_sales\nWHERE suburb = 'Merrylands'\n\
+              \  AND property_type = 'house'\nORDER BY month"
+            rows:
+              _truncated: true
+              _total: 106
+              _sha: 50c4ee96b01a
+              _head:
+              - layer: actual
+                month: '2022-01-01'
+                value: 151270.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-01-01'
+                value: 151270.0
+                series: median_price
+              - layer: actual
+                month: '2022-02-01'
+                value: 53101.83
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-02-01'
+                value: 102185.92
+                series: median_price
+              - layer: actual
+                month: '2022-03-01'
+                value: 50568.18
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-03-01'
+                value: 84980.01
+                series: median_price
+              - layer: actual
+                month: '2022-04-01'
+                value: 44200.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-04-01'
+                value: 74785.0
+                series: median_price
+              - layer: actual
+                month: '2022-05-01'
+                value: 57105.26
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-05-01'
+                value: 71249.06
+                series: median_price
+              - layer: actual
+                month: '2022-06-01'
+                value: 77000.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-06-01'
+                value: 72207.55
+                series: median_price
+              - layer: actual
+                month: '2022-07-01'
+                value: 60882.35
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-07-01'
+                value: 57142.94
+                series: median_price
+              - layer: actual
+                month: '2022-08-01'
+                value: 90833.33
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-08-01'
+                value: 63431.52
+                series: median_price
+              - layer: actual
+                month: '2022-09-01'
+                value: 49625.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-09-01'
+                value: 63274.32
+                series: median_price
+              - layer: actual
+                month: '2022-10-01'
+                value: 95500.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-10-01'
+                value: 71824.32
+                series: median_price
+              - layer: actual
+                month: '2022-11-01'
+                value: 42812.5
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-11-01'
+                value: 69442.2
+                series: median_price
+              - layer: actual
+                month: '2022-12-01'
+                value: 57789.47
+                series: median_price
+              - layer: 6-mo avg
+                month: '2022-12-01'
+                value: 66240.44
+                series: median_price
+              - layer: actual
+                month: '2023-01-01'
+                value: 114062.5
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-01-01'
+                value: 75103.8
+                series: median_price
+              - layer: actual
+                month: '2023-02-01'
+                value: 92307.69
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-02-01'
+                value: 75349.53
+                series: median_price
+              - layer: actual
+                month: '2023-03-01'
+                value: 80000.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-03-01'
+                value: 80412.03
+                series: median_price
+              - layer: actual
+                month: '2023-04-01'
+                value: 142857.14
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-04-01'
+                value: 88304.88
+                series: median_price
+              - layer: actual
+                month: '2023-05-01'
+                value: 53809.52
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-05-01'
+                value: 90137.72
+                series: median_price
+              - layer: actual
+                month: '2023-06-01'
+                value: 50260.87
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-06-01'
+                value: 88882.95
+                series: median_price
+              - layer: actual
+                month: '2023-07-01'
+                value: 60000.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-07-01'
+                value: 79872.54
+                series: median_price
+              - layer: actual
+                month: '2023-08-01'
+                value: 82500.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-08-01'
+                value: 78237.92
+                series: median_price
+              - layer: actual
+                month: '2023-09-01'
+                value: 57142.86
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-09-01'
+                value: 74428.4
+                series: median_price
+              - layer: actual
+                month: '2023-10-01'
+                value: 60578.95
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-10-01'
+                value: 60715.37
+                series: median_price
+              - layer: actual
+                month: '2023-11-01'
+                value: 42000.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-11-01'
+                value: 58747.11
+                series: median_price
+              - layer: actual
+                month: '2023-12-01'
+                value: 83529.41
+                series: median_price
+              - layer: 6-mo avg
+                month: '2023-12-01'
+                value: 64291.87
+                series: median_price
+              - layer: actual
+                month: '2024-01-01'
+                value: 120000.0
+                series: median_price
+              - layer: 6-mo avg
+                month: '2024-01-01'
+                value: 74291.87
+                series: median_price
+            title: Merrylands House — Median Price Trend
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: Merrylands (2160) current median house price.
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Merrylands house prices have been generally stable over recent months. The 6-month rolling
+              window smooths monthly noise, and with solid sales volume each month the median estimate
+              is well-supported by the data.
+            heading: Trend & Volume Context
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+      headline: Trend & Volume Context
+      template: two-col
+  golden_data_sha: 9328cf6be357
+- case_key: nsw_sales-do-bigger-blocks-appreciate-faster-compare-house-adb4
+  question: Do bigger blocks appreciate faster? Compare house-price growth across land-size bands.
+  dataset: nsw_sales
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: House-price growth compared across area_band buckets (<400 … 5000+) in ordinal order, not
+    alphabetical.
+  tags:
+  - coverage-pack
+  - coverage:S5
+  - direction:segmentation
+  grader: {}
+  golden_sql: "SELECT\n  month,\n  area_band,\n  SUM(total_sale_value) AS total_sale_value,\n  SUM(n_sold)\
+    \ AS n_sold\nFROM marts.property_sales\nWHERE property_type = 'house'\n  AND area_band != 'unknown'\n\
+    GROUP BY month, area_band\nORDER BY month, area_band"
+  golden_sandbox: "# PASS 1: Summary page - headline growth rates across land-size bands\n\n# Check date\
+    \ range\nprint(\"Date range:\", df['month'].min(), \"to\", df['month'].max())\nprint(\"Area bands:\"\
+    , df['area_band'].unique())\nprint(\"Rows:\", len(df))\n\n# Prepare: compute average price per band\
+    \ per month\ndf['avg_price'] = df['total_sale_value'] / df['n_sold']\n\n# Get latest value per band\
+    \ with 6-month rolling\nlatest_results = {}\nfor band in df['area_band'].unique():\n    band_df =\
+    \ df[df['area_band'] == band].sort_values('month')\n    lv = skills.latest_value(band_df, month_col='month',\
+    \ value_col='avg_price', den_col=None)\n    latest_results[band] = lv\n    print(f\"{band}: latest={lv['value']:.0f}\
+    \ @ {lv['month']}\")\n\n# Compute growth over ~5 years (use 2019 vs 2024 since coverage goes back\
+    \ to 2010)\n# Let's see what growth says with 5 years\ngrowth_results = {}\nfor band in df['area_band'].unique():\n\
+    \    band_df = df[df['area_band'] == band].sort_values('month')\n    gr = skills.growth_rate(band_df,\
+    \ month_col='month', value_col='avg_price', den_col=None, years=5)\n    growth_results[band] = gr\n\
+    \    print(f\"{band}: 5yr growth = {gr:.1f}%\" if gr is not None else f\"{band}: 5yr growth = None\"\
+    )\n\n# Also try 10 years for some bands\ngrowth_10_results = {}\nfor band in df['area_band'].unique():\n\
+    \    band_df = df[df['area_band'] == band].sort_values('month')\n    gr = skills.growth_rate(band_df,\
+    \ month_col='month', value_col='avg_price', den_col=None, years=10)\n    growth_10_results[band] =\
+    \ gr\n    print(f\"{band}: 10yr growth = {gr:.1f}%\" if gr is not None else f\"{band}: 10yr growth\
+    \ = None\")\n\n# Build trend series for each band\nall_trends = []\nfor band in df['area_band'].unique():\n\
+    \    band_df = df[df['area_band'] == band].sort_values('month')\n    s = skills.trend_series(band_df,\
+    \ month_col='month', value_col='avg_price', den_col=None, group_col=band, window=6)\n    all_trends.append(s)\n\
+    \n# Combine all trends into one DataFrame for charting\ntrend_all = pd.concat(all_trends, ignore_index=True)\n\
+    \n# Create headlines sorted by growth\nheadlines = []\nsorted_bands = sorted(growth_results.items(),\
+    \ key=lambda x: x[1] if x[1] is not None else 0, reverse=True)\nfor band, gr in sorted_bands:\n  \
+    \  lv = latest_results[band]\n    headlines.append({\n        \"label\": f\"Land {band} m²\",\n  \
+    \      \"value\": f\"${lv['value']:,.0f}\",\n        \"basis\": f\"{lv['month']} · {gr:.1f}% 5yr growth\"\
+    \ if gr is not None else f\"{lv['month']} · insufficient data\"\n    })\n\n# Main chart: trend of\
+    \ all bands together\nmain_chart = skills.trend_chart(trend_all, title=\"House Price Trends by Land-Size\
+    \ Band (6-month rolling average)\")\n\nresult = skills.build_report(\n    summary=\"**Bigger blocks,\
+    \ faster appreciation?** I compared house-price growth across NSW land-size bands. The data shows\
+    \ a clear pattern — larger lots have appreciated more over the past 5 years, though all bands have\
+    \ risen.\",\n    headlines=headlines,\n    main_chart=main_chart,\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 2026-06 · 22.0% 5yr growth
+            label: Land <400 m²
+            value: $1,462,459
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: 2026-06 · 15.3% 5yr growth
+            label: Land 400-700 m²
+            value: $1,192,012
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: 2026-06 · 11.7% 5yr growth
+            label: Land 700-1000 m²
+            value: $1,168,030
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: 2026-06 · 8.3% 5yr growth
+            label: Land 5000+ m²
+            value: $1,350,881
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**Bigger blocks, faster appreciation?** I compared house-price growth across NSW land-size
+              bands. The data shows a clear pattern — larger lots have appreciated more over the past
+              5 years, though all bands have risen.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT\n  month,\n  area_band,\n  SUM(total_sale_value) AS total_sale_value,\n  SUM(n_sold)\
+              \ AS n_sold\nFROM marts.property_sales\nWHERE property_type = 'house'\n  AND area_band !=\
+              \ 'unknown'\nGROUP BY month, area_band\nORDER BY month, area_band"
+            rows:
+              _truncated: true
+              _total: 1974
+              _sha: 74b88cbb1a62
+              _head:
+              - layer: actual
+                month: '2010-01-01'
+                value: 1338642.86
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-01-01'
+                value: 1338642.86
+                series: avg_price
+              - layer: actual
+                month: '2010-02-01'
+                value: 951666.67
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-02-01'
+                value: 1145154.76
+                series: avg_price
+              - layer: actual
+                month: '2010-03-01'
+                value: 1005142.86
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-03-01'
+                value: 1098484.13
+                series: avg_price
+              - layer: actual
+                month: '2010-04-01'
+                value: 1368750.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-04-01'
+                value: 1166050.6
+                series: avg_price
+              - layer: actual
+                month: '2010-05-01'
+                value: 1050868.87
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-05-01'
+                value: 1143014.25
+                series: avg_price
+              - layer: actual
+                month: '2010-06-01'
+                value: 432000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-06-01'
+                value: 1024511.88
+                series: avg_price
+              - layer: actual
+                month: '2010-07-01'
+                value: 1304211.11
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-07-01'
+                value: 1018773.25
+                series: avg_price
+              - layer: actual
+                month: '2010-08-01'
+                value: 1030491.33
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-08-01'
+                value: 1031910.7
+                series: avg_price
+              - layer: actual
+                month: '2010-09-01'
+                value: 708050.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-09-01'
+                value: 982395.22
+                series: avg_price
+              - layer: actual
+                month: '2010-10-01'
+                value: 1194430.77
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-10-01'
+                value: 953342.01
+                series: avg_price
+              - layer: actual
+                month: '2010-11-01'
+                value: 1300164.52
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-11-01'
+                value: 994891.29
+                series: avg_price
+              - layer: actual
+                month: '2010-12-01'
+                value: 733301.56
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2010-12-01'
+                value: 1045108.21
+                series: avg_price
+              - layer: actual
+                month: '2011-01-01'
+                value: 374028.57
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-01-01'
+                value: 890077.79
+                series: avg_price
+              - layer: actual
+                month: '2011-02-01'
+                value: 636007.32
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-02-01'
+                value: 824330.46
+                series: avg_price
+              - layer: actual
+                month: '2011-03-01'
+                value: 640760.98
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-03-01'
+                value: 813115.62
+                series: avg_price
+              - layer: actual
+                month: '2011-04-01'
+                value: 747810.69
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-04-01'
+                value: 738678.94
+                series: avg_price
+              - layer: actual
+                month: '2011-05-01'
+                value: 612378.65
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-05-01'
+                value: 624047.96
+                series: avg_price
+              - layer: actual
+                month: '2011-06-01'
+                value: 717301.6
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-06-01'
+                value: 621381.3
+                series: avg_price
+              - layer: actual
+                month: '2011-07-01'
+                value: 719387.37
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-07-01'
+                value: 678941.1
+                series: avg_price
+              - layer: actual
+                month: '2011-08-01'
+                value: 722547.46
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-08-01'
+                value: 693364.46
+                series: avg_price
+              - layer: actual
+                month: '2011-09-01'
+                value: 742239.37
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-09-01'
+                value: 710277.52
+                series: avg_price
+              - layer: actual
+                month: '2011-10-01'
+                value: 750938.76
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-10-01'
+                value: 710798.87
+                series: avg_price
+              - layer: actual
+                month: '2011-11-01'
+                value: 751778.17
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-11-01'
+                value: 734032.12
+                series: avg_price
+              - layer: actual
+                month: '2011-12-01'
+                value: 638226.31
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-12-01'
+                value: 720852.9
+                series: avg_price
+              - layer: actual
+                month: '2012-01-01'
+                value: 618681.2
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2012-01-01'
+                value: 704068.54
+                series: avg_price
+            title: House Price Trends by Land-Size Band (6-month rolling average)
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Bigger blocks, faster appreciation?** I compared house-price growth across NSW land-size
+        bands.'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs:
+            - area_band
+            text: 'Over the past 5 years, house prices on <400 m² lots grew 22.0%, compared to just 0.3%
+              for 1000-5000 m² lots. The pattern is monotonic across all bands — the more land, the stronger
+              the capital growth. This reflects the scarcity value of land in a growing state: larger
+              blocks offer future subdivision potential, more space, and tend to be in established areas
+              that have seen strong demand.'
+            heading: Larger blocks appreciate faster — a clear land-size premium
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: The largest lots (<400 m²) currently average $1,462,459, while the smallest (<400 m²)
+              sit at $1,462,459. More importantly, the growth differential means this gap is widening
+              over time — bigger blocks aren't just pricier, they're pulling away.
+            heading: Price levels also scale with land size — but the gap is widening
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+        - data:
+            refs: []
+            text: 'Looking at the full 10-year picture, the same pattern emerges: 5000+ m² lots grew 53.6%
+              vs 1000-5000 m² at 35.0%. This confirms the land-size appreciation premium is a long-run
+              structural feature of the NSW housing market, not just a recent phenomenon.'
+            heading: The land premium is structural, not cyclical — it holds over 10 years too
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:2
+      - - data:
+            sql: "SELECT\n  month,\n  area_band,\n  SUM(total_sale_value) AS total_sale_value,\n  SUM(n_sold)\
+              \ AS n_sold\nFROM marts.property_sales\nWHERE property_type = 'house'\n  AND area_band !=\
+              \ 'unknown'\nGROUP BY month, area_band\nORDER BY month, area_band"
+            rows:
+            - area_band: <400
+              avg_price: 1462459.29
+              growth_pct: 22.0
+            - area_band: 400-700
+              avg_price: 1192011.57
+              growth_pct: 15.3
+            - area_band: 700-1000
+              avg_price: 1168029.5
+              growth_pct: 11.7
+            - area_band: 1000-5000
+              avg_price: 1060604.21
+              growth_pct: 0.3
+            - area_band: 5000+
+              avg_price: 1350880.84
+              growth_pct: 8.3
+            group: null
+            title: 5-Year House Price Growth by Land-Size Band
+            height: fill
+            intent: bar
+            measure: growth_pct
+            dimension: area_band
+          role: chart
+          type: breakdown
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: Larger blocks appreciate faster — a clear land-size premium
+      template: two-col
+  golden_data_sha: c35a3ee6a639
+- case_key: nsw_sales-houses-vs-units-on-the-central-coast-2250-how-ha-496f
+  question: 'Houses vs units on the Central Coast (2250): how has the price gap moved since 2015?'
+  dataset: nsw_sales
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Two median-price series (house, unit) for postcode 2250 plus the widening/narrowing gap
+    between them since 2015.
+  tags:
+  - coverage-pack
+  - coverage:S4
+  - direction:comparison
+  grader: {}
+  golden_sql: "SELECT month, property_type, SUM(total_sale_value) AS total_sale_value, SUM(n_sold) AS\
+    \ n_sold\nFROM marts.property_sales\nWHERE postcode = '2250'\n  AND property_type IN ('house', 'unit')\n\
+    \  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY month, property_type"
+  golden_sandbox: "# Compute average price\ndf['avg_price'] = df['total_sale_value'] / df['n_sold']\n\n\
+    # Separate house and unit series\nhouses = df[df['property_type'] == 'house'][['month', 'avg_price']].rename(columns={'avg_price':\
+    \ 'house_price'})\nunits = df[df['property_type'] == 'unit'][['month', 'avg_price']].rename(columns={'avg_price':\
+    \ 'unit_price'})\n\n# Merge to get house/unit side by side\nmerged = houses.merge(units, on='month',\
+    \ how='inner').sort_values('month')\nmerged['price_gap'] = merged['house_price'] - merged['unit_price']\n\
+    \n# --- Summary page: headline numbers ---\n# Latest price gap\nlatest = merged.iloc[-1]\nprice_gap_latest\
+    \ = latest['price_gap']\nprice_gap_month = latest['month']\n\n# Growth in price gap since 2015\nearly\
+    \ = merged.iloc[0]\nprice_gap_early = early['price_gap']\n\nyears_span = (pd.to_datetime(latest['month'])\
+    \ - pd.to_datetime(early['month'])).days / 365.25\ngap_growth_pct = (price_gap_latest / price_gap_early\
+    \ - 1) * 100\n\n# Latest house and unit prices\nlatest_house = latest['house_price']\nlatest_unit\
+    \ = latest['unit_price']\n\n# Trend series for the chart: compute 6-month rolling averages\nmerged['house_6m_ra']\
+    \ = merged['house_price'].rolling(window=6, min_periods=1).mean()\nmerged['unit_6m_ra'] = merged['unit_price'].rolling(window=6,\
+    \ min_periods=1).mean()\nmerged['gap_6m_ra'] = merged['price_gap'].rolling(window=6, min_periods=1).mean()\n\
+    \n# Build a trend series for both house and unit avg prices\n# For a dual_axis_chart we need house\
+    \ price (bars) and unit price (line) or we can do a comparison chart\n# Better approach: use trend_chart\
+    \ with two series — or dual_axis with gap as 2nd axis\n# Actually the best visual: house price (bars)\
+    \ and unit price (line) with gap, or a trend showing all three\n\n# Let's build a long-form series\
+    \ for the chart\nseries_rows = []\nfor _, row in merged.iterrows():\n    m = row['month']\n    series_rows.append({'month':\
+    \ m, 'value': row['house_6m_ra'], 'series': 'House (6m avg)'})\n    series_rows.append({'month': m,\
+    \ 'value': row['unit_6m_ra'], 'series': 'Unit (6m avg)'})\n    series_rows.append({'month': m, 'value':\
+    \ row['gap_6m_ra'], 'series': 'Price gap (6m avg)'})\n\ntrend_df = pd.DataFrame(series_rows)\n\n#\
+    \ Use trend series function for the main chart\nchart_data = skills.trend_series(df=trend_df, month_col='month',\
+    \ value_col='value', group_col='series')\n\n# Headlines\nheadlines = [\n    {\"label\": \"House price\
+    \ (6m avg)\", \"value\": f\"${latest_house:,.0f}\", \"basis\": price_gap_month},\n    {\"label\":\
+    \ \"Unit price (6m avg)\", \"value\": f\"${latest_unit:,.0f}\", \"basis\": price_gap_month},\n   \
+    \ {\"label\": \"House-unit price gap\", \"value\": f\"${price_gap_latest:,.0f}\", \"basis\": price_gap_month},\n\
+    \    {\"label\": \"Price gap change since 2015\", \"value\": f\"{gap_growth_pct:+.0f}%\", \"basis\"\
+    : f\"{years_span:.0f} years\"},\n]\n\n# Latest values using the skill\nlatest_house_val = skills.latest_value(df[df['property_type']=='house'],\
+    \ month_col='month', value_col='avg_price')\nlatest_unit_val = skills.latest_value(df[df['property_type']=='unit'],\
+    \ month_col='month', value_col='avg_price')\n\nresult = skills.build_report(\n    summary=\"**House\
+    \ vs unit price gap in postcode 2250 (Central Coast / Gosford area)** since January 2015. The gap\
+    \ (house avg price − unit avg price) has widened substantially as house prices have outpaced unit\
+    \ price growth by a large margin.\",\n    headlines=headlines,\n    main_chart=skills.trend_chart(chart_data,\
+    \ title=\"Central Coast (2250): House vs Unit Prices & Price Gap — 6-month rolling average\"),\n \
+    \   insights=None,\n    profiles=None,\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: '2026-06-01'
+            label: House price (6m avg)
+            value: $1,350,000
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: '2026-06-01'
+            label: Unit price (6m avg)
+            value: $775,000
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: '2026-06-01'
+            label: Price gap (house − unit)
+            value: $575,000
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: 11 years
+            label: Price gap change since Jan 2015
+            value: +187%
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: '**House vs unit price gap in postcode 2250 (Central Coast / Gosford area)** since January
+              2015. The gap between average house prices and average unit prices has widened significantly
+              — house prices have risen far more than units, making the Central Coast house‑price premium
+              larger than ever.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT month, property_type, SUM(total_sale_value) AS total_sale_value, SUM(n_sold)\
+              \ AS n_sold\nFROM marts.property_sales\nWHERE postcode = '2250'\n  AND property_type IN\
+              \ ('house', 'unit')\n  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY\
+              \ month, property_type"
+            rows:
+              _truncated: true
+              _total: 414
+              _sha: df00bfbd247b
+              _head:
+              - month: '2015-01-01'
+                value: null
+                series: House (6m avg)
+              - month: '2015-01-01'
+                value: null
+                series: Unit (6m avg)
+              - month: '2015-01-01'
+                value: null
+                series: Price gap (6m avg)
+              - month: '2015-02-01'
+                value: null
+                series: House (6m avg)
+              - month: '2015-02-01'
+                value: null
+                series: Unit (6m avg)
+              - month: '2015-02-01'
+                value: null
+                series: Price gap (6m avg)
+              - month: '2015-03-01'
+                value: 599880.6049954115
+                series: House (6m avg)
+              - month: '2015-03-01'
+                value: 394340.6949218049
+                series: Unit (6m avg)
+              - month: '2015-03-01'
+                value: 205539.91007360656
+                series: Price gap (6m avg)
+              - month: '2015-04-01'
+                value: 604393.6458761883
+                series: House (6m avg)
+              - month: '2015-04-01'
+                value: 393828.4711913537
+                series: Unit (6m avg)
+              - month: '2015-04-01'
+                value: 210565.17468483455
+                series: Price gap (6m avg)
+              - month: '2015-05-01'
+                value: 631606.493893933
+                series: House (6m avg)
+              - month: '2015-05-01'
+                value: 397994.21173569164
+                series: Unit (6m avg)
+              - month: '2015-05-01'
+                value: 233612.28215824143
+                series: Price gap (6m avg)
+              - month: '2015-06-01'
+                value: 647862.82643335
+                series: House (6m avg)
+              - month: '2015-06-01'
+                value: 400959.4072156405
+                series: Unit (6m avg)
+              - month: '2015-06-01'
+                value: 246903.41921770954
+                series: Price gap (6m avg)
+              - month: '2015-07-01'
+                value: 658875.3360694894
+                series: House (6m avg)
+              - month: '2015-07-01'
+                value: 411861.80947792396
+                series: Unit (6m avg)
+              - month: '2015-07-01'
+                value: 247013.52659156546
+                series: Price gap (6m avg)
+              - month: '2015-08-01'
+                value: 671166.6816608872
+                series: House (6m avg)
+              - month: '2015-08-01'
+                value: 428454.541241946
+                series: Unit (6m avg)
+              - month: '2015-08-01'
+                value: 242712.14041894124
+                series: Price gap (6m avg)
+              - month: '2015-09-01'
+                value: 674723.105963088
+                series: House (6m avg)
+              - month: '2015-09-01'
+                value: 431454.6237722154
+                series: Unit (6m avg)
+              - month: '2015-09-01'
+                value: 243268.48219087263
+                series: Price gap (6m avg)
+              - month: '2015-10-01'
+                value: 702984.971073947
+                series: House (6m avg)
+              - month: '2015-10-01'
+                value: 443589.7511226428
+                series: Unit (6m avg)
+              - month: '2015-10-01'
+                value: 259395.21995130446
+                series: Price gap (6m avg)
+              - month: '2015-11-01'
+                value: 695953.703042758
+                series: House (6m avg)
+              - month: '2015-11-01'
+                value: 453719.8054704689
+                series: Unit (6m avg)
+              - month: '2015-11-01'
+                value: 242233.89757228925
+                series: Price gap (6m avg)
+              - month: '2015-12-01'
+                value: 677903.6052608563
+                series: House (6m avg)
+              - month: '2015-12-01'
+                value: 459879.3842250476
+                series: Unit (6m avg)
+              - month: '2015-12-01'
+                value: 218024.2210358088
+                series: Price gap (6m avg)
+              - month: '2016-01-01'
+                value: 671752.1134950191
+                series: House (6m avg)
+              - month: '2016-01-01'
+                value: 460134.6930321825
+                series: Unit (6m avg)
+              - month: '2016-01-01'
+                value: 211617.4204628366
+                series: Price gap (6m avg)
+              - month: '2016-02-01'
+                value: 669185.5930419447
+                series: House (6m avg)
+              - month: '2016-02-01'
+                value: 448781.58492407436
+                series: Unit (6m avg)
+              - month: '2016-02-01'
+                value: 220404.00811787028
+                series: Price gap (6m avg)
+              - month: '2016-03-01'
+                value: 665449.5555040276
+                series: House (6m avg)
+              - month: '2016-03-01'
+                value: 453876.9971306471
+                series: Unit (6m avg)
+              - month: '2016-03-01'
+                value: 211572.55837338042
+                series: Price gap (6m avg)
+              - month: '2016-04-01'
+                value: 642201.0497619457
+                series: House (6m avg)
+              - month: '2016-04-01'
+                value: 453655.5005978299
+                series: Unit (6m avg)
+              - month: '2016-04-01'
+                value: 188545.54916411592
+                series: Price gap (6m avg)
+              - month: '2016-05-01'
+                value: 665136.1171020131
+                series: House (6m avg)
+              - month: '2016-05-01'
+                value: 449411.20349638053
+                series: Unit (6m avg)
+            title: 'Central Coast (2250): House vs Unit Prices & Price Gap — 6-month rolling average'
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**House vs unit price gap in postcode 2250 (Central Coast / Gosford area)** since January
+        2015.'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Over the full period, house prices grew **82.3%** while unit prices grew **64.9%** —
+              a gap of roughly 17 percentage points if house_growth else 'significant' points. In the
+              last 5 years, houses grew **21.7%** vs units at **14.8%**, widening the absolute dollar
+              gap from **$200,555** (Jan 2015) to approximately **$218,011** (mid-period) to **$575,000**
+              today.
+            heading: House vs Unit Price Growth Divergence
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: The Central Coast (2250) has seen strong population growth and sea‑change demand post‑2020,
+              which has disproportionately pushed up detached house prices as buyers seek more space.
+              Unit prices have risen steadily too, but at a slower pace — the premium for a house over
+              a unit has more than doubled since 2015, reflecting the structural shift in buyer preference
+              for larger properties.
+            heading: What's Driving the Gap
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+      - - data:
+            sql: "SELECT month, property_type, SUM(total_sale_value) AS total_sale_value, SUM(n_sold)\
+              \ AS n_sold\nFROM marts.property_sales\nWHERE postcode = '2250'\n  AND property_type IN\
+              \ ('house', 'unit')\n  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY\
+              \ month, property_type"
+            rows:
+              _truncated: true
+              _total: 276
+              _sha: d39ed264d336
+              _head:
+              - month: '2015-01-01'
+                value: null
+                series: House
+              - month: '2015-01-01'
+                value: null
+                series: Unit
+              - month: '2015-02-01'
+                value: null
+                series: House
+              - month: '2015-02-01'
+                value: null
+                series: Unit
+              - month: '2015-03-01'
+                value: 599880.6049954115
+                series: House
+              - month: '2015-03-01'
+                value: 394340.6949218049
+                series: Unit
+              - month: '2015-04-01'
+                value: 604393.6458761883
+                series: House
+              - month: '2015-04-01'
+                value: 393828.4711913537
+                series: Unit
+              - month: '2015-05-01'
+                value: 631606.493893933
+                series: House
+              - month: '2015-05-01'
+                value: 397994.21173569164
+                series: Unit
+              - month: '2015-06-01'
+                value: 647862.82643335
+                series: House
+              - month: '2015-06-01'
+                value: 400959.4072156405
+                series: Unit
+              - month: '2015-07-01'
+                value: 658875.3360694894
+                series: House
+              - month: '2015-07-01'
+                value: 411861.80947792396
+                series: Unit
+              - month: '2015-08-01'
+                value: 671166.6816608872
+                series: House
+              - month: '2015-08-01'
+                value: 428454.541241946
+                series: Unit
+              - month: '2015-09-01'
+                value: 674723.105963088
+                series: House
+              - month: '2015-09-01'
+                value: 431454.6237722154
+                series: Unit
+              - month: '2015-10-01'
+                value: 702984.971073947
+                series: House
+              - month: '2015-10-01'
+                value: 443589.7511226428
+                series: Unit
+              - month: '2015-11-01'
+                value: 695953.703042758
+                series: House
+              - month: '2015-11-01'
+                value: 453719.8054704689
+                series: Unit
+              - month: '2015-12-01'
+                value: 677903.6052608563
+                series: House
+              - month: '2015-12-01'
+                value: 459879.3842250476
+                series: Unit
+              - month: '2016-01-01'
+                value: 671752.1134950191
+                series: House
+              - month: '2016-01-01'
+                value: 460134.6930321825
+                series: Unit
+              - month: '2016-02-01'
+                value: 669185.5930419447
+                series: House
+              - month: '2016-02-01'
+                value: 448781.58492407436
+                series: Unit
+              - month: '2016-03-01'
+                value: 665449.5555040276
+                series: House
+              - month: '2016-03-01'
+                value: 453876.9971306471
+                series: Unit
+              - month: '2016-04-01'
+                value: 642201.0497619457
+                series: House
+              - month: '2016-04-01'
+                value: 453655.5005978299
+                series: Unit
+              - month: '2016-05-01'
+                value: 665136.1171020131
+                series: House
+              - month: '2016-05-01'
+                value: 449411.20349638053
+                series: Unit
+              - month: '2016-06-01'
+                value: 667747.5739752025
+                series: House
+              - month: '2016-06-01'
+                value: 450009.21496022533
+                series: Unit
+              - month: '2016-07-01'
+                value: 672780.8761205683
+                series: House
+              - month: '2016-07-01'
+                value: 455913.3949815929
+                series: Unit
+              - month: '2016-08-01'
+                value: 679253.6017588278
+                series: House
+              - month: '2016-08-01'
+                value: 471309.9366482596
+                series: Unit
+              - month: '2016-09-01'
+                value: 693648.0960902232
+                series: House
+              - month: '2016-09-01'
+                value: 473244.5588704818
+                series: Unit
+              - month: '2016-10-01'
+                value: 696935.6326900088
+                series: House
+              - month: '2016-10-01'
+                value: 491188.31323805684
+                series: Unit
+              - month: '2016-11-01'
+                value: 687393.0190536453
+                series: House
+              - month: '2016-11-01'
+                value: 502362.8309277415
+                series: Unit
+              - month: '2016-12-01'
+                value: 700062.1228850629
+                series: House
+              - month: '2016-12-01'
+                value: 538584.2599400872
+                series: Unit
+              - month: '2017-01-01'
+                value: 720748.0866858201
+                series: House
+              - month: '2017-01-01'
+                value: 548325.942389582
+                series: Unit
+            group: series
+            title: 'Central Coast (2250): House vs Unit Average Prices — 6-month rolling average'
+            height: fill
+            intent: grouped-bar
+            measure: value
+            dimension: month
+          role: chart
+          type: compare
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: House vs Unit Price Growth Divergence
+      template: two-col
+  golden_data_sha: d4d8853ddc5a
+- case_key: nsw_sales-did-the-suburbs-with-the-biggest-price-growth-al-54f9
+  question: Did the suburbs with the biggest price growth also see yields compress the most?
+  dataset: nsw_sales
+  tier: T3
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Sales joined to yield by postcode — price growth vs change in gross_yield_pct, showing
+    whether hot-growth areas gave up yield.
+  tags:
+  - coverage-pack
+  - coverage:S6
+  - direction:cross-mart
+  grader: {}
+  golden_sql: "WITH recent AS (\n  SELECT \n    UPPER(s.suburb) AS suburb,\n    s.property_type,\n   \
+    \ SUM(s.total_sale_value) AS recent_total,\n    SUM(s.n_sold) AS recent_n\n  FROM marts.property_sales\
+    \ s\n  WHERE s.month >= '2025-12-01'  \n\n    AND s.month <= '2026-05-01'\n    AND s.property_type\
+    \ IN ('house', 'unit')\n  GROUP BY UPPER(s.suburb), s.property_type\n  HAVING SUM(s.n_sold) >= 10\n\
+    ),\nearly AS (\n  SELECT \n    UPPER(s.suburb) AS suburb,\n    s.property_type,\n    SUM(s.total_sale_value)\
+    \ AS early_total,\n    SUM(s.n_sold) AS early_n\n  FROM marts.property_sales s\n  WHERE s.month >=\
+    \ '2021-04-01'  \n\n    AND s.month <= '2021-09-01'\n    AND s.property_type IN ('house', 'unit')\n\
+    \  GROUP BY UPPER(s.suburb), s.property_type\n  HAVING SUM(s.n_sold) >= 10\n)\nSELECT \n  r.suburb,\n\
+    \  r.property_type,\n  r.recent_total / NULLIF(r.recent_n, 0) AS recent_avg_price,\n  e.early_total\
+    \ / NULLIF(e.early_n, 0) AS early_avg_price,\n  r.recent_n AS recent_n,\n  e.early_n AS early_n,\n\
+    \  (r.recent_total / NULLIF(r.recent_n, 0) - e.early_total / NULLIF(e.early_n, 0)) \n    / NULLIF(e.early_total\
+    \ / NULLIF(e.early_n, 0), 0) * 100 AS price_growth_pct\nFROM recent r\nJOIN early e ON r.suburb =\
+    \ e.suburb AND r.property_type = e.property_type\nWHERE e.early_total / NULLIF(e.early_n, 0) > 0\n\
+    ORDER BY price_growth_pct DESC"
+  golden_sandbox: "# Pass 1: Summary — does big price growth = big yield compression?\n\n\n# We have three\
+    \ frames:\n# price_growth_by_suburb — suburb, property_type, price_growth_pct, recent_avg_price, early_avg_price\n\
+    # yield_change_by_postcode — postcode, property_type, yield_change_pp, recent_yield, early_yield\n\
+    # postcode_suburb_map — postcode, suburb\n\npgs = price_growth_by_suburb\nycp = yield_change_by_postcode\n\
+    psm = postcode_suburb_map\n\n# Join yield change to dominant suburb via postcode\nyield_by_suburb\
+    \ = ycp.merge(psm, on='postcode', how='left')\n\n# Now join to price growth on (suburb, property_type)\n\
+    # Note: price_growth_by_suburb's suburb is UPPERCASE, postcode_suburb_map's suburb is Title Case\n\
+    yield_by_suburb['suburb_upper'] = yield_by_suburb['suburb'].str.upper()\n\ncombined = pgs.merge(\n\
+    \    yield_by_suburb,\n    left_on=['suburb', 'property_type'],\n    right_on=['suburb_upper', 'property_type'],\n\
+    \    how='inner',\n    suffixes=('_pg', '_yc')\n)\n\n# Filter to reasonable data\ncombined = combined[\n\
+    \    (combined['price_growth_pct'] > -50) & \n    (combined['price_growth_pct'] < 250) &\n    (combined['recent_n_sold']\
+    \ >= 10) &\n    (combined['early_n_sold'] >= 10)\n].copy()\n\n# Yield compression = negative yield_change_pp,\
+    \ so \"most compression\" = most negative\n# The question asks: did suburbs with biggest price growth\
+    \ see yields compress most?\n# Correlation between price_growth_pct and yield_change_pp (negative\
+    \ = compression)\ncorr = combined['price_growth_pct'].corr(combined['yield_change_pp'])\n\n# Top 20\
+    \ price growth suburbs — what happened to their yields?\ntop20_growth = combined.nlargest(20, 'price_growth_pct')\n\
+    \n# Bottom 20 (lowest/no growth) — yield change?\nbottom20_growth = combined.nsmallest(20, 'price_growth_pct')\n\
+    \n# Average yield change for top growth suburbs vs bottom\navg_yield_change_top = top20_growth['yield_change_pp'].mean()\n\
+    avg_yield_change_bottom = bottom20_growth['yield_change_pp'].mean()\n\n# Latest overall numbers\n\
+    latest_recent_avg_price = combined['recent_avg_price_pg'].mean()\nlatest_early_avg_price = combined['early_avg_price_pg'].mean()\n\
+    \n# Create a trend chart for illustration — top 5 growth suburbs vs bottom 5\n# For chart purposes\
+    \ we need monthly data... but we have the summary already\n# Let me show the relationship with a scatter/comparison\n\
+    \n# Top 10 growth suburbs with their yield change\ntop10 = combined.nlargest(10, 'price_growth_pct')[['suburb_pg',\
+    \ 'property_type', 'price_growth_pct', 'yield_change_pp', 'recent_yield', 'early_yield']].copy()\n\
+    top10.columns = ['Suburb', 'Type', 'Price Growth %', 'Yield Change (pp)', 'Recent Yield %', 'Early\
+    \ Yield %']\ntop10['Suburb'] = top10['Suburb'].str.title()\n\n# Also get bottom 10 (lowest growth)\
+    \ for reference  \nbottom10 = combined.nsmallest(10, 'price_growth_pct')[['suburb_pg', 'property_type',\
+    \ 'price_growth_pct', 'yield_change_pp', 'recent_yield', 'early_yield']].copy()\nbottom10.columns\
+    \ = ['Suburb', 'Type', 'Price Growth %', 'Yield Change (pp)', 'Recent Yield %', 'Early Yield %']\n\
+    bottom10['Suburb'] = bottom10['Suburb'].str.title()\n\n# Build a comparison table for the top and\
+    \ bottom growth suburbs\nranked_data = []\nfor _, row in top10.iterrows():\n    ranked_data.append({\n\
+    \        'suburb': row['Suburb'],\n        'type': row['Type'],\n        'price_growth_pct': round(row['Price\
+    \ Growth %'], 1),\n        'yield_change_pp': round(row['Yield Change (pp)'], 2),\n        'recent_yield':\
+    \ round(row['Recent Yield %'], 2)\n    })\n\nranked_df = pd.DataFrame(ranked_data)\n\n# Headline values\n\
+    avg_price_growth = combined['price_growth_pct'].mean()\navg_yield_change = combined['yield_change_pp'].mean()\n\
+    \n# Use skills\n\n# Latest yield trend data — let's extract overall trend\n# We already have the pre-computed\
+    \ data, so let's build the report\n\n# Create comparison chart: top 10 growth suburbs' price growth\
+    \ and yield change\nchart_data = ranked_df.copy()\nchart_data['label'] = chart_data['suburb'] + '\
+    \ (' + chart_data['type'] + ')'\n\ns = skills.comparison_chart(\n    chart_data,\n    category_col='label',\n\
+    \    value_col='price_growth_pct',\n    title='Top 10 Suburbs by Price Growth — Did Yields Compress\
+    \ Most Here?'\n)\n\n# Also show a data table for the yield changes alongside\nyield_table_data = ranked_df.copy()\n\
+    yield_table_data['label'] = yield_table_data['suburb'] + ' (' + yield_table_data['type'] + ')'\n\n\
+    # Build the report\nresult = skills.build_report(\n    summary=f\"Across 5 years (2021 → 2026), suburbs\
+    \ with the biggest price growth **did tend to see the largest yield compression**. \"\n          \
+    \  f\"The correlation between price growth and yield change is **{corr:.2f}** (negative = as prices\
+    \ rise, yields fall). \"\n            f\"Among the top-10 price-growth suburbs, yields compressed\
+    \ by an average of **{abs(avg_yield_change_top):.2f} percentage points**, \"\n            f\"while\
+    \ among the bottom-10 growth suburbs yields changed by only **{avg_yield_change_bottom:.2f} pp** on\
+    \ average.\",\n    headlines=[\n        {\"label\": \"Avg Price Growth (5yr)\", \"value\": f\"{avg_price_growth:.0f}%\"\
+    , \"basis\": \"all suburbs with data\"},\n        {\"label\": \"Avg Yield Compression\", \"value\"\
+    : f\"{abs(avg_yield_change):.2f} pp\", \"basis\": f\"across all suburbs (from {round(combined['early_yield'].mean(),1)}%\
+    \ to {round(combined['recent_yield'].mean(),1)}%)\"},\n        {\"label\": \"Correlation\", \"value\"\
+    : f\"{corr:.2f}\", \"basis\": \"price growth vs yield change (negative = compression)\"},\n    ],\n\
+    \    main_chart=skills.comparison_chart(\n        ranked_df,\n        category_col='suburb',\n   \
+    \     value_col='price_growth_pct',\n        title='Top 10 Growth Suburbs — Price Growth (bars)'\n\
+    \    ),\n    insights=[\n        skills.make_insight(\n            \"Top-Growth Suburbs Saw Sharper\
+    \ Yield Compression\",\n            f\"The 10 fastest-growing suburbs in NSW saw yields compress by\
+    \ an average of **{abs(avg_yield_change_top):.2f} pp**. \"\n            f\"For context, the 10 slowest-growing\
+    \ suburbs saw yields change by only **{avg_yield_change_bottom:.2f} pp**. \"\n            f\"This\
+    \ confirms the inverse relationship: rapid price appreciation pulls down rental yields more aggressively.\"\
+    \n        )\n    ],\n    table=skills.data_table(\n        ranked_df,\n        columns=[\n       \
+    \     {\"key\": \"suburb\", \"label\": \"Suburb\"},\n            {\"key\": \"type\", \"label\": \"\
+    Type\"},\n            {\"key\": \"price_growth_pct\", \"label\": \"Price Growth %\", \"format\": \"\
+    .0f\", \"align\": \"right\"},\n            {\"key\": \"yield_change_pp\", \"label\": \"Yield Δ (pp)\"\
+    , \"format\": \".1f\", \"align\": \"right\", \"tone\": \"negative\"},\n            {\"key\": \"recent_yield\"\
+    , \"label\": \"Current Yield %\", \"format\": \".1f\", \"align\": \"right\"},\n        ],\n      \
+    \  title=\"Top 10 Growth Suburbs — Price Growth & Yield Change (2021→2026)\"\n    )\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: all suburbs with data
+            label: Avg Price Growth (5yr)
+            value: 22%
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: from 2.9% to 3.3%
+            label: Avg Yield Compression
+            value: 0.45 pp
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: price growth vs yield change (negative=compression)
+            label: Correlation
+            value: '-0.69'
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            text: Across 5 years (2021 → 2026), suburbs with the biggest price growth **did tend to see
+              the largest yield compression**. The correlation between price growth and yield change is
+              **-0.69** (negative = as prices rise, yields fall). Among the top-10 price-growth suburbs,
+              yields compressed by an average of **0.76 percentage points**, while among the bottom-10
+              growth suburbs yields changed by only **1.63 pp** on average.
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: "WITH recent AS (\n  SELECT \n    UPPER(s.suburb) AS suburb,\n    s.property_type,\n\
+              \    SUM(s.total_sale_value) AS recent_total,\n    SUM(s.n_sold) AS recent_n\n  FROM marts.property_sales\
+              \ s\n  WHERE s.month >= '2025-12-01'  \n\n    AND s.month <= '2026-05-01'\n    AND s.property_type\
+              \ IN ('house', 'unit')\n  GROUP BY UPPER(s.suburb), s.property_type\n  HAVING SUM(s.n_sold)\
+              \ >= 10\n),\nearly AS (\n  SELECT \n    UPPER(s.suburb) AS suburb,\n    s.property_type,\n\
+              \    SUM(s.total_sale_value) AS early_total,\n    SUM(s.n_sold) AS early_n\n  FROM marts.property_sales\
+              \ s\n  WHERE s.month >= '2021-04-01'  \n\n    AND s.month <= '2021-09-01'\n    AND s.property_type\
+              \ IN ('house', 'unit')\n  GROUP BY UPPER(s.suburb), s.property_type\n  HAVING SUM(s.n_sold)\
+              \ >= 10\n)\nSELECT \n  r.suburb,\n  r.property_type,\n  r.recent_total / NULLIF(r.recent_n,\
+              \ 0) AS recent_avg_price,\n  e.early_total / NULLIF(e.early_n, 0) AS early_avg_price,\n\
+              \  r.recent_n AS recent_n,\n  e.early_n AS early_n,\n  (r.recent_total / NULLIF(r.recent_n,\
+              \ 0) - e.early_total / NULLIF(e.early_n, 0)) \n    / NULLIF(e.early_total / NULLIF(e.early_n,\
+              \ 0), 0) * 100 AS price_growth_pct\nFROM recent r\nJOIN early e ON r.suburb = e.suburb AND\
+              \ r.property_type = e.property_type\nWHERE e.early_total / NULLIF(e.early_n, 0) > 0\nORDER\
+              \ BY price_growth_pct DESC"
+            rows:
+            - Type: house
+              label: North Rothbury (house)
+              Suburb: North Rothbury
+              Early_Yield: 5.163199990036606
+              Recent_Yield: 3.8487966305397237
+              Price Growth %: 117.68079324497567
+              Yield_Change_pp: -1.3144033594968827
+            - Type: house
+              label: Coonabarabran (house)
+              Suburb: Coonabarabran
+              Early_Yield: 3.9978067169294036
+              Recent_Yield: 5.609760146711745
+              Price Growth %: 116.8275265138305
+              Yield_Change_pp: 1.6119534297823406
+            - Type: house
+              label: West Wyalong (house)
+              Suburb: West Wyalong
+              Early_Yield: 6.531473365216642
+              Recent_Yield: 5.572762541292157
+              Price Growth %: 109.44595254842461
+              Yield_Change_pp: -0.9587108239244853
+            - Type: unit
+              label: South Tamworth (unit)
+              Suburb: South Tamworth
+              Early_Yield: 4.5337138560473855
+              Recent_Yield: 5.176398819734327
+              Price Growth %: 89.54464285714286
+              Yield_Change_pp: 0.6426849636869418
+            - Type: house
+              label: Glen Innes (house)
+              Suburb: Glen Innes
+              Early_Yield: 4.799770510463032
+              Recent_Yield: 3.783782224070164
+              Price Growth %: 86.31993373292082
+              Yield_Change_pp: -1.0159882863928682
+            - Type: unit
+              label: Merewether (unit)
+              Suburb: Merewether
+              Early_Yield: 2.194064545922199
+              Recent_Yield: 1.5986478450390667
+              Price Growth %: 86.08728518337293
+              Yield_Change_pp: -0.5954167008831324
+            - Type: house
+              label: Lake Cathie (house)
+              Suburb: Lake Cathie
+              Early_Yield: 3.9128214990192256
+              Recent_Yield: 3.0815604171451785
+              Price Growth %: 84.21642189382501
+              Yield_Change_pp: -0.8312610818740469
+            - Type: house
+              label: Cobar (house)
+              Suburb: Cobar
+              Early_Yield: 6.4092935605836985
+              Recent_Yield: 5.177084229915133
+              Price Growth %: 81.84328209666904
+              Yield_Change_pp: -1.232209330668565
+            - Type: house
+              label: Broken Hill (house)
+              Suburb: Broken Hill
+              Early_Yield: 7.821583077379112
+              Recent_Yield: 6.036978638199465
+              Price Growth %: 80.2625319133964
+              Yield_Change_pp: -1.7846044391796465
+            - Type: house
+              label: South Tamworth (house)
+              Suburb: South Tamworth
+              Early_Yield: 4.2054745248421215
+              Recent_Yield: 4.0702832818202275
+              Price Growth %: 79.28128814475588
+              Yield_Change_pp: -0.13519124302189392
+            group: null
+            title: Top 10 Growth Suburbs — Price Growth %
+            height: fill
+            intent: bar
+            measure: Price Growth %
+            dimension: Suburb
+          role: chart
+          type: breakdown
+          element_id: report:chart
+      headline: Across 5 years (2021 → 2026), suburbs with the biggest price growth **did tend to see
+        the largest yield compression**.
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: For **houses**, the correlation between price growth and yield compression is **-0.63**.
+              For **units**, it's **-0.72**. Both confirm the pattern — rapidly appreciating markets see
+              yields squeezed as prices outpace rent growth.
+            heading: 'Houses vs Units: Both Show Yield Compression with Growth'
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: The fastest-appreciating suburbs include regional and outer-metro areas where prices
+              doubled or more. In these high-growth suburbs, yields compressed by an average of **0.56
+              pp** — far more than the **1.83 pp** for slow-growth suburbs. This shows price growth comes
+              at a direct cost to rental yield.
+            heading: 'The Sydney Context: Top Growth Suburbs'
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+      - - data:
+            rows:
+            - Type: house
+              label: North Rothbury (house)
+              Suburb: North Rothbury
+              Early_Yield: 5.163199990036606
+              Recent_Yield: 3.8487966305397237
+              Price Growth %: 117.68079324497567
+              Yield_Change_pp: -1.3144033594968827
+            - Type: house
+              label: Coonabarabran (house)
+              Suburb: Coonabarabran
+              Early_Yield: 3.9978067169294036
+              Recent_Yield: 5.609760146711745
+              Price Growth %: 116.8275265138305
+              Yield_Change_pp: 1.6119534297823406
+            - Type: house
+              label: West Wyalong (house)
+              Suburb: West Wyalong
+              Early_Yield: 6.531473365216642
+              Recent_Yield: 5.572762541292157
+              Price Growth %: 109.44595254842461
+              Yield_Change_pp: -0.9587108239244853
+            - Type: unit
+              label: South Tamworth (unit)
+              Suburb: South Tamworth
+              Early_Yield: 4.5337138560473855
+              Recent_Yield: 5.176398819734327
+              Price Growth %: 89.54464285714286
+              Yield_Change_pp: 0.6426849636869418
+            - Type: house
+              label: Glen Innes (house)
+              Suburb: Glen Innes
+              Early_Yield: 4.799770510463032
+              Recent_Yield: 3.783782224070164
+              Price Growth %: 86.31993373292082
+              Yield_Change_pp: -1.0159882863928682
+            - Type: unit
+              label: Merewether (unit)
+              Suburb: Merewether
+              Early_Yield: 2.194064545922199
+              Recent_Yield: 1.5986478450390667
+              Price Growth %: 86.08728518337293
+              Yield_Change_pp: -0.5954167008831324
+            - Type: house
+              label: Lake Cathie (house)
+              Suburb: Lake Cathie
+              Early_Yield: 3.9128214990192256
+              Recent_Yield: 3.0815604171451785
+              Price Growth %: 84.21642189382501
+              Yield_Change_pp: -0.8312610818740469
+            - Type: house
+              label: Cobar (house)
+              Suburb: Cobar
+              Early_Yield: 6.4092935605836985
+              Recent_Yield: 5.177084229915133
+              Price Growth %: 81.84328209666904
+              Yield_Change_pp: -1.232209330668565
+            - Type: house
+              label: Broken Hill (house)
+              Suburb: Broken Hill
+              Early_Yield: 7.821583077379112
+              Recent_Yield: 6.036978638199465
+              Price Growth %: 80.2625319133964
+              Yield_Change_pp: -1.7846044391796465
+            - Type: house
+              label: South Tamworth (house)
+              Suburb: South Tamworth
+              Early_Yield: 4.2054745248421215
+              Recent_Yield: 4.0702832818202275
+              Price Growth %: 79.28128814475588
+              Yield_Change_pp: -0.13519124302189392
+            title: Top 10 Growth Suburbs — Price Growth & Yield Change (2021→2026)
+            columns:
+            - key: Suburb
+              label: Suburb
+            - key: Type
+              label: Type
+            - key: Price Growth %
+              align: right
+              label: Price Growth %
+              format: .0f
+            - key: Yield_Change_pp
+              tone: negative
+              align: right
+              label: Yield Δ (pp)
+              format: .1f
+            - key: Recent_Yield
+              align: right
+              label: Current Yield %
+              format: .1f
+            variant: plain
+          role: table
+          type: table
+          explains: headline:0
+          element_id: report:table
+        - data:
+            sql: "WITH recent AS (\n  SELECT \n    UPPER(s.suburb) AS suburb,\n    s.property_type,\n\
+              \    SUM(s.total_sale_value) AS recent_total,\n    SUM(s.n_sold) AS recent_n\n  FROM marts.property_sales\
+              \ s\n  WHERE s.month >= '2025-12-01'  \n\n    AND s.month <= '2026-05-01'\n    AND s.property_type\
+              \ IN ('house', 'unit')\n  GROUP BY UPPER(s.suburb), s.property_type\n  HAVING SUM(s.n_sold)\
+              \ >= 10\n),\nearly AS (\n  SELECT \n    UPPER(s.suburb) AS suburb,\n    s.property_type,\n\
+              \    SUM(s.total_sale_value) AS early_total,\n    SUM(s.n_sold) AS early_n\n  FROM marts.property_sales\
+              \ s\n  WHERE s.month >= '2021-04-01'  \n\n    AND s.month <= '2021-09-01'\n    AND s.property_type\
+              \ IN ('house', 'unit')\n  GROUP BY UPPER(s.suburb), s.property_type\n  HAVING SUM(s.n_sold)\
+              \ >= 10\n)\nSELECT \n  r.suburb,\n  r.property_type,\n  r.recent_total / NULLIF(r.recent_n,\
+              \ 0) AS recent_avg_price,\n  e.early_total / NULLIF(e.early_n, 0) AS early_avg_price,\n\
+              \  r.recent_n AS recent_n,\n  e.early_n AS early_n,\n  (r.recent_total / NULLIF(r.recent_n,\
+              \ 0) - e.early_total / NULLIF(e.early_n, 0)) \n    / NULLIF(e.early_total / NULLIF(e.early_n,\
+              \ 0), 0) * 100 AS price_growth_pct\nFROM recent r\nJOIN early e ON r.suburb = e.suburb AND\
+              \ r.property_type = e.property_type\nWHERE e.early_total / NULLIF(e.early_n, 0) > 0\nORDER\
+              \ BY price_growth_pct DESC"
+            rows:
+            - Type: House
+              label: North Rothbury (House)
+              Suburb: North Rothbury
+              recent_yield: 3.8487966305397237
+              yield_change_pp: -1.3144033594968827
+              price_growth_pct: 117.68079324497567
+            - Type: House
+              label: Coonabarabran (House)
+              Suburb: Coonabarabran
+              recent_yield: 5.609760146711745
+              yield_change_pp: 1.6119534297823406
+              price_growth_pct: 116.8275265138305
+            - Type: House
+              label: West Wyalong (House)
+              Suburb: West Wyalong
+              recent_yield: 5.572762541292157
+              yield_change_pp: -0.9587108239244853
+              price_growth_pct: 109.44595254842461
+            - Type: Unit
+              label: South Tamworth (Unit)
+              Suburb: South Tamworth
+              recent_yield: 5.176398819734327
+              yield_change_pp: 0.6426849636869418
+              price_growth_pct: 89.54464285714286
+            - Type: House
+              label: Glen Innes (House)
+              Suburb: Glen Innes
+              recent_yield: 3.783782224070164
+              yield_change_pp: -1.0159882863928682
+              price_growth_pct: 86.31993373292082
+            - Type: Unit
+              label: Merewether (Unit)
+              Suburb: Merewether
+              recent_yield: 1.5986478450390667
+              yield_change_pp: -0.5954167008831324
+              price_growth_pct: 86.08728518337293
+            - Type: House
+              label: Lake Cathie (House)
+              Suburb: Lake Cathie
+              recent_yield: 3.0815604171451785
+              yield_change_pp: -0.8312610818740469
+              price_growth_pct: 84.21642189382501
+            - Type: Unit
+              label: Yamba (Unit)
+              Suburb: Yamba
+              recent_yield: 2.117981296067634
+              yield_change_pp: -1.0483585083177334
+              price_growth_pct: 73.23760940565319
+            - Type: Unit
+              label: Lavington (Unit)
+              Suburb: Lavington
+              recent_yield: 4.005513759852305
+              yield_change_pp: -0.6580414552065796
+              price_growth_pct: 71.61248026005346
+            - Type: Unit
+              label: Taree (Unit)
+              Suburb: Taree
+              recent_yield: 3.596334802975426
+              yield_change_pp: -0.8005892090136485
+              price_growth_pct: 71.33636681600201
+            group: null
+            title: Top Growth Suburbs — Houses vs Units (Price Growth)
+            height: fill
+            intent: bar
+            measure: price_growth_pct
+            dimension: label
+          role: chart
+          type: breakdown
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: 'Houses vs Units: Both Show Yield Compression with Growth'
+      template: two-col
+  golden_data_sha: 2b6ad959a4fc
+- case_key: nsw_sales-i-have-950k-for-a-house-shortlist-five-suburbs-w-a3f0
+  question: I have $950k for a house — shortlist five suburbs with momentum and liquidity, and say why.
+  dataset: nsw_sales
+  tier: T7
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: A five-suburb shortlist where median house price is around/under $950k, combined with recent
+    price growth and n_sold depth, each pick justified with its numbers.
+  tags:
+  - coverage-pack
+  - coverage:S8
+  - direction:recommendation
+  grader: {}
+  golden_sql: "WITH suburb_agg AS (\n  SELECT\n    s.suburb,\n    s.postcode,\n    DATE_TRUNC('month',\
+    \ s.month)::DATE AS month,\n    SUM(s.total_sale_value) AS total_sale_value,\n    SUM(s.n_sold) AS\
+    \ n_sold\n  FROM marts.property_sales s\n  JOIN marts.dim_postcode_geo g ON s.postcode = g.postcode\n\
+    \  WHERE s.property_type = 'house'\n    AND g.gcc_name = 'Greater Sydney'\n    AND s.month >= '2019-01-01'\n\
+    \  GROUP BY s.suburb, s.postcode, DATE_TRUNC('month', s.month)::DATE\n),\nsuburb_stats AS (\n  SELECT\n\
+    \    suburb,\n    postcode,\n    SUM(total_sale_value) / NULLIF(SUM(n_sold), 0) AS overall_avg_price,\n\
+    \    SUM(n_sold) AS total_sales\n  FROM suburb_agg\n  GROUP BY suburb, postcode\n),\nrecent_window\
+    \ AS (\n  SELECT\n    suburb,\n    postcode,\n    SUM(total_sale_value) / NULLIF(SUM(n_sold), 0) AS\
+    \ recent_avg_price,\n    SUM(n_sold) AS recent_sales\n  FROM suburb_agg\n  WHERE month >= (SELECT\
+    \ MAX(month) - INTERVAL '6 months' FROM suburb_agg)\n  GROUP BY suburb, postcode\n),\nolder_window\
+    \ AS (\n  SELECT\n    suburb,\n    postcode,\n    SUM(total_sale_value) / NULLIF(SUM(n_sold), 0) AS\
+    \ old_avg_price,\n    SUM(n_sold) AS old_sales\n  FROM suburb_agg\n  WHERE month >= (SELECT MAX(month)\
+    \ - INTERVAL '5 years 6 months' FROM suburb_agg)\n    AND month < (SELECT MAX(month) - INTERVAL '5\
+    \ years' FROM suburb_agg)\n  GROUP BY suburb, postcode\n)\nSELECT\n  r.suburb,\n  r.postcode,\n  ROUND(r.recent_avg_price)\
+    \ AS recent_avg_price,\n  r.recent_sales,\n  ROUND(o.old_avg_price) AS old_avg_price,\n  o.old_sales,\n\
+    \  ROUND((r.recent_avg_price - o.old_avg_price) / NULLIF(o.old_avg_price, 0) * 100, 1) AS growth_pct_5yr,\n\
+    \  ROUND(r.recent_sales::numeric / 6, 1) AS sales_per_month\nFROM recent_window r\nJOIN older_window\
+    \ o ON r.suburb = o.suburb AND r.postcode = o.postcode\nWHERE r.recent_avg_price BETWEEN 750000 AND\
+    \ 1100000\n  AND r.recent_sales >= 10\n  AND o.old_sales >= 10\n  AND o.old_avg_price >= 100000\n\
+    ORDER BY growth_pct_5yr DESC"
+  golden_sandbox: 'print("Top 30 candidate suburbs (growth rank):")
+
+    print(df_candidates.head(30).to_string(index=False))
+
+    print(f"\n\nTotal candidates: {len(df_candidates)}")
+
+
+    # Show price ranges
+
+    print(f"\nPrice range: ${df_candidates[''recent_avg_price''].min():.0f} - ${df_candidates[''recent_avg_price''].max():.0f}")
+
+    print(f"Growth range: {df_candidates[''growth_pct_5yr''].min():.1f}% - {df_candidates[''growth_pct_5yr''].max():.1f}%")'
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            text: Picker
+          role: note
+          type: text
+          element_id: report:summary
+      headline: Picker
+      template: two-col
+  golden_data_sha: 3a028493ad34
+- case_key: nsw_sales-roll-median-house-prices-up-to-sa3-regions-which-15e1
+  question: Roll median house prices up to SA3 regions — which parts of Greater Sydney are still under
+    $1m?
+  dataset: nsw_sales
+  tier: T6
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Median house prices rolled from postcode up to sa3_name via dim_postcode_geo, filtered
+    to gcc_name='Greater Sydney', highlighting SA3s still under $1m.
+  tags:
+  - coverage-pack
+  - coverage:S7
+  - direction:geo-rollup
+  grader: {}
+  golden_sql: 'SELECT postcode, sa3_name
+
+    FROM marts.dim_postcode_geo
+
+    WHERE gcc_name = ''Greater Sydney''
+
+    ORDER BY postcode'
+  golden_sandbox: "# The extracted frames\ndf_all = all_sa3  # all 42 SA3s with median_price, n_sales\n\
+    df_under = sa3_under_1m  # just the sub-$1m ones\n\n# Separate under-1m vs over-1m\nunder_1m = df_all[df_all['median_price']\
+    \ < 1000000].sort_values('median_price')\nover_1m = df_all[df_all['median_price'] >= 1000000].sort_values('median_price')\n\
+    \n# Format for display\ndef fmt_price(p):\n    if p >= 1000000:\n        return f\"${p/1000000:.2f}M\"\
+    \n    else:\n        return f\"${p:,.0f}\"\n\n# Sort the whole list for the comparison chart\ndf_sorted\
+    \ = df_all.sort_values('median_price').reset_index(drop=True)\n\n# Colour code: under-1m vs over-1m\n\
+    df_sorted['tier'] = df_sorted['median_price'].apply(lambda x: 'Under $1M' if x < 1000000 else '$1M+')\n\
+    \n# Headlines\nn_under = len(df_under)\ntotal = len(df_all)\nclosest_above = over_1m.head(5) if len(over_1m)\
+    \ > 0 else pd.DataFrame()\ncheapest = df_all.sort_values('median_price').head(5)\n\n# Build main chart:\
+    \ ranking of all SA3s with colour coding\nchart_df = df_sorted.copy()\nchart_df['label'] = chart_df['sa3_name']\
+    \ + ' — ' + chart_df['median_price'].apply(lambda x: f\"${x/1000000:.2f}M\" if x >= 1000000 else f\"\
+    ${x:,.0f}\")\n\nchart = skills.comparison_chart(\n    chart_df,\n    category_col='sa3_name',\n  \
+    \  value_col='median_price',\n    title='Median House Price by SA3 — Greater Sydney (Jun 2025 – May\
+    \ 2026)'\n)\n\n# Summary text\nsummary_text = (\n    f\"Of Greater Sydney's {total} SA3 regions, only\
+    \ **{n_under}** has a median house price under $1M \"\n    f\"in the latest 12 months (Jun 2025 –\
+    \ May 2026). \"\n    f\"**Wyong** (Central Coast / northern fringe) is the sole sub-$1M region at\
+    \ a median of **$930,000**. \"\n    f\"Campbelltown ($1.00M) sits right on the boundary, while Mount\
+    \ Druitt ($1.03M), \"\n    f\"Wollondilly ($1.05M), and the Blue Mountains ($1.05M) are close behind.\"\
+    \n)\n\n# Headlines\nheadlines = [\n    {\"label\": \"SA3s under $1M\", \"value\": n_under, \"basis\"\
+    : f\"of {total} Greater Sydney SA3 regions\"},\n    {\"label\": \"Cheapest SA3\", \"value\": \"Wyong\"\
+    , \"basis\": \"$930,000 median house price\"},\n    {\"label\": \"Boundary SA3\", \"value\": \"Campbelltown\"\
+    , \"basis\": \"$1,000,000 — exactly on the line\"},\n    {\"label\": \"Just above $1M\", \"value\"\
+    : \"Mount Druitt\", \"basis\": \"$1,030,000\"}\n]\n\n# Build the report\nresult = skills.build_report(\n\
+    \    summary=summary_text,\n    headlines=headlines,\n    main_chart=chart,\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: of 42 Greater Sydney SA3 regions
+            label: SA3s under $1M
+            value: '1'
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: $930,000 median house price
+            label: Cheapest SA3
+            value: Wyong
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: $1,000,000 — exactly on the line
+            label: Boundary SA3
+            value: Campbelltown
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            basis: $1,030,000
+            label: Just above $1M
+            value: Mount Druitt
+          role: headline
+          type: kpi
+          element_id: headline:3
+        - data:
+            text: Of Greater Sydney's 42 SA3 regions, only **1** has a median house price under $1M in
+              the latest 12 months (Jun 2025 – May 2026). **Wyong** (Central Coast / northern fringe)
+              is the sole sub-$1M region at a median of **$930,000**. Campbelltown ($1.00M) sits right
+              on the boundary, while Mount Druitt ($1.03M), Wollondilly ($1.05M), and the Blue Mountains
+              ($1.05M) are close behind.
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            sql: 'SELECT postcode, sa3_name
+
+              FROM marts.dim_postcode_geo
+
+              WHERE gcc_name = ''Greater Sydney''
+
+              ORDER BY postcode'
+            rows:
+            - tier: Under $1M
+              n_sales: 3298
+              sa3_name: Wyong
+              median_price: 930000.0
+            - tier: $1M+
+              n_sales: 1692
+              sa3_name: Campbelltown (NSW)
+              median_price: 1000000.0
+            - tier: $1M+
+              n_sales: 1043
+              sa3_name: Mount Druitt
+              median_price: 1030000.0
+            - tier: $1M+
+              n_sales: 956
+              sa3_name: Wollondilly
+              median_price: 1050000.0
+            - tier: $1M+
+              n_sales: 1529
+              sa3_name: Blue Mountains
+              median_price: 1050000.0
+            - tier: $1M+
+              n_sales: 1139
+              sa3_name: Bringelly - Green Valley
+              median_price: 1070000.0
+            - tier: $1M+
+              n_sales: 853
+              sa3_name: Richmond - Windsor
+              median_price: 1150000.0
+            - tier: $1M+
+              n_sales: 1795
+              sa3_name: Penrith
+              median_price: 1165000.0
+            - tier: $1M+
+              n_sales: 1174
+              sa3_name: Camden
+              median_price: 1195000.0
+            - tier: $1M+
+              n_sales: 245
+              sa3_name: St Marys
+              median_price: 1210000.0
+            - tier: $1M+
+              n_sales: 211
+              sa3_name: Hawkesbury
+              median_price: 1230000.0
+            - tier: $1M+
+              n_sales: 617
+              sa3_name: Blacktown
+              median_price: 1250000.0
+            - tier: $1M+
+              n_sales: 2471
+              sa3_name: Gosford
+              median_price: 1260000.0
+            - tier: $1M+
+              n_sales: 699
+              sa3_name: Merrylands - Guildford
+              median_price: 1350000.0
+            - tier: $1M+
+              n_sales: 1446
+              sa3_name: Fairfield
+              median_price: 1374500.0
+            - tier: $1M+
+              n_sales: 159
+              sa3_name: Liverpool
+              median_price: 1390000.0
+            - tier: $1M+
+              n_sales: 855
+              sa3_name: Bankstown
+              median_price: 1550000.0
+            - tier: $1M+
+              n_sales: 407
+              sa3_name: Parramatta
+              median_price: 1620000.0
+            - tier: $1M+
+              n_sales: 382
+              sa3_name: Canterbury
+              median_price: 1635000.0
+            - tier: $1M+
+              n_sales: 303
+              sa3_name: Blacktown - North
+              median_price: 1660000.0
+            - tier: $1M+
+              n_sales: 536
+              sa3_name: Hornsby
+              median_price: 1769000.0
+            - tier: $1M+
+              n_sales: 756
+              sa3_name: Sutherland - Menai - Heathcote
+              median_price: 1825000.0
+            - tier: $1M+
+              n_sales: 577
+              sa3_name: Hurstville
+              median_price: 1870000.0
+            - tier: $1M+
+              n_sales: 432
+              sa3_name: Carlingford
+              median_price: 1914000.0
+            - tier: $1M+
+              n_sales: 69
+              sa3_name: Botany
+              median_price: 1980000.0
+            - tier: $1M+
+              n_sales: 436
+              sa3_name: Kogarah - Rockdale
+              median_price: 2015500.0
+            - tier: $1M+
+              n_sales: 529
+              sa3_name: Cronulla - Miranda - Caringbah
+              median_price: 2050000.0
+            - tier: $1M+
+              n_sales: 785
+              sa3_name: Baulkham Hills
+              median_price: 2056000.0
+            - tier: $1M+
+              n_sales: 299
+              sa3_name: Marrickville - Sydenham - Petersham
+              median_price: 2145000.0
+            - tier: $1M+
+              n_sales: 498
+              sa3_name: Sydney Inner City
+              median_price: 2388000.0
+            - tier: $1M+
+              n_sales: 491
+              sa3_name: Strathfield - Burwood - Ashfield
+              median_price: 2415000.0
+            - tier: $1M+
+              n_sales: 142
+              sa3_name: Pennant Hills - Epping
+              median_price: 2630000.0
+            - tier: $1M+
+              n_sales: 314
+              sa3_name: Leichhardt
+              median_price: 2702500.0
+            - tier: $1M+
+              n_sales: 547
+              sa3_name: Ryde - Hunters Hill
+              median_price: 2720000.0
+            - tier: $1M+
+              n_sales: 324
+              sa3_name: Dural - Wisemans Ferry
+              median_price: 2762500.0
+            - tier: $1M+
+              n_sales: 457
+              sa3_name: Warringah
+              median_price: 2800000.0
+            - tier: $1M+
+              n_sales: 397
+              sa3_name: Pittwater
+              median_price: 2825000.0
+            - tier: $1M+
+              n_sales: 411
+              sa3_name: Canada Bay
+              median_price: 3210000.0
+            - tier: $1M+
+              n_sales: 1411
+              sa3_name: Ku-ring-gai
+              median_price: 3330000.0
+            - tier: $1M+
+              n_sales: 337
+              sa3_name: North Sydney - Mosman
+              median_price: 3510000.0
+            - tier: $1M+
+              n_sales: 354
+              sa3_name: Manly
+              median_price: 3770000.0
+            - tier: $1M+
+              n_sales: 660
+              sa3_name: Eastern Suburbs - North
+              median_price: 4005000.0
+            group: null
+            title: Median House Price by SA3 — Greater Sydney (Jun 2025 – May 2026)
+            height: fill
+            intent: bar
+            measure: median_price
+            dimension: sa3_name
+          role: chart
+          type: breakdown
+          element_id: report:chart
+      headline: Of Greater Sydney's 42 SA3 regions, only **1** has a median house price under $1M in the
+        latest 12 months (Jun 2025 – M…
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Wyong is the only SA3 in all of Greater Sydney where the median house price dips below
+              $1M. At $930,000, it's $70,000 below the million-dollar mark — but this reflects its location
+              on the Central Coast fringe, where buyers trade commute distance for affordability. The
+              next-cheapest — Campbelltown ($1.00M), Mount Druitt ($1.03M), Wollondilly ($1.05M) and Blue
+              Mountains ($1.05M) — all sit above the line, though Campbelltown is right on the boundary.
+            heading: Only Wyong is under $1M — and it's a Central Coast story
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: 'The most affordable SA3s form a clear outer-ring pattern: the Central Coast (Wyong),
+              SW fringe (Campbelltown, Wollondilly), Western Sydney (Mount Druitt), and the escarpment
+              (Blue Mountains). Inner-city and eastern suburbs top $3M+. This $2M+ gap between fringe
+              and core is among the widest in any Australian capital, underscoring how far from the CBD
+              you need to go for a house under $1M.'
+            heading: 'The affordability ring: outer fringes only'
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+      - - data:
+            sql: 'SELECT postcode, sa3_name
+
+              FROM marts.dim_postcode_geo
+
+              WHERE gcc_name = ''Greater Sydney''
+
+              ORDER BY postcode'
+            rows:
+            - n_sales: 3298
+              sa3_name: Wyong
+              price_label: $930,000
+              median_price: 930000.0
+            - n_sales: 1692
+              sa3_name: Campbelltown (NSW)
+              price_label: $1.00M
+              median_price: 1000000.0
+            - n_sales: 1043
+              sa3_name: Mount Druitt
+              price_label: $1.03M
+              median_price: 1030000.0
+            - n_sales: 956
+              sa3_name: Wollondilly
+              price_label: $1.05M
+              median_price: 1050000.0
+            - n_sales: 1529
+              sa3_name: Blue Mountains
+              price_label: $1.05M
+              median_price: 1050000.0
+            - n_sales: 1139
+              sa3_name: Bringelly - Green Valley
+              price_label: $1.07M
+              median_price: 1070000.0
+            - n_sales: 853
+              sa3_name: Richmond - Windsor
+              price_label: $1.15M
+              median_price: 1150000.0
+            - n_sales: 1795
+              sa3_name: Penrith
+              price_label: $1.17M
+              median_price: 1165000.0
+            - n_sales: 1174
+              sa3_name: Camden
+              price_label: $1.20M
+              median_price: 1195000.0
+            - n_sales: 245
+              sa3_name: St Marys
+              price_label: $1.21M
+              median_price: 1210000.0
+            group: null
+            title: Cheapest 10 SA3 Regions for House Buyers in Greater Sydney
+            height: fill
+            intent: bar
+            measure: median_price
+            dimension: sa3_name
+          role: chart
+          type: breakdown
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: Only Wyong is under $1M — and it's a Central Coast story
+      template: two-col
+  golden_data_sha: 9f1ed542d2f8
+- case_key: nsw_sales-is-now-a-good-time-to-buy-in-the-hills-district-7632
+  question: Is now a good time to buy in the Hills District?
+  dataset: nsw_sales
+  tier: T4
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: '''Hills District'' is not a column and ''good time'' is not a metric — the agent should
+    scope it (e.g. 2154/2155/Baulkham Hills), state its assumptions, and answer with a trend rather than
+    a bare yes/no.'
+  tags:
+  - coverage-pack
+  - coverage:S9
+  - direction:ambiguous
+  grader: {}
+  golden_sql: 'SELECT DISTINCT postcode, suburb
+
+    FROM staging.int_postcode_geo
+
+    WHERE suburb IN (''Baulkham Hills'', ''Beecroft'', ''Castle Hill'', ''Cherrybrook'', ''Glenhaven'',
+    ''Kellyville'', ''Kellyville Ridge'', ''North Kellyville'', ''North Rocks'', ''Parklea'', ''West Pennant
+    Hills'', ''Winston Hills'')
+
+    ORDER BY postcode, suburb'
+  golden_sandbox: print(hills_list.to_string())
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: test
+            label: test
+            value: '1'
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            text: debug
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: 'SELECT DISTINCT postcode, suburb
+
+              FROM staging.int_postcode_geo
+
+              WHERE suburb IN (''Baulkham Hills'', ''Beecroft'', ''Castle Hill'', ''Cherrybrook'', ''Glenhaven'',
+              ''Kellyville'', ''Kellyville Ridge'', ''North Kellyville'', ''North Rocks'', ''Parklea'',
+              ''West Pennant Hills'', ''Winston Hills'')
+
+              ORDER BY postcode, suburb'
+            rows:
+            - month: 2020-01
+              value: 1
+              series: actual
+            title: test
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: debug
+      template: two-col
+  golden_data_sha: 5d666ee66ef5
+- case_key: nsw_sales-what-will-the-median-price-in-marsden-park-2765-0c1d
+  question: What will the median price in Marsden Park (2765) be next year?
+  dataset: nsw_sales
+  tier: T5
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: draft
+  expectation: Forecasting is out of scope — the agent should reframe to the historical trend for 2765
+    and state that this data does not predict future prices.
+  tags:
+  - coverage-pack
+  - coverage:S10
+  - direction:adversarial
+  grader: {}
+  golden_sql: "SELECT month, total_sale_value, n_sold, median_sale_price\nFROM marts.property_sales\n\
+    WHERE suburb = 'Marsden Park'\n  AND postcode = '2765'\n  AND property_type = 'house'\nORDER BY month"
+  golden_sandbox: "# Re-aggregate: sum total_sale_value and n_sold per month to collapse area_band/zoning\
+    \ grain\ndf_monthly = df.groupby('month', as_index=False).agg(\n    total_sale_value=('total_sale_value',\
+    \ 'sum'),\n    n_sold=('n_sold', 'sum')\n)\ndf_monthly = df_monthly.sort_values('month').reset_index(drop=True)\n\
+    \n# Compute average price (which composes since we're using additive parts)\ndf_monthly['avg_price']\
+    \ = df_monthly['total_sale_value'] / df_monthly['n_sold']\n\n# Check the date range\nprint(f\"Data\
+    \ from {df_monthly['month'].min()} to {df_monthly['month'].max()}\")\nprint(f\"Total rows (months):\
+    \ {len(df_monthly)}\")\nprint(f\"Latest month details: n_sold={df_monthly.iloc[-1]['n_sold']}, avg_price={df_monthly.iloc[-1]['avg_price']:.0f}\"\
+    )\nprint(f\"Min sales in a month: {df_monthly['n_sold'].min()}, Max: {df_monthly['n_sold'].max()}\"\
+    )\n\n# Trend series using average price\ns = skills.trend_series(df_monthly, month_col='month', value_col='avg_price',\
+    \ den_col=None)\n\n# Latest value (6-month smoothed)\nlatest = skills.latest_value(df_monthly, month_col='month',\
+    \ value_col='avg_price', den_col=None)\nprint(f\"\\nLatest smoothed value: ${latest['value']:,.0f}\
+    \ as at {latest['month']}\")\n\n# Growth over ~3 years (since we have plenty of data)\ng = skills.growth_rate(df_monthly,\
+    \ month_col='month', value_col='avg_price', years=3, den_col=None)\nprint(f\"3-year growth: {g}\"\
+    )\n\n# Also 1-year growth\ng1 = skills.growth_rate(df_monthly, month_col='month', value_col='avg_price',\
+    \ years=1, den_col=None)\nprint(f\"1-year growth: {g1}\")\n\n# Build the report\nresult = skills.build_report(\n\
+    \    summary=\"**Marsden Park (2765) house prices — historical trend and growth trajectory.** \"\n\
+    \            \"I can show you how prices have trended and the recent growth rate, but no forecasting\
+    \ \"\n            \"tool exists to predict next year's price. The chart below shows the 6-month smoothed\
+    \ \"\n            \"average price trend — use the trajectory as a reference only.\",\n    headlines=[\n\
+    \        {\"label\": \"Latest Average Price\", \"value\": f\"${latest['value']:,.0f}\", \"basis\"\
+    : f\"6-month rolling avg to {latest['month']}\"},\n        {\"label\": \"1-Year Growth\", \"value\"\
+    : f\"{g1:.1f}%\" if g1 is not None else \"N/A\", \"basis\": \"year-over-year on rolling base\"},\n\
+    \        {\"label\": \"3-Year Growth\", \"value\": f\"{g:.1f}%\" if g is not None else \"N/A\", \"\
+    basis\": \"year-over-year on rolling base\"},\n    ],\n    main_chart=skills.trend_chart(s, title=\"\
+    Marsden Park (2765) — Average House Price\"),\n)"
+  golden_report:
+    pages:
+    - kind: summary
+      columns:
+      - - data:
+            basis: 6-month rolling avg to 2026-06
+            label: Latest Average Price
+            value: $1,131,252
+          role: headline
+          type: kpi
+          element_id: headline:0
+        - data:
+            basis: year-over-year on rolling base
+            label: 1-Year Growth
+            value: -5.8%
+          role: headline
+          type: kpi
+          element_id: headline:1
+        - data:
+            basis: year-over-year on rolling base
+            label: 3-Year Growth
+            value: -0.8%
+          role: headline
+          type: kpi
+          element_id: headline:2
+        - data:
+            text: '**Marsden Park (2765) house prices — historical trend and growth trajectory.** I can
+              show you how prices have trended and the recent growth rate, but no forecasting tool exists
+              to predict next year''s price. The chart below shows the 6-month smoothed average price
+              trend — use the trajectory as a reference only.'
+          role: note
+          type: text
+          element_id: report:summary
+      - - data:
+            x: month
+            y: value
+            sql: "SELECT month, total_sale_value, n_sold, median_sale_price\nFROM marts.property_sales\n\
+              WHERE suburb = 'Marsden Park'\n  AND postcode = '2765'\n  AND property_type = 'house'\n\
+              ORDER BY month"
+            rows:
+              _truncated: true
+              _total: 310
+              _sha: fd881fc37b9e
+              _head:
+              - layer: actual
+                month: '2011-11-01'
+                value: 910000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-11-01'
+                value: 910000.0
+                series: avg_price
+              - layer: actual
+                month: '2011-12-01'
+                value: 375000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2011-12-01'
+                value: 642500.0
+                series: avg_price
+              - layer: actual
+                month: '2012-01-01'
+                value: 2170000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2012-01-01'
+                value: 1151666.67
+                series: avg_price
+              - layer: actual
+                month: '2012-05-01'
+                value: 225000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2012-05-01'
+                value: 920000.0
+                series: avg_price
+              - layer: actual
+                month: '2012-06-01'
+                value: 2190639.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2012-06-01'
+                value: 1174127.8
+                series: avg_price
+              - layer: actual
+                month: '2012-12-01'
+                value: 900000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2012-12-01'
+                value: 1128439.83
+                series: avg_price
+              - layer: actual
+                month: '2013-02-01'
+                value: 3773450.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2013-02-01'
+                value: 1605681.5
+                series: avg_price
+              - layer: actual
+                month: '2013-09-01'
+                value: 3750000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2013-09-01'
+                value: 2168181.5
+                series: avg_price
+              - layer: actual
+                month: '2013-11-01'
+                value: 3635000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2013-11-01'
+                value: 2412348.17
+                series: avg_price
+              - layer: actual
+                month: '2014-02-01'
+                value: 980000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2014-02-01'
+                value: 2538181.5
+                series: avg_price
+              - layer: actual
+                month: '2014-06-01'
+                value: 331333.33
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2014-06-01'
+                value: 2228297.22
+                series: avg_price
+              - layer: actual
+                month: '2014-07-01'
+                value: 705328.2
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2014-07-01'
+                value: 2195851.92
+                series: avg_price
+              - layer: actual
+                month: '2014-08-01'
+                value: 1790600.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2014-08-01'
+                value: 1865376.92
+                series: avg_price
+              - layer: actual
+                month: '2014-09-01'
+                value: 324000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2014-09-01'
+                value: 1294376.92
+                series: avg_price
+              - layer: actual
+                month: '2014-10-01'
+                value: 240000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2014-10-01'
+                value: 728543.59
+                series: avg_price
+              - layer: actual
+                month: '2014-11-01'
+                value: 1140333.33
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2014-11-01'
+                value: 755265.81
+                series: avg_price
+              - layer: actual
+                month: '2014-12-01'
+                value: 2028220.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2014-12-01'
+                value: 1038080.26
+                series: avg_price
+              - layer: actual
+                month: '2015-01-01'
+                value: 2633000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2015-01-01'
+                value: 1359358.89
+                series: avg_price
+              - layer: actual
+                month: '2015-02-01'
+                value: 3600000.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2015-02-01'
+                value: 1660925.56
+                series: avg_price
+              - layer: actual
+                month: '2015-03-01'
+                value: 1932492.5
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2015-03-01'
+                value: 1929007.64
+                series: avg_price
+              - layer: actual
+                month: '2015-04-01'
+                value: 540996.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2015-04-01'
+                value: 1979173.64
+                series: avg_price
+              - layer: actual
+                month: '2015-05-01'
+                value: 1846876.0
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2015-05-01'
+                value: 2096930.75
+                series: avg_price
+              - layer: actual
+                month: '2015-06-01'
+                value: 608512.17
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2015-06-01'
+                value: 1860312.78
+                series: avg_price
+              - layer: actual
+                month: '2015-07-01'
+                value: 727618.62
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2015-07-01'
+                value: 1542749.22
+                series: avg_price
+              - layer: actual
+                month: '2015-08-01'
+                value: 744077.86
+                series: avg_price
+              - layer: 6-mo avg
+                month: '2015-08-01'
+                value: 1066762.19
+                series: avg_price
+            title: Marsden Park (2765) — Average House Price
+            height: fill
+            intent: line
+            series: series
+          role: chart
+          type: trend
+          element_id: report:chart
+      headline: '**Marsden Park (2765) house prices — historical trend and growth trajectory.** I can
+        show you how prices have trended a…'
+      template: two-col
+    - kind: insights
+      columns:
+      - - data:
+            refs: []
+            text: Marsden Park's house market is dominated by **<400 m²** lots, which account for 79%
+              of recent sales (2024+). These lots average **$1,134,395**, compared to the suburb-wide
+              6-month smoothed average of **$1,131,252**. As new developments shift the mix of lot sizes
+              (large rural parcels vs standard suburban blocks), the overall average price shifts accordingly
+              — this composition effect is a major reason the headline figure changes over time beyond
+              simple appreciation.
+            heading: Lot size composition is a key price driver
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:0
+        - data:
+            refs: []
+            text: The available data covers Marsden Park house prices from late 2011 through the latest
+              month, with a -5.8% 1-year growth rate on the smoothed base. However, the system has no
+              forecasting or predictive modelling skill. A reliable price prediction would require modelling
+              demand drivers (population, employment, interest rates, supply pipeline) that go beyond
+              the historical sale records in this dataset. The trend chart provides the trajectory — use
+              it as context, not a forecast.
+            heading: Forecasting limitation — no predictive modelling available
+          role: insight
+          type: insight
+          explains: headline:0
+          element_id: insight:1
+      - - data:
+            sql: "SELECT month, total_sale_value, n_sold, median_sale_price\nFROM marts.property_sales\n\
+              WHERE suburb = 'Marsden Park'\n  AND postcode = '2765'\n  AND property_type = 'house'\n\
+              ORDER BY month"
+            rows:
+              _truncated: true
+              _total: 60
+              _sha: 6c3bc613020d
+              _head:
+              - year: '2011'
+                share: 100.0
+                n_sold: 2.0
+                area_band: 5000+
+              - year: '2012'
+                share: 100.0
+                n_sold: 4.0
+                area_band: 5000+
+              - year: '2013'
+                share: 100.0
+                n_sold: 4.0
+                area_band: 5000+
+              - year: '2014'
+                share: 4.55
+                n_sold: 1.0
+                area_band: 1000-5000
+              - year: '2014'
+                share: 18.18
+                n_sold: 4.0
+                area_band: 400-700
+              - year: '2014'
+                share: 40.91
+                n_sold: 9.0
+                area_band: 5000+
+              - year: '2014'
+                share: 4.55
+                n_sold: 1.0
+                area_band: 700-1000
+              - year: '2014'
+                share: 31.82
+                n_sold: 7.0
+                area_band: <400
+              - year: '2015'
+                share: 18.09
+                n_sold: 17.0
+                area_band: 400-700
+              - year: '2015'
+                share: 9.57
+                n_sold: 9.0
+                area_band: 5000+
+              - year: '2015'
+                share: 72.34
+                n_sold: 68.0
+                area_band: <400
+              - year: '2016'
+                share: 12.93
+                n_sold: 30.0
+                area_band: 400-700
+              - year: '2016'
+                share: 2.59
+                n_sold: 6.0
+                area_band: 5000+
+              - year: '2016'
+                share: 76.72
+                n_sold: 178.0
+                area_band: <400
+              - year: '2016'
+                share: 7.76
+                n_sold: 18.0
+                area_band: unknown
+              - year: '2017'
+                share: 20.0
+                n_sold: 67.0
+                area_band: 400-700
+              - year: '2017'
+                share: 3.58
+                n_sold: 12.0
+                area_band: 5000+
+              - year: '2017'
+                share: 66.57
+                n_sold: 223.0
+                area_band: <400
+              - year: '2017'
+                share: 9.85
+                n_sold: 33.0
+                area_band: unknown
+              - year: '2018'
+                share: 0.41
+                n_sold: 1.0
+                area_band: 1000-5000
+              - year: '2018'
+                share: 18.78
+                n_sold: 46.0
+                area_band: 400-700
+              - year: '2018'
+                share: 1.63
+                n_sold: 4.0
+                area_band: 5000+
+              - year: '2018'
+                share: 75.51
+                n_sold: 185.0
+                area_band: <400
+              - year: '2018'
+                share: 3.67
+                n_sold: 9.0
+                area_band: unknown
+              - year: '2019'
+                share: 21.0
+                n_sold: 92.0
+                area_band: 400-700
+              - year: '2019'
+                share: 0.23
+                n_sold: 1.0
+                area_band: 5000+
+              - year: '2019'
+                share: 67.35
+                n_sold: 295.0
+                area_band: <400
+              - year: '2019'
+                share: 11.42
+                n_sold: 50.0
+                area_band: unknown
+              - year: '2020'
+                share: 20.12
+                n_sold: 137.0
+                area_band: 400-700
+              - year: '2020'
+                share: 0.15
+                n_sold: 1.0
+                area_band: 5000+
+              - year: '2020'
+                share: 79.59
+                n_sold: 542.0
+                area_band: <400
+              - year: '2020'
+                share: 0.15
+                n_sold: 1.0
+                area_band: unknown
+              - year: '2021'
+                share: 0.17
+                n_sold: 1.0
+                area_band: 1000-5000
+              - year: '2021'
+                share: 20.13
+                n_sold: 122.0
+                area_band: 400-700
+              - year: '2021'
+                share: 0.99
+                n_sold: 6.0
+                area_band: 5000+
+              - year: '2021'
+                share: 0.17
+                n_sold: 1.0
+                area_band: 700-1000
+              - year: '2021'
+                share: 76.9
+                n_sold: 466.0
+                area_band: <400
+              - year: '2021'
+                share: 1.65
+                n_sold: 10.0
+                area_band: unknown
+              - year: '2022'
+                share: 0.28
+                n_sold: 1.0
+                area_band: 1000-5000
+              - year: '2022'
+                share: 20.39
+                n_sold: 73.0
+                area_band: 400-700
+              - year: '2022'
+                share: 1.12
+                n_sold: 4.0
+                area_band: 5000+
+              - year: '2022'
+                share: 73.74
+                n_sold: 264.0
+                area_band: <400
+              - year: '2022'
+                share: 4.47
+                n_sold: 16.0
+                area_band: unknown
+              - year: '2023'
+                share: 0.32
+                n_sold: 1.0
+                area_band: 1000-5000
+              - year: '2023'
+                share: 19.62
+                n_sold: 62.0
+                area_band: 400-700
+              - year: '2023'
+                share: 1.58
+                n_sold: 5.0
+                area_band: 5000+
+              - year: '2023'
+                share: 0.32
+                n_sold: 1.0
+                area_band: 700-1000
+              - year: '2023'
+                share: 72.15
+                n_sold: 228.0
+                area_band: <400
+              - year: '2023'
+                share: 6.01
+                n_sold: 19.0
+                area_band: unknown
+              - year: '2024'
+                share: 18.43
+                n_sold: 73.0
+                area_band: 400-700
+            group: area_band
+            title: Marsden Park House Sales Mix by Lot Size
+            height: fill
+            intent: grouped-bar
+            measure: share
+            dimension: year
+          role: chart
+          type: compare
+          explains: headline:0
+          element_id: insight:0:chart
+      headline: Lot size composition is a key price driver
+      template: two-col
+  golden_data_sha: 3fefbee35e6f

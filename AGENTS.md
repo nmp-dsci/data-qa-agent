@@ -454,6 +454,25 @@ like a mapping). It's wired into both `object_codegen`'s correction loop (only t
 piece of feedback has to carry the real cause) and every `/agent/analysis*` endpoint's `error` field, so
 the UI can never show a bare traceback.
 
+**Question tiers (s27).** Every golden carries a `tier` (`app.eval_cases.tier`, free-text; the Golden tab
+picker and the pack lint both accept `T1`–`T7`). A tier classifies *what kind of question* the golden is, so
+the pack's coverage can be read at a glance and `make eval --tier T3` / the Evaluations tab can break scores
+down by difficulty. The ladder:
+
+| Tier | Kind | What it tests |
+|------|------|---------------|
+| **T1** | Lookup | one value at the latest month (`scalar` grader) |
+| **T2** | Trend | a time series and its variants — trend, ranking, comparison, segmentation (`series`/`ranked_set`/`row_set`) |
+| **T3** | Multi-mart | a join across datasets (sales ⨝ rent, rent ⨝ yield, …) |
+| **T4** | Ambiguous | an underspecified ask the agent must scope and state its assumptions for (no fixed grader) |
+| **T5** | Adversarial | a data boundary or trap — out-of-coverage dates, thin cells, forecast requests — where the right answer names the limit instead of fabricating |
+| **T6** | Geo roll-up | postcode rolled up to SA3/SA4/GCC via `marts.dim_postcode_geo` (weight by the count leg, never average the averages) |
+| **T7** | Recommendation | a composite "where to buy next & why" verdict combining several measures into a justified shortlist |
+
+The s27 coverage pack seeds 10 draft goldens per mart against this ladder (one per direction, T2 carrying the
+four time-series shapes). Drafts (`authoring_status='draft'`) are skipped by `make eval` unless
+`--include-drafts` is passed, so an un-curated question is never scored against empty ground truth.
+
 ---
 
 ## Conventions

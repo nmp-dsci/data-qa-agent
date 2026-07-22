@@ -116,17 +116,22 @@ def load_cases(
     tier: str | None,
     case_key: str | None,
     include_drafts: bool = False,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int]:
     """Read the pack from disk — the repo is the source of truth, not the DB.
 
     A ``draft`` golden has no reviewed golden_sql/grader yet, so replaying it
     scores the agent against empty ground truth and looks like a failure. Drafts
     are therefore skipped unless ``--include-drafts`` is passed (or the case is
     named explicitly via ``--case``, where the intent is unambiguous).
+
+    Returns the matching cases plus the count of cases that passed the filters
+    but were skipped only for being drafts, so the caller can say so instead of
+    reporting "no cases matched" when the pack slice is all drafts.
     """
     if not CASES_DIR.is_dir():
         sys.exit("no pack at evals/cases — run `make eval-export` first")
     cases: list[dict[str, Any]] = []
+    drafts_skipped = 0
     for path in sorted(CASES_DIR.glob("*.yaml")):
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for case in doc.get("cases") or []:
@@ -137,9 +142,10 @@ def load_cases(
             if case_key and case.get("case_key") != case_key:
                 continue
             if not include_drafts and not case_key and case.get("authoring_status") == "draft":
+                drafts_skipped += 1
                 continue
             cases.append(case)
-    return cases
+    return cases, drafts_skipped
 
 
 def _rows_as_dicts(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -497,9 +503,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    cases = load_cases(args.dataset, args.tier, args.case_key, include_drafts=args.include_drafts)
+    cases, drafts_skipped = load_cases(
+        args.dataset, args.tier, args.case_key, include_drafts=args.include_drafts
+    )
     if not cases:
-        sys.exit("no cases matched the filters")
+        msg = "no cases matched the filters"
+        if drafts_skipped:
+            msg += (
+                f" ({drafts_skipped} draft golden(s) skipped — pass --include-drafts to score them)"
+            )
+        sys.exit(msg)
 
     pack_v = pack_version()
     label = f"experiment {args.experiment}" if args.experiment else "baseline"

@@ -75,9 +75,11 @@ _PROFILES: dict[str, MartProfile] = {
     # The yield mart is sales ⨝ rent at postcode/type/month — it has no suburb or
     # band columns, so without its own profile the builder fell back to sales and
     # emitted SQL over columns property_yield doesn't have. The additive legs
-    # recompose avg_weekly_rent (= Σweekly_rent / Σrented); gross_yield_pct is a
-    # compound ratio the structured builder can't recompose from one pair, so a
-    # curator wanting the yield line supplies an explicit num/den line_measure.
+    # recompose avg_weekly_rent (= Σweekly_rent / Σrented); gross_yield_pct the
+    # structured builder cannot produce at all: no single num/den pair recomposes
+    # it (it needs ×52×100 scaling and both count legs), and the wavg .round()
+    # would floor the raw Σrent/Σvalue ratio to 0 — a curator wanting the yield
+    # line must use the NL/sandbox path, not a num/den line_measure.
     "nsw_yield": MartProfile(
         table=YIELD_MART,
         count_col="n_rented",

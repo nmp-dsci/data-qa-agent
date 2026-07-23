@@ -51,15 +51,17 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
   await page.getByTestId("builder-name").fill(OBJECT);
   await page.getByTestId("builder-type").selectOption({ label: "Line + bar chart" });
   await page.getByTestId("builder-grain").fill("month, suburb, area_band");
-  await page.getByTestId("builder-dimension").fill("area_band");
-  await page.getByTestId("builder-group").fill("suburb");
+  // dimension / group / measure sources are dropdowns from the dataset's typed
+  // vocabulary (s28) — select by column name, not free text.
+  await page.getByTestId("builder-dimension").selectOption("area_band");
+  await page.getByTestId("builder-group").selectOption("suburb");
   await page.getByTestId("builder-filter").fill(FILTER);
   // bars = sum(n_sold) as sales_volume; line = wtd-avg total_sale_value / n_sold.
   await page.getByTestId("builder-bar-label").fill("sales_volume");
-  await page.getByTestId("builder-bar-source").fill("n_sold");
+  await page.getByTestId("builder-bar-source").selectOption("n_sold");
   await page.getByTestId("builder-line-label").fill("avg_sale_price");
-  await page.getByTestId("builder-line-num").fill("total_sale_value");
-  await page.getByTestId("builder-line-den").fill("n_sold");
+  await page.getByTestId("builder-line-num").selectOption("total_sale_value");
+  await page.getByTestId("builder-line-den").selectOption("n_sold");
   await page.getByTestId("builder-build").click();
 
   // The built object appears with real, sandbox-computed rows + its skills.

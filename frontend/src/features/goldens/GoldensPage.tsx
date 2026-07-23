@@ -356,9 +356,11 @@ const HOW_OBJECT_TYPES = new Set<PageObjectType>(["compare", "breakdown", "table
 interface BuilderForm {
   name: string;
   object_type: PageObjectType;
-  grain: string;
-  dimension: string;
-  dimension2: string; // optional 2nd axis column → composite x (band × type)
+  // grain = the columns the extract is grouped to (multi-select of the dataset's
+  // dimensions). The x-axis and group are chosen FROM the grain: x is multi (a
+  // composite axis concat(x1,'-',x2,…)), group is a single series column.
+  grain: string[];
+  dimension: string[];
   group: string;
   filter: string;
   months: number;
@@ -384,9 +386,8 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
     ? {
         name: "",
         object_type: "trend",
-        grain: "month, bedroom_band",
-        dimension: "month",
-        dimension2: "",
+        grain: ["month", "bedroom_band"],
+        dimension: ["month"],
         group: "bedroom_band",
         filter: "property_type = 'house'",
         months: 12,
@@ -406,9 +407,8 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
     : {
         name: "",
         object_type: "compare",
-        grain: "month, suburb, area_band",
-        dimension: "area_band",
-        dimension2: "",
+        grain: ["month", "suburb", "area_band"],
+        dimension: ["area_band"],
         group: "suburb",
         filter: "",
         months: 12,
@@ -425,39 +425,6 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
         line_months: 6,
         instruction: "",
       };
-
-// s22: guess an object type from the words of an NL instruction (the curator can
-// still override it in the panel). Order matters — most specific first.
-function guessObjectType(text: string): PageObjectType {
-  const t = text.toLowerCase();
-  if (/\b(kpi|headline|single (number|value)|latest value|one number)\b/.test(t)) return "kpi";
-  if (/\btable\b/.test(t)) return "table";
-  if (/\b(line ?\+ ?bar|bar ?\+ ?line|combo|dual[- ]?axis|two axes|vs\.? ?volume)\b/.test(t))
-    return "compare";
-  if (/\b(trend|over time|by month|per month|monthly|line chart|time series)\b/.test(t))
-    return "trend";
-  if (/\b(bar chart|breakdown|compare|by (suburb|band|type|area|postcode|bedroom))\b/.test(t))
-    return "breakdown";
-  return "trend";
-}
-
-// s22: a short, stable slug for a new object, derived from the salient words of
-// the instruction. Mirrors the backend's name_from_instruction so the element_id
-// the UI previews matches what the agent assigns.
-const _STOPWORDS = new Set(
-  "a an the of by for with and to as only that is in on per over this these those chart show me plot graph across between into vs versus".split(
-    " ",
-  ),
-);
-function slugFromInstruction(text: string): string {
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-  const kept = words.filter((w) => !_STOPWORDS.has(w)).slice(0, 5);
-  return kept.join("-");
-}
 
 /** s22: place a freshly built object into the report draft — first column of the
  *  first (currently visible) page, creating a one-col page when the report is
@@ -529,13 +496,10 @@ function lineMeasure(f: BuilderForm): SandboxMeasure {
 
 /** Assemble the structured spec the deterministic builder emits code from. */
 function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
-  const grain = f.grain
-    .split(",")
-    .map((c) => c.trim())
-    .filter(Boolean);
-  // A 2nd dimension makes a composite x-axis (col_a × col_b); one dim stays a
+  const grain = f.grain.filter(Boolean);
+  // Two or more x columns make a composite axis (concat(x1,'-',x2,…)); one stays a
   // plain string so the builder and the lift behave exactly as before.
-  const dims = [f.dimension.trim(), f.dimension2.trim()].filter(Boolean);
+  const dims = f.dimension.filter(Boolean);
   const spec: SandboxObjectSpec = {
     grain,
     dimension: dims.length > 1 ? dims : (dims[0] ?? ""),
@@ -548,6 +512,49 @@ function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
   if (f.filter.trim()) spec.filter = f.filter.trim();
   if (f.instruction.trim()) spec.instruction = f.instruction.trim();
   return spec;
+}
+
+/** Deterministic pre-flight: does this config build? Returns the blocking reason
+ *  or null. Mirrors the builder's own rules (grain-derived x/group, additive
+ *  measure sources, month required for growth/latest) so the curator sees a green
+ *  "will build" before pressing Run — no LLM, no round-trip. */
+function buildabilityIssue(
+  f: BuilderForm,
+  metricOpts: { value: string; additive: boolean }[],
+): string | null {
+  const grain = f.grain.filter(Boolean);
+  if (!grain.length) return "pick at least one grain column";
+  const chart = f.object_type;
+  const additive = new Set(metricOpts.filter((m) => m.additive).map((m) => m.value));
+  const needsAdditive = (src: string) =>
+    metricOpts.length > 0 && !additive.has(src) ? `${src} is not additive` : null;
+  if (chart !== "kpi") {
+    const x = f.dimension.filter(Boolean);
+    if (!x.length) return "pick an x / dimension column";
+    const stray = x.find((c) => !grain.includes(c));
+    if (stray) return `x column ${stray} must be in the grain`;
+  }
+  if (f.group && !grain.includes(f.group)) return `group ${f.group} must be in the grain`;
+  // The bar measure is summed (every how), so its source must be additive.
+  if (HOW_OBJECT_TYPES.has(chart)) {
+    const barIssue = needsAdditive(f.bar_source);
+    if (barIssue) return `bars: ${barIssue} — pick an additive metric`;
+    if (AUGMENTED_HOWS.has(f.bar_how) && !grain.includes("month"))
+      return `bars use ${f.bar_how} — add month to the grain`;
+  }
+  // The line: wavg legs or a summed column must be additive.
+  if (chart === "compare" || chart === "trend" || chart === "kpi") {
+    if (f.line_mode === "wavg") {
+      const n = needsAdditive(f.line_num);
+      const d = needsAdditive(f.line_den);
+      if (n) return `line: ${n}`;
+      if (d) return `line: ${d}`;
+    } else {
+      const s = needsAdditive(f.line_source);
+      if (s) return `line: ${s} — pick an additive metric`;
+    }
+  }
+  return null;
 }
 
 /** A short human label for a measure — the "6-mo avg" / "12-mo sum" chip. */
@@ -691,23 +698,6 @@ export function GoldensPage({
       live = false;
     };
   }, []);
-  // s22: "New object with AI" — the NL-first primary way to author an object.
-  // The name + type are auto-derived from the instruction; an override sticks
-  // once the curator edits the field (null = follow the auto value).
-  const [aiText, setAiText] = useState("");
-  const [aiNameOverride, setAiNameOverride] = useState<string | null>(null);
-  const [aiTypeOverride, setAiTypeOverride] = useState<PageObjectType | null>(null);
-  // Snapshot for one-click Undo of the last AI-authored object (pages + objects +
-  // built list + SQL/revert), so the whole add is reversible before Save.
-  const [aiUndo, setAiUndo] = useState<{
-    pages: Page[];
-    objects: GoldenObject[];
-    built: PageObject[];
-    sql: string;
-    sqlRevert: string | null;
-  } | null>(null);
-  const aiType: PageObjectType = aiTypeOverride ?? guessObjectType(aiText);
-  const aiName = (aiNameOverride ?? slugFromInstruction(aiText)).trim();
   // s23: the dataset's ordinal band orders (data-knowledge) — the chart lift sorts
   // an ordinal x-axis (area_band, …) by these. Editable here; applied on next Run.
   const [ordinals, setOrdinals] = useState<OrdinalRow[]>([]);
@@ -889,10 +879,6 @@ export function GoldensPage({
     setBuiltObjects([]);
     setBuilder(defaultBuilder(dataset));
     setBuildMsg(null);
-    setAiText("");
-    setAiNameOverride(null);
-    setAiTypeOverride(null);
-    setAiUndo(null);
   }
 
   /** Replace/insert an object in a list keyed by element_id. */
@@ -947,10 +933,6 @@ export function GoldensPage({
     setSqlRevert(null);
     setBuiltObjects([]);
     setBuildMsg(null);
-    setAiText("");
-    setAiNameOverride(null);
-    setAiTypeOverride(null);
-    setAiUndo(null);
     try {
       const g = await getGolden(id);
       const sandbox = g.golden_sandbox ?? "";
@@ -1038,93 +1020,13 @@ export function GoldensPage({
         })(),
       );
       setBuiltObjects((prev) => upsertObject(prev, res.object as PageObject));
-      setBuildMsg(
-        `Built “${name}” (${res.rows.length} extract rows)${res.error ? ` · note: ${res.error}` : ""}. ` +
-          `Link it from a report chart in ③.`,
-      );
-    } catch (e) {
-      setBuildMsg((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  /** s22: author a brand-new presentation object from ONE plain-English sentence
-   *  and place it into the interactive report — the NL-first primary flow. Reuses
-   *  the shipped /build-object NL path (schema-grounded scaffold_object, bounded
-   *  verify loop), then auto-links the lifted object into ③ (first column of the
-   *  first page, creating a page when the report is empty). Never places a stub /
-   *  no-chart result, and captures a one-click Undo of the whole action. */
-  async function authorNewObject() {
-    const instruction = aiText.trim();
-    if (!instruction) {
-      setBuildMsg("Describe the object first (e.g. “average rent by month, colour by bedroom band, houses only”).");
-      return;
-    }
-    if (!draft.golden_sql.trim()) {
-      setBuildMsg("Add the ① SQL extract first.");
-      return;
-    }
-    const name = aiName || slugFromInstruction(instruction) || "object";
-    setBusy("ai-object");
-    setBuildMsg(null);
-    try {
-      const res = await buildGoldenObject({
-        sql: draft.golden_sql,
-        name,
-        object_type: aiType,
-        // Empty spec → the agent authors the whole run_analysis from the
-        // instruction (schema-grounded), revising the SQL when a column is missing.
-        spec: {},
-        instruction,
-        dataset: draft.dataset,
-        as_user: draft.as_user || null,
-      });
-      if (!res.object) {
-        // Stub / no-chart → nothing usable; leave every stage untouched (no place).
-        setBuildMsg(
-          res.error ||
-            "The agent couldn’t produce a chart — name the measure, dimension and any filter more explicitly.",
-        );
-        return;
-      }
-      // Snapshot BEFORE applying so the whole add is one-click reversible.
-      setAiUndo({
-        pages: pendingPages,
-        objects: draft.golden_objects,
-        built: builtObjects,
-        sql: draft.golden_sql,
-        sqlRevert,
-      });
-      // The build may have extended the shared ① extract to add the object's
-      // columns — apply it and keep the previous SQL for one-click revert (①).
-      const sqlChanged = !!res.sql && res.sql.trim() !== draft.golden_sql.trim();
-      if (sqlChanged) {
-        setSqlRevert(draft.golden_sql);
-        patch("golden_sql", formatSql(res.sql));
-      }
-      const go: GoldenObject = {
-        name,
-        element_id: res.element_id,
-        object_type: res.object_type,
-        code: res.code,
-        spec: { instruction },
-      };
-      patch("golden_objects", [
-        ...draft.golden_objects.filter((o) => o.element_id !== res.element_id),
-        go,
-      ]);
-      setBuiltObjects((prev) => upsertObject(prev, res.object as PageObject));
-      // Auto-place into ③: first column of the first (currently visible) page,
-      // creating page 1 when the report is empty. The shared element_id IS the
-      // link, so the card renders the sandbox object (same as ReportEditor.addLinked).
+      // Auto-place the built chart into the interactive report — first column of
+      // the first page, creating a page when the report is empty (same as the old
+      // AI path). The shared element_id links the card to the sandbox object.
       setDraftPages(placeObjectInReport(pendingPages, res.object as PageObject));
-      setAiText("");
-      setAiNameOverride(null);
-      setAiTypeOverride(null);
       setBuildMsg(
-        `Built “${name}” and added it to the report${
-          sqlChanged ? " · SQL extended (review / revert in ①)" : ""
+        `Built “${name}” (${res.rows.length} extract rows) and added it to the report${
+          res.error ? ` · note: ${res.error}` : ""
         }. Review & Save.`,
       );
     } catch (e) {
@@ -1132,18 +1034,6 @@ export function GoldensPage({
     } finally {
       setBusy(null);
     }
-  }
-
-  /** Undo the last AI-authored object: restore pages, objects, built list, SQL. */
-  function undoAiObject() {
-    if (!aiUndo) return;
-    setDraftPages(aiUndo.pages);
-    patch("golden_objects", aiUndo.objects);
-    setBuiltObjects(aiUndo.built);
-    patch("golden_sql", aiUndo.sql);
-    setSqlRevert(aiUndo.sqlRevert);
-    setAiUndo(null);
-    setBuildMsg("Reverted the last AI object.");
   }
 
   /** Re-run one built object's code (after editing it) against the extract. */
@@ -1651,6 +1541,34 @@ export function GoldensPage({
     );
   };
   const sel: React.CSSProperties = { fontSize: 12, padding: "2px 4px" };
+  const multiSel: React.CSSProperties = { fontSize: 12, padding: "2px 4px", minWidth: 150 };
+  // The selected values of a native multi-select.
+  const multiVals = (e: React.ChangeEvent<HTMLSelectElement>) =>
+    Array.from(e.target.selectedOptions, (o) => o.value);
+  // <option> list for a multi-select, always keeping any current value present.
+  const multiOptions = (current: string[], opts: { value: string; label: string }[]) => {
+    const seen = new Set(opts.map((o) => o.value));
+    const extra = current.filter((c) => c && !seen.has(c));
+    return (
+      <>
+        {extra.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+        {opts.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </>
+    );
+  };
+  // x / dimension and group are chosen FROM the grain, so their options are the
+  // grain columns (labelled from the dataset vocabulary where known).
+  const dimLabel = (v: string) => dimOpts.find((o) => o.value === v)?.label ?? v;
+  const grainOpts = builder.grain.filter(Boolean).map((v) => ({ value: v, label: dimLabel(v) }));
+  const buildBlocker = buildabilityIssue(builder, metricOpts);
 
   return (
     <section
@@ -1872,8 +1790,10 @@ export function GoldensPage({
             input · click to collapse)
           </summary>
 
-          {/* ✦ New object with AI — the PRIMARY way to author an object (s22): one
-              sentence → schema-grounded build → auto-placed into the ③ report. */}
+          {/* Structured builder — the PRIMARY, deterministic (no-LLM) way to author
+              an object: pick columns from the dataset's vocabulary and Run. Same
+              config → same object, every time. (The NL "New object with AI" panel
+              was removed in favour of this.) */}
           <div
             style={{
               ...box,
@@ -1882,83 +1802,9 @@ export function GoldensPage({
               background: "rgba(120,160,255,0.06)",
             }}
           >
-            <div style={{ ...label, color: "rgb(120,160,255)", marginBottom: 8 }}>
-              ✦ New object with AI — describe it in one sentence; it's built &amp; added to the report
+            <div style={{ ...label, color: "rgb(120,160,255)", marginBottom: 4 }}>
+              ◆ Structured builder — pick columns; deterministic (no LLM)
             </div>
-            <textarea
-              data-testid="ai-object-instruction"
-              value={aiText}
-              onChange={(e) => setAiText(e.target.value)}
-              placeholder="e.g. average weekly rent by month as the x-axis, colour by bedroom band, filtered to house property type only"
-              rows={2}
-              spellCheck={false}
-              style={{ ...mono, width: "100%" }}
-            />
-            <div
-              style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}
-            >
-              <label style={label}>
-                type{" "}
-                <select
-                  data-testid="ai-object-type"
-                  value={aiType}
-                  onChange={(e) => setAiTypeOverride(e.target.value as PageObjectType)}
-                  title="auto-guessed from your words — change it if the guess is wrong"
-                >
-                  {BUILDER_TYPES.map((t) => (
-                    <option key={t.type} value={t.type}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <input
-                data-testid="ai-object-name"
-                value={aiName}
-                placeholder="auto name"
-                onChange={(e) => setAiNameOverride(e.target.value)}
-                title="link id (element_id) — auto-derived from your sentence; editable before the first Save"
-                style={{ ...mono, fontSize: 12, padding: "3px 6px", minWidth: 220 }}
-              />
-              <button
-                type="button"
-                data-testid="ai-object-build"
-                style={{
-                  ...btn(busy !== "ai-object"),
-                  background: "rgba(120,160,255,0.22)",
-                  borderColor: "rgba(120,160,255,0.6)",
-                  fontWeight: 600,
-                }}
-                onClick={() => void authorNewObject()}
-                disabled={busy === "ai-object"}
-              >
-                {busy === "ai-object" ? "Building…" : "✦ Build & add to report"}
-              </button>
-              {aiUndo && (
-                <button
-                  type="button"
-                  data-testid="ai-object-undo"
-                  style={btn()}
-                  onClick={undoAiObject}
-                  title="remove the last AI object and restore the SQL / report"
-                >
-                  ↩ Undo
-                </button>
-              )}
-              {buildMsg && (
-                <span data-testid="ai-object-msg" style={{ fontSize: 12, opacity: 0.85 }}>
-                  {buildMsg}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* advanced — structured builder (deterministic: pick columns + skills). Demoted
-              under the AI panel (s22 Q2); still the repeatable, LLM-free authoring path. */}
-          <details style={{ ...box, marginTop: 10 }}>
-            <summary style={{ ...label, cursor: "pointer" }}>
-              ▸ advanced — structured builder (deterministic: pick columns + skills)
-            </summary>
             {vocabError && (
               <div
                 data-testid="builder-vocab-error"
@@ -2004,46 +1850,54 @@ export function GoldensPage({
                 </select>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <label style={label}>
-                  grain{" "}
-                  <input
+                <label
+                  style={{ ...label, display: "flex", flexDirection: "column", gap: 3 }}
+                  title="Columns the extract is grouped to. X and group are chosen from these."
+                >
+                  grain (multi-select)
+                  <select
+                    multiple
                     data-testid="builder-grain"
                     value={builder.grain}
-                    onChange={(e) => setBuilder((b) => ({ ...b, grain: e.target.value }))}
-                    style={{ fontSize: 12, padding: "2px 4px", width: 180 }}
-                  />
+                    onChange={(e) => {
+                      const g = multiVals(e);
+                      setBuilder((b) => ({
+                        ...b,
+                        grain: g,
+                        // Cascade: x and group can only be grain columns.
+                        dimension: b.dimension.filter((c) => g.includes(c)),
+                        group: g.includes(b.group) ? b.group : "",
+                      }));
+                    }}
+                    style={{ ...multiSel, minHeight: 74 }}
+                  >
+                    {multiOptions(builder.grain, dimOpts)}
+                  </select>
                 </label>
-                <label style={label}>
-                  x / dimension{" "}
+                <label
+                  style={{ ...label, display: "flex", flexDirection: "column", gap: 3 }}
+                  title="X-axis column(s), from the grain. Pick 2+ for a composite axis concat(x1,'-',x2,…)."
+                >
+                  x / dimension (from grain)
                   <select
+                    multiple
                     data-testid="builder-dimension"
                     value={builder.dimension}
-                    onChange={(e) => setBuilder((b) => ({ ...b, dimension: e.target.value }))}
-                    style={sel}
+                    onChange={(e) => setBuilder((b) => ({ ...b, dimension: multiVals(e) }))}
+                    style={{ ...multiSel, minHeight: 74 }}
                   >
-                    {selOptions(builder.dimension, dimOpts)}
-                  </select>
-                </label>
-                <label style={label} title="Optional 2nd axis → composite x (band × type)">
-                  × 2nd{" "}
-                  <select
-                    data-testid="builder-dimension2"
-                    value={builder.dimension2}
-                    onChange={(e) => setBuilder((b) => ({ ...b, dimension2: e.target.value }))}
-                    style={sel}
-                  >
-                    {selOptions(builder.dimension2, dimOpts, "— none —")}
+                    {multiOptions(builder.dimension, grainOpts)}
                   </select>
                 </label>
                 <label style={label}>
-                  group{" "}
+                  group (from grain){" "}
                   <select
                     data-testid="builder-group"
                     value={builder.group}
                     onChange={(e) => setBuilder((b) => ({ ...b, group: e.target.value }))}
                     style={sel}
                   >
-                    {selOptions(builder.group, dimOpts, "— none —")}
+                    {selOptions(builder.group, grainOpts, "— none —")}
                   </select>
                 </label>
                 <label style={label}>
@@ -2215,35 +2069,36 @@ export function GoldensPage({
                   />
                 </label>
               </div>
-              <details>
-                <summary style={{ ...label, cursor: "pointer", opacity: 0.7 }}>
-                  optional — describe it in words instead (AI authors the code)
-                </summary>
-                <textarea
-                  data-testid="builder-instruction"
-                  value={builder.instruction}
-                  onChange={(e) => setBuilder((b) => ({ ...b, instruction: e.target.value }))}
-                  placeholder="e.g. bars = number of sales, line = 6-mo avg sale price, x = land-size band, grouped by suburb"
-                  rows={2}
-                  spellCheck={false}
-                  style={{ ...mono, width: "100%", marginTop: 6 }}
-                />
-              </details>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   data-testid="builder-build"
                   style={{
-                    ...btn(busy !== "build"),
+                    ...btn(busy !== "build" && !buildBlocker),
                     background: "rgba(120,160,255,0.22)",
                     borderColor: "rgba(120,160,255,0.6)",
                     fontWeight: 600,
                   }}
                   onClick={() => void buildObject()}
-                  disabled={busy === "build"}
+                  disabled={busy === "build" || !!buildBlocker}
+                  title="Run the extract (rewriting the SQL if it lacks a column) → sandbox builds the object → chart is added to the report"
                 >
                   {busy === "build" ? "Building…" : "＋ Build object"}
                 </button>
+                {/* Deterministic pre-flight: the config is validated against the same
+                    rules the builder enforces, so a green tick means it WILL build —
+                    no LLM, no round-trip. */}
+                <span
+                  data-testid="builder-check"
+                  title="Deterministic — the same config always produces the same object; no LLM"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: buildBlocker ? "var(--bad)" : "var(--good)",
+                  }}
+                >
+                  {buildBlocker ? `✗ ${buildBlocker}` : "✓ will build · deterministic"}
+                </span>
                 {buildMsg && (
                   <span data-testid="builder-msg" style={{ fontSize: 12, opacity: 0.85 }}>
                     {buildMsg}
@@ -2251,7 +2106,7 @@ export function GoldensPage({
                 )}
               </div>
             </div>
-          </details>
+          </div>
 
           {/* data-knowledge — the dataset's ordinal band orders (s23). Like the skills
               catalogue, this surfaces what the agent knows about the data; editing an

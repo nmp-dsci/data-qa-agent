@@ -203,9 +203,9 @@ def dimension_cols(raw: Any, prof: MartProfile) -> list[str]:
 
 def _x_axis_lines(dim_cols: list[str]) -> tuple[str, list[str]]:
     """(x_col, code) — a single column, or a synthesized ``_x`` that joins several
-    dimension columns into one nominal axis label."""
+    dimension columns into one nominal axis label (``concat(x1, '-', x2, …)``)."""
     if len(dim_cols) > 1:
-        concat = " + ' · ' + ".join(f"base[{json.dumps(c)}].astype(str)" for c in dim_cols)
+        concat = " + '-' + ".join(f"base[{json.dumps(c)}].astype(str)" for c in dim_cols)
         return "_x", [f"base['_x'] = {concat}"]
     return dim_cols[0], []
 

@@ -42,18 +42,14 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
   await expect(page.getByTestId("page-0")).toBeVisible({ timeout: 360_000 });
 
   // --- 2. Build the named presentation object -----------------------------
-  // The structured builder lives in a <details> whose summary reads "advanced
-  // — structured builder…". It was renamed and demoted under the AI panel in
-  // s22 (d70d1dd) and this spec was never updated: "Presentation Object
-  // builder" now survives only in a source comment, so the old locator matched
-  // nothing in the DOM and the test could only ever time out here.
-  await page.getByText(/structured builder/i).click(); // expand the builder
+  // The structured builder is the primary (always-visible) panel in the ② Sandbox
+  // section — grain/x/group are grain-driven dropdowns from the dataset's typed
+  // vocabulary (s28), not free text. grain and x are multi-selects.
   await page.getByTestId("builder-name").fill(OBJECT);
   await page.getByTestId("builder-type").selectOption({ label: "Line + bar chart" });
-  await page.getByTestId("builder-grain").fill("month, suburb, area_band");
-  // dimension / group / measure sources are dropdowns from the dataset's typed
-  // vocabulary (s28) — select by column name, not free text.
-  await page.getByTestId("builder-dimension").selectOption("area_band");
+  await page.getByTestId("builder-grain").selectOption(["month", "suburb", "area_band"]);
+  // x / dimension and group are chosen from the grain columns.
+  await page.getByTestId("builder-dimension").selectOption(["area_band"]);
   await page.getByTestId("builder-group").selectOption("suburb");
   await page.getByTestId("builder-filter").fill(FILTER);
   // bars = sum(n_sold) as sales_volume; line = wtd-avg total_sale_value / n_sold.

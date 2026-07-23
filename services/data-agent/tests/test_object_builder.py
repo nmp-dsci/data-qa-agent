@@ -585,6 +585,18 @@ def test_build_object_code_rejects_share_of_non_additive_source() -> None:
         build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
 
 
+def test_build_object_code_rejects_mean_of_non_additive_source() -> None:
+    """The window dedup sums a mean measure's source before the mean is taken,
+    so averaging a stored average charts silently wrong numbers — refuse it."""
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "rent", "source": "avg_weekly_rent", "agg": "mean"},
+    }
+    with pytest.raises(ValueError, match="not additive"):
+        build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+
+
 def test_build_object_code_rejects_non_identifier_column() -> None:
     spec = {
         "grain": ["month"],

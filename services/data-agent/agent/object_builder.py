@@ -269,8 +269,10 @@ def extract_grain(
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 # Bucket-level averages/medians/extremes and derived ratios — summing them
-# across grain rows is silently wrong (a sum-of-averages), so the additive
-# paths refuse them; ratios must be recomposed via a num/den weighted average.
+# across grain rows is silently wrong (a sum-of-averages), and the window dedup
+# sums every measure source (a mean measure included), so every raw-column
+# aggregate refuses them; ratios must be recomposed via a num/den weighted
+# average.
 _NON_ADDITIVE = re.compile(r"^(?:avg|median|min|max)_|^gross_yield_pct$")
 
 
@@ -502,7 +504,7 @@ def _measure_block(
     # Plain aggregate (also the fallback when growth/latest lack a month grain).
     agg = "mean" if m.get("agg") == "mean" else "sum"
     round_ = ".round()" if agg == "mean" else ""
-    src_col = json.dumps(m["source"] if agg == "mean" else _additive_source(m["source"]))
+    src_col = json.dumps(_additive_source(m["source"]))
     return [
         f"{var} = {src}.groupby({keys_lit}, as_index=False)[{src_col}].{agg}(){round_}",
         f"{var} = {var}.rename(columns={{{src_col}: {label}}})",
@@ -709,7 +711,7 @@ def build_object_code(*, object_type: str, spec: dict[str, Any], dataset: str = 
     snippet never imports. Ends in ``result = skills.build_report(...)``.
 
     Raises ``ValueError`` when the spec names a column that isn't a plain
-    identifier, or would sum a non-additive column (``avg_*``/``median_*``/
+    identifier, or aggregates a non-additive column (``avg_*``/``median_*``/
     ``gross_yield_pct`` — those must go through the num/den wavg path).
     """
     prof = profile_for(dataset)

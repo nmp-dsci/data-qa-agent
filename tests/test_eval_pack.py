@@ -134,8 +134,9 @@ def test_report_rows_stay_arrays(filename: str, case: dict[str, Any]) -> None:
     The row cap once replaced a chart's ``rows`` with a ``{_truncated, _head, …}``
     dict. golden_report is *rendered* by iterating those rows, so the dict blanks
     the whole Golden tab (there was no error boundary to contain it). This locks
-    the pack shape so the regression can't return: no capped-to-dict envelope may
-    appear anywhere in a rendered field, and a ``rows``/``values`` node stays a list.
+    the pack shape so the regression can't return: no capped-to-dict or
+    budget-stub envelope may appear anywhere in a rendered field, and a
+    ``rows``/``values`` node stays a list.
     """
     key = case.get("case_key")
 
@@ -144,6 +145,10 @@ def test_report_rows_stay_arrays(filename: str, case: dict[str, Any]) -> None:
             assert "_truncated" not in node and "_head" not in node, (
                 f"{key}: capped-to-dict rows at {path} — a chart's rows must stay an array. "
                 "Re-export with the current scripts/eval_pack.py."
+            )
+            assert "_omitted" not in node, (
+                f"{key}: budget-stubbed value at {path} — a rendered field must never be "
+                "reduced to a digest dict. Re-export with the current scripts/eval_pack.py."
             )
             for k, v in node.items():
                 assert not (k in {"rows", "values"} and isinstance(v, dict)), (

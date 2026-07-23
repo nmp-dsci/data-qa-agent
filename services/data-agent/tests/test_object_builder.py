@@ -26,6 +26,7 @@ from agent.object_builder import (
     build_object_code,
     canonical_extract_sql,
     element_id_for,
+    extract_grain,
     name_from_instruction,
     needed_columns,
     profile_for,
@@ -511,6 +512,96 @@ def test_label_with_apostrophe_emits_runnable_code() -> None:
     assert outcome.error is None
     values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
     assert values and all("what's rented" in r for r in values)
+
+
+def test_extract_grain_extends_bar_family_only() -> None:
+    """Bar-family extracts append the dimension/group columns their snippet
+    groups by; trend/kpi keep the typed grain so their per-month numbers can't
+    shift to a finer grain."""
+    spec = {
+        "grain": ["month"],
+        "dimension": ["bedroom_band", "property_type"],
+        "group": "postcode",
+    }
+    for object_type in ("compare", "breakdown", "table"):
+        assert extract_grain(spec, object_type=object_type, dataset="nsw_rent") == [
+            "month",
+            "bedroom_band",
+            "property_type",
+            "postcode",
+        ]
+    for object_type in ("trend", "kpi"):
+        assert extract_grain(spec, object_type=object_type, dataset="nsw_rent") == ["month"]
+
+
+def test_canonical_extract_rejects_non_identifier_grain() -> None:
+    with pytest.raises(ValueError, match="identifier"):
+        canonical_extract_sql(
+            "SELECT 1",
+            grain=["month", "(SELECT username FROM app.users LIMIT 1)"],
+            measure_source_cols=set(),
+        )
+
+
+def test_canonical_extract_rejects_non_identifier_measure_source() -> None:
+    with pytest.raises(ValueError, match="identifier"):
+        canonical_extract_sql(
+            "SELECT 1",
+            grain=["month", "postcode"],
+            measure_source_cols={"n_sold) AS x FROM app.users --"},
+            dataset="nsw_yield",
+        )
+
+
+def test_canonical_extract_rejects_non_additive_measure_source() -> None:
+    """gross_yield_pct is a real yield-mart column, but summing a ratio across
+    grain rows is silently wrong — the extract refuses instead."""
+    with pytest.raises(ValueError, match="not additive"):
+        canonical_extract_sql(
+            "SELECT 1",
+            grain=["month", "postcode"],
+            measure_source_cols={"gross_yield_pct"},
+            dataset="nsw_yield",
+        )
+
+
+def test_build_object_code_rejects_summed_non_additive_source() -> None:
+    spec = {
+        "grain": ["month", "postcode"],
+        "dimension": "postcode",
+        "bar_measure": {"label": "yield", "source": "gross_yield_pct", "agg": "sum"},
+    }
+    with pytest.raises(ValueError, match="not additive"):
+        build_object_code(object_type="breakdown", spec=spec, dataset="nsw_yield")
+
+
+def test_build_object_code_rejects_share_of_non_additive_source() -> None:
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "mix", "source": "avg_weekly_rent", "how": "share"},
+    }
+    with pytest.raises(ValueError, match="not additive"):
+        build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+
+
+def test_build_object_code_rejects_non_identifier_column() -> None:
+    spec = {
+        "grain": ["month"],
+        "dimension": "postcode'; import os",
+        "bar_measure": {"label": "n", "source": "n_rented", "agg": "sum"},
+    }
+    with pytest.raises(ValueError, match="identifier"):
+        build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+
+
+def test_trend_column_mode_over_ratio_still_builds() -> None:
+    """A trend plotting a bucket-level average directly (line_mode 'column') is
+    legitimate — the extract recomposes it per month — so the additive guard
+    must not reject it."""
+    spec = {"line_measure": {"label": "avg_weekly_rent", "source": "avg_weekly_rent"}}
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    assert 'value_col="avg_weekly_rent"' in code
 
 
 def test_table_supports_composite_dimension() -> None:

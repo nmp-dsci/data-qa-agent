@@ -221,10 +221,60 @@ def needed_columns(spec: dict[str, Any]) -> set[str]:
     return {c for c in cols if c}
 
 
+def extract_grain(
+    spec: dict[str, Any], *, object_type: str, dataset: str = "nsw_sales"
+) -> list[str]:
+    """The grain the rewritten canonical extract must carry for ``spec``.
+
+    Bar-family objects (compare/breakdown/table) append the dimension/group
+    columns their snippet groups by, exactly as ``_bar_grain`` does. Trend/kpi
+    keep the typed grain untouched: ``trend_series``/``latest_value`` read the
+    extract per month, so a finer grain would change their numbers."""
+    prof = profile_for(dataset)
+    grain = [str(c) for c in (spec.get("grain") or prof.default_grain) if c]
+    if object_type in ("trend", "kpi"):
+        return grain
+    for col in (
+        *dimension_cols(spec.get("dimension"), prof),
+        *([str(spec["group"])] if spec.get("group") else []),
+    ):
+        if col and col not in grain:
+            grain.append(col)
+    return grain
+
+
 # ---------------------------------------------------------------------------
 # Extract extension — regenerate a canonical extract at the object's grain,
 # carrying the golden's suburb / property_type filters.
 # ---------------------------------------------------------------------------
+
+
+# Column names are interpolated into the extract SQL (SELECT/GROUP BY/ORDER BY,
+# sum(...)) and into the generated snippet — only a plain lowercase identifier
+# is ever a real mart column, so anything else (e.g. a parenthesised nested
+# SELECT) is rejected with the same posture validate_where_override applies to
+# the filter field.
+_IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+# Bucket-level averages/medians/extremes and derived ratios — summing them
+# across grain rows is silently wrong (a sum-of-averages), so the additive
+# paths refuse them; ratios must be recomposed via a num/den weighted average.
+_NON_ADDITIVE = re.compile(r"^(?:avg|median|min|max)_|^gross_yield_pct$")
+
+
+def _ident(col: str) -> str:
+    if not _IDENT.match(col):
+        raise ValueError(f"invalid column identifier: {col!r}")
+    return col
+
+
+def _additive_source(col: str) -> str:
+    if _NON_ADDITIVE.match(col):
+        raise ValueError(
+            f"column {col!r} is not additive and cannot be summed; "
+            "recompose it as a num/den weighted average instead"
+        )
+    return col
 
 
 # A WHERE-clause fragment should never itself contain a nested statement — an
@@ -293,7 +343,7 @@ def canonical_extract_sql(
     is surfaced in the form so it's editable lineage, not a hidden guess."""
     prof = profile_for(dataset)
     tbl = table or prof.table
-    grain_cols = [c for c in grain if c] or list(prof.default_grain)
+    grain_cols = [_ident(c) for c in grain if c] or list(prof.default_grain)
     # Always carry both additive legs so the ratio can be recomposed correctly.
     select = [*grain_cols]
     for c in prof.additive:
@@ -305,7 +355,7 @@ def canonical_extract_sql(
     covered = {*grain_cols, *prof.additive, prof.ratio_col}
     for c in sorted(measure_source_cols):
         if c and c not in covered:
-            select.append(f"sum({c}) AS {c}")
+            select.append(f"sum({_additive_source(_ident(c))}) AS {c}")
             covered.add(c)
     where = (
         [validate_where_override(where_override)]
@@ -389,8 +439,8 @@ def _measure_block(
     label = json.dumps(m["label"])
     kind = m["kind"]
     if kind == "wavg":
-        num = json.dumps(m["num"])
-        den = json.dumps(m["den"])
+        num = json.dumps(_additive_source(m["num"]))
+        den = json.dumps(_additive_source(m["den"]))
         return [
             f"{var} = {src}.groupby({keys_lit}, as_index=False).agg("
             f"_num=({num}, 'sum'), _den=({den}, 'sum'))",
@@ -401,7 +451,7 @@ def _measure_block(
         # % of the source within the series (`within`); each series then sums to
         # 100% across the x-axis. Always a Series denominator so the empty-`within`
         # (grand-total) case divides cleanly too.
-        src_col = json.dumps(m["source"])
+        src_col = json.dumps(_additive_source(m["source"]))
         within_lit = json.dumps([c for c in (within or []) if c])
         return [
             f"{var} = {src}.groupby({keys_lit}, as_index=False)[{src_col}].sum()",
@@ -417,7 +467,7 @@ def _measure_block(
         # most recent value — computed on per-month totals of the source, so a
         # grain wider than the chart keys never leaks one sub-slice row into the
         # boundary months. Needs the month grain to order on.
-        src_col = json.dumps(m["source"])
+        src_col = json.dumps(_additive_source(m["source"]))
         month_keys = keys if "month" in keys else [*keys, "month"]
         ordered = (
             f"{src}.groupby({json.dumps(month_keys)}, as_index=False)"
@@ -440,7 +490,7 @@ def _measure_block(
     # Plain aggregate (also the fallback when growth/latest lack a month grain).
     agg = "mean" if m.get("agg") == "mean" else "sum"
     round_ = ".round()" if agg == "mean" else ""
-    src_col = json.dumps(m["source"])
+    src_col = json.dumps(m["source"] if agg == "mean" else _additive_source(m["source"]))
     return [
         f"{var} = {src}.groupby({keys_lit}, as_index=False)[{src_col}].{agg}(){round_}",
         f"{var} = {var}.rename(columns={{{src_col}: {label}}})",
@@ -649,7 +699,14 @@ def build_object_code(*, object_type: str, spec: dict[str, Any], dataset: str = 
     object aggregates ``n_sold``/``total_sale_value`` (s22 P2). ``df`` (the shared
     extract), ``pd`` and ``skills`` are already in scope in the sandbox — the
     snippet never imports. Ends in ``result = skills.build_report(...)``.
+
+    Raises ``ValueError`` when the spec names a column that isn't a plain
+    identifier, or would sum a non-additive column (``avg_*``/``median_*``/
+    ``gross_yield_pct`` — those must go through the num/den wavg path).
     """
     prof = profile_for(dataset)
+    spec = spec if isinstance(spec, dict) else {}
+    for c in sorted(needed_columns(spec)):
+        _ident(c)
     builder = _BUILDERS.get(object_type, _combo_code)
-    return builder(spec if isinstance(spec, dict) else {}, prof)
+    return builder(spec, prof)

@@ -3,8 +3,10 @@
 Pins what the frontend login retry loop depends on: a waking-classified failure
 surfaces as 503 {"detail": "db_warming"} with Retry-After and CORS headers, a
 real error stays a CORS-carrying 500, and /health/db answers "waking" instead
-of erroring while the database resumes. Pure handler-level tests — no server,
-no database. The classifier itself is covered in the repo-root suite
+of erroring while the database resumes — but only probes (and so wakes) the
+database for requests carrying the app's channel marker, so an external poller
+cannot hold Aurora awake. Pure handler-level tests — no server, no database.
+The classifier itself is covered in the repo-root suite
 (tests/test_db_warming.py).
 """
 
@@ -20,8 +22,12 @@ from app import main as backend_main
 from app.config import settings
 
 
-def _request(origin: str | None = None) -> Request:
-    headers = [(b"origin", origin.encode())] if origin else []
+def _request(origin: str | None = None, channel: str | None = None) -> Request:
+    headers: list[tuple[bytes, bytes]] = []
+    if origin:
+        headers.append((b"origin", origin.encode()))
+    if channel:
+        headers.append((b"x-client-channel", channel.encode()))
     return Request(
         {
             "type": "http",
@@ -75,10 +81,21 @@ class _BrokenEngine:
 
 def test_health_db_reports_waking_when_connect_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(backend_main, "engine", _RefusingEngine())
-    assert asyncio.run(backend_main.health_db())["status"] == "waking"
+    result = asyncio.run(backend_main.health_db(_request(channel="web")))
+    assert result["status"] == "waking"
 
 
 def test_health_db_raises_on_non_connectivity_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(backend_main, "engine", _BrokenEngine())
     with pytest.raises(ValueError):
-        asyncio.run(backend_main.health_db())
+        asyncio.run(backend_main.health_db(_request(channel="web")))
+
+
+def test_health_db_skips_the_probe_without_the_channel_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # _BrokenEngine raises on any connect, so a "skipped" answer proves the
+    # unmarked request never touched (woke) the database.
+    monkeypatch.setattr(backend_main, "engine", _BrokenEngine())
+    assert asyncio.run(backend_main.health_db(_request()))["status"] == "skipped"
+    assert asyncio.run(backend_main.health_db(_request(channel="api")))["status"] == "skipped"

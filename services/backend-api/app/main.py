@@ -113,7 +113,7 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/health/db")
-async def health_db() -> dict[str, str]:
+async def health_db(request: Request) -> dict[str, str]:
     """Unauthenticated DB wake probe (s29).
 
     The login card fires this on mount so Aurora starts resuming while the
@@ -122,7 +122,16 @@ async def health_db() -> dict[str, str]:
     A waking database is the expected cold-visit answer, not an error, so it
     reports "waking" at 200 rather than tripping the 503 path; anything the
     classifier doesn't recognise still raises into the normal error handler.
+
+    Only requests carrying the app's channel marker (X-Client-Channel: web,
+    sent by frontend wakeDb) touch the database: every probe is a fresh
+    NullPool connect that resumes a paused Aurora, so a generic poller — an
+    uptime monitor, a scanner — pointed here would defeat auto-pause, the
+    dominant idle cost. The marker is a fence against that traffic, not a
+    secret; unmarked requests get a 200 saying the probe was skipped.
     """
+    if request.headers.get("x-client-channel") != "web":
+        return {"status": "skipped", "env": settings.app_env}
     try:
         async with engine.connect() as conn:
             await conn.execute(text("select 1"))

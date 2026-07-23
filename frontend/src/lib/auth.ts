@@ -11,6 +11,8 @@ import {
   logoutSession,
   setToken,
   User,
+  WARMING_MAX_MS,
+  WARMING_RETRY_MS,
 } from "./api";
 
 /** Sign-in progress the login card narrates (s29): "signing" the moment Google
@@ -62,13 +64,10 @@ function loadGis(): Promise<void> {
 }
 
 // s29: while Aurora Serverless resumes from auto-pause the backend answers
-// 503 db_warming (a classified connect failure, not a real error). The resume
-// took ~31s in the observed prod session, so the retry window must comfortably
-// cover it — the credential is already in hand, so waiting costs the user
-// nothing and never re-opens the Google prompt.
-const WARMING_MAX_MS = 75_000;
-const WARMING_RETRY_MS = 4_000;
-
+// 503 db_warming (a classified connect failure, not a real error). getMe skips
+// the transport-level retry in apiFetch so the loop below sees every 503 and
+// can narrate the wait — the credential is already in hand, so waiting costs
+// the user nothing and never re-opens the Google prompt.
 function isDbWarming(e: unknown): boolean {
   return e instanceof ApiError && e.status === 503 && e.detail === "db_warming";
 }

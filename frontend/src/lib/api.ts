@@ -370,10 +370,43 @@ export async function logoutSession(): Promise<void> {
   await apiFetch(`${API}/auth/logout`, { method: "POST" });
 }
 
+// Carries the HTTP status + backend detail string so callers can tell a
+// retryable condition (503 db_warming while Aurora resumes, s29) from a real
+// failure. message stays the human-readable line the UI already showed.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly detail: string | null = null,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function errorDetail(resp: Response): Promise<string | null> {
+  try {
+    const body: unknown = await resp.json();
+    const detail = (body as { detail?: unknown })?.detail;
+    return typeof detail === "string" ? detail : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMe(): Promise<User> {
   const resp = await apiFetch(`${API}/me`, { headers: authHeaders() });
-  if (!resp.ok) throw new Error(`Could not load profile (${resp.status})`);
+  if (!resp.ok) {
+    throw new ApiError(`Could not load profile (${resp.status})`, resp.status, await errorDetail(resp));
+  }
   return resp.json();
+}
+
+// s29 F3: fired from the login card on mount so Aurora starts resuming while
+// the user is still in the Google sign-in dance. Fire-and-forget — a "waking"
+// answer (or any failure) is the expected cold-visit case, not actionable.
+export function wakeDb(): void {
+  apiFetch(`${API}/health/db`).catch(() => {});
 }
 
 export async function ask(

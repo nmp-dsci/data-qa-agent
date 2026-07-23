@@ -18,7 +18,16 @@ from .config import settings
 # container trust store). "require" = encrypt without verification — libpq
 # semantics, and what every other client in this stack does. Upgrade to
 # verify-full + the RDS CA bundle in the harden phase.
-_connect_args = {"ssl": settings.db_ssl} if settings.db_ssl else {}
+#
+# timeout bounds the CONNECT phase only (asyncpg default is 60s). While Aurora
+# Serverless resumes from auto-pause, connects hang silently for the whole
+# resume (~20-30s observed in prod, s29) — every request in flight just sat
+# there, indistinguishable from a dead app. A short connect timeout turns the
+# hang into a classifiable failure (see is_db_waking) that the API maps to a
+# retryable 503 instead. Queries on an established connection are unaffected.
+_connect_args: dict[str, Any] = {"timeout": 5}
+if settings.db_ssl:
+    _connect_args["ssl"] = settings.db_ssl
 # NullPool: close the connection when the request finishes instead of keeping a
 # warm pool. An always-on App Runner instance would otherwise hold ~5 idle
 # connections forever, so Aurora Serverless v2 never sees the zero-connection

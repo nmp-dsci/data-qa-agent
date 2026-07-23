@@ -2,7 +2,21 @@
 //   dev    -> the local dev-auth stub (pick a seeded test user)
 //   google -> Google Sign-in via Google Identity Services (real OIDC sign-in)
 // The GIS script is loaded lazily so dev never pays for it.
-import { AuthConfig, devLogin, getAuthConfig, getMe, logoutSession, setToken, User } from "./api";
+import {
+  ApiError,
+  AuthConfig,
+  devLogin,
+  getAuthConfig,
+  getMe,
+  logoutSession,
+  setToken,
+  User,
+} from "./api";
+
+/** Sign-in progress the login card narrates (s29): "signing" the moment Google
+ *  hands back a credential, "warming" while the backend waits out an Aurora
+ *  resume. Terminal outcomes still arrive via onUser/onError. */
+export type LoginStatus = { phase: "signing" } | { phase: "warming"; waitedS: number };
 
 // Minimal typing for the slice of Google Identity Services we use.
 interface GoogleIdApi {
@@ -47,15 +61,60 @@ function loadGis(): Promise<void> {
   return gisLoading;
 }
 
+// s29: while Aurora Serverless resumes from auto-pause the backend answers
+// 503 db_warming (a classified connect failure, not a real error). The resume
+// took ~31s in the observed prod session, so the retry window must comfortably
+// cover it — the credential is already in hand, so waiting costs the user
+// nothing and never re-opens the Google prompt.
+const WARMING_MAX_MS = 75_000;
+const WARMING_RETRY_MS = 4_000;
+
+function isDbWarming(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 503 && e.detail === "db_warming";
+}
+
+/** Exchange the stored credential for the app profile, waiting out a database
+ *  wake: retry /me while the backend reports db_warming, narrating progress
+ *  through onStatus. Anything else — or exhausting the window — is terminal. */
+async function exchangeCredential(
+  onUser: (user: User) => void,
+  onError: (error: Error) => void,
+  onStatus: (status: LoginStatus) => void,
+): Promise<void> {
+  const started = Date.now();
+  for (;;) {
+    try {
+      onUser(await getMe());
+      return;
+    } catch (e) {
+      const waited = Date.now() - started;
+      if (!isDbWarming(e)) {
+        onError(e as Error);
+        return;
+      }
+      if (waited >= WARMING_MAX_MS) {
+        onError(new Error("The database is taking unusually long to wake — please try again."));
+        return;
+      }
+      onStatus({ phase: "warming", waitedS: Math.round(waited / 1000) });
+      await new Promise((resolve) => setTimeout(resolve, WARMING_RETRY_MS));
+    }
+  }
+}
+
 /**
  * Render the official Google button into `el`. On sign-in, GIS hands back an
  * ID token (the credential); we set it as the bearer token and exchange it for
  * our app profile via /me (which validates it and JIT-provisions the user).
+ * `onStatus` drives the card's pending UI from the instant the credential
+ * arrives — without it a login that waits on the database looks identical to a
+ * dead button, which is what produced prod's 4-5-attempt sessions (s29).
  */
 export async function renderGoogleButton(
   el: HTMLElement,
   onUser: (user: User) => void,
   onError: (error: Error) => void,
+  onStatus: (status: LoginStatus) => void,
 ): Promise<void> {
   const config = await loadAuthConfig();
   if (config.auth_mode !== "google" || !config.client_id) return;
@@ -68,8 +127,9 @@ export async function renderGoogleButton(
       void (async () => {
         try {
           if (!resp.credential) throw new Error("No credential returned by Google");
+          onStatus({ phase: "signing" });
           setToken(resp.credential);
-          onUser(await getMe());
+          await exchangeCredential(onUser, onError, onStatus);
         } catch (e) {
           onError(e as Error);
         }

@@ -426,6 +426,13 @@ code, pre, kbd { font-family: var(--mono); }
 .login-div::before, .login-div::after { content: ""; height: 1px; flex: 1; background: var(--border); }
 .users { display: grid; gap: 8px; margin: 0 0 14px; }
 .users.google { display: flex; justify-content: center; margin: 12px 0 14px; }
+/* s29: hide (never unmount) the GIS iframe while a sign-in is in flight, and
+   narrate what the silence used to conceal — the /me exchange, worst case an
+   Aurora resume. The warm lamp reuses the annunciator's amber. */
+.users.google.signing { display: none; }
+.login-signing { display: grid; justify-items: center; gap: 8px; margin: 12px 0 14px; }
+.login-signing-title { font-size: 13px; font-weight: 650; }
+.login-signing-note { color: var(--faint); font-size: 11px; line-height: 1.45; max-width: 240px; }
 .users button { display: flex; align-items: center; gap: 11px; background: var(--panel-2);
   border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 12px; text-align: left; }
 .users button:hover { border-color: var(--accent); background: var(--panel-3); }

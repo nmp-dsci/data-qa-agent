@@ -20,8 +20,8 @@
 // accessible names, the dot `role=tablist`, and the login_walkthrough_view
 // track() events are unchanged from s17.
 import { useEffect, useRef, useState } from "react";
-import { track, User } from "../lib/api";
-import { renderGoogleButton } from "../lib/auth";
+import { track, User, wakeDb } from "../lib/api";
+import { LoginStatus, renderGoogleButton } from "../lib/auth";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { useRouteFractions } from "../ui/flightdeck";
 import { BrandMark, PLANE_PATH_D } from "../ui/icons";
@@ -511,13 +511,31 @@ export function Login({
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
+  // s29: sign-in progress. Set the moment Google hands back a credential —
+  // before this, a login waiting on the /me exchange (worst case: an Aurora
+  // resume, ~30s) was pixel-identical to a dead button, and users answered
+  // the silence by signing in 4-5 times. Cleared on any terminal outcome.
+  const [signing, setSigning] = useState<LoginStatus | null>(null);
   const n = WAYPOINTS.length;
 
   useEffect(() => {
     if (authMode !== "google" || !btnRef.current) return;
-    renderGoogleButton(btnRef.current, onUser, (e) => onError(e.message)).catch((e) =>
-      onError((e as Error).message),
-    );
+    // Start the database resuming now (F3): the Google dance takes ~12s, the
+    // wake ~30s — every second overlapped is a second the user never waits.
+    wakeDb();
+    const fail = (e: Error) => {
+      setSigning(null);
+      onError(e.message);
+    };
+    renderGoogleButton(
+      btnRef.current,
+      (u) => {
+        setSigning(null);
+        onUser(u);
+      },
+      fail,
+      setSigning,
+    ).catch((e) => fail(e as Error));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authMode]);
 
@@ -552,8 +570,26 @@ export function Login({
           {authMode === "google" ? (
             <>
               <div className="login-div">sign in</div>
-              <div className="users google" ref={btnRef} />
-              {error && <p className="error">{error}</p>}
+              {/* The GIS iframe stays mounted while hidden — display:none via
+                  the class, never unmount, or the credential callback dies
+                  with it. */}
+              <div className={signing ? "users google signing" : "users google"} ref={btnRef} />
+              {signing && (
+                <div className="login-signing" role="status">
+                  <span className="login-signing-title">Signing you in…</span>
+                  {signing.phase === "warming" && (
+                    <>
+                      <span className="annunciator warn">
+                        Waking warehouse · {signing.waitedS}s
+                      </span>
+                      <span className="login-signing-note">
+                        First visit after an idle hour spins the database up — no action needed.
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+              {error && !signing && <p className="error">{error}</p>}
               {/* Preflight lamps carry the guarantees in the cockpit's own
                   clipped voice; the capstone on the story panel spells
                   row-level security out in full for a first-time reader. */}

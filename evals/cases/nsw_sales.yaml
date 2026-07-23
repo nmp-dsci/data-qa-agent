@@ -94,246 +94,247 @@ cases:
       - - data:
             basis: 2026-05
             label: Hornsby Avg House Price
-            value: $2,006,326
+            value: $1,914,861
           role: headline
           type: kpi
           element_id: headline:0
         - data:
             basis: 2026-04
             label: Normanhurst Avg House Price
-            value: $2,073,803
+            value: $1,968,500
           role: headline
           type: kpi
           element_id: headline:1
         - data:
             basis: ~5 years
             label: Hornsby 5-Yr Growth
-            value: 27.5%
+            value: 24.2%
           role: headline
           type: kpi
           element_id: headline:2
         - data:
             basis: ~5 years
             label: Normanhurst 5-Yr Growth
-            value: 40.3%
+            value: 0.9%
           role: headline
           type: kpi
           element_id: headline:3
         - data:
-            text: Hornsby houses averaged **$2,006,326** (as at 2026-05), while Normanhurst houses averaged
-              **$2,073,803** (as at 2026-04). Over the last ~5 years, Hornsby house prices grew **27.5%**
-              and Normanhurst house prices grew **40.3%**.
+            text: Hornsby houses averaged **$1,914,861** (as at 2026-05), while Normanhurst houses averaged
+              **$1,968,500** (as at 2026-04). Over the last ~5 years, Hornsby house prices grew **24.2%**
+              and Normanhurst house prices grew **0.9%**.
           role: note
           type: text
           element_id: report:summary
       - - data:
             x: month
             y: value
+            sql: "SELECT\n  month,\n  suburb,\n  area_band,\n  sum(n_sold) AS n_sold,\n  sum(total_sale_value)\
+              \ AS total_sale_value,\n  round((sum(total_sale_value) / NULLIF(sum(n_sold), 0))::numeric)\
+              \ AS avg_sale_price\nFROM marts.property_sales\nWHERE property_type = 'house' AND suburb\
+              \ IN ('Hornsby', 'Normanhurst')\nGROUP BY month, suburb, area_band\nORDER BY month, suburb,\
+              \ area_band"
             rows:
-              _sha: 784063098f28
-              _head:
-              - layer: actual
-                month: '2011-05-01'
-                value: 560000
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2011-05-01'
-                value: 560000
-                series: Hornsby
-              - layer: actual
-                month: '2011-07-01'
-                value: 610000
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2011-07-01'
-                value: 585000
-                series: Hornsby
-              - layer: actual
-                month: '2011-11-01'
-                value: 724800
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2011-11-01'
-                value: 631600
-                series: Hornsby
-              - layer: actual
-                month: '2011-12-01'
-                value: 641714.29
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2011-12-01'
-                value: 634128.57
-                series: Hornsby
-              - layer: actual
-                month: '2012-01-01'
-                value: 668545.45
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-01-01'
-                value: 641011.95
-                series: Hornsby
-              - layer: actual
-                month: '2012-02-01'
-                value: 930818.18
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-02-01'
-                value: 689312.99
-                series: Hornsby
-              - layer: actual
-                month: '2012-03-01'
-                value: 679836.76
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-03-01'
-                value: 709285.78
-                series: Hornsby
-              - layer: actual
-                month: '2012-04-01'
-                value: 704786.67
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-04-01'
-                value: 725083.56
-                series: Hornsby
-              - layer: actual
-                month: '2012-05-01'
-                value: 718300
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-05-01'
-                value: 724000.23
-                series: Hornsby
-              - layer: actual
-                month: '2012-06-01'
-                value: 738812.5
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-06-01'
-                value: 740183.26
-                series: Hornsby
-              - layer: actual
-                month: '2012-07-01'
-                value: 701777.78
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-07-01'
-                value: 745721.98
-                series: Hornsby
-              - layer: actual
-                month: '2012-08-01'
-                value: 764590.91
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-08-01'
-                value: 718017.44
-                series: Hornsby
-              - layer: actual
-                month: '2012-09-01'
-                value: 713923.08
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-09-01'
-                value: 723698.49
-                series: Hornsby
-              - layer: actual
-                month: '2012-10-01'
-                value: 722437.5
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-10-01'
-                value: 726640.29
-                series: Hornsby
-              - layer: actual
-                month: '2012-11-01'
-                value: 696060
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-11-01'
-                value: 722933.63
-                series: Hornsby
-              - layer: actual
-                month: '2012-12-01'
-                value: 743522.22
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2012-12-01'
-                value: 723718.58
-                series: Hornsby
-              - layer: actual
-                month: '2013-01-01'
-                value: 651150.42
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-01-01'
-                value: 715280.69
-                series: Hornsby
-              - layer: actual
-                month: '2013-02-01'
-                value: 727450
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-02-01'
-                value: 709090.54
-                series: Hornsby
-              - layer: actual
-                month: '2013-03-01'
-                value: 912030.57
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-03-01'
-                value: 742108.45
-                series: Hornsby
-              - layer: actual
-                month: '2013-04-01'
-                value: 773923.08
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-04-01'
-                value: 750689.38
-                series: Hornsby
-              - layer: actual
-                month: '2013-05-01'
-                value: 786277.78
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-05-01'
-                value: 765725.68
-                series: Hornsby
-              - layer: actual
-                month: '2013-06-01'
-                value: 737150
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-06-01'
-                value: 764663.64
-                series: Hornsby
-              - layer: actual
-                month: '2013-07-01'
-                value: 765194.44
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-07-01'
-                value: 783670.98
-                series: Hornsby
-              - layer: actual
-                month: '2013-08-01'
-                value: 768285.71
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-08-01'
-                value: 790476.93
-                series: Hornsby
-              - layer: actual
-                month: '2013-09-01'
-                value: 794168.75
-                series: Hornsby
-              - layer: 6-mo avg
-                month: '2013-09-01'
-                value: 770833.29
-                series: Hornsby
-              _total: 690
-              _truncated: true
+            - layer: actual
+              month: '2011-05-01'
+              value: 560000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2011-05-01'
+              value: 560000.0
+              series: Hornsby
+            - layer: actual
+              month: '2011-07-01'
+              value: 610000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2011-07-01'
+              value: 585000.0
+              series: Hornsby
+            - layer: actual
+              month: '2011-11-01'
+              value: 671000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2011-11-01'
+              value: 613666.67
+              series: Hornsby
+            - layer: actual
+              month: '2011-11-01'
+              value: 731500.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2011-11-01'
+              value: 643125.0
+              series: Hornsby
+            - layer: actual
+              month: '2011-11-01'
+              value: 740500.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2011-11-01'
+              value: 662600.0
+              series: Hornsby
+            - layer: actual
+              month: '2011-12-01'
+              value: 801000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2011-12-01'
+              value: 685666.67
+              series: Hornsby
+            - layer: actual
+              month: '2011-12-01'
+              value: 599000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2011-12-01'
+              value: 692166.67
+              series: Hornsby
+            - layer: actual
+              month: '2011-12-01'
+              value: 623250.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2011-12-01'
+              value: 694375.0
+              series: Hornsby
+            - layer: actual
+              month: '2012-01-01'
+              value: 770000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-01-01'
+              value: 710875.0
+              series: Hornsby
+            - layer: actual
+              month: '2012-01-01'
+              value: 625000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-01-01'
+              value: 693125.0
+              series: Hornsby
+            - layer: actual
+              month: '2012-01-01'
+              value: 656500.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-01-01'
+              value: 679125.0
+              series: Hornsby
+            - layer: actual
+              month: '2012-02-01'
+              value: 1493333.33
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-02-01'
+              value: 794513.89
+              series: Hornsby
+            - layer: actual
+              month: '2012-02-01'
+              value: 699333.33
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-02-01'
+              value: 811236.11
+              series: Hornsby
+            - layer: actual
+              month: '2012-02-01'
+              value: 732200.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-02-01'
+              value: 829394.44
+              series: Hornsby
+            - layer: actual
+              month: '2012-03-01'
+              value: 562835.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-03-01'
+              value: 794866.94
+              series: Hornsby
+            - layer: actual
+              month: '2012-03-01'
+              value: 631250.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-03-01'
+              value: 795908.61
+              series: Hornsby
+            - layer: actual
+              month: '2012-03-01'
+              value: 777256.25
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-03-01'
+              value: 816034.65
+              series: Hornsby
+            - layer: actual
+              month: '2012-04-01'
+              value: 662000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-04-01'
+              value: 677479.1
+              series: Hornsby
+            - layer: actual
+              month: '2012-04-01'
+              value: 718450.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-04-01'
+              value: 680665.21
+              series: Hornsby
+            - layer: actual
+              month: '2012-04-01'
+              value: 703600.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-04-01'
+              value: 675898.54
+              series: Hornsby
+            - layer: actual
+              month: '2012-05-01'
+              value: 620000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-05-01'
+              value: 685426.04
+              series: Hornsby
+            - layer: actual
+              month: '2012-05-01'
+              value: 652500.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-05-01'
+              value: 688967.71
+              series: Hornsby
+            - layer: actual
+              month: '2012-05-01'
+              value: 773000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-05-01'
+              value: 688258.33
+              series: Hornsby
+            - layer: actual
+              month: '2012-06-01'
+              value: 779750.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-06-01'
+              value: 707883.33
+              series: Hornsby
+            - layer: actual
+              month: '2012-06-01'
+              value: 835000.0
+              series: Hornsby
+            - layer: 6-mo avg
+              month: '2012-06-01'
+              value: 727308.33
+              series: Hornsby
             title: Hornsby vs Normanhurst — House Price Trend
             height: fill
             intent: line
@@ -341,56 +342,10 @@ cases:
           role: chart
           type: trend
           element_id: report:chart
-      headline: Hornsby houses averaged **$2,006,326** (as at 2026-05), while Normanhurst houses averaged
-        **$2,073,803** (as at 2026-04…
+      headline: Hornsby houses averaged **$1,914,861** (as at 2026-05), while Normanhurst houses averaged
+        **$1,968,500** (as at 2026-04…
       template: two-col
-    - kind: insights
-      columns:
-      - - data:
-            refs: []
-            text: Over the full period, Hornsby houses have averaged **$1,345,668**, which is **3.9%**
-              lower than Normanhurst ($1,400,144). On a 5-year growth basis, Normanhurst has appreciated
-              faster (27.5% vs 40.3%), narrowing the price gap in recent years.
-            heading: Price Gap & Growth Comparison
-          role: insight
-          type: insight
-          explains: headline:0
-          element_id: insight:0
-      - - data:
-            rows:
-            - suburb: Hornsby
-              area_band: 1000-5000
-              sales_volume: 25
-              avg_sale_price: 2163528
-            - suburb: Hornsby
-              area_band: 400-700
-              sales_volume: 26
-              avg_sale_price: 1758250
-            - suburb: Normanhurst
-              area_band: 400-700
-              sales_volume: 20
-              avg_sale_price: 1916000
-            - suburb: Hornsby
-              area_band: 700-1000
-              sales_volume: 54
-              avg_sale_price: 2086762
-            - suburb: Normanhurst
-              area_band: 700-1000
-              sales_volume: 30
-              avg_sale_price: 2137450
-            group: suburb
-            title: line-bar-sale-volume
-            height: md
-            intent: combo
-            measure: sales_volume
-            dimension: area_band
-            line_measure: avg_sale_price
-          role: chart
-          type: compare
-          element_id: obj:line-bar-sale-volume
-      headline: Price Gap & Growth Comparison
-      template: two-col
-  golden_data_sha: 89684f800665
+  golden_data_sha: aca6a0d9ba51
 - case_key: nsw_sales-which-suburbs-had-the-strongest-house-price-grow-4d9b
   question: Which suburbs had the strongest house-price growth over the last three years?
   dataset: nsw_sales
@@ -674,210 +629,206 @@ cases:
               \ WHERE postcode = '2170' AND suburb = 'Liverpool' AND property_type = 'unit')\nGROUP BY\
               \ month\nORDER BY month"
             rows:
-              _truncated: true
-              _total: 122
-              _sha: ea9a5153ca90
-              _head:
-              - layer: actual
-                month: '2021-05-01'
-                value: 478294.44
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2021-05-01'
-                value: 478294.44
-                series: total_sale_value
-              - layer: actual
-                month: '2021-06-01'
-                value: 620612.42
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2021-06-01'
-                value: 549453.43
-                series: total_sale_value
-              - layer: actual
-                month: '2021-07-01'
-                value: 502247.14
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2021-07-01'
-                value: 533718.0
-                series: total_sale_value
-              - layer: actual
-                month: '2021-08-01'
-                value: 460829.27
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2021-08-01'
-                value: 515495.82
-                series: total_sale_value
-              - layer: actual
-                month: '2021-09-01'
-                value: 462411.76
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2021-09-01'
-                value: 504879.01
-                series: total_sale_value
-              - layer: actual
-                month: '2021-10-01'
-                value: 517681.25
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2021-10-01'
-                value: 507012.71
-                series: total_sale_value
-              - layer: actual
-                month: '2021-11-01'
-                value: 977286.6
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2021-11-01'
-                value: 590178.07
-                series: total_sale_value
-              - layer: actual
-                month: '2021-12-01'
-                value: 522640.0
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2021-12-01'
-                value: 573849.34
-                series: total_sale_value
-              - layer: actual
-                month: '2022-01-01'
-                value: 516341.46
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-01-01'
-                value: 576198.39
-                series: total_sale_value
-              - layer: actual
-                month: '2022-02-01'
-                value: 502505.98
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-02-01'
-                value: 583144.51
-                series: total_sale_value
-              - layer: actual
-                month: '2022-03-01'
-                value: 500016.67
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-03-01'
-                value: 589411.99
-                series: total_sale_value
-              - layer: actual
-                month: '2022-04-01'
-                value: 511431.03
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-04-01'
-                value: 588370.29
-                series: total_sale_value
-              - layer: actual
-                month: '2022-05-01'
-                value: 489399.23
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-05-01'
-                value: 507055.73
-                series: total_sale_value
-              - layer: actual
-                month: '2022-06-01'
-                value: 491192.98
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-06-01'
-                value: 501814.56
-                series: total_sale_value
-              - layer: actual
-                month: '2022-07-01'
-                value: 492577.78
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-07-01'
-                value: 497853.95
-                series: total_sale_value
-              - layer: actual
-                month: '2022-08-01'
-                value: 501940.48
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-08-01'
-                value: 497759.69
-                series: total_sale_value
-              - layer: actual
-                month: '2022-09-01'
-                value: 485492.96
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-09-01'
-                value: 495339.08
-                series: total_sale_value
-              - layer: actual
-                month: '2022-10-01'
-                value: 480326.09
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-10-01'
-                value: 490154.92
-                series: total_sale_value
-              - layer: actual
-                month: '2022-11-01'
-                value: 494551.56
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-11-01'
-                value: 491013.64
-                series: total_sale_value
-              - layer: actual
-                month: '2022-12-01'
-                value: 510641.3
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2022-12-01'
-                value: 494255.03
-                series: total_sale_value
-              - layer: actual
-                month: '2023-01-01'
-                value: 477000.0
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2023-01-01'
-                value: 491658.73
-                series: total_sale_value
-              - layer: actual
-                month: '2023-02-01'
-                value: 501038.27
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2023-02-01'
-                value: 491508.36
-                series: total_sale_value
-              - layer: actual
-                month: '2023-03-01'
-                value: 471586.4
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2023-03-01'
-                value: 489190.6
-                series: total_sale_value
-              - layer: actual
-                month: '2023-04-01'
-                value: 480884.62
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2023-04-01'
-                value: 489283.69
-                series: total_sale_value
-              - layer: actual
-                month: '2023-05-01'
-                value: 488680.31
-                series: total_sale_value
-              - layer: 6-mo avg
-                month: '2023-05-01'
-                value: 488305.15
-                series: total_sale_value
+            - layer: actual
+              month: '2021-05-01'
+              value: 478294.44
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2021-05-01'
+              value: 478294.44
+              series: total_sale_value
+            - layer: actual
+              month: '2021-06-01'
+              value: 620612.42
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2021-06-01'
+              value: 549453.43
+              series: total_sale_value
+            - layer: actual
+              month: '2021-07-01'
+              value: 502247.14
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2021-07-01'
+              value: 533718.0
+              series: total_sale_value
+            - layer: actual
+              month: '2021-08-01'
+              value: 460829.27
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2021-08-01'
+              value: 515495.82
+              series: total_sale_value
+            - layer: actual
+              month: '2021-09-01'
+              value: 462411.76
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2021-09-01'
+              value: 504879.01
+              series: total_sale_value
+            - layer: actual
+              month: '2021-10-01'
+              value: 517681.25
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2021-10-01'
+              value: 507012.71
+              series: total_sale_value
+            - layer: actual
+              month: '2021-11-01'
+              value: 977286.6
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2021-11-01'
+              value: 590178.07
+              series: total_sale_value
+            - layer: actual
+              month: '2021-12-01'
+              value: 522640.0
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2021-12-01'
+              value: 573849.34
+              series: total_sale_value
+            - layer: actual
+              month: '2022-01-01'
+              value: 516341.46
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-01-01'
+              value: 576198.39
+              series: total_sale_value
+            - layer: actual
+              month: '2022-02-01'
+              value: 502505.98
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-02-01'
+              value: 583144.51
+              series: total_sale_value
+            - layer: actual
+              month: '2022-03-01'
+              value: 500016.67
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-03-01'
+              value: 589411.99
+              series: total_sale_value
+            - layer: actual
+              month: '2022-04-01'
+              value: 511431.03
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-04-01'
+              value: 588370.29
+              series: total_sale_value
+            - layer: actual
+              month: '2022-05-01'
+              value: 489399.23
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-05-01'
+              value: 507055.73
+              series: total_sale_value
+            - layer: actual
+              month: '2022-06-01'
+              value: 491192.98
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-06-01'
+              value: 501814.56
+              series: total_sale_value
+            - layer: actual
+              month: '2022-07-01'
+              value: 492577.78
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-07-01'
+              value: 497853.95
+              series: total_sale_value
+            - layer: actual
+              month: '2022-08-01'
+              value: 501940.48
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-08-01'
+              value: 497759.69
+              series: total_sale_value
+            - layer: actual
+              month: '2022-09-01'
+              value: 485492.96
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-09-01'
+              value: 495339.08
+              series: total_sale_value
+            - layer: actual
+              month: '2022-10-01'
+              value: 480326.09
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-10-01'
+              value: 490154.92
+              series: total_sale_value
+            - layer: actual
+              month: '2022-11-01'
+              value: 494551.56
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-11-01'
+              value: 491013.64
+              series: total_sale_value
+            - layer: actual
+              month: '2022-12-01'
+              value: 510641.3
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2022-12-01'
+              value: 494255.03
+              series: total_sale_value
+            - layer: actual
+              month: '2023-01-01'
+              value: 477000.0
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2023-01-01'
+              value: 491658.73
+              series: total_sale_value
+            - layer: actual
+              month: '2023-02-01'
+              value: 501038.27
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2023-02-01'
+              value: 491508.36
+              series: total_sale_value
+            - layer: actual
+              month: '2023-03-01'
+              value: 471586.4
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2023-03-01'
+              value: 489190.6
+              series: total_sale_value
+            - layer: actual
+              month: '2023-04-01'
+              value: 480884.62
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2023-04-01'
+              value: 489283.69
+              series: total_sale_value
+            - layer: actual
+              month: '2023-05-01'
+              value: 488680.31
+              series: total_sale_value
+            - layer: 6-mo avg
+              month: '2023-05-01'
+              value: 488305.15
+              series: total_sale_value
             title: Liverpool Unit Price Trend (5 Years)
             height: fill
             intent: line
@@ -969,210 +920,206 @@ cases:
             sql: "SELECT month, median_sale_price, n_sold\nFROM marts.property_sales\nWHERE suburb = 'Merrylands'\n\
               \  AND property_type = 'house'\nORDER BY month"
             rows:
-              _truncated: true
-              _total: 106
-              _sha: 50c4ee96b01a
-              _head:
-              - layer: actual
-                month: '2022-01-01'
-                value: 151270.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-01-01'
-                value: 151270.0
-                series: median_price
-              - layer: actual
-                month: '2022-02-01'
-                value: 53101.83
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-02-01'
-                value: 102185.92
-                series: median_price
-              - layer: actual
-                month: '2022-03-01'
-                value: 50568.18
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-03-01'
-                value: 84980.01
-                series: median_price
-              - layer: actual
-                month: '2022-04-01'
-                value: 44200.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-04-01'
-                value: 74785.0
-                series: median_price
-              - layer: actual
-                month: '2022-05-01'
-                value: 57105.26
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-05-01'
-                value: 71249.06
-                series: median_price
-              - layer: actual
-                month: '2022-06-01'
-                value: 77000.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-06-01'
-                value: 72207.55
-                series: median_price
-              - layer: actual
-                month: '2022-07-01'
-                value: 60882.35
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-07-01'
-                value: 57142.94
-                series: median_price
-              - layer: actual
-                month: '2022-08-01'
-                value: 90833.33
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-08-01'
-                value: 63431.52
-                series: median_price
-              - layer: actual
-                month: '2022-09-01'
-                value: 49625.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-09-01'
-                value: 63274.32
-                series: median_price
-              - layer: actual
-                month: '2022-10-01'
-                value: 95500.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-10-01'
-                value: 71824.32
-                series: median_price
-              - layer: actual
-                month: '2022-11-01'
-                value: 42812.5
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-11-01'
-                value: 69442.2
-                series: median_price
-              - layer: actual
-                month: '2022-12-01'
-                value: 57789.47
-                series: median_price
-              - layer: 6-mo avg
-                month: '2022-12-01'
-                value: 66240.44
-                series: median_price
-              - layer: actual
-                month: '2023-01-01'
-                value: 114062.5
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-01-01'
-                value: 75103.8
-                series: median_price
-              - layer: actual
-                month: '2023-02-01'
-                value: 92307.69
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-02-01'
-                value: 75349.53
-                series: median_price
-              - layer: actual
-                month: '2023-03-01'
-                value: 80000.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-03-01'
-                value: 80412.03
-                series: median_price
-              - layer: actual
-                month: '2023-04-01'
-                value: 142857.14
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-04-01'
-                value: 88304.88
-                series: median_price
-              - layer: actual
-                month: '2023-05-01'
-                value: 53809.52
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-05-01'
-                value: 90137.72
-                series: median_price
-              - layer: actual
-                month: '2023-06-01'
-                value: 50260.87
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-06-01'
-                value: 88882.95
-                series: median_price
-              - layer: actual
-                month: '2023-07-01'
-                value: 60000.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-07-01'
-                value: 79872.54
-                series: median_price
-              - layer: actual
-                month: '2023-08-01'
-                value: 82500.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-08-01'
-                value: 78237.92
-                series: median_price
-              - layer: actual
-                month: '2023-09-01'
-                value: 57142.86
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-09-01'
-                value: 74428.4
-                series: median_price
-              - layer: actual
-                month: '2023-10-01'
-                value: 60578.95
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-10-01'
-                value: 60715.37
-                series: median_price
-              - layer: actual
-                month: '2023-11-01'
-                value: 42000.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-11-01'
-                value: 58747.11
-                series: median_price
-              - layer: actual
-                month: '2023-12-01'
-                value: 83529.41
-                series: median_price
-              - layer: 6-mo avg
-                month: '2023-12-01'
-                value: 64291.87
-                series: median_price
-              - layer: actual
-                month: '2024-01-01'
-                value: 120000.0
-                series: median_price
-              - layer: 6-mo avg
-                month: '2024-01-01'
-                value: 74291.87
-                series: median_price
+            - layer: actual
+              month: '2022-01-01'
+              value: 151270.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-01-01'
+              value: 151270.0
+              series: median_price
+            - layer: actual
+              month: '2022-02-01'
+              value: 53101.83
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-02-01'
+              value: 102185.92
+              series: median_price
+            - layer: actual
+              month: '2022-03-01'
+              value: 50568.18
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-03-01'
+              value: 84980.01
+              series: median_price
+            - layer: actual
+              month: '2022-04-01'
+              value: 44200.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-04-01'
+              value: 74785.0
+              series: median_price
+            - layer: actual
+              month: '2022-05-01'
+              value: 57105.26
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-05-01'
+              value: 71249.06
+              series: median_price
+            - layer: actual
+              month: '2022-06-01'
+              value: 77000.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-06-01'
+              value: 72207.55
+              series: median_price
+            - layer: actual
+              month: '2022-07-01'
+              value: 60882.35
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-07-01'
+              value: 57142.94
+              series: median_price
+            - layer: actual
+              month: '2022-08-01'
+              value: 90833.33
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-08-01'
+              value: 63431.52
+              series: median_price
+            - layer: actual
+              month: '2022-09-01'
+              value: 49625.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-09-01'
+              value: 63274.32
+              series: median_price
+            - layer: actual
+              month: '2022-10-01'
+              value: 95500.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-10-01'
+              value: 71824.32
+              series: median_price
+            - layer: actual
+              month: '2022-11-01'
+              value: 42812.5
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-11-01'
+              value: 69442.2
+              series: median_price
+            - layer: actual
+              month: '2022-12-01'
+              value: 57789.47
+              series: median_price
+            - layer: 6-mo avg
+              month: '2022-12-01'
+              value: 66240.44
+              series: median_price
+            - layer: actual
+              month: '2023-01-01'
+              value: 114062.5
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-01-01'
+              value: 75103.8
+              series: median_price
+            - layer: actual
+              month: '2023-02-01'
+              value: 92307.69
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-02-01'
+              value: 75349.53
+              series: median_price
+            - layer: actual
+              month: '2023-03-01'
+              value: 80000.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-03-01'
+              value: 80412.03
+              series: median_price
+            - layer: actual
+              month: '2023-04-01'
+              value: 142857.14
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-04-01'
+              value: 88304.88
+              series: median_price
+            - layer: actual
+              month: '2023-05-01'
+              value: 53809.52
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-05-01'
+              value: 90137.72
+              series: median_price
+            - layer: actual
+              month: '2023-06-01'
+              value: 50260.87
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-06-01'
+              value: 88882.95
+              series: median_price
+            - layer: actual
+              month: '2023-07-01'
+              value: 60000.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-07-01'
+              value: 79872.54
+              series: median_price
+            - layer: actual
+              month: '2023-08-01'
+              value: 82500.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-08-01'
+              value: 78237.92
+              series: median_price
+            - layer: actual
+              month: '2023-09-01'
+              value: 57142.86
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-09-01'
+              value: 74428.4
+              series: median_price
+            - layer: actual
+              month: '2023-10-01'
+              value: 60578.95
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-10-01'
+              value: 60715.37
+              series: median_price
+            - layer: actual
+              month: '2023-11-01'
+              value: 42000.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-11-01'
+              value: 58747.11
+              series: median_price
+            - layer: actual
+              month: '2023-12-01'
+              value: 83529.41
+              series: median_price
+            - layer: 6-mo avg
+              month: '2023-12-01'
+              value: 64291.87
+              series: median_price
+            - layer: actual
+              month: '2024-01-01'
+              value: 120000.0
+              series: median_price
+            - layer: 6-mo avg
+              month: '2024-01-01'
+              value: 74291.87
+              series: median_price
             title: Merrylands House — Median Price Trend
             height: fill
             intent: line
@@ -1291,210 +1238,206 @@ cases:
               \ AS n_sold\nFROM marts.property_sales\nWHERE property_type = 'house'\n  AND area_band !=\
               \ 'unknown'\nGROUP BY month, area_band\nORDER BY month, area_band"
             rows:
-              _truncated: true
-              _total: 1974
-              _sha: 74b88cbb1a62
-              _head:
-              - layer: actual
-                month: '2010-01-01'
-                value: 1338642.86
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-01-01'
-                value: 1338642.86
-                series: avg_price
-              - layer: actual
-                month: '2010-02-01'
-                value: 951666.67
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-02-01'
-                value: 1145154.76
-                series: avg_price
-              - layer: actual
-                month: '2010-03-01'
-                value: 1005142.86
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-03-01'
-                value: 1098484.13
-                series: avg_price
-              - layer: actual
-                month: '2010-04-01'
-                value: 1368750.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-04-01'
-                value: 1166050.6
-                series: avg_price
-              - layer: actual
-                month: '2010-05-01'
-                value: 1050868.87
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-05-01'
-                value: 1143014.25
-                series: avg_price
-              - layer: actual
-                month: '2010-06-01'
-                value: 432000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-06-01'
-                value: 1024511.88
-                series: avg_price
-              - layer: actual
-                month: '2010-07-01'
-                value: 1304211.11
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-07-01'
-                value: 1018773.25
-                series: avg_price
-              - layer: actual
-                month: '2010-08-01'
-                value: 1030491.33
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-08-01'
-                value: 1031910.7
-                series: avg_price
-              - layer: actual
-                month: '2010-09-01'
-                value: 708050.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-09-01'
-                value: 982395.22
-                series: avg_price
-              - layer: actual
-                month: '2010-10-01'
-                value: 1194430.77
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-10-01'
-                value: 953342.01
-                series: avg_price
-              - layer: actual
-                month: '2010-11-01'
-                value: 1300164.52
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-11-01'
-                value: 994891.29
-                series: avg_price
-              - layer: actual
-                month: '2010-12-01'
-                value: 733301.56
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2010-12-01'
-                value: 1045108.21
-                series: avg_price
-              - layer: actual
-                month: '2011-01-01'
-                value: 374028.57
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-01-01'
-                value: 890077.79
-                series: avg_price
-              - layer: actual
-                month: '2011-02-01'
-                value: 636007.32
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-02-01'
-                value: 824330.46
-                series: avg_price
-              - layer: actual
-                month: '2011-03-01'
-                value: 640760.98
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-03-01'
-                value: 813115.62
-                series: avg_price
-              - layer: actual
-                month: '2011-04-01'
-                value: 747810.69
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-04-01'
-                value: 738678.94
-                series: avg_price
-              - layer: actual
-                month: '2011-05-01'
-                value: 612378.65
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-05-01'
-                value: 624047.96
-                series: avg_price
-              - layer: actual
-                month: '2011-06-01'
-                value: 717301.6
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-06-01'
-                value: 621381.3
-                series: avg_price
-              - layer: actual
-                month: '2011-07-01'
-                value: 719387.37
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-07-01'
-                value: 678941.1
-                series: avg_price
-              - layer: actual
-                month: '2011-08-01'
-                value: 722547.46
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-08-01'
-                value: 693364.46
-                series: avg_price
-              - layer: actual
-                month: '2011-09-01'
-                value: 742239.37
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-09-01'
-                value: 710277.52
-                series: avg_price
-              - layer: actual
-                month: '2011-10-01'
-                value: 750938.76
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-10-01'
-                value: 710798.87
-                series: avg_price
-              - layer: actual
-                month: '2011-11-01'
-                value: 751778.17
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-11-01'
-                value: 734032.12
-                series: avg_price
-              - layer: actual
-                month: '2011-12-01'
-                value: 638226.31
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-12-01'
-                value: 720852.9
-                series: avg_price
-              - layer: actual
-                month: '2012-01-01'
-                value: 618681.2
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2012-01-01'
-                value: 704068.54
-                series: avg_price
+            - layer: actual
+              month: '2010-01-01'
+              value: 1338642.86
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-01-01'
+              value: 1338642.86
+              series: avg_price
+            - layer: actual
+              month: '2010-02-01'
+              value: 951666.67
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-02-01'
+              value: 1145154.76
+              series: avg_price
+            - layer: actual
+              month: '2010-03-01'
+              value: 1005142.86
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-03-01'
+              value: 1098484.13
+              series: avg_price
+            - layer: actual
+              month: '2010-04-01'
+              value: 1368750.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-04-01'
+              value: 1166050.6
+              series: avg_price
+            - layer: actual
+              month: '2010-05-01'
+              value: 1050868.87
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-05-01'
+              value: 1143014.25
+              series: avg_price
+            - layer: actual
+              month: '2010-06-01'
+              value: 432000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-06-01'
+              value: 1024511.88
+              series: avg_price
+            - layer: actual
+              month: '2010-07-01'
+              value: 1304211.11
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-07-01'
+              value: 1018773.25
+              series: avg_price
+            - layer: actual
+              month: '2010-08-01'
+              value: 1030491.33
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-08-01'
+              value: 1031910.7
+              series: avg_price
+            - layer: actual
+              month: '2010-09-01'
+              value: 708050.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-09-01'
+              value: 982395.22
+              series: avg_price
+            - layer: actual
+              month: '2010-10-01'
+              value: 1194430.77
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-10-01'
+              value: 953342.01
+              series: avg_price
+            - layer: actual
+              month: '2010-11-01'
+              value: 1300164.52
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-11-01'
+              value: 994891.29
+              series: avg_price
+            - layer: actual
+              month: '2010-12-01'
+              value: 733301.56
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2010-12-01'
+              value: 1045108.21
+              series: avg_price
+            - layer: actual
+              month: '2011-01-01'
+              value: 374028.57
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-01-01'
+              value: 890077.79
+              series: avg_price
+            - layer: actual
+              month: '2011-02-01'
+              value: 636007.32
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-02-01'
+              value: 824330.46
+              series: avg_price
+            - layer: actual
+              month: '2011-03-01'
+              value: 640760.98
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-03-01'
+              value: 813115.62
+              series: avg_price
+            - layer: actual
+              month: '2011-04-01'
+              value: 747810.69
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-04-01'
+              value: 738678.94
+              series: avg_price
+            - layer: actual
+              month: '2011-05-01'
+              value: 612378.65
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-05-01'
+              value: 624047.96
+              series: avg_price
+            - layer: actual
+              month: '2011-06-01'
+              value: 717301.6
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-06-01'
+              value: 621381.3
+              series: avg_price
+            - layer: actual
+              month: '2011-07-01'
+              value: 719387.37
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-07-01'
+              value: 678941.1
+              series: avg_price
+            - layer: actual
+              month: '2011-08-01'
+              value: 722547.46
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-08-01'
+              value: 693364.46
+              series: avg_price
+            - layer: actual
+              month: '2011-09-01'
+              value: 742239.37
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-09-01'
+              value: 710277.52
+              series: avg_price
+            - layer: actual
+              month: '2011-10-01'
+              value: 750938.76
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-10-01'
+              value: 710798.87
+              series: avg_price
+            - layer: actual
+              month: '2011-11-01'
+              value: 751778.17
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-11-01'
+              value: 734032.12
+              series: avg_price
+            - layer: actual
+              month: '2011-12-01'
+              value: 638226.31
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-12-01'
+              value: 720852.9
+              series: avg_price
+            - layer: actual
+              month: '2012-01-01'
+              value: 618681.2
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2012-01-01'
+              value: 704068.54
+              series: avg_price
             title: House Price Trends by Land-Size Band (6-month rolling average)
             height: fill
             intent: line
@@ -1674,160 +1617,156 @@ cases:
               \ ('house', 'unit')\n  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY\
               \ month, property_type"
             rows:
-              _truncated: true
-              _total: 414
-              _sha: df00bfbd247b
-              _head:
-              - month: '2015-01-01'
-                value: null
-                series: House (6m avg)
-              - month: '2015-01-01'
-                value: null
-                series: Unit (6m avg)
-              - month: '2015-01-01'
-                value: null
-                series: Price gap (6m avg)
-              - month: '2015-02-01'
-                value: null
-                series: House (6m avg)
-              - month: '2015-02-01'
-                value: null
-                series: Unit (6m avg)
-              - month: '2015-02-01'
-                value: null
-                series: Price gap (6m avg)
-              - month: '2015-03-01'
-                value: 599880.6049954115
-                series: House (6m avg)
-              - month: '2015-03-01'
-                value: 394340.6949218049
-                series: Unit (6m avg)
-              - month: '2015-03-01'
-                value: 205539.91007360656
-                series: Price gap (6m avg)
-              - month: '2015-04-01'
-                value: 604393.6458761883
-                series: House (6m avg)
-              - month: '2015-04-01'
-                value: 393828.4711913537
-                series: Unit (6m avg)
-              - month: '2015-04-01'
-                value: 210565.17468483455
-                series: Price gap (6m avg)
-              - month: '2015-05-01'
-                value: 631606.493893933
-                series: House (6m avg)
-              - month: '2015-05-01'
-                value: 397994.21173569164
-                series: Unit (6m avg)
-              - month: '2015-05-01'
-                value: 233612.28215824143
-                series: Price gap (6m avg)
-              - month: '2015-06-01'
-                value: 647862.82643335
-                series: House (6m avg)
-              - month: '2015-06-01'
-                value: 400959.4072156405
-                series: Unit (6m avg)
-              - month: '2015-06-01'
-                value: 246903.41921770954
-                series: Price gap (6m avg)
-              - month: '2015-07-01'
-                value: 658875.3360694894
-                series: House (6m avg)
-              - month: '2015-07-01'
-                value: 411861.80947792396
-                series: Unit (6m avg)
-              - month: '2015-07-01'
-                value: 247013.52659156546
-                series: Price gap (6m avg)
-              - month: '2015-08-01'
-                value: 671166.6816608872
-                series: House (6m avg)
-              - month: '2015-08-01'
-                value: 428454.541241946
-                series: Unit (6m avg)
-              - month: '2015-08-01'
-                value: 242712.14041894124
-                series: Price gap (6m avg)
-              - month: '2015-09-01'
-                value: 674723.105963088
-                series: House (6m avg)
-              - month: '2015-09-01'
-                value: 431454.6237722154
-                series: Unit (6m avg)
-              - month: '2015-09-01'
-                value: 243268.48219087263
-                series: Price gap (6m avg)
-              - month: '2015-10-01'
-                value: 702984.971073947
-                series: House (6m avg)
-              - month: '2015-10-01'
-                value: 443589.7511226428
-                series: Unit (6m avg)
-              - month: '2015-10-01'
-                value: 259395.21995130446
-                series: Price gap (6m avg)
-              - month: '2015-11-01'
-                value: 695953.703042758
-                series: House (6m avg)
-              - month: '2015-11-01'
-                value: 453719.8054704689
-                series: Unit (6m avg)
-              - month: '2015-11-01'
-                value: 242233.89757228925
-                series: Price gap (6m avg)
-              - month: '2015-12-01'
-                value: 677903.6052608563
-                series: House (6m avg)
-              - month: '2015-12-01'
-                value: 459879.3842250476
-                series: Unit (6m avg)
-              - month: '2015-12-01'
-                value: 218024.2210358088
-                series: Price gap (6m avg)
-              - month: '2016-01-01'
-                value: 671752.1134950191
-                series: House (6m avg)
-              - month: '2016-01-01'
-                value: 460134.6930321825
-                series: Unit (6m avg)
-              - month: '2016-01-01'
-                value: 211617.4204628366
-                series: Price gap (6m avg)
-              - month: '2016-02-01'
-                value: 669185.5930419447
-                series: House (6m avg)
-              - month: '2016-02-01'
-                value: 448781.58492407436
-                series: Unit (6m avg)
-              - month: '2016-02-01'
-                value: 220404.00811787028
-                series: Price gap (6m avg)
-              - month: '2016-03-01'
-                value: 665449.5555040276
-                series: House (6m avg)
-              - month: '2016-03-01'
-                value: 453876.9971306471
-                series: Unit (6m avg)
-              - month: '2016-03-01'
-                value: 211572.55837338042
-                series: Price gap (6m avg)
-              - month: '2016-04-01'
-                value: 642201.0497619457
-                series: House (6m avg)
-              - month: '2016-04-01'
-                value: 453655.5005978299
-                series: Unit (6m avg)
-              - month: '2016-04-01'
-                value: 188545.54916411592
-                series: Price gap (6m avg)
-              - month: '2016-05-01'
-                value: 665136.1171020131
-                series: House (6m avg)
-              - month: '2016-05-01'
-                value: 449411.20349638053
-                series: Unit (6m avg)
+            - month: '2015-01-01'
+              value: null
+              series: House (6m avg)
+            - month: '2015-01-01'
+              value: null
+              series: Unit (6m avg)
+            - month: '2015-01-01'
+              value: null
+              series: Price gap (6m avg)
+            - month: '2015-02-01'
+              value: null
+              series: House (6m avg)
+            - month: '2015-02-01'
+              value: null
+              series: Unit (6m avg)
+            - month: '2015-02-01'
+              value: null
+              series: Price gap (6m avg)
+            - month: '2015-03-01'
+              value: 599880.6049954115
+              series: House (6m avg)
+            - month: '2015-03-01'
+              value: 394340.6949218049
+              series: Unit (6m avg)
+            - month: '2015-03-01'
+              value: 205539.91007360656
+              series: Price gap (6m avg)
+            - month: '2015-04-01'
+              value: 604393.6458761883
+              series: House (6m avg)
+            - month: '2015-04-01'
+              value: 393828.4711913537
+              series: Unit (6m avg)
+            - month: '2015-04-01'
+              value: 210565.17468483455
+              series: Price gap (6m avg)
+            - month: '2015-05-01'
+              value: 631606.493893933
+              series: House (6m avg)
+            - month: '2015-05-01'
+              value: 397994.21173569164
+              series: Unit (6m avg)
+            - month: '2015-05-01'
+              value: 233612.28215824143
+              series: Price gap (6m avg)
+            - month: '2015-06-01'
+              value: 647862.82643335
+              series: House (6m avg)
+            - month: '2015-06-01'
+              value: 400959.4072156405
+              series: Unit (6m avg)
+            - month: '2015-06-01'
+              value: 246903.41921770954
+              series: Price gap (6m avg)
+            - month: '2015-07-01'
+              value: 658875.3360694894
+              series: House (6m avg)
+            - month: '2015-07-01'
+              value: 411861.80947792396
+              series: Unit (6m avg)
+            - month: '2015-07-01'
+              value: 247013.52659156546
+              series: Price gap (6m avg)
+            - month: '2015-08-01'
+              value: 671166.6816608872
+              series: House (6m avg)
+            - month: '2015-08-01'
+              value: 428454.541241946
+              series: Unit (6m avg)
+            - month: '2015-08-01'
+              value: 242712.14041894124
+              series: Price gap (6m avg)
+            - month: '2015-09-01'
+              value: 674723.105963088
+              series: House (6m avg)
+            - month: '2015-09-01'
+              value: 431454.6237722154
+              series: Unit (6m avg)
+            - month: '2015-09-01'
+              value: 243268.48219087263
+              series: Price gap (6m avg)
+            - month: '2015-10-01'
+              value: 702984.971073947
+              series: House (6m avg)
+            - month: '2015-10-01'
+              value: 443589.7511226428
+              series: Unit (6m avg)
+            - month: '2015-10-01'
+              value: 259395.21995130446
+              series: Price gap (6m avg)
+            - month: '2015-11-01'
+              value: 695953.703042758
+              series: House (6m avg)
+            - month: '2015-11-01'
+              value: 453719.8054704689
+              series: Unit (6m avg)
+            - month: '2015-11-01'
+              value: 242233.89757228925
+              series: Price gap (6m avg)
+            - month: '2015-12-01'
+              value: 677903.6052608563
+              series: House (6m avg)
+            - month: '2015-12-01'
+              value: 459879.3842250476
+              series: Unit (6m avg)
+            - month: '2015-12-01'
+              value: 218024.2210358088
+              series: Price gap (6m avg)
+            - month: '2016-01-01'
+              value: 671752.1134950191
+              series: House (6m avg)
+            - month: '2016-01-01'
+              value: 460134.6930321825
+              series: Unit (6m avg)
+            - month: '2016-01-01'
+              value: 211617.4204628366
+              series: Price gap (6m avg)
+            - month: '2016-02-01'
+              value: 669185.5930419447
+              series: House (6m avg)
+            - month: '2016-02-01'
+              value: 448781.58492407436
+              series: Unit (6m avg)
+            - month: '2016-02-01'
+              value: 220404.00811787028
+              series: Price gap (6m avg)
+            - month: '2016-03-01'
+              value: 665449.5555040276
+              series: House (6m avg)
+            - month: '2016-03-01'
+              value: 453876.9971306471
+              series: Unit (6m avg)
+            - month: '2016-03-01'
+              value: 211572.55837338042
+              series: Price gap (6m avg)
+            - month: '2016-04-01'
+              value: 642201.0497619457
+              series: House (6m avg)
+            - month: '2016-04-01'
+              value: 453655.5005978299
+              series: Unit (6m avg)
+            - month: '2016-04-01'
+              value: 188545.54916411592
+              series: Price gap (6m avg)
+            - month: '2016-05-01'
+              value: 665136.1171020131
+              series: House (6m avg)
+            - month: '2016-05-01'
+              value: 449411.20349638053
+              series: Unit (6m avg)
             title: 'Central Coast (2250): House vs Unit Prices & Price Gap — 6-month rolling average'
             height: fill
             intent: line
@@ -1870,160 +1809,156 @@ cases:
               \ ('house', 'unit')\n  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY\
               \ month, property_type"
             rows:
-              _truncated: true
-              _total: 276
-              _sha: d39ed264d336
-              _head:
-              - month: '2015-01-01'
-                value: null
-                series: House
-              - month: '2015-01-01'
-                value: null
-                series: Unit
-              - month: '2015-02-01'
-                value: null
-                series: House
-              - month: '2015-02-01'
-                value: null
-                series: Unit
-              - month: '2015-03-01'
-                value: 599880.6049954115
-                series: House
-              - month: '2015-03-01'
-                value: 394340.6949218049
-                series: Unit
-              - month: '2015-04-01'
-                value: 604393.6458761883
-                series: House
-              - month: '2015-04-01'
-                value: 393828.4711913537
-                series: Unit
-              - month: '2015-05-01'
-                value: 631606.493893933
-                series: House
-              - month: '2015-05-01'
-                value: 397994.21173569164
-                series: Unit
-              - month: '2015-06-01'
-                value: 647862.82643335
-                series: House
-              - month: '2015-06-01'
-                value: 400959.4072156405
-                series: Unit
-              - month: '2015-07-01'
-                value: 658875.3360694894
-                series: House
-              - month: '2015-07-01'
-                value: 411861.80947792396
-                series: Unit
-              - month: '2015-08-01'
-                value: 671166.6816608872
-                series: House
-              - month: '2015-08-01'
-                value: 428454.541241946
-                series: Unit
-              - month: '2015-09-01'
-                value: 674723.105963088
-                series: House
-              - month: '2015-09-01'
-                value: 431454.6237722154
-                series: Unit
-              - month: '2015-10-01'
-                value: 702984.971073947
-                series: House
-              - month: '2015-10-01'
-                value: 443589.7511226428
-                series: Unit
-              - month: '2015-11-01'
-                value: 695953.703042758
-                series: House
-              - month: '2015-11-01'
-                value: 453719.8054704689
-                series: Unit
-              - month: '2015-12-01'
-                value: 677903.6052608563
-                series: House
-              - month: '2015-12-01'
-                value: 459879.3842250476
-                series: Unit
-              - month: '2016-01-01'
-                value: 671752.1134950191
-                series: House
-              - month: '2016-01-01'
-                value: 460134.6930321825
-                series: Unit
-              - month: '2016-02-01'
-                value: 669185.5930419447
-                series: House
-              - month: '2016-02-01'
-                value: 448781.58492407436
-                series: Unit
-              - month: '2016-03-01'
-                value: 665449.5555040276
-                series: House
-              - month: '2016-03-01'
-                value: 453876.9971306471
-                series: Unit
-              - month: '2016-04-01'
-                value: 642201.0497619457
-                series: House
-              - month: '2016-04-01'
-                value: 453655.5005978299
-                series: Unit
-              - month: '2016-05-01'
-                value: 665136.1171020131
-                series: House
-              - month: '2016-05-01'
-                value: 449411.20349638053
-                series: Unit
-              - month: '2016-06-01'
-                value: 667747.5739752025
-                series: House
-              - month: '2016-06-01'
-                value: 450009.21496022533
-                series: Unit
-              - month: '2016-07-01'
-                value: 672780.8761205683
-                series: House
-              - month: '2016-07-01'
-                value: 455913.3949815929
-                series: Unit
-              - month: '2016-08-01'
-                value: 679253.6017588278
-                series: House
-              - month: '2016-08-01'
-                value: 471309.9366482596
-                series: Unit
-              - month: '2016-09-01'
-                value: 693648.0960902232
-                series: House
-              - month: '2016-09-01'
-                value: 473244.5588704818
-                series: Unit
-              - month: '2016-10-01'
-                value: 696935.6326900088
-                series: House
-              - month: '2016-10-01'
-                value: 491188.31323805684
-                series: Unit
-              - month: '2016-11-01'
-                value: 687393.0190536453
-                series: House
-              - month: '2016-11-01'
-                value: 502362.8309277415
-                series: Unit
-              - month: '2016-12-01'
-                value: 700062.1228850629
-                series: House
-              - month: '2016-12-01'
-                value: 538584.2599400872
-                series: Unit
-              - month: '2017-01-01'
-                value: 720748.0866858201
-                series: House
-              - month: '2017-01-01'
-                value: 548325.942389582
-                series: Unit
+            - month: '2015-01-01'
+              value: null
+              series: House
+            - month: '2015-01-01'
+              value: null
+              series: Unit
+            - month: '2015-02-01'
+              value: null
+              series: House
+            - month: '2015-02-01'
+              value: null
+              series: Unit
+            - month: '2015-03-01'
+              value: 599880.6049954115
+              series: House
+            - month: '2015-03-01'
+              value: 394340.6949218049
+              series: Unit
+            - month: '2015-04-01'
+              value: 604393.6458761883
+              series: House
+            - month: '2015-04-01'
+              value: 393828.4711913537
+              series: Unit
+            - month: '2015-05-01'
+              value: 631606.493893933
+              series: House
+            - month: '2015-05-01'
+              value: 397994.21173569164
+              series: Unit
+            - month: '2015-06-01'
+              value: 647862.82643335
+              series: House
+            - month: '2015-06-01'
+              value: 400959.4072156405
+              series: Unit
+            - month: '2015-07-01'
+              value: 658875.3360694894
+              series: House
+            - month: '2015-07-01'
+              value: 411861.80947792396
+              series: Unit
+            - month: '2015-08-01'
+              value: 671166.6816608872
+              series: House
+            - month: '2015-08-01'
+              value: 428454.541241946
+              series: Unit
+            - month: '2015-09-01'
+              value: 674723.105963088
+              series: House
+            - month: '2015-09-01'
+              value: 431454.6237722154
+              series: Unit
+            - month: '2015-10-01'
+              value: 702984.971073947
+              series: House
+            - month: '2015-10-01'
+              value: 443589.7511226428
+              series: Unit
+            - month: '2015-11-01'
+              value: 695953.703042758
+              series: House
+            - month: '2015-11-01'
+              value: 453719.8054704689
+              series: Unit
+            - month: '2015-12-01'
+              value: 677903.6052608563
+              series: House
+            - month: '2015-12-01'
+              value: 459879.3842250476
+              series: Unit
+            - month: '2016-01-01'
+              value: 671752.1134950191
+              series: House
+            - month: '2016-01-01'
+              value: 460134.6930321825
+              series: Unit
+            - month: '2016-02-01'
+              value: 669185.5930419447
+              series: House
+            - month: '2016-02-01'
+              value: 448781.58492407436
+              series: Unit
+            - month: '2016-03-01'
+              value: 665449.5555040276
+              series: House
+            - month: '2016-03-01'
+              value: 453876.9971306471
+              series: Unit
+            - month: '2016-04-01'
+              value: 642201.0497619457
+              series: House
+            - month: '2016-04-01'
+              value: 453655.5005978299
+              series: Unit
+            - month: '2016-05-01'
+              value: 665136.1171020131
+              series: House
+            - month: '2016-05-01'
+              value: 449411.20349638053
+              series: Unit
+            - month: '2016-06-01'
+              value: 667747.5739752025
+              series: House
+            - month: '2016-06-01'
+              value: 450009.21496022533
+              series: Unit
+            - month: '2016-07-01'
+              value: 672780.8761205683
+              series: House
+            - month: '2016-07-01'
+              value: 455913.3949815929
+              series: Unit
+            - month: '2016-08-01'
+              value: 679253.6017588278
+              series: House
+            - month: '2016-08-01'
+              value: 471309.9366482596
+              series: Unit
+            - month: '2016-09-01'
+              value: 693648.0960902232
+              series: House
+            - month: '2016-09-01'
+              value: 473244.5588704818
+              series: Unit
+            - month: '2016-10-01'
+              value: 696935.6326900088
+              series: House
+            - month: '2016-10-01'
+              value: 491188.31323805684
+              series: Unit
+            - month: '2016-11-01'
+              value: 687393.0190536453
+              series: House
+            - month: '2016-11-01'
+              value: 502362.8309277415
+              series: Unit
+            - month: '2016-12-01'
+              value: 700062.1228850629
+              series: House
+            - month: '2016-12-01'
+              value: 538584.2599400872
+              series: Unit
+            - month: '2017-01-01'
+              value: 720748.0866858201
+              series: House
+            - month: '2017-01-01'
+              value: 548325.942389582
+              series: Unit
             group: series
             title: 'Central Coast (2250): House vs Unit Average Prices — 6-month rolling average'
             height: fill
@@ -3049,210 +2984,206 @@ cases:
               WHERE suburb = 'Marsden Park'\n  AND postcode = '2765'\n  AND property_type = 'house'\n\
               ORDER BY month"
             rows:
-              _truncated: true
-              _total: 310
-              _sha: fd881fc37b9e
-              _head:
-              - layer: actual
-                month: '2011-11-01'
-                value: 910000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-11-01'
-                value: 910000.0
-                series: avg_price
-              - layer: actual
-                month: '2011-12-01'
-                value: 375000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2011-12-01'
-                value: 642500.0
-                series: avg_price
-              - layer: actual
-                month: '2012-01-01'
-                value: 2170000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2012-01-01'
-                value: 1151666.67
-                series: avg_price
-              - layer: actual
-                month: '2012-05-01'
-                value: 225000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2012-05-01'
-                value: 920000.0
-                series: avg_price
-              - layer: actual
-                month: '2012-06-01'
-                value: 2190639.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2012-06-01'
-                value: 1174127.8
-                series: avg_price
-              - layer: actual
-                month: '2012-12-01'
-                value: 900000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2012-12-01'
-                value: 1128439.83
-                series: avg_price
-              - layer: actual
-                month: '2013-02-01'
-                value: 3773450.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2013-02-01'
-                value: 1605681.5
-                series: avg_price
-              - layer: actual
-                month: '2013-09-01'
-                value: 3750000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2013-09-01'
-                value: 2168181.5
-                series: avg_price
-              - layer: actual
-                month: '2013-11-01'
-                value: 3635000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2013-11-01'
-                value: 2412348.17
-                series: avg_price
-              - layer: actual
-                month: '2014-02-01'
-                value: 980000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2014-02-01'
-                value: 2538181.5
-                series: avg_price
-              - layer: actual
-                month: '2014-06-01'
-                value: 331333.33
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2014-06-01'
-                value: 2228297.22
-                series: avg_price
-              - layer: actual
-                month: '2014-07-01'
-                value: 705328.2
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2014-07-01'
-                value: 2195851.92
-                series: avg_price
-              - layer: actual
-                month: '2014-08-01'
-                value: 1790600.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2014-08-01'
-                value: 1865376.92
-                series: avg_price
-              - layer: actual
-                month: '2014-09-01'
-                value: 324000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2014-09-01'
-                value: 1294376.92
-                series: avg_price
-              - layer: actual
-                month: '2014-10-01'
-                value: 240000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2014-10-01'
-                value: 728543.59
-                series: avg_price
-              - layer: actual
-                month: '2014-11-01'
-                value: 1140333.33
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2014-11-01'
-                value: 755265.81
-                series: avg_price
-              - layer: actual
-                month: '2014-12-01'
-                value: 2028220.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2014-12-01'
-                value: 1038080.26
-                series: avg_price
-              - layer: actual
-                month: '2015-01-01'
-                value: 2633000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2015-01-01'
-                value: 1359358.89
-                series: avg_price
-              - layer: actual
-                month: '2015-02-01'
-                value: 3600000.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2015-02-01'
-                value: 1660925.56
-                series: avg_price
-              - layer: actual
-                month: '2015-03-01'
-                value: 1932492.5
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2015-03-01'
-                value: 1929007.64
-                series: avg_price
-              - layer: actual
-                month: '2015-04-01'
-                value: 540996.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2015-04-01'
-                value: 1979173.64
-                series: avg_price
-              - layer: actual
-                month: '2015-05-01'
-                value: 1846876.0
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2015-05-01'
-                value: 2096930.75
-                series: avg_price
-              - layer: actual
-                month: '2015-06-01'
-                value: 608512.17
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2015-06-01'
-                value: 1860312.78
-                series: avg_price
-              - layer: actual
-                month: '2015-07-01'
-                value: 727618.62
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2015-07-01'
-                value: 1542749.22
-                series: avg_price
-              - layer: actual
-                month: '2015-08-01'
-                value: 744077.86
-                series: avg_price
-              - layer: 6-mo avg
-                month: '2015-08-01'
-                value: 1066762.19
-                series: avg_price
+            - layer: actual
+              month: '2011-11-01'
+              value: 910000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-11-01'
+              value: 910000.0
+              series: avg_price
+            - layer: actual
+              month: '2011-12-01'
+              value: 375000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2011-12-01'
+              value: 642500.0
+              series: avg_price
+            - layer: actual
+              month: '2012-01-01'
+              value: 2170000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2012-01-01'
+              value: 1151666.67
+              series: avg_price
+            - layer: actual
+              month: '2012-05-01'
+              value: 225000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2012-05-01'
+              value: 920000.0
+              series: avg_price
+            - layer: actual
+              month: '2012-06-01'
+              value: 2190639.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2012-06-01'
+              value: 1174127.8
+              series: avg_price
+            - layer: actual
+              month: '2012-12-01'
+              value: 900000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2012-12-01'
+              value: 1128439.83
+              series: avg_price
+            - layer: actual
+              month: '2013-02-01'
+              value: 3773450.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2013-02-01'
+              value: 1605681.5
+              series: avg_price
+            - layer: actual
+              month: '2013-09-01'
+              value: 3750000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2013-09-01'
+              value: 2168181.5
+              series: avg_price
+            - layer: actual
+              month: '2013-11-01'
+              value: 3635000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2013-11-01'
+              value: 2412348.17
+              series: avg_price
+            - layer: actual
+              month: '2014-02-01'
+              value: 980000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2014-02-01'
+              value: 2538181.5
+              series: avg_price
+            - layer: actual
+              month: '2014-06-01'
+              value: 331333.33
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2014-06-01'
+              value: 2228297.22
+              series: avg_price
+            - layer: actual
+              month: '2014-07-01'
+              value: 705328.2
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2014-07-01'
+              value: 2195851.92
+              series: avg_price
+            - layer: actual
+              month: '2014-08-01'
+              value: 1790600.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2014-08-01'
+              value: 1865376.92
+              series: avg_price
+            - layer: actual
+              month: '2014-09-01'
+              value: 324000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2014-09-01'
+              value: 1294376.92
+              series: avg_price
+            - layer: actual
+              month: '2014-10-01'
+              value: 240000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2014-10-01'
+              value: 728543.59
+              series: avg_price
+            - layer: actual
+              month: '2014-11-01'
+              value: 1140333.33
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2014-11-01'
+              value: 755265.81
+              series: avg_price
+            - layer: actual
+              month: '2014-12-01'
+              value: 2028220.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2014-12-01'
+              value: 1038080.26
+              series: avg_price
+            - layer: actual
+              month: '2015-01-01'
+              value: 2633000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2015-01-01'
+              value: 1359358.89
+              series: avg_price
+            - layer: actual
+              month: '2015-02-01'
+              value: 3600000.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2015-02-01'
+              value: 1660925.56
+              series: avg_price
+            - layer: actual
+              month: '2015-03-01'
+              value: 1932492.5
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2015-03-01'
+              value: 1929007.64
+              series: avg_price
+            - layer: actual
+              month: '2015-04-01'
+              value: 540996.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2015-04-01'
+              value: 1979173.64
+              series: avg_price
+            - layer: actual
+              month: '2015-05-01'
+              value: 1846876.0
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2015-05-01'
+              value: 2096930.75
+              series: avg_price
+            - layer: actual
+              month: '2015-06-01'
+              value: 608512.17
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2015-06-01'
+              value: 1860312.78
+              series: avg_price
+            - layer: actual
+              month: '2015-07-01'
+              value: 727618.62
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2015-07-01'
+              value: 1542749.22
+              series: avg_price
+            - layer: actual
+              month: '2015-08-01'
+              value: 744077.86
+              series: avg_price
+            - layer: 6-mo avg
+              month: '2015-08-01'
+              value: 1066762.19
+              series: avg_price
             title: Marsden Park (2765) — Average House Price
             height: fill
             intent: line
@@ -3296,210 +3227,206 @@ cases:
               WHERE suburb = 'Marsden Park'\n  AND postcode = '2765'\n  AND property_type = 'house'\n\
               ORDER BY month"
             rows:
-              _truncated: true
-              _total: 60
-              _sha: 6c3bc613020d
-              _head:
-              - year: '2011'
-                share: 100.0
-                n_sold: 2.0
-                area_band: 5000+
-              - year: '2012'
-                share: 100.0
-                n_sold: 4.0
-                area_band: 5000+
-              - year: '2013'
-                share: 100.0
-                n_sold: 4.0
-                area_band: 5000+
-              - year: '2014'
-                share: 4.55
-                n_sold: 1.0
-                area_band: 1000-5000
-              - year: '2014'
-                share: 18.18
-                n_sold: 4.0
-                area_band: 400-700
-              - year: '2014'
-                share: 40.91
-                n_sold: 9.0
-                area_band: 5000+
-              - year: '2014'
-                share: 4.55
-                n_sold: 1.0
-                area_band: 700-1000
-              - year: '2014'
-                share: 31.82
-                n_sold: 7.0
-                area_band: <400
-              - year: '2015'
-                share: 18.09
-                n_sold: 17.0
-                area_band: 400-700
-              - year: '2015'
-                share: 9.57
-                n_sold: 9.0
-                area_band: 5000+
-              - year: '2015'
-                share: 72.34
-                n_sold: 68.0
-                area_band: <400
-              - year: '2016'
-                share: 12.93
-                n_sold: 30.0
-                area_band: 400-700
-              - year: '2016'
-                share: 2.59
-                n_sold: 6.0
-                area_band: 5000+
-              - year: '2016'
-                share: 76.72
-                n_sold: 178.0
-                area_band: <400
-              - year: '2016'
-                share: 7.76
-                n_sold: 18.0
-                area_band: unknown
-              - year: '2017'
-                share: 20.0
-                n_sold: 67.0
-                area_band: 400-700
-              - year: '2017'
-                share: 3.58
-                n_sold: 12.0
-                area_band: 5000+
-              - year: '2017'
-                share: 66.57
-                n_sold: 223.0
-                area_band: <400
-              - year: '2017'
-                share: 9.85
-                n_sold: 33.0
-                area_band: unknown
-              - year: '2018'
-                share: 0.41
-                n_sold: 1.0
-                area_band: 1000-5000
-              - year: '2018'
-                share: 18.78
-                n_sold: 46.0
-                area_band: 400-700
-              - year: '2018'
-                share: 1.63
-                n_sold: 4.0
-                area_band: 5000+
-              - year: '2018'
-                share: 75.51
-                n_sold: 185.0
-                area_band: <400
-              - year: '2018'
-                share: 3.67
-                n_sold: 9.0
-                area_band: unknown
-              - year: '2019'
-                share: 21.0
-                n_sold: 92.0
-                area_band: 400-700
-              - year: '2019'
-                share: 0.23
-                n_sold: 1.0
-                area_band: 5000+
-              - year: '2019'
-                share: 67.35
-                n_sold: 295.0
-                area_band: <400
-              - year: '2019'
-                share: 11.42
-                n_sold: 50.0
-                area_band: unknown
-              - year: '2020'
-                share: 20.12
-                n_sold: 137.0
-                area_band: 400-700
-              - year: '2020'
-                share: 0.15
-                n_sold: 1.0
-                area_band: 5000+
-              - year: '2020'
-                share: 79.59
-                n_sold: 542.0
-                area_band: <400
-              - year: '2020'
-                share: 0.15
-                n_sold: 1.0
-                area_band: unknown
-              - year: '2021'
-                share: 0.17
-                n_sold: 1.0
-                area_band: 1000-5000
-              - year: '2021'
-                share: 20.13
-                n_sold: 122.0
-                area_band: 400-700
-              - year: '2021'
-                share: 0.99
-                n_sold: 6.0
-                area_band: 5000+
-              - year: '2021'
-                share: 0.17
-                n_sold: 1.0
-                area_band: 700-1000
-              - year: '2021'
-                share: 76.9
-                n_sold: 466.0
-                area_band: <400
-              - year: '2021'
-                share: 1.65
-                n_sold: 10.0
-                area_band: unknown
-              - year: '2022'
-                share: 0.28
-                n_sold: 1.0
-                area_band: 1000-5000
-              - year: '2022'
-                share: 20.39
-                n_sold: 73.0
-                area_band: 400-700
-              - year: '2022'
-                share: 1.12
-                n_sold: 4.0
-                area_band: 5000+
-              - year: '2022'
-                share: 73.74
-                n_sold: 264.0
-                area_band: <400
-              - year: '2022'
-                share: 4.47
-                n_sold: 16.0
-                area_band: unknown
-              - year: '2023'
-                share: 0.32
-                n_sold: 1.0
-                area_band: 1000-5000
-              - year: '2023'
-                share: 19.62
-                n_sold: 62.0
-                area_band: 400-700
-              - year: '2023'
-                share: 1.58
-                n_sold: 5.0
-                area_band: 5000+
-              - year: '2023'
-                share: 0.32
-                n_sold: 1.0
-                area_band: 700-1000
-              - year: '2023'
-                share: 72.15
-                n_sold: 228.0
-                area_band: <400
-              - year: '2023'
-                share: 6.01
-                n_sold: 19.0
-                area_band: unknown
-              - year: '2024'
-                share: 18.43
-                n_sold: 73.0
-                area_band: 400-700
+            - year: '2011'
+              share: 100.0
+              n_sold: 2.0
+              area_band: 5000+
+            - year: '2012'
+              share: 100.0
+              n_sold: 4.0
+              area_band: 5000+
+            - year: '2013'
+              share: 100.0
+              n_sold: 4.0
+              area_band: 5000+
+            - year: '2014'
+              share: 4.55
+              n_sold: 1.0
+              area_band: 1000-5000
+            - year: '2014'
+              share: 18.18
+              n_sold: 4.0
+              area_band: 400-700
+            - year: '2014'
+              share: 40.91
+              n_sold: 9.0
+              area_band: 5000+
+            - year: '2014'
+              share: 4.55
+              n_sold: 1.0
+              area_band: 700-1000
+            - year: '2014'
+              share: 31.82
+              n_sold: 7.0
+              area_band: <400
+            - year: '2015'
+              share: 18.09
+              n_sold: 17.0
+              area_band: 400-700
+            - year: '2015'
+              share: 9.57
+              n_sold: 9.0
+              area_band: 5000+
+            - year: '2015'
+              share: 72.34
+              n_sold: 68.0
+              area_band: <400
+            - year: '2016'
+              share: 12.93
+              n_sold: 30.0
+              area_band: 400-700
+            - year: '2016'
+              share: 2.59
+              n_sold: 6.0
+              area_band: 5000+
+            - year: '2016'
+              share: 76.72
+              n_sold: 178.0
+              area_band: <400
+            - year: '2016'
+              share: 7.76
+              n_sold: 18.0
+              area_band: unknown
+            - year: '2017'
+              share: 20.0
+              n_sold: 67.0
+              area_band: 400-700
+            - year: '2017'
+              share: 3.58
+              n_sold: 12.0
+              area_band: 5000+
+            - year: '2017'
+              share: 66.57
+              n_sold: 223.0
+              area_band: <400
+            - year: '2017'
+              share: 9.85
+              n_sold: 33.0
+              area_band: unknown
+            - year: '2018'
+              share: 0.41
+              n_sold: 1.0
+              area_band: 1000-5000
+            - year: '2018'
+              share: 18.78
+              n_sold: 46.0
+              area_band: 400-700
+            - year: '2018'
+              share: 1.63
+              n_sold: 4.0
+              area_band: 5000+
+            - year: '2018'
+              share: 75.51
+              n_sold: 185.0
+              area_band: <400
+            - year: '2018'
+              share: 3.67
+              n_sold: 9.0
+              area_band: unknown
+            - year: '2019'
+              share: 21.0
+              n_sold: 92.0
+              area_band: 400-700
+            - year: '2019'
+              share: 0.23
+              n_sold: 1.0
+              area_band: 5000+
+            - year: '2019'
+              share: 67.35
+              n_sold: 295.0
+              area_band: <400
+            - year: '2019'
+              share: 11.42
+              n_sold: 50.0
+              area_band: unknown
+            - year: '2020'
+              share: 20.12
+              n_sold: 137.0
+              area_band: 400-700
+            - year: '2020'
+              share: 0.15
+              n_sold: 1.0
+              area_band: 5000+
+            - year: '2020'
+              share: 79.59
+              n_sold: 542.0
+              area_band: <400
+            - year: '2020'
+              share: 0.15
+              n_sold: 1.0
+              area_band: unknown
+            - year: '2021'
+              share: 0.17
+              n_sold: 1.0
+              area_band: 1000-5000
+            - year: '2021'
+              share: 20.13
+              n_sold: 122.0
+              area_band: 400-700
+            - year: '2021'
+              share: 0.99
+              n_sold: 6.0
+              area_band: 5000+
+            - year: '2021'
+              share: 0.17
+              n_sold: 1.0
+              area_band: 700-1000
+            - year: '2021'
+              share: 76.9
+              n_sold: 466.0
+              area_band: <400
+            - year: '2021'
+              share: 1.65
+              n_sold: 10.0
+              area_band: unknown
+            - year: '2022'
+              share: 0.28
+              n_sold: 1.0
+              area_band: 1000-5000
+            - year: '2022'
+              share: 20.39
+              n_sold: 73.0
+              area_band: 400-700
+            - year: '2022'
+              share: 1.12
+              n_sold: 4.0
+              area_band: 5000+
+            - year: '2022'
+              share: 73.74
+              n_sold: 264.0
+              area_band: <400
+            - year: '2022'
+              share: 4.47
+              n_sold: 16.0
+              area_band: unknown
+            - year: '2023'
+              share: 0.32
+              n_sold: 1.0
+              area_band: 1000-5000
+            - year: '2023'
+              share: 19.62
+              n_sold: 62.0
+              area_band: 400-700
+            - year: '2023'
+              share: 1.58
+              n_sold: 5.0
+              area_band: 5000+
+            - year: '2023'
+              share: 0.32
+              n_sold: 1.0
+              area_band: 700-1000
+            - year: '2023'
+              share: 72.15
+              n_sold: 228.0
+              area_band: <400
+            - year: '2023'
+              share: 6.01
+              n_sold: 19.0
+              area_band: unknown
+            - year: '2024'
+              share: 18.43
+              n_sold: 73.0
+              area_band: 400-700
             group: area_band
             title: Marsden Park House Sales Mix by Lot Size
             height: fill

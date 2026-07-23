@@ -11,7 +11,7 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar, LinePath } from "@visx/shape";
 import { ChartTip, TipState } from "./ChartTip";
 import { downloadSvgAsPng } from "./exportPng";
-import { chartPalette, chartTheme, cssVar, formatValue } from "./tokens";
+import { asRows, chartPalette, chartTheme, cssVar, formatValue } from "./tokens";
 
 export interface ComboData {
   dimension: string; // x field (nominal — categories / bands)
@@ -36,7 +36,7 @@ const MAX_CATEGORIES = 20;
 
 function parseData(data: ComboData): Datum[] {
   const out: Datum[] = [];
-  for (const row of data.rows) {
+  for (const row of asRows(data.rows)) {
     const category = row[data.dimension];
     if (category == null) continue;
     const bar = Number(row[data.measure]);

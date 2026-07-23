@@ -133,35 +133,78 @@ def element_id_for(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+# The "how" modifier augments a base metric into a derived one, deterministically
+# — so a count like ``n_sold`` becomes "% of sold by X" (share) or "growth over
+# the window" without needing a stored derived column or the LLM.
+_SHARE_HOWS = {"share", "pct", "percent", "% share", "share_of_x", "pct_of_x"}
+_GROWTH_HOWS = {"growth", "growth %", "growth_pct", "delta", "delta %"}
+_LATEST_HOWS = {"latest", "latest value", "current"}
+
+
 def _measure(raw: Any, *, default_label: str, default_source: str) -> dict[str, Any]:
     """Normalise a measure dict from the form.
 
     Shapes accepted:
       * ``{"label","source","agg","months"}``          — sum/mean of one column
       * ``{"label","num","den","months"}``              — weighted avg num/den
+      * ``{"label","source","how":"share"|"growth"|"latest","months"}``
+        — a base metric *augmented*: ``share`` = % of the source within the
+        chart's series (each series sums to 100% across the x-axis, the "mix"
+        reading); ``growth`` = first-vs-last % change over the window; ``latest``
+        = the value at the most recent month. All computed deterministically.
     """
     m = raw if isinstance(raw, dict) else {}
     num = m.get("num")
     den = m.get("den")
     label = str(m.get("label") or default_label)
     months = int(m.get("months") or 0) or None
-    if num and den:
+    how = str(m.get("how") or "").strip().lower()
+    source = str(m.get("source") or default_source)
+    if num and den and how not in _SHARE_HOWS | _GROWTH_HOWS | _LATEST_HOWS:
         return {"kind": "wavg", "label": label, "num": str(num), "den": str(den), "months": months}
+    if how in _SHARE_HOWS:
+        return {"kind": "share", "label": label, "source": source, "months": months}
+    if how in _GROWTH_HOWS:
+        return {"kind": "growth", "label": label, "source": source, "months": months}
+    if how in _LATEST_HOWS:
+        return {"kind": "latest", "label": label, "source": source, "months": months}
     return {
         "kind": "agg",
         "label": label,
-        "source": str(m.get("source") or default_source),
+        "source": source,
         "agg": str(m.get("agg") or "sum"),
         "months": months,
     }
 
 
+def dimension_cols(raw: Any, prof: MartProfile) -> list[str]:
+    """The x-axis source column(s). A list is a *composite* axis (e.g.
+    ``["bedroom_band", "property_type"]`` → one ``band · type`` axis)."""
+    if isinstance(raw, list):
+        cols = [str(c) for c in raw if c]
+        return cols or [prof.default_grain[1]]
+    return [str(raw or prof.default_grain[1])]
+
+
+def _x_axis_lines(dim_cols: list[str]) -> tuple[str, list[str]]:
+    """(x_col, code) — a single column, or a synthesized ``_x`` that joins several
+    dimension columns into one nominal axis label."""
+    if len(dim_cols) > 1:
+        concat = " + ' · ' + ".join(f"base['{c}'].astype(str)" for c in dim_cols)
+        return "_x", [f"base['_x'] = {concat}"]
+    return dim_cols[0], []
+
+
 def needed_columns(spec: dict[str, Any]) -> set[str]:
     """Every source column the spec's grain + measures read from the extract."""
     cols: set[str] = set(spec.get("grain") or [])
-    for key in ("dimension", "group"):
-        if spec.get(key):
-            cols.add(str(spec[key]))
+    dim = spec.get("dimension")
+    if isinstance(dim, list):
+        cols.update(str(c) for c in dim if c)
+    elif dim:
+        cols.add(str(dim))
+    if spec.get("group"):
+        cols.add(str(spec["group"]))
     for raw in (spec.get("bar_measure"), spec.get("line_measure")):
         if not isinstance(raw, dict):
             continue
@@ -294,9 +337,20 @@ def _window_setup(grain: list[str], months: int | None, additive: tuple[str, ...
     return lines
 
 
-def _measure_block(m: dict[str, Any], keys: list[str], var: str, has_month: bool) -> list[str]:
+def _measure_block(
+    m: dict[str, Any],
+    keys: list[str],
+    var: str,
+    has_month: bool,
+    within: list[str] | None = None,
+) -> list[str]:
     """Emit pandas that builds one measure at ``keys`` grain into DataFrame ``var``
-    with a single value column named ``m['label']``."""
+    with a single value column named ``m['label']``.
+
+    ``within`` scopes a ``share`` measure's denominator (the series/group column,
+    so each series sums to 100% across the x-axis); empty ⇒ share of the grand
+    total.
+    """
     keys_lit = json.dumps(keys)
     win = m.get("months")
     src = (
@@ -305,14 +359,49 @@ def _measure_block(m: dict[str, Any], keys: list[str], var: str, has_month: bool
         else ("base[base['month'].isin(_win_default)]" if has_month else "base")
     )
     label = m["label"]
-    if m["kind"] == "wavg":
+    kind = m["kind"]
+    if kind == "wavg":
         return [
             f"{var} = {src}.groupby({keys_lit}, as_index=False).agg("
             f"_num=('{m['num']}', 'sum'), _den=('{m['den']}', 'sum'))",
             f"{var}['{label}'] = ({var}['_num'] / {var}['_den'].where({var}['_den'] != 0)).round()",
             f"{var} = {var}[{keys_lit} + ['{label}']]",
         ]
-    agg = "mean" if m["agg"] == "mean" else "sum"
+    if kind == "share":
+        # % of the source within the series (`within`); each series then sums to
+        # 100% across the x-axis. Always a Series denominator so the empty-`within`
+        # (grand-total) case divides cleanly too.
+        src_col = m["source"]
+        within_lit = json.dumps([c for c in (within or []) if c])
+        return [
+            f"{var} = {src}.groupby({keys_lit}, as_index=False)['{src_col}'].sum()",
+            f"_wl = {within_lit}",
+            f"_den = ({var}.groupby(_wl)['{src_col}'].transform('sum') if _wl "
+            f"else pd.Series({var}['{src_col}'].sum(), index={var}.index))",
+            f"{var}['{label}'] = "
+            f"({var}['{src_col}'] * 100.0 / _den.replace(0, pd.NA)).round(2).fillna(0.0)",
+            f"{var} = {var}[{keys_lit} + ['{label}']]",
+        ]
+    if kind in ("growth", "latest") and has_month:
+        # Per chart key over the window's months: first-vs-last % change, or the
+        # most recent value. Needs the month grain to order on.
+        src_col = m["source"]
+        ordered = f"{src}.sort_values('month')"
+        if kind == "latest":
+            return [
+                f"{var} = {ordered}.groupby({keys_lit}, as_index=False)['{src_col}'].last()",
+                f"{var} = {var}.rename(columns={{'{src_col}': '{label}'}})",
+            ]
+        return [
+            f"{var} = {ordered}.groupby({keys_lit}, as_index=False).agg("
+            f"_first=('{src_col}', 'first'), _last=('{src_col}', 'last'))",
+            f"{var}['{label}'] = "
+            f"(({var}['_last'] - {var}['_first']) * 100.0 / {var}['_first'].replace(0, pd.NA))"
+            f".round(1).fillna(0.0)",
+            f"{var} = {var}[{keys_lit} + ['{label}']]",
+        ]
+    # Plain aggregate (also the fallback when growth/latest lack a month grain).
+    agg = "mean" if m.get("agg") == "mean" else "sum"
     round_ = ".round()" if agg == "mean" else ""
     return [
         f"{var} = {src}.groupby({keys_lit}, as_index=False)['{m['source']}'].{agg}(){round_}",
@@ -320,10 +409,20 @@ def _measure_block(m: dict[str, Any], keys: list[str], var: str, has_month: bool
     ]
 
 
-def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
-    grain = spec.get("grain") or list(prof.default_grain)
-    dimension = str(spec.get("dimension") or prof.default_grain[1])
+def _bar_grain(spec: dict[str, Any], prof: MartProfile) -> tuple[list[str], list[str], str | None]:
+    """Grain + dimension column(s) + group for a bar-family chart, ensuring the
+    chart's own columns survive the window dedup."""
+    grain = list(spec.get("grain") or prof.default_grain)
+    dim_cols = dimension_cols(spec.get("dimension"), prof)
     group = spec.get("group") or None
+    for c in [*dim_cols, *([str(group)] if group else [])]:
+        if c and c not in grain:
+            grain.append(c)
+    return grain, dim_cols, (str(group) if group else None)
+
+
+def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
+    grain, dim_cols, group = _bar_grain(spec, prof)
     has_month = "month" in grain
     bar = _measure(spec.get("bar_measure"), default_label="volume", default_source=prof.count_col)
     line = _measure(
@@ -331,16 +430,21 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
         default_label=prof.ratio_col,
         default_source=prof.ratio_col,
     )
-    chart_keys = [dimension] + ([str(group)] if group else [])
     lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
-    lines += _measure_block(bar, chart_keys, "bar_df", has_month)
+    x_col, x_lines = _x_axis_lines(dim_cols)
+    lines += x_lines
+    chart_keys = [x_col] + ([group] if group else [])
+    # A share bar is a share *within the series* — each series sums to 100% across
+    # the x-axis (the "mix" reading). No series ⇒ share of the grand total.
+    within = [group] if group else []
+    lines += _measure_block(bar, chart_keys, "bar_df", has_month, within=within)
     lines += _measure_block(line, chart_keys, "line_df", has_month)
     keys_lit = json.dumps(chart_keys)
     lines += [
         f"agg = bar_df.merge(line_df, on={keys_lit}, how='left')",
         f"agg = agg.dropna(subset=['{line['label']}'])",
     ]
-    series = f", series_col={json.dumps(str(group))}" if group else ""
+    series = f", series_col={json.dumps(group)}" if group else ""
     title = json.dumps(spec.get("title") or "Sale price vs volume by band")
     summary = json.dumps(
         spec.get("summary") or "Bars compare volume; the line tracks price across the dimension."
@@ -348,7 +452,7 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
     lines += [
         "chart = skills.dual_axis_chart(",
         "    agg,",
-        f"    x_col={json.dumps(dimension)},",
+        f"    x_col={json.dumps(x_col)},",
         f"    left_value_col={json.dumps(bar['label'])},",
         f"    right_value_col={json.dumps(line['label'])},",
         "    x_type='nominal',",
@@ -362,21 +466,23 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
 
 
 def _breakdown_code(spec: dict[str, Any], prof: MartProfile) -> str:
-    grain = spec.get("grain") or list(prof.default_grain)
-    dimension = str(spec.get("dimension") or prof.default_grain[1])
-    group = spec.get("group") or None
+    grain, dim_cols, group = _bar_grain(spec, prof)
     has_month = "month" in grain
     bar = _measure(spec.get("bar_measure"), default_label="volume", default_source=prof.count_col)
-    chart_keys = [dimension] + ([str(group)] if group else [])
     lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
-    lines += _measure_block(bar, chart_keys, "agg", has_month)
-    series = f", series_col={json.dumps(str(group))}" if group else ""
-    title = json.dumps(spec.get("title") or f"{bar['label']} by {dimension}")
-    summary = json.dumps(spec.get("summary") or f"{bar['label']} compared across {dimension}.")
+    x_col, x_lines = _x_axis_lines(dim_cols)
+    lines += x_lines
+    chart_keys = [x_col] + ([group] if group else [])
+    within = [group] if group else []
+    lines += _measure_block(bar, chart_keys, "agg", has_month, within=within)
+    series = f", series_col={json.dumps(group)}" if group else ""
+    x_label = " · ".join(dim_cols)
+    title = json.dumps(spec.get("title") or f"{bar['label']} by {x_label}")
+    summary = json.dumps(spec.get("summary") or f"{bar['label']} compared across {x_label}.")
     lines += [
         "chart = skills.comparison_chart(",
         "    agg,",
-        f"    category_col={json.dumps(dimension)},",
+        f"    category_col={json.dumps(x_col)},",
         f"    value_col={json.dumps(bar['label'])}{series},",
         f"    title={title},",
         ")",

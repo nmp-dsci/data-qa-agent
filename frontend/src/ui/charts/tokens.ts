@@ -29,6 +29,22 @@ export function chartTheme() {
   };
 }
 
+/**
+ * Coerce whatever a stored report carries in a chart's `rows` field into a real
+ * array the renderers can iterate. A report can arrive with `rows` as a plain
+ * array (the normal case), as the eval-pack exporter's `{_truncated,_head,…}`
+ * digest (a chart's rows capped for the version-controlled pack), or as
+ * `undefined`/garbage from a malformed object. A chart must never throw on
+ * `for…of` — an unusable shape renders empty, not a white screen.
+ */
+export function asRows(v: unknown): Record<string, unknown>[] {
+  if (Array.isArray(v)) return v as Record<string, unknown>[];
+  if (v && typeof v === "object" && Array.isArray((v as { _head?: unknown })._head)) {
+    return (v as { _head: Record<string, unknown>[] })._head;
+  }
+  return [];
+}
+
 export function formatValue(v: number, field: string): string {
   const currency = /price|value|rent|cost|amount|\$/i.test(field);
   const abs = Math.abs(v);

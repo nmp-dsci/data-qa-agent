@@ -14,6 +14,7 @@ import { Combo, ComboData } from "../ui/charts/Combo";
 import { DataTable, TableData } from "../ui/charts/DataTable";
 import { KPIData, KPITile } from "../ui/charts/KPITile";
 import { Trend, TrendData } from "../ui/charts/Trend";
+import { ChartErrorBoundary } from "./ChartErrorBoundary";
 import { columnTracks, resolveHeight, templateFor } from "./registry";
 
 // Choropleth carries the topojson + d3-geo, so it code-splits: only loads when a
@@ -22,7 +23,25 @@ const Choropleth = lazy(() =>
   import("../ui/charts/Choropleth").then((m) => ({ default: m.Choropleth })),
 );
 
+// A cheap signature so the boundary resets when the object's data changes (a
+// re-authored object with fresh rows should recover, not stay in its fallback).
+function objectResetKey(o: PageObject): string {
+  const rows = (o.data as { rows?: unknown })?.rows;
+  return `${o.element_id ?? o.type}:${Array.isArray(rows) ? rows.length : "0"}`;
+}
+
+// Public entry: every consumer renders an object through here, so wrapping it in
+// the boundary once protects PagesView, the Template Studio preview, the golden
+// editor, and the playground alike — one bad object can never blank the page.
 export function ObjectBody({ o }: { o: PageObject }) {
+  return (
+    <ChartErrorBoundary label={o.type} resetKey={objectResetKey(o)}>
+      <ObjectBodyInner o={o} />
+    </ChartErrorBoundary>
+  );
+}
+
+function ObjectBodyInner({ o }: { o: PageObject }) {
   const d = o.data;
   switch (o.type) {
     case "kpi":

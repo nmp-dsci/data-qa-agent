@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s28 · Golden tab crash + Line+Bar builder — root cause & fix plan</title>
+<style>
+  :root{
+    --bg:#0a0d15;--panel:#111522;--panel-2:#171c2b;--panel-3:#1e2434;--border:#242b3d;--border-2:#333d55;
+    --text:#eaecf3;--muted:#9aa4bb;--faint:#7a84a0;--code-bg:#0a0d13;
+    --accent:#d9a84e;--accent-ink:#1a1204;--accent-soft:#f2ca79;--accent-2:#7fb0ff;
+    --good:#9ece6a;--good-border:#33502f;--warn:#e0af68;--warn-border:#6b5a2a;--bad:#f2777a;--bad-border:#6b2a2a;
+    --purple:#c58fff;--info:#7dcfff;--info-border:#2f5a7a;
+    --radius:8px;--radius-lg:10px;--radius-xl:14px;
+    --sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;}
+  :where(.grid,.flex)>*{min-width:0;}
+  :where(p,h1,h2,h3,h4,li,dd,td,th,.chip){overflow-wrap:anywhere;}
+  :where(img,svg){max-width:100%;height:auto;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;}
+  .wrap{max-width:1200px;margin:0 auto;padding:32px 22px 90px;}
+  h1{font-size:26px;line-height:1.2;margin:8px 0 6px;letter-spacing:-0.01em;}
+  h2{font-size:19px;margin:0 0 4px;letter-spacing:-0.01em;}
+  h3{font-size:15px;margin:0 0 4px;}
+  section{margin-top:36px;}
+  p{margin:8px 0;}
+  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:var(--accent);font-weight:600;}
+  .sub{color:var(--muted);max-width:66rem;}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;color:var(--accent-soft);white-space:nowrap;}
+  code.w{white-space:normal;}
+  a{color:var(--accent-2);}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .chip{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .chip.gold{color:var(--accent);border-color:#6b5a2a;background:rgba(217,168,78,0.08);}
+  .chip.blue{color:var(--accent-2);border-color:var(--info-border);background:rgba(127,176,255,0.08);}
+  .chip.bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .chip.good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px 20px;}
+  .panel.tight{padding:14px 16px;}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;}
+
+  .thesis{margin-top:18px;border-left:3px solid var(--bad);background:linear-gradient(90deg,rgba(242,119,122,0.09),rgba(242,119,122,0));padding:14px 18px;border-radius:0 var(--radius-lg) var(--radius-lg) 0;}
+  .thesis.gold{border-left-color:var(--accent);background:linear-gradient(90deg,rgba(217,168,78,0.09),rgba(217,168,78,0));}
+  .thesis .q{font-size:16px;line-height:1.5;}
+
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px;}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;padding:0 10px 7px;border-bottom:1px solid var(--border);}
+  td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .st{font-family:var(--mono);font-size:11px;white-space:nowrap;padding:2px 8px;border-radius:5px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .st.ok{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .st.no{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .st.part{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,0.08);}
+
+  .grid{display:grid;gap:14px;}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr));}
+  @media(max-width:900px){.g2,.g3{grid-template-columns:1fr;}}
+
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:13px 15px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.6;margin:10px 0 0;color:#cfd6e6;}
+  pre .c{color:var(--faint);}
+  pre .g{color:var(--good);}
+  pre .r{color:var(--bad);}
+  pre .y{color:var(--accent);}
+  pre .b{color:var(--accent-2);}
+  pre .del{display:block;background:rgba(242,119,122,0.10);color:#f2a6a8;margin:0 -15px;padding:0 15px;}
+  pre .add{display:block;background:rgba(158,206,106,0.10);color:#c3e39a;margin:0 -15px;padding:0 15px;}
+  .fname{font-family:var(--mono);font-size:11px;color:var(--faint);margin:14px 0 0;}
+  .fname b{color:var(--accent-soft);font-weight:600;}
+
+  /* root-cause pipeline */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;margin-top:14px;}
+  .fbox{flex:1;min-width:150px;background:var(--panel-2);border:1px solid var(--border-2);border-radius:var(--radius);padding:11px 13px;position:relative;}
+  .fbox .n{font-family:var(--mono);font-size:10px;color:var(--faint);}
+  .fbox .t{font-size:13px;font-weight:600;margin-top:3px;}
+  .fbox .d{font-size:11.5px;color:var(--muted);margin-top:3px;}
+  .fbox.crash{border-color:var(--bad-border);background:rgba(242,119,122,0.07);}
+  .fbox.crash .t{color:var(--bad);}
+  .farrow{display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:18px;padding:0 4px;flex:none;}
+  @media(max-width:820px){.farrow{transform:rotate(90deg);width:100%;height:20px;}.flow{flex-direction:column;}}
+
+  .num{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:6px;background:var(--panel-3);border:1px solid var(--border-2);font-family:var(--mono);font-size:11px;color:var(--accent);flex:none;}
+  .step{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--border);}
+  .step:last-child{border-bottom:none;}
+  .tag{font-family:var(--mono);font-size:10px;padding:1px 7px;border-radius:4px;border:1px solid var(--border-2);color:var(--muted);white-space:nowrap;}
+  .tag.p0{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .tag.p1{color:var(--accent);border-color:#6b5a2a;background:rgba(217,168,78,0.08);}
+
+  /* decisions */
+  .decision{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px 20px;}
+  .decision h3{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+  .opt{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius);margin-top:8px;cursor:pointer;background:var(--panel-2);}
+  .opt:hover{border-color:var(--border-2);}
+  .opt input{margin-top:3px;accent-color:var(--accent);}
+  .opt .t{font-size:13.5px;}
+  .opt .d{font-size:12px;color:var(--faint);margin-top:2px;}
+  .qbtn{margin-top:12px;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--accent-ink);background:var(--accent);border:none;border-radius:7px;padding:8px 16px;cursor:pointer;}
+  .qbtn:hover{background:var(--accent-soft);}
+  .rec{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--good);border:1px solid var(--good-border);border-radius:4px;padding:1px 6px;}
+
+  /* object-type option catalog */
+  .ocard{background:var(--panel-2);border:1px solid var(--border-2);border-radius:var(--radius-lg);padding:13px 15px;}
+  .ocard h4{font-size:14px;margin:0 0 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .ocard .purpose{font-size:11.5px;color:var(--faint);margin:-2px 0 8px;}
+  .ctrl{display:flex;gap:9px;font-size:12px;padding:5px 0;border-top:1px solid var(--border);align-items:baseline;}
+  .ctrl .k{font-family:var(--mono);font-size:10px;color:var(--faint);min-width:72px;flex:none;text-transform:uppercase;letter-spacing:0.4px;}
+  .ctrl .v{color:var(--muted);}
+  .m-dd{color:var(--accent-2);font-family:var(--mono);font-size:11px;} /* dropdown */
+  .m-tx{color:var(--good);font-family:var(--mono);font-size:11px;}     /* open text */
+  .m-tg{color:var(--purple);font-family:var(--mono);font-size:11px;}   /* toggle */
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:8px;}
+  .stat{font-family:var(--mono);font-size:9.5px;padding:1px 6px;border-radius:4px;border:1px solid var(--border-2);white-space:nowrap;}
+  .stat.have{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .stat.wire{color:var(--accent);border-color:#6b5a2a;background:rgba(217,168,78,0.08);}
+  .stat.new{color:var(--purple);border-color:#503a6b;background:rgba(197,143,255,0.08);}
+  .stat.defer{color:var(--faint);border-color:var(--border-2);}
+  .foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--border);color:var(--faint);font-size:12px;}
+  .foot code{font-size:11px;}
+  .callout{margin-top:12px;border:1px solid var(--info-border);background:rgba(125,207,255,0.06);border-radius:var(--radius-lg);padding:12px 15px;font-size:13px;color:var(--muted);}
+  .callout b{color:var(--info);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">s28 · diagnosis + fix plan — branch <span style="font-family:var(--mono)">golden-render-crash-fix</span></div>
+  <h1>The Golden tab white-screens, and the Line+Bar builder is flaky — two independent bugs, one symptom</h1>
+  <p class="sub">Reproduced live: opening <em>"Give me rent trends for postcode 2077 vs 2076"</em> crashes the entire Golden tab to a blank screen before you can touch anything. Separately, the "New object with AI" Line+Bar build is non-deterministic — sometimes no chart, sometimes a chart with the wrong share math. This plan fixes both, root cause first.</p>
+  <div class="chips">
+    <span class="chip bad">P0 · render crash</span>
+    <span class="chip bad">P0 · pack corrupts chart rows</span>
+    <span class="chip gold">P1 · deterministic object builder</span>
+    <span class="chip">frontend + eval_pack + agent</span>
+  </div>
+
+  <div class="thesis">
+    <span class="lbl" style="color:var(--bad);">The one-line cause of the blank screen</span>
+    <p class="q" style="margin:6px 0 0;">A chart object's own render rows were replaced with a <code>{_truncated,_head,…}</code> digest by the pack exporter, that digest round-tripped back into the database, and <code>Trend.tsx</code> does <code>for (const row of data.rows)</code> over it with <b>no guard and no error boundary anywhere in the app</b> — so one bad object unmounts the whole React tree.</p>
+  </div>
+
+  <div class="thesis gold" style="margin-top:12px;">
+    <span class="lbl" style="color:var(--good);">Decisions locked — 2026-07-23 · building now</span>
+    <p class="q" style="font-size:14px;margin:6px 0 0;">Q1 → <b>re-derive both corrupted goldens</b> from <code>golden_sql</code> (full rows restored). Q2 → <b>one combined PR</b>: crash fix + the full deterministic object builder over every type. Q3 → on top of the <b>s27 branch</b>.</p>
+    <p class="sub" style="font-size:12.5px;margin:9px 0 0;"><b>Your two questions, answered:</b> <b>(1)</b> Correct — no LLM for defined charts. You submit the config deterministically, and the backend generates <em>both</em> the SQL extract <em>and</em> the sandbox transform <b>deterministically too</b> (via <code>canonical_extract_sql</code> + <code>build_object_code</code>, not the LLM) — it just re-runs them against live data to serve the object. Same config → same object, every time. The LLM stays only as a fallback for a request no defined type can express. <b>(2)</b> Yes — a base metric like <code>n_sold</code> ("properties sold") is <b>augmented</b> into "% of properties sold by X" through the measure's <b>how ▾</b> modifier (count · sum · avg · <b>% share-of-x</b> · growth). The builder computes the within-x share deterministically — that augmentation is exactly what the new share/growth measure kinds add, so any additive metric can become a share or a growth without a new column.</p>
+  </div>
+
+  <!-- ============ 1. WHAT HAPPENS ============ -->
+  <section>
+    <div class="lbl">1 · What actually happens (reproduced)</div>
+    <h2>The crash, then the flaky build</h2>
+
+    <div class="grid g2" style="margin-top:14px;">
+      <div class="panel">
+        <div class="lbl" style="color:var(--bad);">Symptom A — open the golden → blank screen</div>
+        <p class="sub" style="font-size:13px;margin-top:8px;">Clicking the golden in the Golden tab renders nothing but the dotted background. The console shows the app crashed, not that data is missing:</p>
+        <pre><span class="r">TypeError: data.rows is not iterable</span>
+    at parsePoints (<span class="b">Trend.tsx:30</span>)
+    at TrendInner (Trend.tsx:51)
+<span class="c">An error occurred in the &lt;TrendInner&gt; component.
+Consider adding an error boundary…</span></pre>
+        <p class="sub" style="font-size:12.5px;margin-top:10px;">There is <b>no</b> error boundary, so the exception propagates to the root and unmounts the entire SPA — the nav, the editor, the build panel, everything.</p>
+      </div>
+      <div class="panel">
+        <div class="lbl" style="color:var(--accent);">Symptom B — build a Line+Bar → coin flip</div>
+        <p class="sub" style="font-size:13px;margin-top:8px;">Firing your exact prompt at the build endpoint three times gave three different outcomes:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Run</th><th>Result</th><th>Bar measure</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td><span class="st no">no chart</span></td><td>sandbox <code>TypeError</code>, 2 retries spent</td></tr>
+            <tr><td>2</td><td><span class="st part">chart</span></td><td><code>pct_of_postcode</code> = 0.04 <span style="color:var(--faint)">(a 0–1 fraction, not %)</span></td></tr>
+            <tr><td>3</td><td><span class="st part">chart</span></td><td><code>pct_rented</code> = 33.3 <span style="color:var(--faint)">(% within band)</span></td></tr>
+          </tbody>
+        </table></div>
+        <p class="sub" style="font-size:12.5px;margin-top:10px;">When it does produce a chart it's a real Line+Bar (bars = share, line = avg rent, x = <code>bedroom_band × property_type</code>, series = postcode) — but the <b>share denominator changes run to run</b> and the "last 12 months" window is silently dropped.</p>
+      </div>
+    </div>
+    <div class="callout"><b>You never even reach Symptom B.</b> Because opening the golden white-screens (Symptom A), you can't get to a working state to build the chart at all. That's why "the Golden tab is useless" — the crash is the wall you hit first.</div>
+  </section>
+
+  <!-- ============ 2. ROOT CAUSE ============ -->
+  <section>
+    <div class="lbl">2 · Root cause</div>
+    <h2>How a chart's rows became a dict — the corruption pipeline</h2>
+    <p class="sub">The golden was authored fine. The corruption enters on the export→import round trip that the whole pack workflow depends on:</p>
+
+    <div class="flow">
+      <div class="fbox"><div class="n">① author</div><div class="t">Full report</div><div class="d">452-row trend saved to <code>golden_report</code> in Postgres — a proper array.</div></div>
+      <div class="farrow">→</div>
+      <div class="fbox"><div class="n">② make eval-export</div><div class="t">_cap_rows</div><div class="d"><code>eval_pack.py:168</code> caps any list &gt;50 inside the report to <code>{_truncated,_head,_sha}</code> — <b>including the chart's own rows</b>.</div></div>
+      <div class="farrow">→</div>
+      <div class="fbox"><div class="n">③ make eval-import / seed</div><div class="t">Written back</div><div class="d">Import writes the capped <code>golden_report</code> verbatim into the DB, overwriting the good array with the dict.</div></div>
+      <div class="farrow">→</div>
+      <div class="fbox crash"><div class="n">④ open golden</div><div class="t">💥 white screen</div><div class="d"><code>Trend.tsx:33</code> <code>for…of</code> a dict → <code>TypeError</code> → no boundary → SPA unmounts.</div></div>
+    </div>
+
+    <p class="sub" style="margin-top:18px;">This is <b>two independent defects</b> that happen to share the symptom. Either one alone is survivable; together they take down the tab.</p>
+    <div class="grid g2" style="margin-top:6px;">
+      <div class="panel">
+        <div class="lbl" style="color:var(--bad);">Bug A · the blast radius (frontend)</div>
+        <p class="sub" style="font-size:13px;margin-top:6px;">Every chart renderer trusts <code>data.rows</code> to be an array, and nothing catches a throw:</p>
+        <ul style="font-size:12.5px;color:var(--muted);margin:6px 0 0;padding-left:18px;line-height:1.7;">
+          <li><code>Trend.tsx:33</code> · <code>Combo.tsx:39</code> · <code>Bars.tsx:54</code> · <code>Choropleth.tsx:111</code> · <code>DataTable.tsx:63,85</code> — all do <code>for…of</code> / <code>.map</code> on <code>data.rows</code> with no guard.</li>
+          <li><code>grep -r ErrorBoundary</code> across the whole app → <b>zero hits</b>. Any render throw = white screen.</li>
+          <li>Your target chart, <b>Line+Bar = <code>Combo.tsx:39</code></b>, has the identical gap.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="lbl" style="color:var(--bad);">Bug B · the corruption source (pack)</div>
+        <p class="sub" style="font-size:13px;margin-top:6px;"><code>_cap_rows</code> was written to shrink the <em>ground-truth</em> row dump. But <code>_redact</code> only ever applies it to <code>golden_report</code> and <code>golden_objects</code> (<code>eval_pack.py:168</code>) — the <b>rendered</b> fields. <code>golden_data</code> is popped to a digest first and never reaches it.</p>
+        <p class="sub" style="font-size:12.5px;margin-top:8px;">So the <code>{_truncated,…}</code> dict envelope is produced <b>only</b> for data the UI must render as an array — it is wrong in 100% of the cases it fires.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:22px;">And the third, quieter defect — the Line+Bar builder itself</h3>
+    <div class="tw"><table>
+      <thead><tr><th>#</th><th>Defect</th><th>Where</th><th>Effect on your prompt</th></tr></thead>
+      <tbody>
+        <tr><td>C1</td><td><code>guessObjectType</code> only matches a literal <code>+</code> for combo; "line<b>/</b>bar" (slash) falls through to the <code>bar chart</code> catch → typed <code>breakdown</code></td><td><code>GoldensPage.tsx:408,412</code></td><td>the codegen is handed the <b>plain-bar recipe</b> and steered away from the line</td></tr>
+        <tr><td>C2</td><td>No deterministic "% share" primitive for a combo. The only share skill (<code>profile_chart</code>) is a stacked bar with no line</td><td><code>skills/charts.py:161</code></td><td>the model hand-rolls the share differently each run → 0–1 fraction vs 33% vs crash</td></tr>
+        <tr><td>C3</td><td>LLM codegen has a 2-correction budget and is non-deterministic; a <code>np.</code>/<code>datetime.</code> reach <code>NameError</code>s (sandbox has only <code>pd</code>,<code>skills</code>,<code>df</code>)</td><td><code>object_codegen.py:63,377</code></td><td>run 1 returned <b>no chart</b> after burning both retries</td></tr>
+        <tr><td>C4</td><td>Empty spec ⇒ no canonical windowing; nothing enforces "last 12 months"</td><td><code>main.py:1177</code></td><td>the 12-month filter is silently dropped</td></tr>
+      </tbody>
+    </table></div>
+    <p class="sub" style="font-size:12.5px;margin-top:8px;">Scope note: only <b>2 goldens</b> are corrupted in the local DB (this one + the Hornsby sales golden) — the s27 draft goldens have full arrays in the DB. But the committed pack YAML carries the capped shape for many cases, so any fresh <code>make eval-import</code> would corrupt them too.</p>
+  </section>
+
+  <!-- ============ 3. FIX PLAN ============ -->
+  <section>
+    <div class="lbl">3 · The fix — root cause first, in four parts</div>
+    <h2>Make the tab uncrashable, stop the corruption, then make Line+Bar reliable</h2>
+
+    <!-- PART 1 -->
+    <div class="panel" style="margin-top:14px;">
+      <h3><span class="tag p0">P0</span> Part 1 — Make the Golden tab uncrashable <span class="st">frontend</span></h3>
+      <p class="sub" style="font-size:13px;">Two layers so <b>no single object can ever white-screen the app again</b>, and existing corrupted data renders instead of crashing.</p>
+
+      <p class="fname"><b>1a.</b> Normalize rows at the chart boundary — coerce non-arrays, unwrap the <code>_head</code> envelope. New shared helper, used by every chart + the report dispatcher (<b>frontend/src/ui/charts/tokens.ts</b> + call sites).</p>
+      <pre><span class="add">+ // Tolerate any rows shape a stored/legacy report can carry: a plain array,</span>
+<span class="add">+ // the pack's {_truncated,_head} digest, or a missing/garbage value.</span>
+<span class="add">+ export function asRows(v: unknown): Record&lt;string, unknown&gt;[] {</span>
+<span class="add">+   if (Array.isArray(v)) return v as Record&lt;string, unknown&gt;[];</span>
+<span class="add">+   if (v && typeof v === "object" && Array.isArray((v as any)._head))</span>
+<span class="add">+     return (v as any)._head;               // capped digest → render the head</span>
+<span class="add">+   return [];                               // undefined / dict / garbage → empty</span>
+<span class="add">+ }</span>
+
+<span class="c">// Trend.tsx parsePoints, Combo.tsx, Bars.tsx, Choropleth.tsx, DataTable.tsx:</span>
+<span class="del">- for (const row of data.rows) {</span>
+<span class="add">+ for (const row of asRows(data.rows)) {</span></pre>
+
+      <p class="fname"><b>1b.</b> Wrap each rendered object in an error boundary so a bad object shows a fallback card, not a blank page (<b>frontend/src/report-engine/PageLayout.tsx</b> — the <code>ObjectBody</code> dispatch at line 27, plus a new <code>ChartErrorBoundary</code>).</p>
+      <pre><span class="c">// PageLayout renders each object via ObjectBody(o) — wrap it:</span>
+<span class="del">- {renderObjectBody(o)}</span>
+<span class="add">+ &lt;ChartErrorBoundary label={o.type}&gt;{renderObjectBody(o)}&lt;/ChartErrorBoundary&gt;</span>
+<span class="c">// ChartErrorBoundary = a 20-line class component (getDerivedStateFromError)</span>
+<span class="c">// rendering "⚠ this chart couldn't render" — the FIRST boundary in the app.</span></pre>
+      <div class="callout"><b>Why 1a fixes the current corruption for free:</b> unwrapping <code>_head</code> means the 2 already-corrupted goldens <b>render immediately</b> (with their first 50 points) with no data migration — the tab is usable the moment this ships.</div>
+    </div>
+
+    <!-- PART 2 -->
+    <div class="panel" style="margin-top:14px;">
+      <h3><span class="tag p0">P0</span> Part 2 — Stop the exporter corrupting chart rows <span class="st">scripts/eval_pack.py</span></h3>
+      <p class="sub" style="font-size:13px;">Keep the size guard, but never turn a rendered array into a dict. Truncate to a <b>shorter array</b> instead of the <code>{_truncated,…}</code> envelope, so every consumer still gets a list.</p>
+      <p class="fname"><b>eval_pack.py</b> · <code>_cap_rows</code> (line 133-139)</p>
+      <pre>  if isinstance(node, list):
+      if len(node) &gt; MAX_GOLDEN_ROWS:
+<span class="del">-         return {</span>
+<span class="del">-             "_truncated": True, "_total": len(node),</span>
+<span class="del">-             "_sha": _digest(node),</span>
+<span class="del">-             "_head": [_cap_rows(i) for i in node[:MAX_GOLDEN_ROWS]],</span>
+<span class="del">-         }</span>
+<span class="add">+         # Keep it an ARRAY — golden_report/objects are RENDERED, and a dict</span>
+<span class="add">+         # here is unrenderable. Truncate; drift is tracked by golden_data_sha.</span>
+<span class="add">+         return [_cap_rows(i) for i in node[:MAX_GOLDEN_ROWS]]</span>
+      return [_cap_rows(i) for i in node]</pre>
+      <p class="sub" style="font-size:12.5px;margin-top:10px;">Then <code>make eval-export</code> to rewrite the committed pack in the clean shape, and add a defensive unwrap on <code>import</code> (Bug C insurance). A one-line <code>test_eval_pack.py</code> assertion — "no <code>_truncated</code> anywhere in a pack case" — locks it so this can't regress.</p>
+    </div>
+
+    <!-- PART 3 -->
+    <div class="panel" style="margin-top:14px;">
+      <h3><span class="tag p0">P0</span> Part 3 — Repair the two corrupted goldens <span class="st">data</span></h3>
+      <p class="sub" style="font-size:13px;">Part 1a makes them <em>render</em> (50 points) immediately, but their stored report is still a truncated digest. Restore the full arrays by re-deriving each report from its <code>golden_sql</code> + sandbox (the deterministic "Run" path), then re-save. Two goldens, scripted. <span style="color:var(--faint)">(Decision Q1 below picks whether to also do this now or lean on the 1a unwrap.)</span></p>
+    </div>
+
+    <!-- PART 4 EXPANDED — the full deterministic object builder -->
+    <div class="panel" style="margin-top:14px;">
+      <h3><span class="tag p1">P1</span> Part 4 — The deterministic object builder: <b>every type, every option defined upfront</b> <span class="st" style="color:var(--accent-2);border-color:var(--info-border);">your steer</span></h3>
+      <p class="sub" style="font-size:13px;">Per your direction: <b>every defined object type is built deterministically from a structured config — no LLM.</b> Each type exposes its complete option set upfront (dropdowns for finite choices, open text only where a value is genuinely free), so there is nothing to hallucinate. Setting the config and pressing Run regenerates the SQL extract + the sandbox transform to serve the data.</p>
+
+      <div class="callout" style="border-color:var(--good-border);background:rgba(158,206,106,0.06);"><b style="color:var(--good);">The anti-hallucination guarantee</b> — every dropdown is bound to the schema's <b>typed vocabulary</b>: the Explore manifest (<code>manifest.py</code>) already classifies each dataset's <b>dimensions</b> (categorical / ordinal / time / geo) and <b>metrics</b> (additive / derived, with currency/number/percent format), and already ships them to the UI at <code>/explore/datasets</code> with their allowed values. So a user can only pick cuts &amp; metrics the data actually has — a valid object is the only thing the form can produce.</div>
+
+      <div class="callout" style="border-color:var(--info-border);"><b style="color:var(--info);">The engine already exists</b> for the 5 chart types. The deterministic path is wired end-to-end today (<code>main.py:1176-1228</code>): an empty <code>instruction</code> + a non-empty <code>spec</code> ⇒ <code>canonical_extract_sql</code> rewrites the SQL from the config <b>and</b> <code>build_object_code</code> emits the sandbox code — <b>no LLM</b>, and it already applies the last-N-months window. Builders exist for <code>compare · breakdown · trend · kpi · table</code>. This part is <b>defining the option set per type + filling four capability gaps</b>, not building an engine from scratch.</div>
+
+      <div class="legend"><span><span class="m-dd">▾</span> dropdown (from schema)</span><span><span class="m-tx">✎</span> open text</span><span><span class="m-tg">⊙</span> toggle</span><span><span class="stat have">✓ have</span> exists</span><span><span class="stat wire">+ wire</span> extend builder</span><span><span class="stat new">★ new</span> net-new</span></div>
+
+      <!-- shared controls -->
+      <div class="ocard" style="margin-top:12px;">
+        <h4>◇ Shared controls <span style="font-family:var(--mono);font-size:10px;color:var(--faint);font-weight:400;">every data object</span></h4>
+        <div class="ctrl"><span class="k">Dataset</span><span class="m-dd">▾</span><span class="v">nsw_sales · nsw_rent · nsw_yield — chooses which dimensions &amp; metrics the other dropdowns offer</span></div>
+        <div class="ctrl"><span class="k">Filter</span><span class="m-dd">▾</span><span class="v">a dimension = value(s); categorical dims are dropdowns, postcode/suburb are type-ahead, the value can be <span class="m-tx">✎</span> open text (validated, no SQL injection)</span></div>
+        <div class="ctrl"><span class="k">Window</span><span class="m-dd">▾</span><span class="v">all time · last N months · year range <span class="stat have">✓ have</span> <code>_window_setup</code></span></div>
+        <div class="ctrl"><span class="k">Title</span><span class="m-tx">✎</span><span class="v">optional caption</span></div>
+      </div>
+
+      <!-- per-type catalog -->
+      <div class="grid g2" style="margin-top:12px;">
+
+        <div class="ocard">
+          <h4>▪ Tile <span class="chip" style="font-size:10px;">kpi</span> <span class="stat wire">+ growth/latest</span></h4>
+          <div class="purpose">one headline number + its change</div>
+          <div class="ctrl"><span class="k">Metric</span><span class="m-dd">▾</span><span class="v">from the dataset's metrics (avg weekly rent, gross yield, bond count…)</span></div>
+          <div class="ctrl"><span class="k">Show</span><span class="m-dd">▾</span><span class="v">latest value · growth (YoY / MoM / over N yrs) · latest + change chip</span></div>
+          <div class="ctrl"><span class="k">Unit</span><span class="m-tx">✎</span><span class="v">optional override (auto from metric format)</span></div>
+          <p class="sub" style="font-size:11px;margin-top:6px;color:var(--faint);">Builder <code>_kpi_code</code> exists but only emits <code>{label,value,basis}</code>; the tile renderer also supports a growth chip + sparkline → wire <b>latest</b> &amp; <b>growth</b> measures in.</p>
+        </div>
+
+        <div class="ocard">
+          <h4>▪ Line <span class="chip" style="font-size:10px;">trend</span> <span class="stat wire">+ x-axis choice</span></h4>
+          <div class="purpose">a measure over time, optionally by series</div>
+          <div class="ctrl"><span class="k">X axis</span><span class="m-dd">▾</span><span class="v">month · year (time dimensions)</span></div>
+          <div class="ctrl"><span class="k">Y measure</span><span class="m-dd">▾</span><span class="v">from metrics + how (value · indexed growth)</span></div>
+          <div class="ctrl"><span class="k">Series</span><span class="m-dd">▾</span><span class="v">optional — a categorical dim (postcode, property_type)</span></div>
+          <p class="sub" style="font-size:11px;margin-top:6px;color:var(--faint);"><code>_trend_code</code> exists but hardcodes x = <code>month</code> → honour the X-axis choice.</p>
+        </div>
+
+        <div class="ocard">
+          <h4>▪ Bar <span class="chip" style="font-size:10px;">breakdown</span> <span class="stat wire">+ share/growth</span></h4>
+          <div class="purpose">a measure across a category</div>
+          <div class="ctrl"><span class="k">X axis</span><span class="m-dd">▾</span><span class="v">a categorical/ordinal dim (bedroom_band, area_band, property_type, postcode)</span></div>
+          <div class="ctrl"><span class="k">Y measure</span><span class="m-dd">▾</span><span class="v">metric + how ▾: count · sum · average · <b>% share</b> · <b>growth %</b></span></div>
+          <div class="ctrl"><span class="k">Series</span><span class="m-dd">▾</span><span class="v">optional group-by dim</span></div>
+          <div class="ctrl"><span class="k">Stacked / sort</span><span class="m-tg">⊙</span><span class="v">toggles (renderer supports both; add to spec)</span></div>
+        </div>
+
+        <div class="ocard" style="border-color:var(--accent-2);">
+          <h4>▪ Line + Bar <span class="chip blue" style="font-size:10px;">compare</span> <span class="stat wire">+ share</span> <span class="stat new">★ composite-x</span></h4>
+          <div class="purpose">bars + a second-axis line (your exact chart)</div>
+          <div class="ctrl"><span class="k">X axis</span><span class="m-dd">▾</span><span class="v">1 or <b>2</b> dims → composite <code>bedroom_band × property_type</code></span></div>
+          <div class="ctrl"><span class="k">Bars (Y1)</span><span class="m-dd">▾</span><span class="v">metric + how ▾: count · sum · avg · <b>% share</b></span></div>
+          <div class="ctrl"><span class="k">Line (Y2)</span><span class="m-dd">▾</span><span class="v">metric (avg weekly rent, gross yield)</span></div>
+          <div class="ctrl"><span class="k">Group by</span><span class="m-dd">▾</span><span class="v">series dim — postcode (2077 vs 2076)</span></div>
+          <p class="sub" style="font-size:11px;margin-top:6px;color:var(--faint);"><code>_combo_code</code> exists → add the <b>% share</b> measure kind + the composite X-axis (the one genuinely new builder capability).</p>
+        </div>
+
+        <div class="ocard">
+          <h4>▪ Table <span class="chip" style="font-size:10px;">table</span> <span class="stat have">✓ have</span></h4>
+          <div class="purpose">rows &amp; columns, optionally ranked</div>
+          <div class="ctrl"><span class="k">Columns</span><span class="m-dd">▾</span><span class="v">multi-select dims + metrics (format/tone auto from each metric)</span></div>
+          <div class="ctrl"><span class="k">Variant</span><span class="m-dd">▾</span><span class="v">plain · comparison · ranked</span></div>
+          <div class="ctrl"><span class="k">Rank / bar by</span><span class="m-dd">▾</span><span class="v">a metric (inline bars via <code>bar_key</code>)</span></div>
+          <p class="sub" style="font-size:11px;margin-top:6px;color:var(--faint);"><code>_table_code</code> exists; mostly UI to expose the column picker.</p>
+        </div>
+
+        <div class="ocard">
+          <h4>▪ Insight / Text <span class="chip" style="font-size:10px;">insight·text</span> <span class="stat new">★ open-text path</span></h4>
+          <div class="purpose">narrative — no SQL, no chart</div>
+          <div class="ctrl"><span class="k">Heading</span><span class="m-tx">✎</span><span class="v">open text</span></div>
+          <div class="ctrl"><span class="k">Body</span><span class="m-tx">✎</span><span class="v">open text</span></div>
+          <div class="ctrl"><span class="k">Refs</span><span class="m-dd">▾</span><span class="v">multi-select the report's existing queries (insight only)</span></div>
+          <p class="sub" style="font-size:11px;margin-top:6px;color:var(--faint);"><b>No builder today</b> — currently mis-routes to a combo chart. A trivial open-text path (no SQL) closes it.</p>
+        </div>
+
+      </div>
+
+      <div class="ocard" style="margin-top:12px;border-style:dashed;">
+        <h4>▪ Map <span class="chip" style="font-size:10px;">choropleth</span> <span class="stat defer">deferred — Explore-only</span></h4>
+        <div class="purpose" style="margin-bottom:0;">By the s20 decision the map is an Explore-tool object the agent may never emit, and it has no deterministic builder or geo binding. Out of scope for the golden builder unless you want to lift that decision (Q2).</div>
+      </div>
+
+      <h3 style="margin-top:22px;">What's already there vs what we build</h3>
+      <div class="tw"><table>
+        <thead><tr><th>Capability</th><th>Status</th><th>Work</th></tr></thead>
+        <tbody>
+          <tr><td>Config → rerun SQL extract + sandbox, deterministically (no LLM)</td><td><span class="stat have">✓ have</span></td><td>wire the form's Run to it (empty <code>instruction</code>)</td></tr>
+          <tr><td>Builders for compare / breakdown / trend / kpi / table</td><td><span class="stat have">✓ have</span></td><td>drive from type-aware dropdowns</td></tr>
+          <tr><td>Dropdown vocabulary (typed dims + metrics per dataset)</td><td><span class="stat have">✓ have</span></td><td>bind form inputs to <code>manifest.py</code> / <code>/explore/datasets</code></td></tr>
+          <tr><td><b>% share</b> &amp; <b>growth %</b> &amp; <b>latest</b> measure kinds</td><td><span class="stat wire">+ wire</span></td><td>add to <code>_measure</code>/<code>_measure_block</code> (renderer already reads <code>growth</code>)</td></tr>
+          <tr><td>KPI growth / unit / sparkline</td><td><span class="stat wire">+ wire</span></td><td>extend <code>_kpi_code</code></td></tr>
+          <tr><td>Trend non-month X-axis</td><td><span class="stat wire">+ wire</span></td><td>honour <code>dimension</code> in <code>_trend_code</code></td></tr>
+          <tr><td><b>Composite X-axis</b> (col_a × col_b)</td><td><span class="stat new">★ new</span></td><td>the one genuinely new builder capability</td></tr>
+          <tr><td>Insight / Text open-text builder</td><td><span class="stat new">★ new</span></td><td>small no-SQL path</td></tr>
+          <tr><td>Type-aware form (fields adapt per object type)</td><td><span class="stat new">★ new</span></td><td>replace the single flat free-text form</td></tr>
+        </tbody>
+      </table></div>
+      <p class="sub" style="font-size:12px;margin-top:8px;">So the bulk is <b>wiring existing pieces</b> (the engine, the builders, the vocabulary all exist); the net-new is the composite X-axis, three measure kinds, the insight/text path, and a type-aware form. The LLM "New object with AI" panel stays only as a <b>fallback</b> for a truly ad-hoc request no defined type covers.</p>
+    </div>
+
+    <!-- PART 5 — exhaustive tests -->
+    <div class="panel" style="margin-top:14px;">
+      <h3><span class="tag p0">P0</span> Part 5 — Exhaustive builder tests: <b>every object type, every option</b> <span class="st" style="color:var(--accent-2);border-color:var(--info-border);">your steer</span></h3>
+      <p class="sub" style="font-size:13px;">Per your check: a test matrix that <b>builds every object type with every option and asserts it renders</b> — so a dropdown that can't actually produce a valid object is caught in CI, not by you. The whole point of a finite, schema-bound vocabulary is that it's <b>enumerable</b>, so the test can iterate it exhaustively.</p>
+      <div class="step"><span class="num">a</span><div><b>Backend matrix (deterministic, fast).</b> Parametrize over <em>every</em> combination the manifest allows — <code>{dataset} × {object_type} × {each metric × each "how" (count/sum/avg/share/growth/latest)} × {each dimension} × {group on/off} × {window}</code> — call <code>build_object_code</code> + the extract, and assert per case: the object is non-null, <code>data.rows</code> is a <b>non-empty array</b> (never a <code>{_truncated}</code> dict), and the renderer's required fields for that type are present (e.g. <code>compare</code> ⇒ <code>dimension + measure + line_measure</code>; <code>kpi</code> ⇒ <code>value</code>; <code>table</code> ⇒ non-empty <code>columns</code>). Because it's deterministic there's no flake and no LLM cost — it can gate every merge.</div></div>
+      <div class="step"><span class="num">b</span><div><b>Option-vocabulary test.</b> Assert every dropdown option the UI offers for a dataset comes from the manifest (no hardcoded/dangling option) and every manifest dimension/metric is buildable — the two lists must match, so the UI can never present a choice the builder can't honour.</div></div>
+      <div class="step"><span class="num">c</span><div><b>Render smoke (frontend).</b> A component test feeding each object type a builder-produced object (and a deliberately malformed <code>rows</code>) asserts it renders a chart or the error-boundary fallback — never throws. This is the regression lock for the Part 1 crash.</div></div>
+      <p class="sub" style="font-size:12px;margin-top:6px;color:var(--faint);">Lives in <code>services/data-agent/tests/</code> (builder matrix) + <code>frontend/…/*.test.tsx</code> (render smoke), wired into the existing CI jobs.</p>
+    </div>
+  </section>
+
+  <!-- ============ 4. SCOPE ============ -->
+  <section>
+    <div class="lbl">4 · Files &amp; blast radius</div>
+    <h2>What each part touches</h2>
+    <div class="tw"><table>
+      <thead><tr><th>Part</th><th>Files</th><th>Kind</th><th>Risk</th></tr></thead>
+      <tbody>
+        <tr><td><span class="tag p0">1</span> uncrashable</td><td><code>ui/charts/tokens.ts</code> (+helper), <code>Trend/Combo/Bars/Choropleth/DataTable.tsx</code>, <code>report-engine/PageLayout.tsx</code> (+ boundary)</td><td>frontend</td><td><span class="st ok">low — additive guards</span></td></tr>
+        <tr><td><span class="tag p0">2</span> exporter</td><td><code>scripts/eval_pack.py</code>, <code>tests/test_eval_pack.py</code></td><td>pipeline</td><td><span class="st ok">low — array stays array</span></td></tr>
+        <tr><td><span class="tag p0">3</span> repair</td><td>2 DB rows (2077 rent, Hornsby sales) + re-export pack</td><td>data</td><td><span class="st part">med — re-runs 2 reports</span></td></tr>
+        <tr><td><span class="tag p1">4</span> object builder</td><td><code>GoldensPage.tsx</code> (type-aware form + dropdowns), <code>object_builder.py</code> (share/growth/latest kinds, composite-x, kpi, insight/text path), options from <code>manifest.py</code> / <code>/explore/datasets</code></td><td>frontend + agent</td><td><span class="st part">med — mostly wiring, 4 net-new bits</span></td></tr>
+      </tbody>
+    </table></div>
+    <p class="sub" style="font-size:12.5px;margin-top:10px;">Parts 1–3 are the "make it work again" bundle and are low-risk, mechanical, and independently shippable. Part 4 is the deeper "make your chart correct" work and can follow in the same PR or a second one (Decision Q3).</p>
+  </section>
+
+  <!-- ============ 5. DECISIONS ============ -->
+  <section>
+    <div class="lbl">5 · Decisions — locked 2026-07-23</div>
+    <h2>All three answered — building now</h2>
+    <div class="grid g3" style="margin-top:14px;">
+      <div class="panel">
+        <h3>Q1 · Repair <span class="st ok" style="margin-left:6px;">locked</span></h3>
+        <p class="sub" style="font-size:13px;margin-top:6px;"><b>Re-derive both goldens</b> (2077 rent, Hornsby sales) from their <code>golden_sql</code> so they carry full rows again — clean and complete, on top of the Part 1a unwrap that already stops the crash.</p>
+      </div>
+      <div class="panel">
+        <h3>Q2 · Scope <span class="st ok" style="margin-left:6px;">locked</span></h3>
+        <p class="sub" style="font-size:13px;margin-top:6px;"><b>One combined PR</b> — the crash + corruption fixes (Parts 1–3), the full deterministic object builder over <b>every</b> type (Part 4), and the exhaustive tests (Part 5), together.</p>
+      </div>
+      <div class="panel">
+        <h3>Q3 · Sequencing <span class="st ok" style="margin-left:6px;">locked</span></h3>
+        <p class="sub" style="font-size:13px;margin-top:6px;">Built <b>on top of the s27 branch</b> (this branch already descends from it), one PR. When PR #20 merges, git reconciles the shared pack cleanly.</p>
+      </div>
+    </div>
+    <p class="sub" style="font-size:12.5px;margin-top:14px;">Implementing now, validating through <code>/no-mistakes</code>, then opening the combined PR.</p>
+  </section>
+
+  <div class="foot">
+    Verified live: browser repro (white-screen on open) · console <code>TypeError data.rows is not iterable</code> at <code>frontend/src/ui/charts/Trend.tsx:30-33</code> · DB golden <code>2fb4a659</code> report holds <code>{_truncated,_total:452,_head:[50]}</code> in 2 trend objects · <code>scripts/eval_pack.py:118-143,168</code> (<code>_cap_rows</code> on <code>golden_report</code>) · unguarded rows in <code>Combo.tsx:39</code>, <code>Bars.tsx:54</code>, <code>Choropleth.tsx:111</code>, <code>DataTable.tsx:63,85</code> · zero <code>ErrorBoundary</code> in the app · build repro over <code>/admin/eval-goldens/build-object</code> (3 runs: no-chart / 0–1 fraction / 33% share) · <code>guessObjectType</code> <code>GoldensPage.tsx:404-412</code> · combo codegen <code>object_codegen.py:63,197,377</code>. Sampled 2026-07-23.
+  </div>
+
+</div>
+</body>
+</html>

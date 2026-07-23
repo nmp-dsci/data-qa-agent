@@ -116,28 +116,25 @@ def _digest(value: Any) -> str:
 
 
 def _cap_rows(node: Any) -> Any:
-    """Recursively truncate every embedded data array, keeping a digest of the whole.
+    """Recursively truncate every embedded data array to a shorter *array*.
 
-    Bulk data hides at many depths and under many names — ``golden_data.rows``,
-    ``queries[].rows``, a chart spec's ``values``, per-insight payloads. Dumping
-    it all made a single golden a 24k-line file: unreviewable in a PR, which
-    defeats the reason the pack is version-controlled, and the most likely way
-    real result data reaches git.
+    Bulk data hides at many depths and under many names — ``queries[].rows``, a
+    chart spec's ``values``, per-insight payloads. Dumping it all made a single
+    golden a 24k-line file: unreviewable in a PR, which defeats the reason the
+    pack is version-controlled, and the most likely way real result data reaches
+    git. So the rule is by shape, not key name: any list longer than
+    ``MAX_GOLDEN_ROWS`` is truncated to its head.
 
-    So the rule is by shape, not by key name: any list longer than
-    ``MAX_GOLDEN_ROWS`` is truncated. What survives is what grading needs — the
-    leading values G1 compares — plus a total and a content hash of the full
-    list, so a change to a dropped element is still detected as drift.
+    Critically, a truncated list stays a *list*. ``_cap_rows`` is only ever
+    applied to ``golden_report``/``golden_objects`` (see ``_redact``) — the
+    fields the frontend *renders* — and a chart whose ``rows`` became a
+    ``{_truncated, _head, …}`` dict is unrenderable: the renderer iterates it and
+    throws, blanking the page. Drift in the ground-truth values is tracked by
+    ``golden_data_sha`` (``golden_data`` is digested separately), not by these
+    presentation rows, so the head is all the pack needs.
     """
     if isinstance(node, list):
-        if len(node) > MAX_GOLDEN_ROWS:
-            return {
-                "_truncated": True,
-                "_total": len(node),
-                "_sha": _digest(node),
-                "_head": [_cap_rows(item) for item in node[:MAX_GOLDEN_ROWS]],
-            }
-        return [_cap_rows(item) for item in node]
+        return [_cap_rows(item) for item in node[:MAX_GOLDEN_ROWS]]
     if isinstance(node, dict):
         return {key: _cap_rows(value) for key, value in node.items()}
     return node

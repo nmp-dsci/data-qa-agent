@@ -38,6 +38,13 @@ class _SqlstateError(Exception):
         self.sqlstate = sqlstate
 
 
+class _HttpxConnectError(Exception):
+    """Stand-in for httpx.ConnectError — the classifier keys on the module name
+    (this env is stdlib-only, so the real httpx isn't importable here)."""
+
+    __module__ = "httpx._exceptions"
+
+
 def test_connect_phase_failures_classify_as_waking() -> None:
     assert is_db_waking(ConnectionRefusedError(61, "Connection refused"))
     assert is_db_waking(TimeoutError())  # bounded connect (db.py timeout=5)
@@ -58,3 +65,22 @@ def test_real_errors_do_not_classify_as_waking() -> None:
     # DNS failure is misconfiguration, not a warm-up — retrying can't fix it.
     assert not is_db_waking(socket.gaierror(8, "nodename nor servname provided"))
     assert not is_db_waking(_wrapped_in(RuntimeError("wrapper"), ValueError("boom")))
+
+
+def test_query_canceled_is_a_runaway_query_not_a_warmup() -> None:
+    # SQLSTATE 57014: the app_user role's statement_timeout (migration 0018)
+    # cancelled a long query — a bug that must keep its 500 + traceback, even
+    # though it shares class 57 with 57P03.
+    assert not is_db_waking(_SqlstateError("57014"))
+    assert not is_db_waking(
+        _wrapped_in(RuntimeError("sqlalchemy wrapper"), _SqlstateError("57014"))
+    )
+
+
+def test_http_client_failures_do_not_classify_as_waking() -> None:
+    # An unreachable non-DB dependency (Google's OpenID config, the data-agent)
+    # chains httpx errors down to ConnectionError — the httpx node proves the
+    # failed connection wasn't Postgres, so the walk stops before reaching it.
+    outbound = _wrapped_in(_HttpxConnectError("connect failed"), ConnectionRefusedError())
+    assert not is_db_waking(outbound)
+    assert not is_db_waking(_wrapped_in(RuntimeError("route handler"), outbound))

@@ -22,10 +22,16 @@ def is_db_waking(exc: BaseException) -> bool:
     Walks the __cause__/__context__ chain because SQLAlchemy wraps the driver
     error (DBAPIError.orig rides along as __cause__). Classified as waking:
       - ConnectionError (refused/reset/aborted) and connect TimeoutError
-      - SQLSTATE class 08 (connection exception) or 57 (operator intervention —
-        57P03 "the database system is starting up") from asyncpg
-    DNS failures (gaierror) and everything else stay unclassified: a genuine
-    500, not a warm-up.
+      - SQLSTATE class 08 (connection exception) or exactly 57P03 "the database
+        system is starting up" from asyncpg — not the rest of class 57, which
+        includes 57014 query_canceled (statement_timeout killing a runaway
+        query: a real bug that must keep its 500 and traceback)
+    Chain nodes that prove the failure isn't the database end the walk as
+    unclassified — a genuine 500, not a warm-up:
+      - DNS failures (gaierror): misconfiguration, retrying can't fix it
+      - httpx/httpcore errors: an outbound HTTP call failed (Google's OpenID
+        config, the data-agent); the ConnectionError underneath belongs to
+        that call, not to Postgres
     """
     seen: set[int] = set()
     e: BaseException | None = exc
@@ -33,10 +39,12 @@ def is_db_waking(exc: BaseException) -> bool:
         seen.add(id(e))
         if isinstance(e, socket.gaierror):
             return False
+        if type(e).__module__.partition(".")[0] in ("httpx", "httpcore"):
+            return False
         if isinstance(e, (ConnectionError, TimeoutError, asyncio.TimeoutError)):
             return True
         sqlstate = getattr(e, "sqlstate", None)
-        if isinstance(sqlstate, str) and sqlstate[:2] in ("08", "57"):
+        if isinstance(sqlstate, str) and (sqlstate[:2] == "08" or sqlstate == "57P03"):
             return True
         e = e.__cause__ or e.__context__
     return False

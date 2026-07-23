@@ -221,19 +221,15 @@ def needed_columns(spec: dict[str, Any]) -> set[str]:
     return {c for c in cols if c}
 
 
-def extract_grain(
-    spec: dict[str, Any], *, object_type: str, dataset: str = "nsw_sales"
-) -> list[str]:
-    """The grain the rewritten canonical extract must carry for ``spec``.
+def _typed_grain(spec: dict[str, Any], prof: MartProfile) -> list[str]:
+    return [str(c) for c in (spec.get("grain") or prof.default_grain) if c]
 
-    Bar-family objects (compare/breakdown/table) append the dimension/group
-    columns their snippet groups by, exactly as ``_bar_grain`` does. Trend/kpi
-    keep the typed grain untouched: ``trend_series``/``latest_value`` read the
-    extract per month, so a finer grain would change their numbers."""
-    prof = profile_for(dataset)
-    grain = [str(c) for c in (spec.get("grain") or prof.default_grain) if c]
-    if object_type in ("trend", "kpi"):
-        return grain
+
+def _grain_with_chart_cols(spec: dict[str, Any], prof: MartProfile) -> list[str]:
+    """Typed grain plus the dimension/group columns a bar-family snippet groups
+    by — the single source for both the rewritten extract's grain and the
+    codegen's window-dedup grain, so the two can never drift apart."""
+    grain = _typed_grain(spec, prof)
     for col in (
         *dimension_cols(spec.get("dimension"), prof),
         *([str(spec["group"])] if spec.get("group") else []),
@@ -241,6 +237,22 @@ def extract_grain(
         if col and col not in grain:
             grain.append(col)
     return grain
+
+
+def extract_grain(
+    spec: dict[str, Any], *, object_type: str, dataset: str = "nsw_sales"
+) -> list[str]:
+    """The grain the rewritten canonical extract must carry for ``spec``.
+
+    Bar-family objects (compare/breakdown/table) append the dimension/group
+    columns their snippet groups by, sharing ``_grain_with_chart_cols`` with the
+    codegen's ``_bar_grain``. Trend/kpi keep the typed grain untouched:
+    ``trend_series``/``latest_value`` read the extract per month, so a finer
+    grain would change their numbers."""
+    prof = profile_for(dataset)
+    if object_type in ("trend", "kpi"):
+        return _typed_grain(spec, prof)
+    return _grain_with_chart_cols(spec, prof)
 
 
 # ---------------------------------------------------------------------------
@@ -500,13 +512,9 @@ def _measure_block(
 def _bar_grain(spec: dict[str, Any], prof: MartProfile) -> tuple[list[str], list[str], str | None]:
     """Grain + dimension column(s) + group for a bar-family chart, ensuring the
     chart's own columns survive the window dedup."""
-    grain = list(spec.get("grain") or prof.default_grain)
     dim_cols = dimension_cols(spec.get("dimension"), prof)
     group = spec.get("group") or None
-    for c in [*dim_cols, *([str(group)] if group else [])]:
-        if c and c not in grain:
-            grain.append(c)
-    return grain, dim_cols, (str(group) if group else None)
+    return _grain_with_chart_cols(spec, prof), dim_cols, (str(group) if group else None)
 
 
 def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:

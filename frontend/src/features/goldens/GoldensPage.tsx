@@ -340,10 +340,11 @@ const MEASURE_HOWS: { value: MeasureHow; label: string }[] = [
   { value: "growth", label: "growth %" },
   { value: "latest", label: "latest value" },
 ];
-// share/growth/latest must sum a base column, so they only offer additive metrics
-// (a % share or growth of a stored average is not meaningful and would break the
-// window dedup, which keeps only additive columns).
-const HOW_NEEDS_ADDITIVE = new Set<MeasureHow>(["share", "growth", "latest"]);
+// sum/share/growth/latest all sum the source column, which the server's
+// additive guard (and the window dedup) restrict to additive metrics — summing
+// a stored average is silently wrong. Only "mean" can read a non-additive
+// column, so every other how snaps a non-additive source to an additive one.
+const HOW_NEEDS_ADDITIVE = new Set<MeasureHow>(["sum", "share", "growth", "latest"]);
 // The augmented kinds only exist in the bar-family codegen (compare/breakdown/
 // table); trend and kpi read the raw column, so the form hides the modifier for
 // them and the spec never claims a share/growth it wouldn't compute.

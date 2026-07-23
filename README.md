@@ -175,7 +175,11 @@ latency, and engine.
 
 Admins also get a **Golden Examples** tab for authoring *golden answers* — the 100/100 benchmarks the eval
 loop scores the agent against — stage by stage (① SQL extract → ② sandbox analysis objects, built from the
-tested skill library → ③ presentation report), starting from an agent-drafted first pass. Goldens live on
+tested skill library → ③ presentation report), starting from an agent-drafted first pass. Stage-② objects
+can also be built with no LLM at all: a structured builder binds its dimension/group/measure dropdowns to
+each dataset's typed column vocabulary, offers per-measure sum / average / % share / growth / latest
+modifiers over additive columns, and can join two dimensions into a composite x-axis — and a per-object
+error boundary renders one malformed object as a fallback card instead of blanking the tab. Goldens live on
 `app.eval_cases` (CRUD under `/admin/eval-goldens`; the backend proxies draft/build actions to the
 data-agent's `/agent/analysis*` and `/agent/skills*` helpers), and the dataset picker covers all three
 governed datasets (`nsw_sales`, `nsw_rent`, `nsw_yield`). Deterministic graders

@@ -395,8 +395,9 @@ comparison can prove exactly one lever moved. Runs predating M1 carry a null sta
 Batch scores land in `eval_runs`/`eval_results` (migrations 0019–0024, extended by 0029; the pack's
 per-golden `grader` spec — which `kind` of comparison G1 dispatches on — is migration 0030). Since a golden can
 be promoted from a real prod chat answer, `scripts/eval_pack.py export` redacts it on the way into the repo
-(decision D-2): `as_user` is remapped to a seeded test identity and embedded row data is capped to a size
-budget with a digest kept for the rest, so the pack can never become a back door around RLS. The Golden
+(decision D-2): `as_user` is remapped to a seeded test identity and embedded row data is capped to its
+leading rows (originally with a digest stub kept for the remainder — replaced in s28, below, because the
+frontend renders those fields), so the pack can never become a back door around RLS. The Golden
 tab's dataset picker now reads the dataset registry instead of a hardcoded `["nsw_sales", "nsw_rent"]`
 literal, which had silently locked `nsw_yield` out of golden authoring since migration 0025.
 
@@ -473,6 +474,34 @@ The s27 coverage pack seeds 10 draft goldens per mart against this ladder (one p
 four time-series shapes). Drafts (`authoring_status='draft'`) are skipped by `make eval` unless
 `INCLUDE_DRAFTS=1` is passed (the runner's `--include-drafts`; naming one directly via `CASE=` also runs
 it), so an un-curated question is never scored against empty ground truth.
+
+**Crash-proof object rendering + schema-driven builder (s28).** A rendering exception in any single report
+object used to unmount the whole SPA — opening a golden whose stored `golden_objects` carried a non-array
+`rows` (the pack exporter's old `{_truncated,…}`/`{_omitted,…}` digest stubs) white-screened the entire
+Golden tab. Every object now renders inside `frontend/src/report-engine/ChartErrorBoundary.tsx`, wrapped
+once in `PageLayout.tsx`'s `ObjectBody` so every consumer (chat, Explore, Goldens, the Template Studio
+preview) is covered: a failed object degrades to a fallback card, the rest of the report renders, and a
+data-derived `resetKey` un-fails the boundary when the object is rebuilt. Chart renderers also coerce
+`rows` through `asRows` (`ui/charts/tokens.ts`) so an unusable shape renders empty rather than throwing.
+The exporter side of the same bug is fixed too: `scripts/eval_pack.py` no longer wraps oversized rendered
+fields in digest envelopes — `golden_report`/`golden_objects` lists are truncated to a plain head (still
+lists, so they stay renderable), with ground-truth drift tracked by `golden_data_sha` alone.
+
+The Sandbox tab's structured builder is now schema-driven end-to-end: its x/dimension, optional 2nd
+dimension, group and measure-source fields are dropdowns bound to the dataset's typed vocabulary from the
+Explore manifest (`GET /explore/datasets`) — mart-backed dimensions only (geo rollups and computed dims
+need a JOIN the builder can't emit) and additive metrics only (every path sums the source through the
+window dedup, and summing a stored average is silently wrong; non-additive figures are recomposed as
+num/den weighted averages instead). A per-measure **how** modifier (sum / average / % share of series /
+growth / latest) augments a base additive column deterministically — share is deliberately *within-series*,
+so each series sums to 100% across the x-axis (the "mix" reading) — and a 2nd dimension synthesises a
+composite x-axis (e.g. `bedroom_band × property_type` joined into one nominal label). `agent/object_builder.py`
+guards what the form can't: column identifiers are validated, non-additive sources rejected from any
+summing path, `filter` fragments refused if they smuggle statement separators or nested SELECTs, and
+`extract_grain` shares `_grain_with_chart_cols` with the codegen's `_bar_grain` so the rewritten extract
+and the snippet's window-dedup grain can never drift (trend/kpi keep the typed grain — their skills read
+the extract per month). A bad spec surfaces as `invalid spec: …` from `/agent/analysis/build-object`,
+never a traceback.
 
 ---
 

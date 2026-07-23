@@ -44,9 +44,14 @@ async def _resolve_user_id(as_user: str | None, admin: CurrentUser) -> str:
     or blank — but the agent and Postgres RLS key on the user *id* (a uuid). A raw
     username passed straight through fails every build/prep/draft with
     ``invalid input syntax for type uuid: "user1"``, which is what made curating a
-    golden's answer impossible. So: blank → the admin; an id → itself; a username
-    → its id (falling back to the admin on an unknown name so a curator action is
-    never hard-blocked by a typo).
+    golden's answer impossible. So: blank → the admin; an id → itself; a known
+    username → its id.
+
+    An *unknown* username is rejected (400), not silently run as the admin: a
+    typo would otherwise build the extract under full-admin RLS visibility while
+    still claiming the seeded identity, masking a governance mismatch — and eval
+    replay (dev-login by username) fails loudly on the same typo, so curation and
+    eval must behave the same way.
     """
     if not as_user:
         return admin.id
@@ -57,11 +62,12 @@ async def _resolve_user_id(as_user: str | None, admin: CurrentUser) -> str:
         pass
     async with rls_connection(admin.id) as conn:
         row = (
-            await conn.execute(
-                text("SELECT id FROM app.users WHERE username = :u"), {"u": as_user}
-            )
+            await conn.execute(text("SELECT id FROM app.users WHERE username = :u"), {"u": as_user})
         ).scalar()
-    return jsonable(row) if row is not None else admin.id
+    if row is None:
+        raise HTTPException(status_code=400, detail=f"unknown as_user: {as_user!r}")
+    return jsonable(row)
+
 
 # Column names below are fixed literals / driven by the Pydantic models — never
 # raw user strings — so building them into the SQL text is injection-safe.

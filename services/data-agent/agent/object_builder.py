@@ -141,7 +141,14 @@ _GROWTH_HOWS = {"growth", "growth %", "growth_pct", "delta", "delta %"}
 _LATEST_HOWS = {"latest", "latest value", "current"}
 
 
-def _measure(raw: Any, *, default_label: str, default_source: str) -> dict[str, Any]:
+def _measure(
+    raw: Any,
+    *,
+    default_label: str,
+    default_source: str,
+    default_num: str | None = None,
+    default_den: str | None = None,
+) -> dict[str, Any]:
     """Normalise a measure dict from the form.
 
     Shapes accepted:
@@ -152,6 +159,12 @@ def _measure(raw: Any, *, default_label: str, default_source: str) -> dict[str, 
         chart's series (each series sums to 100% across the x-axis, the "mix"
         reading); ``growth`` = first-vs-last % change over the window; ``latest``
         = the value at the most recent month. All computed deterministically.
+
+    ``default_num``/``default_den`` recompose a recomposed-average default: when
+    the form supplies no measure at all and the fallback is a non-additive ratio
+    column (e.g. ``avg_sale_price``), build it as a wavg of the additive legs
+    rather than summing the ratio — which the additive guard rightly rejects — so
+    a partial (or empty) spec still yields runnable code.
     """
     m = raw if isinstance(raw, dict) else {}
     num = m.get("num")
@@ -159,6 +172,8 @@ def _measure(raw: Any, *, default_label: str, default_source: str) -> dict[str, 
     label = str(m.get("label") or default_label)
     months = int(m.get("months") or 0) or None
     how = str(m.get("how") or "").strip().lower()
+    if not num and not den and not m.get("source") and not how and default_num and default_den:
+        num, den = default_num, default_den
     source = str(m.get("source") or default_source)
     if num and den and how not in _SHARE_HOWS | _GROWTH_HOWS | _LATEST_HOWS:
         return {"kind": "wavg", "label": label, "num": str(num), "den": str(den), "months": months}
@@ -476,11 +491,20 @@ def _measure_block(
             f"({var}[{src_col}] * 100.0 / _den.where(_den != 0)).round(2).fillna(0.0)",
             f"{var} = {var}[{keys_lit} + [{label}]]",
         ]
-    if kind in ("growth", "latest") and has_month:
+    if kind in ("growth", "latest"):
+        # growth/latest are changes *over time* — without a month to order on they
+        # would silently collapse to a plain sum while the label still claims
+        # "growth"/"latest". Fail honestly instead (matches the branch's
+        # reject-silently-wrong posture) so the curator adds month to the grain.
+        if not has_month:
+            raise ValueError(
+                f"{kind} measure {m['label']!r} needs 'month' in the grain — it is a "
+                "change over time, not a static aggregate"
+            )
         # Per chart key over the window's months: first-vs-last % change, or the
         # most recent value — computed on per-month totals of the source, so a
         # grain wider than the chart keys never leaks one sub-slice row into the
-        # boundary months. Needs the month grain to order on.
+        # boundary months.
         src_col = json.dumps(_additive_source(m["source"]))
         month_keys = keys if "month" in keys else [*keys, "month"]
         ordered = (
@@ -501,7 +525,7 @@ def _measure_block(
             f".round(1).fillna(0.0)",
             f"{var} = {var}[{keys_lit} + [{label}]]",
         ]
-    # Plain aggregate (also the fallback when growth/latest lack a month grain).
+    # Plain aggregate — sum/mean of one additive column.
     agg = "mean" if m.get("agg") == "mean" else "sum"
     round_ = ".round()" if agg == "mean" else ""
     src_col = json.dumps(_additive_source(m["source"]))
@@ -527,6 +551,8 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
         spec.get("line_measure"),
         default_label=prof.ratio_col,
         default_source=prof.ratio_col,
+        default_num=prof.value_col,
+        default_den=prof.count_col,
     )
     lines = _window_setup(grain, int(spec.get("months") or 12), _dedup_cols(prof, bar, line))
     x_col, x_lines = _x_axis_lines(dim_cols)
@@ -595,6 +621,8 @@ def _trend_code(spec: dict[str, Any], prof: MartProfile) -> str:
         spec.get("line_measure") or spec.get("bar_measure"),
         default_label=prof.ratio_col,
         default_source=prof.ratio_col,
+        default_num=prof.value_col,
+        default_den=prof.count_col,
     )
     group_arg = f", group_col={json.dumps(str(group))}" if group else ""
     if line["kind"] == "wavg":
@@ -617,6 +645,8 @@ def _kpi_code(spec: dict[str, Any], prof: MartProfile) -> str:
         spec.get("line_measure") or spec.get("bar_measure"),
         default_label=prof.ratio_col,
         default_source=prof.ratio_col,
+        default_num=prof.value_col,
+        default_den=prof.count_col,
     )
     if m["kind"] == "wavg":
         val = f"value_col={json.dumps(m['num'])}, den_col={json.dumps(m['den'])}"

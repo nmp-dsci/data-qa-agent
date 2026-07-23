@@ -48,10 +48,6 @@ FALLBACK_USER = "user1"
 # not the whole result set — and an uncapped dump is how PII reaches git.
 MAX_GOLDEN_ROWS = 50
 
-# Per-field ceiling in serialised bytes. Past this a field stops being a
-# reviewable specification and becomes a data dump, so it is stored by hash.
-MAX_FIELD_BYTES = 16_384
-
 # Columns pulled from app.eval_cases, in pack order.
 FIELDS = [
     "case_key",
@@ -138,20 +134,6 @@ def _cap_rows(node: Any) -> Any:
     if isinstance(node, dict):
         return {key: _cap_rows(value) for key, value in node.items()}
     return node
-
-
-def _budget(field: str, value: Any) -> Any:
-    """Replace a field that is still oversized with a digest stub.
-
-    A backstop for payloads that are large without being list-shaped (a long
-    generated narrative, a chart spec with inlined data). The pack is a
-    specification; anything past the budget is a data dump that a reviewer
-    cannot meaningfully read, so it is recorded by hash instead of by value.
-    """
-    encoded = json.dumps(value, default=str)
-    if len(encoded) <= MAX_FIELD_BYTES:
-        return value
-    return {"_omitted": True, "_bytes": len(encoded), "_sha": _digest(value), "_field": field}
 
 
 def _redact(case: dict[str, Any]) -> dict[str, Any]:

@@ -344,6 +344,10 @@ const MEASURE_HOWS: { value: MeasureHow; label: string }[] = [
 // (a % share or growth of a stored average is not meaningful and would break the
 // window dedup, which keeps only additive columns).
 const HOW_NEEDS_ADDITIVE = new Set<MeasureHow>(["share", "growth", "latest"]);
+// The augmented kinds only exist in the bar-family codegen (compare/breakdown/
+// table); trend and kpi read the raw column, so the form hides the modifier for
+// them and the spec never claims a share/growth it wouldn't compute.
+const HOW_OBJECT_TYPES = new Set<PageObjectType>(["compare", "breakdown", "table"]);
 
 // The builder's flat form state (compare covers every field; simpler types read a
 // subset). Defaults are the house line+bar recipe so a first build just works.
@@ -495,14 +499,30 @@ function measureFromHow(
   return { label, source, how, months };
 }
 
+/** A stale augmented how (picked under a bar-family type, then the type switched
+ *  to trend/kpi where the form hides the modifier) falls back to a plain agg. */
+function effectiveHow(objectType: PageObjectType, how: MeasureHow): MeasureHow {
+  return !HOW_OBJECT_TYPES.has(objectType) && HOW_NEEDS_ADDITIVE.has(how) ? "sum" : how;
+}
+
 function barMeasure(f: BuilderForm): SandboxMeasure {
-  return measureFromHow(f.bar_label, f.bar_source, f.bar_how, f.bar_months);
+  return measureFromHow(
+    f.bar_label,
+    f.bar_source,
+    effectiveHow(f.object_type, f.bar_how),
+    f.bar_months,
+  );
 }
 
 function lineMeasure(f: BuilderForm): SandboxMeasure {
   return f.line_mode === "wavg"
     ? { label: f.line_label, num: f.line_num, den: f.line_den, months: f.line_months }
-    : measureFromHow(f.line_label, f.line_source, f.line_how, f.line_months);
+    : measureFromHow(
+        f.line_label,
+        f.line_source,
+        effectiveHow(f.object_type, f.line_how),
+        f.line_months,
+      );
 }
 
 /** Assemble the structured spec the deterministic builder emits code from. */
@@ -644,11 +664,21 @@ export function GoldensPage({
   // dataset's dimensions (the cuts) and metrics (the columns) from the manifest,
   // so a curator can only pick columns the data actually has (no hallucination).
   const [vocab, setVocab] = useState<ExploreDataset[]>([]);
+  // Set when the vocabulary fails to load — the dropdowns then only carry their
+  // current value, and the builder says so instead of silently degrading.
+  const [vocabError, setVocabError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     getExploreDatasets()
-      .then((d) => live && setVocab(d))
-      .catch(() => {}); // dropdowns fall back to their free-text current value
+      .then((d) => {
+        if (!live) return;
+        setVocab(d);
+        setVocabError(null);
+      })
+      .catch(() => {
+        if (!live) return;
+        setVocabError("column vocabulary failed to load — dropdowns only show current values");
+      });
     return () => {
       live = false;
     };
@@ -1565,15 +1595,32 @@ export function GoldensPage({
   }
 
   // Dropdown options for the structured builder, from the current dataset's
-  // typed vocabulary. `dimOpts` = the cuts (categorical/ordinal/time); `metricOpts`
-  // = the columns, flagged additive so share/growth/latest can restrict to them.
+  // typed vocabulary. The deterministic builder reads raw mart columns, so the
+  // dropdowns only offer what actually builds: `dimOpts` = the mart-backed cuts
+  // (geo rollups and computed year dims need a JOIN/expression the builder can't
+  // emit); `additiveMetricOpts` = the additive columns (the window dedup sums —
+  // a derived ratio like avg_* doesn't survive it; wtd-avg recomposes instead).
   const dsVocab = vocab.find((d) => d.slug === draft.dataset) ?? null;
-  const dimOpts = (dsVocab?.dimensions ?? []).map((d) => ({ value: d.name, label: d.label }));
+  const dimOpts = (dsVocab?.dimensions ?? [])
+    .filter((d) => d.source === "mart")
+    .map((d) => ({ value: d.name, label: d.label }));
   const metricOpts = (dsVocab?.metrics ?? []).map((m) => ({
     value: m.name,
     label: m.label,
     additive: m.kind === "additive",
   }));
+  const additiveMetricOpts = metricOpts.filter((m) => m.additive);
+  // The how modifier only renders for the bar family — trend/kpi ignore it.
+  const howApplies = HOW_OBJECT_TYPES.has(builder.object_type);
+  // Switching how to an augmented kind while a non-additive source is selected
+  // (a legacy free-text value the dropdown re-injects) snaps the source to the
+  // first additive metric so the invalid combo can't reach the build.
+  const resetToAdditive = (how: MeasureHow, source: string): string =>
+    HOW_NEEDS_ADDITIVE.has(how) &&
+    additiveMetricOpts.length > 0 &&
+    !additiveMetricOpts.some((m) => m.value === source)
+      ? additiveMetricOpts[0].value
+      : source;
   // A <select> whose current value is always present (even before the vocab
   // loads, or for a legacy free-text column not in the manifest), plus optional
   // extra options and a blank choice.
@@ -1904,6 +1951,14 @@ export function GoldensPage({
             <summary style={{ ...label, cursor: "pointer" }}>
               ▸ advanced — structured builder (deterministic: pick columns + skills)
             </summary>
+            {vocabError && (
+              <div
+                data-testid="builder-vocab-error"
+                style={{ ...label, color: "var(--bad)", marginTop: 8 }}
+              >
+                ⚠ {vocabError}
+              </div>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <input
@@ -2001,20 +2056,27 @@ export function GoldensPage({
                   onChange={(e) => setBuilder((b) => ({ ...b, bar_label: e.target.value }))}
                   style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
                 />
-                <select
-                  data-testid="builder-bar-how"
-                  value={builder.bar_how}
-                  onChange={(e) =>
-                    setBuilder((b) => ({ ...b, bar_how: e.target.value as MeasureHow }))
-                  }
-                  style={sel}
-                >
-                  {MEASURE_HOWS.map((h) => (
-                    <option key={h.value} value={h.value}>
-                      {h.label}
-                    </option>
-                  ))}
-                </select>
+                {howApplies && (
+                  <select
+                    data-testid="builder-bar-how"
+                    value={builder.bar_how}
+                    onChange={(e) => {
+                      const how = e.target.value as MeasureHow;
+                      setBuilder((b) => ({
+                        ...b,
+                        bar_how: how,
+                        bar_source: resetToAdditive(how, b.bar_source),
+                      }));
+                    }}
+                    style={sel}
+                  >
+                    {MEASURE_HOWS.map((h) => (
+                      <option key={h.value} value={h.value}>
+                        {h.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <span style={label}>of</span>
                 <select
                   data-testid="builder-bar-source"
@@ -2023,12 +2085,7 @@ export function GoldensPage({
                   onChange={(e) => setBuilder((b) => ({ ...b, bar_source: e.target.value }))}
                   style={sel}
                 >
-                  {selOptions(
-                    builder.bar_source,
-                    HOW_NEEDS_ADDITIVE.has(builder.bar_how)
-                      ? metricOpts.filter((m) => m.additive)
-                      : metricOpts,
-                  )}
+                  {selOptions(builder.bar_source, additiveMetricOpts)}
                 </select>
                 <label style={label}>
                   window{" "}
@@ -2069,10 +2126,7 @@ export function GoldensPage({
                       onChange={(e) => setBuilder((b) => ({ ...b, line_num: e.target.value }))}
                       style={sel}
                     >
-                      {selOptions(
-                        builder.line_num,
-                        metricOpts.filter((m) => m.additive),
-                      )}
+                      {selOptions(builder.line_num, additiveMetricOpts)}
                     </select>
                     <span style={label}>/</span>
                     <select
@@ -2082,28 +2136,32 @@ export function GoldensPage({
                       onChange={(e) => setBuilder((b) => ({ ...b, line_den: e.target.value }))}
                       style={sel}
                     >
-                      {selOptions(
-                        builder.line_den,
-                        metricOpts.filter((m) => m.additive),
-                      )}
+                      {selOptions(builder.line_den, additiveMetricOpts)}
                     </select>
                   </>
                 ) : (
                   <>
-                    <select
-                      data-testid="builder-line-how"
-                      value={builder.line_how}
-                      onChange={(e) =>
-                        setBuilder((b) => ({ ...b, line_how: e.target.value as MeasureHow }))
-                      }
-                      style={sel}
-                    >
-                      {MEASURE_HOWS.map((h) => (
-                        <option key={h.value} value={h.value}>
-                          {h.label}
-                        </option>
-                      ))}
-                    </select>
+                    {howApplies && (
+                      <select
+                        data-testid="builder-line-how"
+                        value={builder.line_how}
+                        onChange={(e) => {
+                          const how = e.target.value as MeasureHow;
+                          setBuilder((b) => ({
+                            ...b,
+                            line_how: how,
+                            line_source: resetToAdditive(how, b.line_source),
+                          }));
+                        }}
+                        style={sel}
+                      >
+                        {MEASURE_HOWS.map((h) => (
+                          <option key={h.value} value={h.value}>
+                            {h.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <span style={label}>of</span>
                     <select
                       data-testid="builder-line-source"
@@ -2112,12 +2170,7 @@ export function GoldensPage({
                       onChange={(e) => setBuilder((b) => ({ ...b, line_source: e.target.value }))}
                       style={sel}
                     >
-                      {selOptions(
-                        builder.line_source,
-                        HOW_NEEDS_ADDITIVE.has(builder.line_how)
-                          ? metricOpts.filter((m) => m.additive)
-                          : metricOpts,
-                      )}
+                      {selOptions(builder.line_source, additiveMetricOpts)}
                     </select>
                   </>
                 )}

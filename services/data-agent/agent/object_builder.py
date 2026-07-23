@@ -190,9 +190,21 @@ def _x_axis_lines(dim_cols: list[str]) -> tuple[str, list[str]]:
     """(x_col, code) — a single column, or a synthesized ``_x`` that joins several
     dimension columns into one nominal axis label."""
     if len(dim_cols) > 1:
-        concat = " + ' · ' + ".join(f"base['{c}'].astype(str)" for c in dim_cols)
+        concat = " + ' · ' + ".join(f"base[{json.dumps(c)}].astype(str)" for c in dim_cols)
         return "_x", [f"base['_x'] = {concat}"]
     return dim_cols[0], []
+
+
+def measure_source_cols(spec: dict[str, Any]) -> set[str]:
+    """The source/num/den columns the spec's measures read from the extract."""
+    cols: set[str] = set()
+    for raw in (spec.get("bar_measure"), spec.get("line_measure")):
+        if not isinstance(raw, dict):
+            continue
+        for k in ("source", "num", "den"):
+            if raw.get(k):
+                cols.add(str(raw[k]))
+    return {c for c in cols if c}
 
 
 def needed_columns(spec: dict[str, Any]) -> set[str]:
@@ -205,12 +217,7 @@ def needed_columns(spec: dict[str, Any]) -> set[str]:
         cols.add(str(dim))
     if spec.get("group"):
         cols.add(str(spec["group"]))
-    for raw in (spec.get("bar_measure"), spec.get("line_measure")):
-        if not isinstance(raw, dict):
-            continue
-        for k in ("source", "num", "den"):
-            if raw.get(k):
-                cols.add(str(raw[k]))
+    cols |= measure_source_cols(spec)
     return {c for c in cols if c}
 
 
@@ -276,11 +283,14 @@ def canonical_extract_sql(
     ``avg_weekly_rent`` for rent).
 
     ``dataset`` selects the mart profile (table, additive legs, recomposed ratio,
-    carried filters). ``where_override`` is the exact WHERE predicate to scope the
-    object (from the builder's filter field, e.g. ``property_type = 'house' AND
-    suburb IN (...)``); when empty the golden's carried filters are best-effort
-    lifted from ``base_sql`` instead. The filter is surfaced in the form so it's
-    editable lineage, not a hidden guess."""
+    carried filters). ``measure_source_cols`` are the spec's measure source
+    columns — any not already covered by the grain or the profile's legs (e.g.
+    ``n_sold`` on the yield mart) are summed too, so the extract carries every
+    column the generated snippet reads. ``where_override`` is the exact WHERE
+    predicate to scope the object (from the builder's filter field, e.g.
+    ``property_type = 'house' AND suburb IN (...)``); when empty the golden's
+    carried filters are best-effort lifted from ``base_sql`` instead. The filter
+    is surfaced in the form so it's editable lineage, not a hidden guess."""
     prof = profile_for(dataset)
     tbl = table or prof.table
     grain_cols = [c for c in grain if c] or list(prof.default_grain)
@@ -292,6 +302,11 @@ def canonical_extract_sql(
         f"round((sum({prof.value_col}) / NULLIF(sum({prof.count_col}), 0))::numeric) "
         f"AS {prof.ratio_col}"
     )
+    covered = {*grain_cols, *prof.additive, prof.ratio_col}
+    for c in sorted(measure_source_cols):
+        if c and c not in covered:
+            select.append(f"sum({c}) AS {c}")
+            covered.add(c)
     where = (
         [validate_where_override(where_override)]
         if where_override.strip()
@@ -315,9 +330,22 @@ def canonical_extract_sql(
 # ---------------------------------------------------------------------------
 
 
-def _window_setup(grain: list[str], months: int | None, additive: tuple[str, ...]) -> list[str]:
-    """Dedup df to ``grain`` (summing the profile's additive cols) and expose the
-    latest-N-month windows as python sets the measure blocks filter on."""
+def _dedup_cols(prof: MartProfile, *measures: dict[str, Any]) -> list[str]:
+    """The union of the profile's additive legs and the measures' source columns
+    — every column the window dedup must sum so a measure over a non-profile leg
+    (e.g. ``n_sold`` on the yield mart) survives to the measure blocks."""
+    cols = list(prof.additive)
+    for m in measures:
+        for k in ("source", "num", "den"):
+            v = str(m.get(k) or "")
+            if v and v not in cols:
+                cols.append(v)
+    return cols
+
+
+def _window_setup(grain: list[str], months: int | None, additive: list[str]) -> list[str]:
+    """Dedup df to ``grain`` (summing the additive/source cols present) and expose
+    the latest-N-month windows as python sets the measure blocks filter on."""
     keys = json.dumps(grain)
     add = json.dumps(list(additive))
     lines = [
@@ -358,61 +386,64 @@ def _measure_block(
         if (has_month and win)
         else ("base[base['month'].isin(_win_default)]" if has_month else "base")
     )
-    label = m["label"]
+    label = json.dumps(m["label"])
     kind = m["kind"]
     if kind == "wavg":
+        num = json.dumps(m["num"])
+        den = json.dumps(m["den"])
         return [
             f"{var} = {src}.groupby({keys_lit}, as_index=False).agg("
-            f"_num=('{m['num']}', 'sum'), _den=('{m['den']}', 'sum'))",
-            f"{var}['{label}'] = ({var}['_num'] / {var}['_den'].where({var}['_den'] != 0)).round()",
-            f"{var} = {var}[{keys_lit} + ['{label}']]",
+            f"_num=({num}, 'sum'), _den=({den}, 'sum'))",
+            f"{var}[{label}] = ({var}['_num'] / {var}['_den'].where({var}['_den'] != 0)).round()",
+            f"{var} = {var}[{keys_lit} + [{label}]]",
         ]
     if kind == "share":
         # % of the source within the series (`within`); each series then sums to
         # 100% across the x-axis. Always a Series denominator so the empty-`within`
         # (grand-total) case divides cleanly too.
-        src_col = m["source"]
+        src_col = json.dumps(m["source"])
         within_lit = json.dumps([c for c in (within or []) if c])
         return [
-            f"{var} = {src}.groupby({keys_lit}, as_index=False)['{src_col}'].sum()",
+            f"{var} = {src}.groupby({keys_lit}, as_index=False)[{src_col}].sum()",
             f"_wl = {within_lit}",
-            f"_den = ({var}.groupby(_wl)['{src_col}'].transform('sum') if _wl "
-            f"else pd.Series({var}['{src_col}'].sum(), index={var}.index))",
-            f"{var}['{label}'] = "
-            f"({var}['{src_col}'] * 100.0 / _den.where(_den != 0)).round(2).fillna(0.0)",
-            f"{var} = {var}[{keys_lit} + ['{label}']]",
+            f"_den = ({var}.groupby(_wl)[{src_col}].transform('sum') if _wl "
+            f"else pd.Series({var}[{src_col}].sum(), index={var}.index))",
+            f"{var}[{label}] = "
+            f"({var}[{src_col}] * 100.0 / _den.where(_den != 0)).round(2).fillna(0.0)",
+            f"{var} = {var}[{keys_lit} + [{label}]]",
         ]
     if kind in ("growth", "latest") and has_month:
         # Per chart key over the window's months: first-vs-last % change, or the
         # most recent value — computed on per-month totals of the source, so a
         # grain wider than the chart keys never leaks one sub-slice row into the
         # boundary months. Needs the month grain to order on.
-        src_col = m["source"]
+        src_col = json.dumps(m["source"])
         month_keys = keys if "month" in keys else [*keys, "month"]
         ordered = (
             f"{src}.groupby({json.dumps(month_keys)}, as_index=False)"
-            f"['{src_col}'].sum().sort_values('month')"
+            f"[{src_col}].sum().sort_values('month')"
         )
         if kind == "latest":
             return [
-                f"{var} = {ordered}.groupby({keys_lit}, as_index=False)['{src_col}'].last()",
-                f"{var} = {var}.rename(columns={{'{src_col}': '{label}'}})",
+                f"{var} = {ordered}.groupby({keys_lit}, as_index=False)[{src_col}].last()",
+                f"{var} = {var}.rename(columns={{{src_col}: {label}}})",
             ]
         return [
             f"{var} = {ordered}.groupby({keys_lit}, as_index=False).agg("
-            f"_first=('{src_col}', 'first'), _last=('{src_col}', 'last'))",
-            f"{var}['{label}'] = "
+            f"_first=({src_col}, 'first'), _last=({src_col}, 'last'))",
+            f"{var}[{label}] = "
             f"(({var}['_last'] - {var}['_first']) * 100.0 / "
             f"{var}['_first'].where({var}['_first'] != 0))"
             f".round(1).fillna(0.0)",
-            f"{var} = {var}[{keys_lit} + ['{label}']]",
+            f"{var} = {var}[{keys_lit} + [{label}]]",
         ]
     # Plain aggregate (also the fallback when growth/latest lack a month grain).
     agg = "mean" if m.get("agg") == "mean" else "sum"
     round_ = ".round()" if agg == "mean" else ""
+    src_col = json.dumps(m["source"])
     return [
-        f"{var} = {src}.groupby({keys_lit}, as_index=False)['{m['source']}'].{agg}(){round_}",
-        f"{var} = {var}.rename(columns={{'{m['source']}': '{label}'}})",
+        f"{var} = {src}.groupby({keys_lit}, as_index=False)[{src_col}].{agg}(){round_}",
+        f"{var} = {var}.rename(columns={{{src_col}: {label}}})",
     ]
 
 
@@ -437,7 +468,7 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
         default_label=prof.ratio_col,
         default_source=prof.ratio_col,
     )
-    lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
+    lines = _window_setup(grain, int(spec.get("months") or 12), _dedup_cols(prof, bar, line))
     x_col, x_lines = _x_axis_lines(dim_cols)
     lines += x_lines
     chart_keys = [x_col] + ([group] if group else [])
@@ -449,7 +480,7 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
     keys_lit = json.dumps(chart_keys)
     lines += [
         f"agg = bar_df.merge(line_df, on={keys_lit}, how='left')",
-        f"agg = agg.dropna(subset=['{line['label']}'])",
+        f"agg = agg.dropna(subset=[{json.dumps(line['label'])}])",
     ]
     series = f", series_col={json.dumps(group)}" if group else ""
     title = json.dumps(spec.get("title") or "Sale price vs volume by band")
@@ -476,7 +507,7 @@ def _breakdown_code(spec: dict[str, Any], prof: MartProfile) -> str:
     grain, dim_cols, group = _bar_grain(spec, prof)
     has_month = "month" in grain
     bar = _measure(spec.get("bar_measure"), default_label="volume", default_source=prof.count_col)
-    lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
+    lines = _window_setup(grain, int(spec.get("months") or 12), _dedup_cols(prof, bar))
     x_col, x_lines = _x_axis_lines(dim_cols)
     lines += x_lines
     chart_keys = [x_col] + ([group] if group else [])
@@ -562,7 +593,7 @@ def _table_code(spec: dict[str, Any], prof: MartProfile) -> str:
             _measure(line_raw, default_label=prof.ratio_col, default_source=prof.ratio_col)
         )
 
-    lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
+    lines = _window_setup(grain, int(spec.get("months") or 12), _dedup_cols(prof, *measures))
     x_col, x_lines = _x_axis_lines(dim_cols)
     lines += x_lines
     chart_keys = [x_col] + ([group] if group else [])

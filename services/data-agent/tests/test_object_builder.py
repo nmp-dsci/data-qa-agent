@@ -447,6 +447,72 @@ def test_growth_and_latest_use_per_month_totals_over_wider_grain() -> None:
     assert latest and all(float(r["current"]) == 96.0 for r in latest)
 
 
+def test_yield_extract_selects_non_profile_measure_sources() -> None:
+    """The yield profile's legs are the rent pair, but the mart also carries the
+    additive sales legs — a spec sourcing them gets them summed into the extract
+    (the previously unused ``measure_source_cols``)."""
+    sql = canonical_extract_sql(
+        "SELECT * FROM marts.property_yield WHERE property_type = 'house'",
+        grain=["month", "postcode"],
+        measure_source_cols={"n_sold", "total_sale_value"},
+        dataset="nsw_yield",
+    )
+    assert "FROM marts.property_yield" in sql
+    assert "sum(n_rented) AS n_rented" in sql
+    assert "sum(n_sold) AS n_sold" in sql
+    assert "sum(total_sale_value) AS total_sale_value" in sql
+
+
+def _yield_frame() -> pd.DataFrame:
+    """A yield mart extract at postcode × month with all four additive legs."""
+    rows = []
+    months = [f"2024-{m:02d}" for m in range(1, 13)]
+    for i, mo in enumerate(months):
+        for pc in ("2077", "2076"):
+            n = 5 + i
+            rows.append(
+                {
+                    "month": mo,
+                    "postcode": pc,
+                    "n_sold": n,
+                    "total_sale_value": n * 1_000_000,
+                    "n_rented": n * 3,
+                    "total_weekly_rent": n * 3 * 550,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_yield_breakdown_over_sales_leg_survives_dedup() -> None:
+    """A measure over ``n_sold`` on nsw_yield builds: the window dedup sums the
+    union of the profile legs and the measure sources, not just the rent pair."""
+    spec = {
+        "grain": ["month", "postcode"],
+        "dimension": "postcode",
+        "bar_measure": {"label": "sales", "source": "n_sold", "agg": "sum"},
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_yield")
+    outcome = run_code(code, df=_yield_frame(), frames={"extract": _yield_frame()})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    assert values and all("sales" in r for r in values)
+    assert all(float(r["sales"]) > 0 for r in values)
+
+
+def test_label_with_apostrophe_emits_runnable_code() -> None:
+    """Labels are json-escaped into the snippet, so an apostrophe can't break it."""
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "what's rented", "source": "n_rented", "how": "share"},
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_frame(), frames={"extract": _rent_frame()})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    assert values and all("what's rented" in r for r in values)
+
+
 def test_table_supports_composite_dimension() -> None:
     """A list `dimension` on a table becomes the synthesized `_x` axis column
     (labelled with the joined dimension names), exactly as compare/breakdown."""

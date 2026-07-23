@@ -1133,7 +1133,9 @@ async def agent_analysis_build_object(
     from .object_builder import (
         build_object_code,
         canonical_extract_sql,
+        dimension_cols,
         element_id_for,
+        measure_source_cols,
         name_from_instruction,
         needed_columns,
         profile_for,
@@ -1176,12 +1178,22 @@ async def agent_analysis_build_object(
     need = needed_columns(body.spec)
     must_rewrite = bool(body.spec) and (base_error is not None or not need.issubset(set(columns)))
     if must_rewrite:
-        grain = body.spec.get("grain") or list(profile_for(body.dataset).default_grain)
+        prof = profile_for(body.dataset)
+        grain = list(body.spec.get("grain") or prof.default_grain)
+        # The extract must carry every column the generated snippet groups by —
+        # a composite 2nd dimension or a group the curator didn't type into the
+        # grain field is appended here, exactly as the codegen's _bar_grain does.
+        for col in (
+            *dimension_cols(body.spec.get("dimension"), prof),
+            *([str(body.spec["group"])] if body.spec.get("group") else []),
+        ):
+            if col and col not in grain:
+                grain.append(col)
         try:
             new_sql = canonical_extract_sql(
                 body.sql,
                 grain=grain,
-                measure_source_cols=need,
+                measure_source_cols=measure_source_cols(body.spec),
                 where_override=str(body.spec.get("filter") or ""),
                 dataset=body.dataset,
             )

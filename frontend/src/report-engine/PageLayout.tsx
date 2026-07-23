@@ -142,7 +142,7 @@ export function objectCardClass(o: PageObject): string {
       : o.type === "insight" || o.type === "text"
         ? "insight-card page-obj"
         : "chart-card page-obj";
-  return o.data["height"] === "fill" ? `${base} fill` : base;
+  return o.data?.["height"] === "fill" ? `${base} fill` : base;
 }
 
 function DefaultCard({ o }: { o: PageObject }) {

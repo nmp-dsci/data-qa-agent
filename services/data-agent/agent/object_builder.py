@@ -379,14 +379,20 @@ def _measure_block(
             f"_den = ({var}.groupby(_wl)['{src_col}'].transform('sum') if _wl "
             f"else pd.Series({var}['{src_col}'].sum(), index={var}.index))",
             f"{var}['{label}'] = "
-            f"({var}['{src_col}'] * 100.0 / _den.replace(0, pd.NA)).round(2).fillna(0.0)",
+            f"({var}['{src_col}'] * 100.0 / _den.where(_den != 0)).round(2).fillna(0.0)",
             f"{var} = {var}[{keys_lit} + ['{label}']]",
         ]
     if kind in ("growth", "latest") and has_month:
         # Per chart key over the window's months: first-vs-last % change, or the
-        # most recent value. Needs the month grain to order on.
+        # most recent value — computed on per-month totals of the source, so a
+        # grain wider than the chart keys never leaks one sub-slice row into the
+        # boundary months. Needs the month grain to order on.
         src_col = m["source"]
-        ordered = f"{src}.sort_values('month')"
+        month_keys = keys if "month" in keys else [*keys, "month"]
+        ordered = (
+            f"{src}.groupby({json.dumps(month_keys)}, as_index=False)"
+            f"['{src_col}'].sum().sort_values('month')"
+        )
         if kind == "latest":
             return [
                 f"{var} = {ordered}.groupby({keys_lit}, as_index=False)['{src_col}'].last()",
@@ -396,7 +402,8 @@ def _measure_block(
             f"{var} = {ordered}.groupby({keys_lit}, as_index=False).agg("
             f"_first=('{src_col}', 'first'), _last=('{src_col}', 'last'))",
             f"{var}['{label}'] = "
-            f"(({var}['_last'] - {var}['_first']) * 100.0 / {var}['_first'].replace(0, pd.NA))"
+            f"(({var}['_last'] - {var}['_first']) * 100.0 / "
+            f"{var}['_first'].where({var}['_first'] != 0))"
             f".round(1).fillna(0.0)",
             f"{var} = {var}[{keys_lit} + ['{label}']]",
         ]
@@ -438,7 +445,7 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
     # the x-axis (the "mix" reading). No series ⇒ share of the grand total.
     within = [group] if group else []
     lines += _measure_block(bar, chart_keys, "bar_df", has_month, within=within)
-    lines += _measure_block(line, chart_keys, "line_df", has_month)
+    lines += _measure_block(line, chart_keys, "line_df", has_month, within=within)
     keys_lit = json.dumps(chart_keys)
     lines += [
         f"agg = bar_df.merge(line_df, on={keys_lit}, how='left')",
@@ -542,10 +549,10 @@ def _table_code(spec: dict[str, Any], prof: MartProfile) -> str:
     Aggregates the bar measure (and, when present, the line measure as a second
     value column) to ``dimension`` (+ optional ``group``), then emits the
     DataTable wire shape via ``skills.data_table`` for ``build_report(table=...)``.
+    A list ``dimension`` becomes one synthesized composite axis column, exactly
+    as in compare/breakdown.
     """
-    grain = spec.get("grain") or list(prof.default_grain)
-    dimension = str(spec.get("dimension") or prof.default_grain[1])
-    group = spec.get("group") or None
+    grain, dim_cols, group = _bar_grain(spec, prof)
     has_month = "month" in grain
     bar = _measure(spec.get("bar_measure"), default_label="volume", default_source=prof.count_col)
     measures = [bar]
@@ -554,13 +561,16 @@ def _table_code(spec: dict[str, Any], prof: MartProfile) -> str:
         measures.append(
             _measure(line_raw, default_label=prof.ratio_col, default_source=prof.ratio_col)
         )
-    chart_keys = [dimension] + ([str(group)] if group else [])
-    keys_lit = json.dumps(chart_keys)
 
     lines = _window_setup(grain, int(spec.get("months") or 12), prof.additive)
-    lines += _measure_block(measures[0], chart_keys, "agg", has_month)
+    x_col, x_lines = _x_axis_lines(dim_cols)
+    lines += x_lines
+    chart_keys = [x_col] + ([group] if group else [])
+    keys_lit = json.dumps(chart_keys)
+    within = [group] if group else []
+    lines += _measure_block(measures[0], chart_keys, "agg", has_month, within=within)
     if len(measures) > 1:
-        lines += _measure_block(measures[1], chart_keys, "m2", has_month)
+        lines += _measure_block(measures[1], chart_keys, "m2", has_month, within=within)
         lines += [f"agg = agg.merge(m2, on={keys_lit}, how='left')"]
 
     variant = str(spec.get("variant") or "ranked")
@@ -570,11 +580,13 @@ def _table_code(spec: dict[str, Any], prof: MartProfile) -> str:
     if variant == "ranked":
         lines += [f"agg = agg.sort_values({json.dumps(bar_label)}, ascending=False)"]
 
-    columns = [{"key": k, "label": k} for k in chart_keys] + [
-        {"key": m["label"], "label": m["label"], "align": "right"} for m in measures
-    ]
-    title = json.dumps(spec.get("title") or f"{bar_label} by {dimension}")
-    summary = json.dumps(spec.get("summary") or f"{bar_label} tabulated by {dimension}.")
+    x_label = " · ".join(dim_cols)
+    columns = [{"key": x_col, "label": x_label}]
+    if group:
+        columns.append({"key": group, "label": group})
+    columns += [{"key": m["label"], "label": m["label"], "align": "right"} for m in measures]
+    title = json.dumps(spec.get("title") or f"{bar_label} by {x_label}")
+    summary = json.dumps(spec.get("summary") or f"{bar_label} tabulated by {x_label}.")
     bar_key = json.dumps(bar_label if variant == "ranked" else None)
     lines += [
         "table = skills.data_table(",

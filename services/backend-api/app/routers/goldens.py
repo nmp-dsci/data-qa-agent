@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -34,6 +35,33 @@ from ..auth import CurrentUser, require_admin
 from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["goldens"])
+
+
+async def _resolve_user_id(as_user: str | None, admin: CurrentUser) -> str:
+    """The user id the agent runs its RLS extract under, from a golden's ``as_user``.
+
+    A golden stores ``as_user`` as a seeded *username* ("user1"/"user2"/"admin")
+    or blank — but the agent and Postgres RLS key on the user *id* (a uuid). A raw
+    username passed straight through fails every build/prep/draft with
+    ``invalid input syntax for type uuid: "user1"``, which is what made curating a
+    golden's answer impossible. So: blank → the admin; an id → itself; a username
+    → its id (falling back to the admin on an unknown name so a curator action is
+    never hard-blocked by a typo).
+    """
+    if not as_user:
+        return admin.id
+    try:
+        uuid.UUID(str(as_user))
+        return str(as_user)
+    except ValueError:
+        pass
+    async with rls_connection(admin.id) as conn:
+        row = (
+            await conn.execute(
+                text("SELECT id FROM app.users WHERE username = :u"), {"u": as_user}
+            )
+        ).scalar()
+    return jsonable(row) if row is not None else admin.id
 
 # Column names below are fixed literals / driven by the Pydantic models — never
 # raw user strings — so building them into the SQL text is injection-safe.
@@ -298,7 +326,7 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
         sql=body.sql,
         code=body.code,
         objects=body.objects,
-        user_id=body.as_user or admin.id,
+        user_id=await _resolve_user_id(body.as_user, admin),
         role="user",
     )
 
@@ -333,7 +361,7 @@ async def build_object_endpoint(
         spec=body.spec,
         instruction=body.instruction,
         dataset=body.dataset,
-        user_id=body.as_user or admin.id,
+        user_id=await _resolve_user_id(body.as_user, admin),
         role="user",
     )
 
@@ -367,7 +395,7 @@ async def author_object_endpoint(
         instruction=body.instruction,
         objects=body.objects,
         target_element_id=body.target_element_id,
-        user_id=body.as_user or admin.id,
+        user_id=await _resolve_user_id(body.as_user, admin),
         role="user",
     )
 
@@ -433,7 +461,7 @@ async def draft(body: DraftIn, admin: CurrentUser = Depends(require_admin)) -> d
     """
     ans = await ask_agent(
         question=body.question,
-        user_id=body.as_user or admin.id,
+        user_id=await _resolve_user_id(body.as_user, admin),
         role="user",
         plan="pro",
         dataset_slug=body.dataset or "nsw_sales",
@@ -590,7 +618,7 @@ async def draft_stream(
         try:
             async for ev in ask_agent_stream(
                 question=body.question,
-                user_id=body.as_user or admin.id,
+                user_id=await _resolve_user_id(body.as_user, admin),
                 role="user",
                 plan="pro",
                 dataset_slug=body.dataset or "nsw_sales",

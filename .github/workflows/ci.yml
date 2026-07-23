@@ -35,6 +35,11 @@ jobs:
         # --extra llm: pandas/pydantic-ai/fastembed live in the llm extra and
         # the pages/skills/sandbox tests import them.
         run: uv run --extra llm pytest -q
+      - name: Pytest (backend-api service)
+        working-directory: services/backend-api
+        # s29: handler-level tests (db_warming 503 contract, /health/db) that
+        # need the fastapi stack, which the repo-root env deliberately lacks.
+        run: uv run pytest -q
 
   frontend-build:
     runs-on: ubuntu-latest

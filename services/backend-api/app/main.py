@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from .config import settings
 from .db import engine, rls_connection
@@ -23,6 +25,7 @@ from .routers import (
     profile,
     sql,
 )
+from .waking import is_db_waking
 
 log = logging.getLogger("uvicorn.error")
 
@@ -66,9 +69,25 @@ async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
     UndefinedTableError into an undiagnosable blank Explore tab in prod
     (2026-07-21); with this handler the client sees a real 500 + detail.
     The exception is re-logged with its traceback, same as the default handler.
+
+    Waking-database failures (s29) are split out as a retryable 503: while
+    Aurora resumes from auto-pause every connect fails, which is a state the
+    client can wait out — the login flow retries on exactly this detail string
+    (frontend/src/lib/auth.ts) instead of dumping the user back to the card.
+    A real 500 must never wear that label, so the check is the narrow
+    connect-phase classifier in db.is_db_waking, and everything else keeps the
+    existing 500 path.
     """
-    log.exception("unhandled error on %s %s", request.method, request.url.path)
-    response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    if is_db_waking(exc):
+        log.warning("db waking on %s %s: %s", request.method, request.url.path, exc, exc_info=False)
+        response = JSONResponse(
+            status_code=503,
+            content={"detail": "db_warming"},
+            headers={"Retry-After": "5"},
+        )
+    else:
+        log.exception("unhandled error on %s %s", request.method, request.url.path)
+        response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
     origin = request.headers.get("origin")
     if origin and origin in settings.all_cors_origins:
         response.headers["Access-Control-Allow-Origin"] = origin
@@ -92,3 +111,53 @@ app.include_router(evals.router)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "env": settings.app_env}
+
+
+_HEALTH_DB_MIN_INTERVAL_S = 5.0
+_health_db_cache: dict[str, str] | None = None
+_health_db_cache_at: float = 0.0
+
+
+@app.get("/health/db")
+async def health_db(request: Request) -> dict[str, str]:
+    """Unauthenticated DB wake probe (s29).
+
+    The login card fires this on mount so Aurora starts resuming while the
+    user is still in the Google sign-in dance (~12s observed) instead of when
+    the first credentialed /me arrives — front-loading most of the ~30s wake.
+    A waking database is the expected cold-visit answer, not an error, so it
+    reports "waking" at 200 rather than tripping the 503 path; anything the
+    classifier doesn't recognise still raises into the normal error handler.
+
+    Only requests carrying the app's channel marker (X-Client-Channel: web,
+    sent by frontend wakeDb) touch the database: every probe is a fresh
+    NullPool connect that resumes a paused Aurora, so a generic poller — an
+    uptime monitor, a scanner — pointed here would defeat auto-pause, the
+    dominant idle cost. The marker is a fence against that traffic, not a
+    secret; unmarked requests get a 200 saying the probe was skipped.
+
+    The marker alone doesn't stop a caller who copies it from the shipped
+    bundle from hammering this endpoint to keep forcing fresh connects, so
+    real probes are also coalesced: a marked request within
+    _HEALTH_DB_MIN_INTERVAL_S of the last one gets the cached result instead
+    of opening another connection, capping how often this path can wake
+    Aurora regardless of request volume.
+    """
+    if request.headers.get("x-client-channel") != "web":
+        return {"status": "skipped", "env": settings.app_env}
+    global _health_db_cache, _health_db_cache_at
+    now = time.monotonic()
+    if _health_db_cache is not None and now - _health_db_cache_at < _HEALTH_DB_MIN_INTERVAL_S:
+        return _health_db_cache
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("select 1"))
+    except Exception as exc:
+        if not is_db_waking(exc):
+            raise
+        result = {"status": "waking", "env": settings.app_env}
+        _health_db_cache, _health_db_cache_at = result, now
+        return result
+    result = {"status": "ok", "env": settings.app_env}
+    _health_db_cache, _health_db_cache_at = result, now
+    return result

@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s29 · Prod Google login — one click, not five</title>
+<style>
+  :root{
+    --bg:#0a0d15;--panel:#111522;--panel-2:#171c2b;--panel-3:#1e2434;--border:#242b3d;--border-2:#333d55;
+    --text:#eaecf3;--muted:#9aa4bb;--faint:#7a84a0;--code-bg:#0a0d13;
+    --accent:#d9a84e;--accent-ink:#1a1204;--accent-soft:#f2ca79;--accent-2:#7fb0ff;
+    --good:#9ece6a;--good-border:#33502f;--warn:#e0af68;--warn-border:#6b5a2a;--bad:#f2777a;--bad-border:#6b2a2a;
+    --purple:#c58fff;--info:#7dcfff;--info-border:#2f5a7a;
+    --radius:8px;--radius-lg:10px;--radius-xl:14px;
+    --sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;}
+  :where(.grid,.flex,.flow,.opt-grid)>*{min-width:0;}
+  :where(p,h1,h2,h3,h4,li,dd,td,th,.chip){overflow-wrap:anywhere;}
+  :where(img,svg){max-width:100%;height:auto;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;}
+  .wrap{max-width:1200px;margin:0 auto;padding:32px 22px 90px;}
+  h1{font-size:26px;line-height:1.2;margin:8px 0 6px;letter-spacing:-0.01em;}
+  h2{font-size:19px;margin:0 0 4px;letter-spacing:-0.01em;}
+  h3{font-size:15px;margin:0 0 4px;}
+  section{margin-top:38px;}
+  p{margin:8px 0;}
+  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:var(--accent);font-weight:600;}
+  .sub{color:var(--muted);max-width:66rem;}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;color:var(--accent-soft);white-space:nowrap;}
+  code.w{white-space:normal;}
+  a{color:var(--accent-2);}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .chip{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .chip.gold{color:var(--accent);border-color:#6b5a2a;background:rgba(217,168,78,0.08);}
+  .chip.blue{color:var(--accent-2);border-color:var(--info-border);background:rgba(127,176,255,0.08);}
+  .chip.bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .chip.good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px 20px;}
+  .panel.tight{padding:14px 16px;}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;}
+
+  .thesis{margin-top:18px;border-left:3px solid var(--bad);background:linear-gradient(90deg,rgba(242,119,122,0.09),rgba(242,119,122,0));padding:14px 18px;border-radius:0 var(--radius-lg) var(--radius-lg) 0;}
+  .thesis.gold{border-left-color:var(--accent);background:linear-gradient(90deg,rgba(217,168,78,0.09),rgba(217,168,78,0));}
+  .thesis .q{font-size:16px;line-height:1.5;}
+
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px;}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;padding:0 10px 7px;border-bottom:1px solid var(--border);}
+  td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .st{font-family:var(--mono);font-size:11px;white-space:nowrap;padding:2px 8px;border-radius:5px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .st.ok{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .st.no{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .st.part{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,0.08);}
+
+  .grid{display:grid;gap:14px;}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr));}
+  @media(max-width:900px){.g2,.g3{grid-template-columns:1fr;}}
+
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:13px 15px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.6;margin:10px 0 0;color:#cfd6e6;}
+  pre .c{color:var(--faint);}
+  pre .g{color:var(--good);}
+  pre .r{color:var(--bad);}
+  pre .y{color:var(--accent);}
+  pre .b{color:var(--accent-2);}
+  .fname{font-family:var(--mono);font-size:11px;color:var(--faint);margin:14px 0 0;}
+  .fname b{color:var(--accent-soft);font-weight:600;}
+
+  /* linear failure pipeline (house pattern, s28) */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;margin-top:14px;}
+  .fbox{flex:1;min-width:150px;background:var(--panel-2);border:1px solid var(--border-2);border-radius:var(--radius);padding:11px 13px;position:relative;}
+  .fbox .n{font-family:var(--mono);font-size:10px;color:var(--faint);}
+  .fbox .t{font-size:13px;font-weight:600;margin-top:3px;}
+  .fbox .d{font-size:11.5px;color:var(--muted);margin-top:3px;}
+  .fbox.crash{border-color:var(--bad-border);background:rgba(242,119,122,0.07);}
+  .fbox.crash .t{color:var(--bad);}
+  .fbox.ok{border-color:var(--good-border);background:rgba(158,206,106,0.06);}
+  .fbox.ok .t{color:var(--good);}
+  .farrow{display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:18px;padding:0 4px;flex:none;}
+  @media(max-width:820px){.farrow{transform:rotate(90deg);width:100%;height:20px;}.flow{flex-direction:column;}}
+
+  .num{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:6px;background:var(--panel-3);border:1px solid var(--border-2);font-family:var(--mono);font-size:11px;color:var(--accent);flex:none;}
+  .step{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--border);}
+  .step:last-child{border-bottom:none;}
+  .tag{font-family:var(--mono);font-size:10px;padding:1px 7px;border-radius:4px;border:1px solid var(--border-2);color:var(--muted);white-space:nowrap;}
+  .tag.p0{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .tag.p1{color:var(--accent);border-color:#6b5a2a;background:rgba(217,168,78,0.08);}
+  .tag.p2{color:var(--accent-2);border-color:var(--info-border);background:rgba(127,176,255,0.08);}
+  .tag.p3{color:var(--purple);border-color:#4a2f6b;background:rgba(197,143,255,0.08);}
+
+  /* aggravator cards */
+  .agg .panel{border-left:3px solid var(--warn-border);}
+  .agg .lbl{color:var(--warn);}
+
+  /* login-card mocks, in the product's Flight Deck idiom */
+  .mockrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px;}
+  @media(max-width:900px){.mockrow{grid-template-columns:1fr;}}
+  .mcard{background:#0d1020;border:1px solid var(--border-2);border-radius:12px;padding:18px 16px;text-align:center;position:relative;}
+  .mcard .cap{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--faint);margin-bottom:12px;}
+  .mcard .cap.now{color:var(--bad);}
+  .mcard .cap.next{color:var(--good);}
+  .mtitle{font-weight:700;font-size:16px;}
+  .mtitle em{font-style:normal;color:var(--accent);}
+  .mtag{font-size:11px;color:var(--muted);margin:2px 0 12px;}
+  .gbtn{display:inline-flex;align-items:center;gap:8px;background:#1a73e8;color:#fff;font-size:12px;border-radius:5px;padding:7px 14px;font-weight:500;}
+  .gbtn.dim{opacity:0.45;}
+  .gG{background:#fff;color:#1a73e8;font-weight:700;border-radius:3px;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;}
+  .merr{color:var(--bad);font-size:11.5px;margin-top:10px;}
+  .annunciators{display:flex;gap:6px;justify-content:center;margin-top:12px;flex-wrap:wrap;}
+  .ann{font-family:var(--mono);font-size:9.5px;letter-spacing:0.6px;text-transform:uppercase;padding:2px 8px;border-radius:4px;border:1px solid var(--good-border);color:var(--good);}
+  .ann.amber{border-color:var(--warn-border);color:var(--warn);animation:pulse 1.6s ease-in-out infinite;}
+  .ann.off{border-color:var(--border-2);color:var(--faint);}
+  @keyframes pulse{50%{opacity:0.45;}}
+  .mprog{height:3px;background:var(--panel-3);border-radius:2px;margin-top:12px;overflow:hidden;}
+  .mprog i{display:block;height:100%;width:55%;background:var(--warn);border-radius:2px;}
+
+  /* attempt timeline */
+  .attempts td:first-child{font-family:var(--mono);white-space:nowrap;}
+
+  /* decision forms */
+  .opt-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px;}
+  @media(max-width:980px){.opt-grid{grid-template-columns:1fr;}}
+  .opt{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:16px 18px;display:flex;flex-direction:column;gap:8px;}
+  .opt.rec{border-color:#6b5a2a;box-shadow:0 0 0 1px rgba(217,168,78,0.25);}
+  .opt label{display:flex;gap:9px;align-items:flex-start;cursor:pointer;}
+  .opt input{margin-top:3px;accent-color:var(--accent);}
+  .opt .ot{font-weight:700;font-size:14px;}
+  .opt .rec-chip{font-family:var(--mono);font-size:10px;color:var(--accent);border:1px solid #6b5a2a;border-radius:999px;padding:1px 8px;margin-left:6px;}
+  .opt ul{margin:4px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted);}
+  .opt ul li{margin:3px 0;}
+  .opt .cost{font-size:12px;color:var(--warn);}
+  .qbtn{margin-top:14px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:8px;font-weight:700;font-size:13px;padding:9px 18px;cursor:pointer;font-family:var(--sans);}
+  .qbtn:hover{background:var(--accent-soft);}
+  .qbtn.ghost{background:transparent;color:var(--accent);border:1px solid #6b5a2a;}
+  .qnote{font-size:12px;color:var(--faint);margin-top:8px;}
+
+  .mermaid-host{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:14px;margin-top:14px;overflow-x:auto;}
+  .mermaid{min-width:640px;}
+
+  .foot{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);color:var(--faint);font-size:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="kicker">s29 · prod incident diagnosis + fix plan · 2026-07-23</div>
+    <h1>Prod Google login — one click, not five</h1>
+    <p class="sub">Signing in on prod bounces back to the login card 3–4 times before it finally works.
+    The diagnosis: <b>login is the only thing in the app that cannot tolerate the database being asleep</b> —
+    and the database is asleep precisely when a user arrives. Every layer here is behaving as designed;
+    the designs just collide at the front door.</p>
+    <div class="chips">
+      <span class="chip gold">worktree-prod-login-fix</span>
+      <span class="chip blue">deqfc8b0u8s64.cloudfront.net</span>
+      <span class="chip">AUTH_MODE=google</span>
+      <span class="chip">Aurora Serverless v2 · min 0 ACU</span>
+      <span class="chip bad">login_failure ×4–5 per session</span>
+    </div>
+    <div class="thesis">
+      <div class="q"><b>Root cause — CONFIRMED (CloudWatch, 2026-07-23): Aurora cold start, hang
+      variant.</b> The cluster metric shows <b>0 ACU (paused) until exactly 21:59 UTC</b> — the
+      minute of the observed bad login — then 2.0. During resume, asyncpg connects <b>hang rather
+      than error</b>: the page-load <code>POST /events</code> took <b>31s</b> (sent :00.6 → 201 at
+      :31.8) and the first credentialed <code>/me</code> hung ~19s. That is why there are no 5xx
+      anywhere — failures never look like failures. The user experience: button appears dead (no
+      pending state), so the user re-clicks 3–4 times; all queued logins land at once when the DB
+      wakes (<code>/me</code> 200 ×4 in 4s) and the app enters; then a reload six seconds later wipes
+      the <b>in-memory-only session</b> and forces one final login. <b>Cold start × zero feedback ×
+      no session persistence = "4–5 attempts".</b> Every mechanism is now log-proven; nothing here is
+      conjecture.</div>
+    </div>
+  </header>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="kicker">1 · Evidence</div>
+    <h2>What was observed, and where each claim comes from</h2>
+    <p class="sub">Live repro was run against prod today with Claude-in-Chrome (session GIF:
+    <code>~/Downloads/prod_google_login_repro.gif</code>). Automation cannot complete the Google
+    popup/FedCM leg — it is browser-native UI — so the post-credential leg is established from code
+    and from the 2026-07-21 incident data instead. Every claim below is tied to a source.</p>
+    <div class="tw"><table>
+      <thead><tr><th>#</th><th>Observation</th><th style="min-width:220px">Source</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>E1</td><td>Login card renders at <code>/chat</code> on every cold visit; personalized GIS button ("Sign in as nathan"). Only <code>POST /events</code> telemetry fires pre-login — which itself writes to Postgres, incidentally starting the Aurora resume.</td><td>Live repro · <code>routers/events.py:23-42</code></td><td><span class="st ok">verified</span></td></tr>
+        <tr><td>E2</td><td>The bearer token is a module-level JS variable — memory only. Any reload/new tab = sign in again. In Google mode there is no cookie, no localStorage, by explicit design note: <i>"Google mode has no equivalent yet"</i>.</td><td><code>frontend/src/lib/api.ts:331</code> · <code>lib/auth.ts:89-100</code></td><td><span class="st ok">verified</span></td></tr>
+        <tr><td>E3</td><td>Login = GIS credential → <code>GET /me</code> with the raw Google ID token as bearer. One shot: failure calls <code>onError</code>, renders a terse red line under the button, and that is the whole recovery story.</td><td><code>lib/auth.ts:65-78</code> · <code>app/Login.tsx:516-522</code></td><td><span class="st ok">verified</span></td></tr>
+        <tr><td>E4</td><td>In Google mode <b>every authenticated request</b> re-verifies the ID token against Google JWKS <i>and</i> re-upserts the user row — so auth itself requires a live DB on every call, login included.</td><td><code>backend-api/app/auth.py:198-214, 133-186</code></td><td><span class="st ok">verified</span></td></tr>
+        <tr><td>E5</td><td>DB engine uses <code>NullPool</code> deliberately (zero idle connections so Aurora can auto-pause). Fresh connect per request, no pre-ping, no retry. A refused connection during Aurora resume becomes an unhandled exception → JSON 500 <code>"Internal server error"</code>.</td><td><code>backend-api/app/db.py:22-31</code> · <code>app/main.py:58-71</code></td><td><span class="st ok">verified</span></td></tr>
+        <tr><td>E6</td><td>Aurora resume ≈ 15s best case; connections refused for ~30–60s in practice. Documented during the s12 build and the 2026-07-21 incident work.</td><td>s12/incident notes (PRs #15–17)</td><td><span class="st ok">prior incident</span></td></tr>
+        <tr><td>E7</td><td><code>apiFetch</code> is a bare <code>fetch</code> — no timeout, no retry, anywhere in the client.</td><td><code>frontend/src/lib/api.ts:10-12</code></td><td><span class="st ok">verified</span></td></tr>
+        <tr><td>E8</td><td>CloudWatch (14-day Logs Insights sweep, run 2026-07-23): <b>no <code>/me</code> 5xx at all</b>. The only <code>/me</code>/<code>/events</code> 500 burst is 2026-07-09 22:09–22:23 — the known asyncpg <code>ssl=True</code> bug (fixed same day, <code>4957c6a</code>). Jul-20 500s are <code>/explore/datasets</code> (marts incident, PR #15). <b>The Aurora-wake→500 theory does not explain current failures.</b></td><td>Logs Insights, backend-api application log</td><td><span class="st ok">verified — overturns first theory</span></td></tr>
+        <tr><td>E10</td><td>Failed-login sessions in the log read as: mount-probe <code>401</code> (expected — <code>resumeSession()</code> with no token) → then either (a) <b>200s that still bounced</b>: 2026-07-22 21:59 UTC shows <code>/me</code> <b>200 ×4 within 4s</b> (only the GIS callback calls <code>/me</code> with a credential → four callback firings, each verified + upserted fine) followed by another mount-probe 401 at +6s — i.e. a reload wiped the in-memory token right after successful logins; or (b) <b>lone 401s with no eventual 200</b> (07-21 11:33, 12:02; 07-23 02:29) — user reached the card and never got in: abandoned.</td><td>Logs Insights · <code>rg getMe</code> (only 2 call sites)</td><td><span class="st ok">verified</span></td></tr>
+        <tr><td>E9</td><td>In automation, clicking the GIS button produced <b>no visible response at all</b> (no popup, no console error, no network). Likely popup-block/FedCM cooldown under automation — but if FedCM cooldown ever hits a real user, the button silently does nothing, which would compound the "login is broken" impression.</td><td>Live repro</td><td><span class="st part">unverified for real users</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="kicker">2 · Failure mechanisms</div>
+    <h2>What is actually failing — all three mechanisms, log-proven</h2>
+
+    <div class="grid g3" style="margin-top:12px">
+      <div class="panel tight" style="border-left:3px solid var(--bad-border)">
+        <div class="lbl" style="color:var(--bad)">M0 · Aurora cold-start hang — the trigger</div>
+        <p style="font-size:13px;margin:6px 0 0">ACU metric: <b>0 → 2.0 at exactly 21:59 UTC</b>. While
+        resuming, DB-touching requests <b>hang silently ~20–30s</b> (asyncpg connect waits; nothing
+        errors): <code>POST /events</code> sent :00.6 → 201 at :31.8; first credentialed <code>/me</code>
+        preflighted :12.9 → 200 at :31.97. All queued requests complete in a burst the moment the DB
+        wakes — which is what the "<code>/me</code> 200 ×4 in 4s" really was. No 5xx ever appears, so
+        logs look healthy while users suffer.</p></div>
+      <div class="panel tight" style="border-left:3px solid var(--warn-border)">
+        <div class="lbl" style="color:var(--warn)">M1 · zero feedback during the hang — the multiplier</div>
+        <p style="font-size:13px;margin:6px 0 0">While <code>getMe()</code> hangs there is <b>no pending
+        state anywhere</b> — the button just sits there. A hung login is indistinguishable from a dead
+        one, so the user re-clicks 3–4 times; each re-click mints another credential and queues another
+        hung <code>/me</code>. This is where "4–5 attempts" comes from. (Related, still real: in
+        automation the button also swallowed clicks outright with no FedCM sheet and no request — E9 —
+        and there is no GIS error callback registered to catch it.)</p></div>
+      <div class="panel tight" style="border-left:3px solid var(--bad-border)">
+        <div class="lbl" style="color:var(--bad)">M2 · no session persistence — the re-toll</div>
+        <p style="font-size:13px;margin:6px 0 0">The session is a JS variable; the Google ID token
+        hard-expires at ~1h with no refresh. The timeline shows the user <b>fully inside the app at
+        :32–:40</b> (conversations + admin dashboard fan-out) — then a reload at <b>:41</b> wipes the
+        token and dumps them back to the login card for one more round (:48). Every reload, new tab, or
+        return visit re-pays the entry toll — including, on a cold visit, the M0 hang.</p></div>
+    </div>
+
+    <h3 style="margin-top:22px">The observed bad session, decoded — access log + ACU metric, 2026-07-22 21:59 UTC</h3>
+    <div class="tw"><table class="attempts">
+      <thead><tr><th>Clock (UTC)</th><th>Event</th><th>Status</th><th>Reading</th></tr></thead>
+      <tbody>
+        <tr><td>…–21:58</td><td>Aurora <code>ServerlessDatabaseCapacity</code></td><td><span class="st part">0 ACU</span></td><td>cluster paused — cold visit incoming</td></tr>
+        <tr><td>21:59:00.6</td><td><code>/auth/config</code> 200 · <code>/me</code> probe (no bearer)</td><td><span class="st part">401</span></td><td>page load. Probe is instant (no DB); the <code>login_screen_view</code> <code>POST /events</code> goes out and <b>hangs</b> — resume begins</td></tr>
+        <tr><td>21:59:12.9</td><td><code>OPTIONS /me</code> preflight</td><td><span class="st ok">200</span></td><td>first click's credential arrives — the FedCM dance took ~12s; <code>GET /me</code> now <b>hangs on the DB upsert</b></td></tr>
+        <tr><td>:12.9–:31</td><td><i>(nothing visible to the user)</i></td><td><span class="st no">hang</span></td><td>no pending state → looks dead → user re-clicks 3 more times, queuing 3 more hung <code>/me</code></td></tr>
+        <tr><td>21:59:31.8</td><td><code>POST /events</code> ×2 finally land</td><td><span class="st ok">201</span></td><td><b>DB awake</b> (ACU 0→2.0 this minute) — 31s after being sent</td></tr>
+        <tr><td>:31.9–:35.2</td><td><code>GET /me</code> ×4 land in a burst</td><td><span class="st ok">200</span></td><td>all queued logins complete at once — completion cluster, not four fast attempts</td></tr>
+        <tr><td>:32–:40</td><td><code>/conversations</code>, <code>/admin/*</code> fan-out</td><td><span class="st ok">200</span></td><td><b>user is inside the app</b>, on the admin dashboard</td></tr>
+        <tr><td>21:59:41.2</td><td><code>/auth/config</code> + <code>/me</code> probe (no bearer)</td><td><span class="st part">401</span></td><td>a <b>reload</b> — in-memory token wiped 6s after entering (M2) → login card again</td></tr>
+        <tr><td>21:59:48.8</td><td><code>GET /me</code> + credential</td><td><span class="st ok">200</span></td><td>final login — instant now the DB is warm; total cost: ~50s, ~5 sign-ins</td></tr>
+      </tbody>
+    </table></div>
+    <p class="sub">Also in the logs: lone mount-probe 401s with <b>no</b> subsequent 200 (07-21 11:33 &amp; 12:02,
+    07-23 02:29) — sessions where someone reached the login card and never got in. That is the lost-user
+    scenario this ticket exists for. And the reason dev never reproduces any of this: local Postgres is
+    always up, so the hang window simply doesn't exist.</p>
+
+    <h3 style="margin-top:22px">Four aggravators (each individually reasonable)</h3>
+    <div class="grid g2 agg" style="margin-top:10px">
+      <div class="panel tight"><div class="lbl">A1 · session lives in a JS variable</div>
+        <p style="font-size:13px;margin:6px 0 0">In Google mode the token exists only in memory (<code>api.ts:331</code>) —
+        every reload or new tab is a from-scratch login. This multiplies how often users stand at the front
+        door, which is exactly where the cold-DB window bites.</p></div>
+      <div class="panel tight"><div class="lbl">A2 · NullPool, no retry — by design</div>
+        <p style="font-size:13px;margin:6px 0 0"><code>db.py</code> deliberately holds zero idle connections so Aurora
+        <i>can</i> auto-pause (the dominant idle cost). The trade was priced for data queries, not for the
+        login path where the user has no context and no patience.</p></div>
+      <div class="panel tight"><div class="lbl">A3 · Google ID token = the session</div>
+        <p style="font-size:13px;margin:6px 0 0">The raw ID token is the bearer for every request, and it hard-expires
+        at ~1h with no refresh. Mid-session everything starts 401ing; combined with A1, "the app keeps
+        logging me out" is guaranteed.</p></div>
+      <div class="panel tight"><div class="lbl">A4 · failure UX is a dead end</div>
+        <p style="font-size:13px;margin:6px 0 0">The only feedback is a small red <code>Could not load profile (500)</code>.
+        No "warming up" state, no auto-retry — even though the app is <b>already holding a valid credential</b>
+        and needs zero further user input to try again.</p></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="kicker">3 · Target experience</div>
+    <h2>The same cold visit, after the fix</h2>
+    <p class="sub">One click. If the warehouse is asleep, the card says so and finishes the login itself.</p>
+    <div class="mockrow">
+      <div class="mcard">
+        <div class="cap now">today · attempt 1 of 5</div>
+        <div class="mtitle">Data <em>Pilot</em></div>
+        <div class="mtag">Your data, flown right.</div>
+        <span class="gbtn dim"><span class="gG">G</span> Sign in as nathan</span>
+        <div class="merr">Could not load profile (500)</div>
+        <div class="annunciators"><span class="ann off">Google SSO</span><span class="ann off">RLS</span><span class="ann off">Audited</span></div>
+      </div>
+      <div class="mcard">
+        <div class="cap next">proposed · during DB wake</div>
+        <div class="mtitle">Data <em>Pilot</em></div>
+        <div class="mtag">Your data, flown right.</div>
+        <span class="gbtn dim"><span class="gG">G</span> Signing you in…</span>
+        <div class="annunciators"><span class="ann amber">Waking warehouse · ~20s</span></div>
+        <div class="mprog"><i></i></div>
+        <div class="mtag" style="margin-top:8px">Signed in with Google — spinning up the database.<br>This happens after an idle hour; no action needed.</div>
+      </div>
+      <div class="mcard">
+        <div class="cap next">proposed · warm visit</div>
+        <div class="mtitle">Data <em>Pilot</em></div>
+        <div class="mtag">Your data, flown right.</div>
+        <span class="gbtn"><span class="gG">G</span> Sign in as nathan</span>
+        <div class="annunciators"><span class="ann">Google SSO</span><span class="ann">RLS</span><span class="ann">Audited</span></div>
+        <div class="mtag" style="margin-top:8px">…and with P1 session persistence, a returning user inside 8h skips this card entirely.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="kicker">4 · Fix plan</div>
+    <h2>Phased: reliability first, then persistence, then polish</h2>
+
+    <div class="panel" style="margin-top:14px">
+      <div class="step"><span class="num">P0</span><div style="flex:1">
+        <h3>Make the wake honest — pending state, classified waits, early warm-up <span class="tag p0">ship first</span></h3>
+        <p class="sub" style="font-size:13.5px">No infra changes, no auth-model changes. Attacks M0+M1 directly: the moment the
+        GIS callback fires the button flips to "Signing you in…", and because the failure mode is a
+        <b>silent hang</b> (not an error), the client bounds the wait itself and narrates it — one honest
+        "waking the warehouse" wait instead of N dead-feeling clicks.</p>
+        <div class="grid g3" style="margin-top:10px">
+          <div class="panel tight" style="background:var(--panel-2)"><div class="lbl">F1 · backend: bound + classify the wait</div>
+            <p style="font-size:12.5px;margin:6px 0 0">Give the engine a connect timeout (~5s, <code>connect_args</code> in
+            <code>db.py</code>) so a resume-window request fails fast instead of hanging 30s, and map
+            connect-phase failures (refused, timeout, <code>CannotConnectNowError</code>) to
+            <b>503 <code>{"detail":"db_warming"}</code> + <code>Retry-After: 5</code></b> in the existing
+            handler (<code>main.py:58</code>). Real 500s stay 500s; hangs become classifiable signals.</p></div>
+          <div class="panel tight" style="background:var(--panel-2)"><div class="lbl">F2 · frontend: narrated auto-retry</div>
+            <p style="font-size:12.5px;margin:6px 0 0">Button flips to <b>"Signing you in…"</b> the instant the GIS callback
+            fires (kills the dead-button re-click loop). <code>getMe()</code> retries on <code>db_warming</code>
+            with ~4s backoff up to ~75s behind a <b>"Waking warehouse · ~20s"</b> state (mock above). The
+            credential is already in hand — no second popup, ever. <code>lib/auth.ts</code> + <code>Login.tsx</code>.</p></div>
+          <div class="panel tight" style="background:var(--panel-2)"><div class="lbl">F3 · wake the DB on card mount</div>
+            <p style="font-size:12.5px;margin:6px 0 0">Add unauthenticated <code>GET /health/db</code> (a <code>SELECT 1</code>
+            that swallows connect failures) and fire it when the login card mounts. In the observed session the
+            FedCM dance took ~12s while the wake needed ~31s — starting the resume at first paint shaves the
+            overlap; a returning-user's warm visit hides it entirely.</p></div>
+        </div>
+<div class="fname"><b>services/backend-api/app/main.py</b> — sketch</div>
+<pre><span class="c"># DB still waking ≠ server broken: retryable 503 the client can key on</span>
+WAKING = (ConnectionRefusedError, asyncpg.CannotConnectNowError, ...)
+<span class="b">if</span> _is_waking(exc):
+    <span class="b">return</span> JSONResponse(<span class="y">503</span>, {<span class="g">"detail"</span>: <span class="g">"db_warming"</span>}, headers={<span class="g">"Retry-After"</span>: <span class="g">"5"</span>, **cors})</pre>
+<div class="fname"><b>frontend/src/lib/auth.ts</b> — sketch</div>
+<pre>callback: (resp) =&gt; { setToken(resp.credential); <span class="b">void</span> finishLogin(); }
+
+<span class="b">async function</span> finishLogin() {          <span class="c">// credential in hand — never re-prompt</span>
+  <span class="b">for</span> (<span class="b">const</span> waitedS <span class="b">of</span> schedule(<span class="y">75</span>)) {
+    <span class="b">try</span> { <span class="b">return</span> onUser(<span class="b">await</span> getMe()); }
+    <span class="b">catch</span> (e) {
+      <span class="b">if</span> (!isDbWarming(e)) <span class="b">return</span> onError(e);  <span class="c">// real failures still surface</span>
+      onWarming(waitedS);                       <span class="c">// "Waking warehouse · ~20s"</span>
+      <span class="b">await</span> sleep(<span class="y">4000</span>);
+    }
+  }
+}</pre>
+      </div></div>
+
+      <div class="step"><span class="num">P1</span><div style="flex:1">
+        <h3>Stop re-logging in — real sessions for Google mode <span class="tag p0">primary fix (M1)</span> <span class="tag p1">decision below</span></h3>
+        <p class="sub" style="font-size:13.5px">The headline fix now that the logs show M1 is the confirmed mechanism: exchange
+        the verified ID token <b>once</b> for an app-issued session (the HS256 machinery dev mode already
+        uses, 8h TTL), so reloads resume and the 1-hour Google expiry stops logging people out mid-session.
+        Side benefit: drops the per-request JWKS verify + <code>app.users</code> upsert (E4) to once per
+        session. Three approaches — pick one in §5.</p>
+      </div></div>
+
+      <div class="step"><span class="num">P2</span><div style="flex:1">
+        <h3>Login UX + funnel telemetry <span class="tag p2">fast follow</span></h3>
+        <p class="sub" style="font-size:13.5px">Button "Signing you in…" state the moment the GIS callback fires (today: silence
+        while /me is in flight); distinct copy for warming vs genuine failure; <code>track()</code> events for
+        <code>login_warming_shown</code>, <code>login_retry_n</code>, <code>login_recovered</code> so the admin
+        dashboard shows the funnel; investigate E9 (FedCM cooldown making the button silently inert) with real-user telemetry.</p>
+      </div></div>
+
+      <div class="step"><span class="num">P3</span><div style="flex:1">
+        <h3>Verification &amp; guardrails <span class="tag p3">done = proven</span></h3>
+        <p class="sub" style="font-size:13.5px">Unit tests for the 503 mapping + retry schedule; a stubbed-verifier journey test for
+        the google path (real GIS is untestable headlessly); extend <code>cloud_smoke.sh</code> to assert
+        <code>/health/db</code> and the 503 semantics; after the next organic cold login, confirm in CloudWatch
+        that the old <code>ConnectionRefused</code> 500s are gone (needs <code>aws sso login --profile data-qa</code> first — E8).</p>
+      </div></div>
+    </div>
+
+    <div class="panel tight" style="margin-top:14px;border-left:3px solid var(--bad-border)">
+      <div class="lbl" style="color:var(--bad)">rejected: keep Aurora always-on</div>
+      <p style="font-size:13px;margin:6px 0 0">Setting <code>min_acu = 0.5</code> makes the whole problem vanish but costs
+      ≈ US$43/mo idle (0.5 ACU × ~$0.12/ACU-h × 730h) against ~$0 today — the exact trade the NullPool design
+      exists to win. A pinger (EventBridge cron) is the same cost wearing a disguise. P0 keeps scale-to-zero
+      and spends the wake time on honest UX instead of failed logins. Revisit only if real multi-user traffic arrives.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="kicker">5 · Decision needed</div>
+    <h2>P1: how should a Google session persist?</h2>
+    <form data-lavish-question="p1-session" onsubmit="event.preventDefault(); const c = new FormData(event.currentTarget).get('p1'); if (c && window.lavish) window.lavish.queuePrompt('P1 decision: implement session persistence via option ' + c, { tag: 'choice', text: 'P1 session persistence: ' + c, element: event.currentTarget, data: { question: 'p1-session', answer: c } });">
+      <div class="opt-grid">
+        <div class="opt rec">
+          <label><input type="radio" name="p1" value="A — app JWT in localStorage">
+            <span><span class="ot">A · App JWT + localStorage</span><span class="rec-chip">recommended</span><br>
+            <span style="font-size:12.5px;color:var(--muted)">New <code>POST /auth/google</code> verifies the ID token once, returns the existing
+            HS256 app token (8h). Frontend stores it in localStorage; <code>resumeSession()</code> just works.</span></span></label>
+          <ul>
+            <li>Reuses <code>create_access_token</code> + <code>_dev_user</code> decode paths nearly verbatim</li>
+            <li>No cross-site cookie problem (CloudFront vs App Runner domains — the exact risk the code comment rejects)</li>
+            <li>Kills per-request JWKS verify + users upsert</li>
+            <li class="cost">Cost: token readable by JS — XSS exposure. Acceptable for a portfolio app; note CSP as follow-up. A cookie (option B) can replace the storage layer later without redoing the exchange.</li>
+          </ul>
+        </div>
+        <div class="opt">
+          <label><input type="radio" name="p1" value="B — same-origin API via CloudFront + httpOnly cookie">
+            <span><span class="ot">B · Same-origin API + httpOnly cookie</span><br>
+            <span style="font-size:12.5px;color:var(--muted)">Add a CloudFront behavior routing <code>/api/*</code> to App Runner, making the API
+            first-party. The dev-mode <code>dp_session</code> cookie then works as-is with SameSite=Lax.</span></span></label>
+          <ul>
+            <li>Most secure (httpOnly) and deletes the whole CORS class of bugs</li>
+            <li>Same exchange endpoint as A — A is a stepping stone, not a dead end</li>
+            <li class="cost">Cost: Terraform + CloudFront work, <code>VITE_API_URL</code> rework, and SSE streaming (<code>/ask/stream</code>) through CloudFront needs explicit no-buffering care. Bigger blast radius — better as its own ticket.</li>
+          </ul>
+        </div>
+        <div class="opt">
+          <label><input type="radio" name="p1" value="C — keep ID-token auth, add GIS auto-reauth">
+            <span><span class="ot">C · GIS silent re-auth only</span><br>
+            <span style="font-size:12.5px;color:var(--muted)">Keep the ID token as the session; call <code>google.accounts.id.prompt()</code> on load
+            to silently mint a fresh one.</span></span></label>
+          <ul>
+            <li>No backend change at all</li>
+            <li class="cost">Cost: still a hard ~1h cliff mid-session; FedCM prompt cooldowns make "silent" unreliable (E9); per-request verify + upsert stays. Weakest option — listed for completeness.</li>
+          </ul>
+        </div>
+      </div>
+      <button class="qbtn" type="submit">Queue this decision</button>
+      <span class="qnote">Selecting queues the choice for the agent — it sends when you press <i>Send to Agent</i>.</span>
+    </form>
+
+    <div style="margin-top:26px" class="panel tight">
+      <div class="lbl">scope check</div>
+      <p style="font-size:13.5px;margin:6px 0 8px">P0 (F1–F3) is unambiguous and independent of the P1 decision. Green-light it to start now on
+      <code>worktree-prod-login-fix</code>, gated through <code>/no-mistakes</code> as usual.</p>
+      <span class="qbtn ghost" data-lavish-action tabindex="0" role="button"
+        onclick="if (window.lavish) window.lavish.queuePrompt('Approved: implement P0 (F1 backend 503 db_warming mapping, F2 frontend auto-retry with waking UI, F3 /health/db warm-on-mount) on this branch', { tag: 'approval', text: 'P0 approved', element: this })">
+        Approve P0 implementation</span>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="kicker">6 · Risks &amp; open questions</div>
+    <h2>What could still bite</h2>
+    <div class="tw"><table>
+      <thead><tr><th>Risk / question</th><th>Exposure</th><th>Handling</th></tr></thead>
+      <tbody>
+        <tr><td>Some prod failures are <b>not</b> Aurora wake (e.g. Google JWKS fetch timing out on backend cold start — a 10s <code>httpx</code> call in <code>auth.py:100</code>)</td><td>Would survive P0's retry loop anyway (retry covers it), but 503-classification could mislabel</td><td>E8 CloudWatch check after SSO re-login; add JWKS fetch to the warming classifier if seen</td></tr>
+        <tr><td>FedCM/popup cooldown leaves the button silently inert (E9)</td><td>User clicks, nothing happens — reads as the same bug</td><td>P2 telemetry (<code>login_gsi_click</code> vs <code>callback_fired</code> delta); GIS <code>error_callback</code> if available</td></tr>
+        <tr><td>75s retry window vs Google ID token 1h expiry</td><td>None in practice (75s ≪ 1h)</td><td>Retry loop still re-checks 401 vs 503 each pass</td></tr>
+        <tr><td>localStorage token (P1-A) and XSS</td><td>Token theft if an XSS lands</td><td>8h TTL, logout clears, CSP header follow-up; upgrade path to B keeps the exchange endpoint</td></tr>
+        <tr><td>App Runner (0.25 vCPU) own cold start adds a few seconds</td><td>Minor — additive to the same window</td><td>Covered by the same retry; no separate fix warranted now</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <div class="foot">
+    s29 · prod-login-fix · evidence gathered live against prod + verified in code on 2026-07-23 ·
+    repro GIF in <code>~/Downloads/prod_google_login_repro.gif</code> · prior context: s11 (Google auth), s12 (AWS deploy), 2026-07-21 incident (PRs #15–17)
+  </div>
+</div>
+
+<script type="module">
+  // Page is fixed dark (house style) — init Mermaid to match.
+  try {
+    const mermaid = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      themeVariables: {
+        background: "#111522", primaryColor: "#171c2b", primaryTextColor: "#eaecf3",
+        primaryBorderColor: "#333d55", lineColor: "#7a84a0", signalColor: "#9aa4bb",
+        signalTextColor: "#c5cede", actorTextColor: "#eaecf3", actorBorder: "#333d55",
+        actorBkg: "#1e2434", noteBkgColor: "#2a2413", noteTextColor: "#e0c68a", noteBorderColor: "#6b5a2a",
+        loopTextColor: "#9aa4bb", activationBkgColor: "#1e2434", sequenceNumberColor: "#0a0d15",
+        fontFamily: "JetBrains Mono, ui-monospace, monospace", fontSize: "13px"
+      },
+      sequence: { mirrorActors: false, actorMargin: 26, messageMargin: 30 }
+    });
+  } catch (e) {
+    // Offline fallback: the flexbox pipeline above carries the same chain.
+    document.querySelectorAll(".mermaid-host").forEach(el => el.style.display = "none");
+  }
+</script>
+</body>
+</html>

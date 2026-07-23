@@ -1,5 +1,23 @@
 const API = (import.meta.env.VITE_API_URL as string) ?? "http://localhost:8000";
 
+// s29: while Aurora Serverless resumes from auto-pause the backend answers
+// 503 db_warming (a classified connect failure, not a real error). The resume
+// took ~31s in the observed prod session, so the retry window must comfortably
+// cover it. Shared by the transport-level retry below and the login exchange
+// (lib/auth.ts exchangeCredential), which narrates the same wait on the card.
+export const WARMING_MAX_MS = 75_000;
+export const WARMING_RETRY_MS = 4_000;
+
+async function isWarmingResponse(resp: Response): Promise<boolean> {
+  if (resp.status !== 503) return false;
+  try {
+    const body: unknown = await resp.clone().json();
+    return (body as { detail?: unknown })?.detail === "db_warming";
+  } catch {
+    return false;
+  }
+}
+
 // Every backend call goes through this so the dev-auth session cookie
 // (services/backend-api/app/routers/auth.py::dev_login) rides along. Cross-port
 // requests (5230 -> 8000) do not send cookies without an explicit
@@ -7,8 +25,35 @@ const API = (import.meta.env.VITE_API_URL as string) ?? "http://localhost:8000";
 // silently drop it. Harmless when there is no cookie to send (Google mode,
 // prod): the in-memory bearer token in authHeaders() keeps working exactly as
 // before either way.
-function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-  return fetch(input, { ...init, credentials: "include" });
+//
+// Every endpoint fails with 503 db_warming while Aurora resumes — not just the
+// login exchange — so the wait-it-out retry lives here: a mid-session Ask /
+// Explore / SQL call rides out the wake behind its surface's existing pending
+// UI instead of surfacing a raw 503 the user has to retry by hand. Safe for
+// POSTs too: db_warming means the connect failed, so nothing executed. getMe
+// opts out — the login exchange owns that retry so it can narrate progress on
+// the card. An abort wakes the sleep early; the next fetch then rejects with
+// the caller's AbortError as usual.
+async function apiFetch(
+  input: string,
+  init?: RequestInit,
+  { retryWarming = true }: { retryWarming?: boolean } = {},
+): Promise<Response> {
+  const started = Date.now();
+  for (;;) {
+    const resp = await fetch(input, { ...init, credentials: "include" });
+    if (!retryWarming || !(await isWarmingResponse(resp))) return resp;
+    if (Date.now() - started >= WARMING_MAX_MS) return resp;
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, WARMING_RETRY_MS);
+      const onAbort = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      if (init?.signal?.aborted) onAbort();
+      else init?.signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
 }
 
 export interface User {
@@ -338,7 +383,8 @@ export function setToken(t: string | null) {
 // Marks every request as coming from the web app so query runs are attributed
 // to the 'web' channel in app.query_runs (a direct API hit has no such header
 // and is recorded as 'api'). Sent on all requests; the backend only reads it
-// where it audits a run (/ask, /sql).
+// where it audits a run (/ask, /sql) and as the fence on the /health/db wake
+// probe (see wakeDb).
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "X-Client-Channel": "web" };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -370,10 +416,46 @@ export async function logoutSession(): Promise<void> {
   await apiFetch(`${API}/auth/logout`, { method: "POST" });
 }
 
+// Carries the HTTP status + backend detail string so callers can tell a
+// retryable condition (503 db_warming while Aurora resumes, s29) from a real
+// failure. message stays the human-readable line the UI already showed.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly detail: string | null = null,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function errorDetail(resp: Response): Promise<string | null> {
+  try {
+    const body: unknown = await resp.json();
+    const detail = (body as { detail?: unknown })?.detail;
+    return typeof detail === "string" ? detail : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMe(): Promise<User> {
-  const resp = await apiFetch(`${API}/me`, { headers: authHeaders() });
-  if (!resp.ok) throw new Error(`Could not load profile (${resp.status})`);
+  const resp = await apiFetch(`${API}/me`, { headers: authHeaders() }, { retryWarming: false });
+  if (!resp.ok) {
+    throw new ApiError(`Could not load profile (${resp.status})`, resp.status, await errorDetail(resp));
+  }
   return resp.json();
+}
+
+// s29 F3: fired from the login card on mount so Aurora starts resuming while
+// the user is still in the Google sign-in dance. Fire-and-forget — a "waking"
+// answer (or any failure) is the expected cold-visit case, not actionable.
+// The channel marker in authHeaders is required: without it the endpoint
+// answers without touching (waking) the database, so a generic poller pointed
+// at it cannot hold Aurora awake.
+export function wakeDb(): void {
+  apiFetch(`${API}/health/db`, { headers: authHeaders() }).catch(() => {});
 }
 
 export async function ask(

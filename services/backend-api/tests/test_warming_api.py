@@ -49,7 +49,7 @@ def test_waking_error_returns_retryable_503_with_cors() -> None:
     origin = _allowed_origin()
     resp = asyncio.run(backend_main._unhandled_error(_request(origin), ConnectionRefusedError()))
     assert resp.status_code == 503
-    assert json.loads(resp.body) == {"detail": "db_warming"}
+    assert json.loads(bytes(resp.body)) == {"detail": "db_warming"}
     assert resp.headers["Retry-After"] == "5"
     assert resp.headers["Access-Control-Allow-Origin"] == origin
 
@@ -57,7 +57,7 @@ def test_waking_error_returns_retryable_503_with_cors() -> None:
 def test_real_error_stays_a_500_with_cors() -> None:
     resp = asyncio.run(backend_main._unhandled_error(_request(_allowed_origin()), ValueError()))
     assert resp.status_code == 500
-    assert json.loads(resp.body) == {"detail": "Internal server error"}
+    assert json.loads(bytes(resp.body)) == {"detail": "Internal server error"}
     assert "Retry-After" not in resp.headers
     assert resp.headers["Access-Control-Allow-Origin"] == _allowed_origin()
 
@@ -70,12 +70,12 @@ def test_unknown_origin_gets_no_cors_headers() -> None:
 
 
 class _RefusingEngine:
-    def connect(self):  # noqa: ANN202 - duck-typed stand-in for AsyncEngine
+    def connect(self) -> None:  # duck-typed stand-in for AsyncEngine
         raise ConnectionRefusedError(61, "Connection refused")
 
 
 class _BrokenEngine:
-    def connect(self):  # noqa: ANN202
+    def connect(self) -> None:
         raise ValueError("not a connectivity problem")
 
 

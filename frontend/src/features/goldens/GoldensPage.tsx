@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  ExploreDataset,
   GoldenInput,
   GoldenListItem,
   GoldenObject,
@@ -28,6 +29,7 @@ import {
   deleteGolden,
   draftGoldenStream,
   getAdminDatasets,
+  getExploreDatasets,
   getGolden,
   getGoldenSkills,
   getOrdinals,
@@ -327,6 +329,22 @@ const BUILDER_TYPES: { type: PageObjectType; label: string }[] = [
   { type: "table", label: "Table" },
 ];
 
+// How a measure turns its source column into a value. sum/mean are plain aggs;
+// share/growth/latest are the s28 augmented kinds (a base metric → % of series,
+// first-vs-last growth, or the latest month's value) computed deterministically.
+type MeasureHow = "sum" | "mean" | "share" | "growth" | "latest";
+const MEASURE_HOWS: { value: MeasureHow; label: string }[] = [
+  { value: "sum", label: "sum" },
+  { value: "mean", label: "average" },
+  { value: "share", label: "% share (of series)" },
+  { value: "growth", label: "growth %" },
+  { value: "latest", label: "latest value" },
+];
+// share/growth/latest must sum a base column, so they only offer additive metrics
+// (a % share or growth of a stored average is not meaningful and would break the
+// window dedup, which keeps only additive columns).
+const HOW_NEEDS_ADDITIVE = new Set<MeasureHow>(["share", "growth", "latest"]);
+
 // The builder's flat form state (compare covers every field; simpler types read a
 // subset). Defaults are the house line+bar recipe so a first build just works.
 interface BuilderForm {
@@ -334,19 +352,20 @@ interface BuilderForm {
   object_type: PageObjectType;
   grain: string;
   dimension: string;
+  dimension2: string; // optional 2nd axis column → composite x (band × type)
   group: string;
   filter: string;
   months: number;
   bar_label: string;
   bar_source: string;
-  bar_agg: "sum" | "mean";
+  bar_how: MeasureHow;
   bar_months: number;
   line_label: string;
   line_mode: "wavg" | "column";
   line_num: string;
   line_den: string;
   line_source: string;
-  line_agg: "sum" | "mean";
+  line_how: MeasureHow;
   line_months: number;
   instruction: string;
 }
@@ -361,19 +380,20 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
         object_type: "trend",
         grain: "month, bedroom_band",
         dimension: "month",
+        dimension2: "",
         group: "bedroom_band",
         filter: "property_type = 'house'",
         months: 12,
         bar_label: "rentals_volume",
         bar_source: "n_rented",
-        bar_agg: "sum",
+        bar_how: "sum",
         bar_months: 12,
         line_label: "avg_weekly_rent",
         line_mode: "wavg",
         line_num: "total_weekly_rent",
         line_den: "n_rented",
         line_source: "avg_weekly_rent",
-        line_agg: "mean",
+        line_how: "mean",
         line_months: 6,
         instruction: "",
       }
@@ -382,19 +402,20 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
         object_type: "compare",
         grain: "month, suburb, area_band",
         dimension: "area_band",
+        dimension2: "",
         group: "suburb",
         filter: "",
         months: 12,
         bar_label: "sales_volume",
         bar_source: "n_sold",
-        bar_agg: "sum",
+        bar_how: "sum",
         bar_months: 12,
         line_label: "avg_sale_price",
         line_mode: "wavg",
         line_num: "total_sale_value",
         line_den: "n_sold",
         line_source: "avg_sale_price",
-        line_agg: "mean",
+        line_how: "mean",
         line_months: 6,
         instruction: "",
       };
@@ -462,14 +483,26 @@ function placeObjectInReport(pages: Page[], obj: PageObject): Page[] {
   return next;
 }
 
+/** A measure from a source + "how": sum/mean are plain aggs; share/growth/latest
+ *  are the augmented kinds the deterministic builder recomposes. */
+function measureFromHow(
+  label: string,
+  source: string,
+  how: MeasureHow,
+  months: number,
+): SandboxMeasure {
+  if (how === "sum" || how === "mean") return { label, source, agg: how, months };
+  return { label, source, how, months };
+}
+
 function barMeasure(f: BuilderForm): SandboxMeasure {
-  return { label: f.bar_label, source: f.bar_source, agg: f.bar_agg, months: f.bar_months };
+  return measureFromHow(f.bar_label, f.bar_source, f.bar_how, f.bar_months);
 }
 
 function lineMeasure(f: BuilderForm): SandboxMeasure {
   return f.line_mode === "wavg"
     ? { label: f.line_label, num: f.line_num, den: f.line_den, months: f.line_months }
-    : { label: f.line_label, source: f.line_source, agg: f.line_agg, months: f.line_months };
+    : measureFromHow(f.line_label, f.line_source, f.line_how, f.line_months);
 }
 
 /** Assemble the structured spec the deterministic builder emits code from. */
@@ -478,9 +511,12 @@ function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
     .split(",")
     .map((c) => c.trim())
     .filter(Boolean);
+  // A 2nd dimension makes a composite x-axis (col_a × col_b); one dim stays a
+  // plain string so the builder and the lift behave exactly as before.
+  const dims = [f.dimension.trim(), f.dimension2.trim()].filter(Boolean);
   const spec: SandboxObjectSpec = {
     grain,
-    dimension: f.dimension.trim(),
+    dimension: dims.length > 1 ? dims : (dims[0] ?? ""),
     group: f.group.trim() || null,
     months: Number(f.months) || 12,
     bar_measure: barMeasure(f),
@@ -604,6 +640,19 @@ export function GoldensPage({
   const [builtObjects, setBuiltObjects] = useState<PageObject[]>([]);
   const [builder, setBuilder] = useState<BuilderForm>(defaultBuilder);
   const [buildMsg, setBuildMsg] = useState<string | null>(null);
+  // The typed vocabulary that populates the structured builder's dropdowns — each
+  // dataset's dimensions (the cuts) and metrics (the columns) from the manifest,
+  // so a curator can only pick columns the data actually has (no hallucination).
+  const [vocab, setVocab] = useState<ExploreDataset[]>([]);
+  useEffect(() => {
+    let live = true;
+    getExploreDatasets()
+      .then((d) => live && setVocab(d))
+      .catch(() => {}); // dropdowns fall back to their free-text current value
+    return () => {
+      live = false;
+    };
+  }, []);
   // s22: "New object with AI" — the NL-first primary way to author an object.
   // The name + type are auto-derived from the instruction; an override sticks
   // once the curator edits the field (null = follow the auto value).
@@ -1515,6 +1564,39 @@ export function GoldensPage({
     );
   }
 
+  // Dropdown options for the structured builder, from the current dataset's
+  // typed vocabulary. `dimOpts` = the cuts (categorical/ordinal/time); `metricOpts`
+  // = the columns, flagged additive so share/growth/latest can restrict to them.
+  const dsVocab = vocab.find((d) => d.slug === draft.dataset) ?? null;
+  const dimOpts = (dsVocab?.dimensions ?? []).map((d) => ({ value: d.name, label: d.label }));
+  const metricOpts = (dsVocab?.metrics ?? []).map((m) => ({
+    value: m.name,
+    label: m.label,
+    additive: m.kind === "additive",
+  }));
+  // A <select> whose current value is always present (even before the vocab
+  // loads, or for a legacy free-text column not in the manifest), plus optional
+  // extra options and a blank choice.
+  const selOptions = (
+    current: string,
+    opts: { value: string; label: string }[],
+    blank?: string,
+  ) => {
+    const seen = new Set(opts.map((o) => o.value));
+    return (
+      <>
+        {blank !== undefined && <option value="">{blank}</option>}
+        {current && !seen.has(current) && <option value={current}>{current}</option>}
+        {opts.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </>
+    );
+  };
+  const sel: React.CSSProperties = { fontSize: 12, padding: "2px 4px" };
+
   return (
     <section
       className="goldens-page"
@@ -1857,21 +1939,36 @@ export function GoldensPage({
                 </label>
                 <label style={label}>
                   x / dimension{" "}
-                  <input
+                  <select
                     data-testid="builder-dimension"
                     value={builder.dimension}
                     onChange={(e) => setBuilder((b) => ({ ...b, dimension: e.target.value }))}
-                    style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
-                  />
+                    style={sel}
+                  >
+                    {selOptions(builder.dimension, dimOpts)}
+                  </select>
+                </label>
+                <label style={label} title="Optional 2nd axis → composite x (band × type)">
+                  × 2nd{" "}
+                  <select
+                    data-testid="builder-dimension2"
+                    value={builder.dimension2}
+                    onChange={(e) => setBuilder((b) => ({ ...b, dimension2: e.target.value }))}
+                    style={sel}
+                  >
+                    {selOptions(builder.dimension2, dimOpts, "— none —")}
+                  </select>
                 </label>
                 <label style={label}>
                   group{" "}
-                  <input
+                  <select
                     data-testid="builder-group"
                     value={builder.group}
                     onChange={(e) => setBuilder((b) => ({ ...b, group: e.target.value }))}
-                    style={{ fontSize: 12, padding: "2px 4px", width: 90 }}
-                  />
+                    style={sel}
+                  >
+                    {selOptions(builder.group, dimOpts, "— none —")}
+                  </select>
                 </label>
                 <label style={label}>
                   latest N months{" "}
@@ -1905,21 +2002,34 @@ export function GoldensPage({
                   style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
                 />
                 <select
-                  value={builder.bar_agg}
+                  data-testid="builder-bar-how"
+                  value={builder.bar_how}
                   onChange={(e) =>
-                    setBuilder((b) => ({ ...b, bar_agg: e.target.value as "sum" | "mean" }))
+                    setBuilder((b) => ({ ...b, bar_how: e.target.value as MeasureHow }))
                   }
+                  style={sel}
                 >
-                  <option value="sum">sum</option>
-                  <option value="mean">mean</option>
+                  {MEASURE_HOWS.map((h) => (
+                    <option key={h.value} value={h.value}>
+                      {h.label}
+                    </option>
+                  ))}
                 </select>
-                <input
+                <span style={label}>of</span>
+                <select
                   data-testid="builder-bar-source"
                   title="column"
                   value={builder.bar_source}
                   onChange={(e) => setBuilder((b) => ({ ...b, bar_source: e.target.value }))}
-                  style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
-                />
+                  style={sel}
+                >
+                  {selOptions(
+                    builder.bar_source,
+                    HOW_NEEDS_ADDITIVE.has(builder.bar_how)
+                      ? metricOpts.filter((m) => m.additive)
+                      : metricOpts,
+                  )}
+                </select>
                 <label style={label}>
                   window{" "}
                   <input
@@ -1952,40 +2062,63 @@ export function GoldensPage({
                 </select>
                 {builder.line_mode === "wavg" ? (
                   <>
-                    <input
+                    <select
                       data-testid="builder-line-num"
                       title="numerator"
                       value={builder.line_num}
                       onChange={(e) => setBuilder((b) => ({ ...b, line_num: e.target.value }))}
-                      style={{ fontSize: 12, padding: "2px 4px", width: 120 }}
-                    />
+                      style={sel}
+                    >
+                      {selOptions(
+                        builder.line_num,
+                        metricOpts.filter((m) => m.additive),
+                      )}
+                    </select>
                     <span style={label}>/</span>
-                    <input
+                    <select
                       data-testid="builder-line-den"
                       title="denominator"
                       value={builder.line_den}
                       onChange={(e) => setBuilder((b) => ({ ...b, line_den: e.target.value }))}
-                      style={{ fontSize: 12, padding: "2px 4px", width: 90 }}
-                    />
+                      style={sel}
+                    >
+                      {selOptions(
+                        builder.line_den,
+                        metricOpts.filter((m) => m.additive),
+                      )}
+                    </select>
                   </>
                 ) : (
                   <>
                     <select
-                      value={builder.line_agg}
+                      data-testid="builder-line-how"
+                      value={builder.line_how}
                       onChange={(e) =>
-                        setBuilder((b) => ({ ...b, line_agg: e.target.value as "sum" | "mean" }))
+                        setBuilder((b) => ({ ...b, line_how: e.target.value as MeasureHow }))
                       }
+                      style={sel}
                     >
-                      <option value="mean">mean</option>
-                      <option value="sum">sum</option>
+                      {MEASURE_HOWS.map((h) => (
+                        <option key={h.value} value={h.value}>
+                          {h.label}
+                        </option>
+                      ))}
                     </select>
-                    <input
+                    <span style={label}>of</span>
+                    <select
                       data-testid="builder-line-source"
                       title="column"
                       value={builder.line_source}
                       onChange={(e) => setBuilder((b) => ({ ...b, line_source: e.target.value }))}
-                      style={{ fontSize: 12, padding: "2px 4px", width: 120 }}
-                    />
+                      style={sel}
+                    >
+                      {selOptions(
+                        builder.line_source,
+                        HOW_NEEDS_ADDITIVE.has(builder.line_how)
+                          ? metricOpts.filter((m) => m.additive)
+                          : metricOpts,
+                      )}
+                    </select>
                   </>
                 )}
                 <label style={label}>

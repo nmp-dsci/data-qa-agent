@@ -927,12 +927,17 @@ export interface GoldenInput {
   expectation?: string | null;
 }
 
-/** One measure a Presentation Object builds — either a plain agg of one column
- *  (source + agg) or a weighted average (num / den). ``months`` windows it. */
+/** One measure a Presentation Object builds — a plain agg of one column
+ *  (source + agg), a weighted average (num / den), or an *augmented* metric
+ *  (source + how) that turns a base column into a % share, growth, or latest
+ *  value deterministically. ``months`` windows it. */
 export interface SandboxMeasure {
   label: string;
   source?: string;
   agg?: "sum" | "mean";
+  /** Augmented kind (s28): % share within the series, first-vs-last growth, or
+   *  the latest month's value. Mutually exclusive with agg/num-den. */
+  how?: "share" | "growth" | "latest";
   num?: string;
   den?: string;
   months?: number | null;
@@ -943,7 +948,9 @@ export interface SandboxMeasure {
  *  it, and it stays on the object so the builder can re-edit columns (lineage). */
 export interface SandboxObjectSpec {
   grain?: string[];
-  dimension?: string;
+  /** The x-axis column, or a list for a *composite* axis (col_a × col_b joined
+   *  into one nominal label, e.g. bedroom_band × property_type). */
+  dimension?: string | string[];
   group?: string | null;
   bar_measure?: SandboxMeasure;
   line_measure?: SandboxMeasure;

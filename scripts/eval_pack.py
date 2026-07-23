@@ -164,7 +164,7 @@ def _redact(case: dict[str, Any]) -> dict[str, Any]:
         case["golden_data_sha"] = _digest(data)
     for field in ("golden_report", "golden_objects"):
         if case.get(field) is not None:
-            case[field] = _budget(field, _cap_rows(case[field]))
+            case[field] = _cap_rows(case[field])
     return case
 
 

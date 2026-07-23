@@ -25,9 +25,20 @@ const Choropleth = lazy(() =>
 
 // A cheap signature so the boundary resets when the object's data changes (a
 // re-authored object with fresh rows should recover, not stay in its fallback).
+// The row bulk is reduced to its length + first row so the signature stays
+// cheap, while the spec fields are serialised whole — a same-row-count rebuild
+// that only fixed a spec field still resets.
 function objectResetKey(o: PageObject): string {
-  const rows = (o.data as { rows?: unknown })?.rows;
-  return `${o.element_id ?? o.type}:${Array.isArray(rows) ? rows.length : "0"}`;
+  const d = (o.data ?? {}) as Record<string, unknown>;
+  const rows = d["rows"];
+  const head = Array.isArray(rows) ? { n: rows.length, first: rows[0] } : { n: 0 };
+  let sig: string;
+  try {
+    sig = JSON.stringify({ ...d, rows: head });
+  } catch {
+    sig = String(head.n);
+  }
+  return `${o.element_id ?? o.type}:${sig}`;
 }
 
 // Public entry: every consumer renders an object through here, so wrapping it in

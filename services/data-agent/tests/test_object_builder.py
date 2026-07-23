@@ -343,7 +343,7 @@ def test_share_measure_over_composite_axis_sums_to_100_per_series() -> None:
     assert d["data"]["group"] == "postcode"
 
     rows = d["data"]["rows"]
-    assert rows and all(" · " in str(r["_x"]) for r in rows)  # "1 · house", …
+    assert rows and all("-" in str(r["_x"]) for r in rows)  # "1-house", …
     per_postcode: dict[str, float] = {}
     for r in rows:
         per_postcode[r["postcode"]] = per_postcode.get(r["postcode"], 0.0) + float(r["share"])
@@ -644,5 +644,32 @@ def test_table_supports_composite_dimension() -> None:
     assert [c["key"] for c in data["columns"]] == ["_x", "volume"]
     labels = {c["key"]: c["label"] for c in data["columns"]}
     assert labels["_x"] == "bedroom_band · property_type"
-    assert data["rows"] and all(" · " in str(r["_x"]) for r in data["rows"])
+    assert data["rows"] and all("-" in str(r["_x"]) for r in data["rows"])
     PageObject(**obj)
+
+
+def test_composite_x_columns_land_in_the_regenerated_extract() -> None:
+    """s28 build flow: when the x-axis is a composite of grain columns, both columns
+    are in needed_columns AND the regenerated extract's GROUP BY — so 'check whether
+    the SQL extract has the columns, else rewrite and rerun it' lands them at the
+    right grain before the sandbox builds the object."""
+    spec = {
+        "grain": ["month", "postcode", "property_type", "bedroom_band"],
+        "dimension": ["bedroom_band", "property_type"],  # composite x from the grain
+        "group": "postcode",
+        "bar_measure": {"label": "n", "source": "n_rented", "agg": "sum"},
+    }
+    need = needed_columns(spec)
+    assert {"bedroom_band", "property_type", "postcode", "n_rented"} <= need
+
+    sql = canonical_extract_sql(
+        "SELECT * FROM marts.property_rent WHERE postcode IN ('2077', '2076')",
+        grain=spec["grain"],
+        measure_source_cols=need,
+        dataset="nsw_rent",
+    )
+    assert "FROM marts.property_rent" in sql
+    assert "GROUP BY month, postcode, property_type, bedroom_band" in sql
+    # The composite x uses a dash join in the generated sandbox code (concat(x1,'-',x2)).
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    assert "+ '-' +" in code

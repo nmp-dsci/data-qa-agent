@@ -75,210 +75,206 @@ cases:
 
               ORDER BY month'
             rows:
-              _truncated: true
-              _total: 226
-              _sha: 270d57b4f237
-              _head:
-              - layer: actual
-                month: '2016-01-01'
-                value: 4.23
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-01-01'
-                value: 4.23
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-02-01'
-                value: 4.45
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-02-01'
-                value: 4.34
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-03-01'
-                value: 4.05
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-03-01'
-                value: 4.24
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-04-01'
-                value: 3.84
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-04-01'
-                value: 4.14
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-05-01'
-                value: 3.69
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-05-01'
-                value: 4.05
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-06-01'
-                value: 3.89
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-06-01'
-                value: 4.02
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-07-01'
-                value: 3.8
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-07-01'
-                value: 3.95
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-08-01'
-                value: 3.93
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-08-01'
-                value: 3.87
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-09-01'
-                value: 3.95
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-09-01'
-                value: 3.85
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-10-01'
-                value: 4.22
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-10-01'
-                value: 3.91
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-11-01'
-                value: 3.82
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-11-01'
-                value: 3.94
-                series: gross_yield_pct
-              - layer: actual
-                month: '2016-12-01'
-                value: 3.88
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2016-12-01'
-                value: 3.93
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-01-01'
-                value: 3.83
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-01-01'
-                value: 3.94
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-02-01'
-                value: 3.85
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-02-01'
-                value: 3.93
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-03-01'
-                value: 3.96
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-03-01'
-                value: 3.93
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-04-01'
-                value: 3.99
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-04-01'
-                value: 3.89
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-05-01'
-                value: 3.94
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-05-01'
-                value: 3.91
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-06-01'
-                value: 3.85
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-06-01'
-                value: 3.9
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-07-01'
-                value: 3.26
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-07-01'
-                value: 3.81
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-08-01'
-                value: 3.54
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-08-01'
-                value: 3.76
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-09-01'
-                value: 3.78
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-09-01'
-                value: 3.73
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-10-01'
-                value: 3.54
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-10-01'
-                value: 3.65
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-11-01'
-                value: 3.97
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-11-01'
-                value: 3.66
-                series: gross_yield_pct
-              - layer: actual
-                month: '2017-12-01'
-                value: 3.82
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2017-12-01'
-                value: 3.65
-                series: gross_yield_pct
-              - layer: actual
-                month: '2019-01-01'
-                value: 4.11
-                series: gross_yield_pct
-              - layer: 6-mo avg
-                month: '2019-01-01'
-                value: 3.79
-                series: gross_yield_pct
+            - layer: actual
+              month: '2016-01-01'
+              value: 4.23
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-01-01'
+              value: 4.23
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-02-01'
+              value: 4.45
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-02-01'
+              value: 4.34
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-03-01'
+              value: 4.05
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-03-01'
+              value: 4.24
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-04-01'
+              value: 3.84
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-04-01'
+              value: 4.14
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-05-01'
+              value: 3.69
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-05-01'
+              value: 4.05
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-06-01'
+              value: 3.89
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-06-01'
+              value: 4.02
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-07-01'
+              value: 3.8
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-07-01'
+              value: 3.95
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-08-01'
+              value: 3.93
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-08-01'
+              value: 3.87
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-09-01'
+              value: 3.95
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-09-01'
+              value: 3.85
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-10-01'
+              value: 4.22
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-10-01'
+              value: 3.91
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-11-01'
+              value: 3.82
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-11-01'
+              value: 3.94
+              series: gross_yield_pct
+            - layer: actual
+              month: '2016-12-01'
+              value: 3.88
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2016-12-01'
+              value: 3.93
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-01-01'
+              value: 3.83
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-01-01'
+              value: 3.94
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-02-01'
+              value: 3.85
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-02-01'
+              value: 3.93
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-03-01'
+              value: 3.96
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-03-01'
+              value: 3.93
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-04-01'
+              value: 3.99
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-04-01'
+              value: 3.89
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-05-01'
+              value: 3.94
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-05-01'
+              value: 3.91
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-06-01'
+              value: 3.85
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-06-01'
+              value: 3.9
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-07-01'
+              value: 3.26
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-07-01'
+              value: 3.81
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-08-01'
+              value: 3.54
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-08-01'
+              value: 3.76
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-09-01'
+              value: 3.78
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-09-01'
+              value: 3.73
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-10-01'
+              value: 3.54
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-10-01'
+              value: 3.65
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-11-01'
+              value: 3.97
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-11-01'
+              value: 3.66
+              series: gross_yield_pct
+            - layer: actual
+              month: '2017-12-01'
+              value: 3.82
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2017-12-01'
+              value: 3.65
+              series: gross_yield_pct
+            - layer: actual
+              month: '2019-01-01'
+              value: 4.11
+              series: gross_yield_pct
+            - layer: 6-mo avg
+              month: '2019-01-01'
+              value: 3.79
+              series: gross_yield_pct
             title: Gross rental yield — units, Liverpool NSW 2170
             height: fill
             intent: line
@@ -436,210 +432,206 @@ cases:
               \ = '2560'\n  AND month >= '2016-01-01'\n  AND property_type IN ('house', 'unit')\nORDER\
               \ BY property_type, month"
             rows:
-              _truncated: true
-              _total: 226
-              _sha: 78bc93f2decd
-              _head:
-              - type: House
-                month: '2016-01-01'
-                rent_roll: 421.0
-                price_roll: 571043.0
-              - type: House
-                month: '2016-02-01'
-                rent_roll: 421.0
-                price_roll: 570918.5
-              - type: House
-                month: '2016-03-01'
-                rent_roll: 419.3333333333333
-                price_roll: 576672.0
-              - type: House
-                month: '2016-04-01'
-                rent_roll: 421.25
-                price_roll: 576373.5
-              - type: House
-                month: '2016-05-01'
-                rent_roll: 419.8
-                price_roll: 582178.6
-              - type: House
-                month: '2016-06-01'
-                rent_roll: 419.5
-                price_roll: 584188.8333333334
-              - type: House
-                month: '2016-07-01'
-                rent_roll: 417.8333333333333
-                price_roll: 586770.8333333334
-              - type: House
-                month: '2016-08-01'
-                rent_roll: 419.1666666666667
-                price_roll: 595200.1666666666
-              - type: House
-                month: '2016-09-01'
-                rent_roll: 419.6666666666667
-                price_roll: 598757.3333333334
-              - type: House
-                month: '2016-10-01'
-                rent_roll: 417.6666666666667
-                price_roll: 608578.3333333334
-              - type: House
-                month: '2016-11-01'
-                rent_roll: 419.3333333333333
-                price_roll: 614397.8333333334
-              - type: House
-                month: '2016-12-01'
-                rent_roll: 421.5
-                price_roll: 618905.5
-              - type: House
-                month: '2017-01-01'
-                rent_roll: 421.3333333333333
-                price_roll: 625615.0
-              - type: House
-                month: '2017-02-01'
-                rent_roll: 421.0
-                price_roll: 629015.0
-              - type: House
-                month: '2017-03-01'
-                rent_roll: 422.1666666666667
-                price_roll: 638508.1666666666
-              - type: House
-                month: '2017-04-01'
-                rent_roll: 423.0
-                price_roll: 641485.5
-              - type: House
-                month: '2017-05-01'
-                rent_roll: 421.1666666666667
-                price_roll: 637568.6666666666
-              - type: House
-                month: '2017-06-01'
-                rent_roll: 422.3333333333333
-                price_roll: 651173.6666666666
-              - type: House
-                month: '2017-07-01'
-                rent_roll: 424.0
-                price_roll: 658537.3333333334
-              - type: House
-                month: '2017-08-01'
-                rent_roll: 424.1666666666667
-                price_roll: 665990.6666666666
-              - type: House
-                month: '2017-09-01'
-                rent_roll: 421.3333333333333
-                price_roll: 662084.6666666666
-              - type: House
-                month: '2017-10-01'
-                rent_roll: 421.8333333333333
-                price_roll: 664046.8333333334
-              - type: House
-                month: '2017-11-01'
-                rent_roll: 421.5
-                price_roll: 672380.0
-              - type: House
-                month: '2017-12-01'
-                rent_roll: 418.5
-                price_roll: 666506.3333333334
-              - type: House
-                month: '2019-01-01'
-                rent_roll: 420.1666666666667
-                price_roll: 650230.6666666666
-              - type: House
-                month: '2019-02-01'
-                rent_roll: 420.3333333333333
-                price_roll: 632055.1666666666
-              - type: House
-                month: '2019-03-01'
-                rent_roll: 422.6666666666667
-                price_roll: 618286.6666666666
-              - type: House
-                month: '2019-04-01'
-                rent_roll: 422.3333333333333
-                price_roll: 599406.6666666666
-              - type: House
-                month: '2019-05-01'
-                rent_roll: 421.5
-                price_roll: 582387.6666666666
-              - type: House
-                month: '2019-06-01'
-                rent_roll: 419.3333333333333
-                price_roll: 574109.8333333334
-              - type: House
-                month: '2019-07-01'
-                rent_roll: 415.6666666666667
-                price_roll: 579620.1666666666
-              - type: House
-                month: '2019-08-01'
-                rent_roll: 412.0
-                price_roll: 584069.3333333334
-              - type: House
-                month: '2019-09-01'
-                rent_roll: 414.0
-                price_roll: 596995.8333333334
-              - type: House
-                month: '2019-10-01'
-                rent_roll: 411.1666666666667
-                price_roll: 605200.5
-              - type: House
-                month: '2019-11-01'
-                rent_roll: 412.5
-                price_roll: 613094.6666666666
-              - type: House
-                month: '2019-12-01'
-                rent_roll: 413.5
-                price_roll: 606076.1666666666
-              - type: House
-                month: '2020-01-01'
-                rent_roll: 415.3333333333333
-                price_roll: 607097.1666666666
-              - type: House
-                month: '2020-02-01'
-                rent_roll: 418.1666666666667
-                price_roll: 607691.1666666666
-              - type: House
-                month: '2020-03-01'
-                rent_roll: 414.5
-                price_roll: 609064.1666666666
-              - type: House
-                month: '2020-04-01'
-                rent_roll: 419.3333333333333
-                price_roll: 608778.6666666666
-              - type: House
-                month: '2020-05-01'
-                rent_roll: 417.8333333333333
-                price_roll: 623357.5
-              - type: House
-                month: '2020-06-01'
-                rent_roll: 417.8333333333333
-                price_roll: 630279.8333333334
-              - type: House
-                month: '2020-07-01'
-                rent_roll: 421.1666666666667
-                price_roll: 621450.8333333334
-              - type: House
-                month: '2020-08-01'
-                rent_roll: 424.0
-                price_roll: 629195.0
-              - type: House
-                month: '2020-09-01'
-                rent_roll: 425.1666666666667
-                price_roll: 625920.1666666666
-              - type: House
-                month: '2020-10-01'
-                rent_roll: 426.5
-                price_roll: 631672.0
-              - type: House
-                month: '2020-11-01'
-                rent_roll: 431.1666666666667
-                price_roll: 643309.0
-              - type: House
-                month: '2020-12-01'
-                rent_roll: 436.6666666666667
-                price_roll: 650069.3333333334
-              - type: House
-                month: '2021-01-01'
-                rent_roll: 435.0
-                price_roll: 666539.8333333334
-              - type: House
-                month: '2021-02-01'
-                rent_roll: 432.8333333333333
-                price_roll: 670322.1666666666
+            - type: House
+              month: '2016-01-01'
+              rent_roll: 421.0
+              price_roll: 571043.0
+            - type: House
+              month: '2016-02-01'
+              rent_roll: 421.0
+              price_roll: 570918.5
+            - type: House
+              month: '2016-03-01'
+              rent_roll: 419.3333333333333
+              price_roll: 576672.0
+            - type: House
+              month: '2016-04-01'
+              rent_roll: 421.25
+              price_roll: 576373.5
+            - type: House
+              month: '2016-05-01'
+              rent_roll: 419.8
+              price_roll: 582178.6
+            - type: House
+              month: '2016-06-01'
+              rent_roll: 419.5
+              price_roll: 584188.8333333334
+            - type: House
+              month: '2016-07-01'
+              rent_roll: 417.8333333333333
+              price_roll: 586770.8333333334
+            - type: House
+              month: '2016-08-01'
+              rent_roll: 419.1666666666667
+              price_roll: 595200.1666666666
+            - type: House
+              month: '2016-09-01'
+              rent_roll: 419.6666666666667
+              price_roll: 598757.3333333334
+            - type: House
+              month: '2016-10-01'
+              rent_roll: 417.6666666666667
+              price_roll: 608578.3333333334
+            - type: House
+              month: '2016-11-01'
+              rent_roll: 419.3333333333333
+              price_roll: 614397.8333333334
+            - type: House
+              month: '2016-12-01'
+              rent_roll: 421.5
+              price_roll: 618905.5
+            - type: House
+              month: '2017-01-01'
+              rent_roll: 421.3333333333333
+              price_roll: 625615.0
+            - type: House
+              month: '2017-02-01'
+              rent_roll: 421.0
+              price_roll: 629015.0
+            - type: House
+              month: '2017-03-01'
+              rent_roll: 422.1666666666667
+              price_roll: 638508.1666666666
+            - type: House
+              month: '2017-04-01'
+              rent_roll: 423.0
+              price_roll: 641485.5
+            - type: House
+              month: '2017-05-01'
+              rent_roll: 421.1666666666667
+              price_roll: 637568.6666666666
+            - type: House
+              month: '2017-06-01'
+              rent_roll: 422.3333333333333
+              price_roll: 651173.6666666666
+            - type: House
+              month: '2017-07-01'
+              rent_roll: 424.0
+              price_roll: 658537.3333333334
+            - type: House
+              month: '2017-08-01'
+              rent_roll: 424.1666666666667
+              price_roll: 665990.6666666666
+            - type: House
+              month: '2017-09-01'
+              rent_roll: 421.3333333333333
+              price_roll: 662084.6666666666
+            - type: House
+              month: '2017-10-01'
+              rent_roll: 421.8333333333333
+              price_roll: 664046.8333333334
+            - type: House
+              month: '2017-11-01'
+              rent_roll: 421.5
+              price_roll: 672380.0
+            - type: House
+              month: '2017-12-01'
+              rent_roll: 418.5
+              price_roll: 666506.3333333334
+            - type: House
+              month: '2019-01-01'
+              rent_roll: 420.1666666666667
+              price_roll: 650230.6666666666
+            - type: House
+              month: '2019-02-01'
+              rent_roll: 420.3333333333333
+              price_roll: 632055.1666666666
+            - type: House
+              month: '2019-03-01'
+              rent_roll: 422.6666666666667
+              price_roll: 618286.6666666666
+            - type: House
+              month: '2019-04-01'
+              rent_roll: 422.3333333333333
+              price_roll: 599406.6666666666
+            - type: House
+              month: '2019-05-01'
+              rent_roll: 421.5
+              price_roll: 582387.6666666666
+            - type: House
+              month: '2019-06-01'
+              rent_roll: 419.3333333333333
+              price_roll: 574109.8333333334
+            - type: House
+              month: '2019-07-01'
+              rent_roll: 415.6666666666667
+              price_roll: 579620.1666666666
+            - type: House
+              month: '2019-08-01'
+              rent_roll: 412.0
+              price_roll: 584069.3333333334
+            - type: House
+              month: '2019-09-01'
+              rent_roll: 414.0
+              price_roll: 596995.8333333334
+            - type: House
+              month: '2019-10-01'
+              rent_roll: 411.1666666666667
+              price_roll: 605200.5
+            - type: House
+              month: '2019-11-01'
+              rent_roll: 412.5
+              price_roll: 613094.6666666666
+            - type: House
+              month: '2019-12-01'
+              rent_roll: 413.5
+              price_roll: 606076.1666666666
+            - type: House
+              month: '2020-01-01'
+              rent_roll: 415.3333333333333
+              price_roll: 607097.1666666666
+            - type: House
+              month: '2020-02-01'
+              rent_roll: 418.1666666666667
+              price_roll: 607691.1666666666
+            - type: House
+              month: '2020-03-01'
+              rent_roll: 414.5
+              price_roll: 609064.1666666666
+            - type: House
+              month: '2020-04-01'
+              rent_roll: 419.3333333333333
+              price_roll: 608778.6666666666
+            - type: House
+              month: '2020-05-01'
+              rent_roll: 417.8333333333333
+              price_roll: 623357.5
+            - type: House
+              month: '2020-06-01'
+              rent_roll: 417.8333333333333
+              price_roll: 630279.8333333334
+            - type: House
+              month: '2020-07-01'
+              rent_roll: 421.1666666666667
+              price_roll: 621450.8333333334
+            - type: House
+              month: '2020-08-01'
+              rent_roll: 424.0
+              price_roll: 629195.0
+            - type: House
+              month: '2020-09-01'
+              rent_roll: 425.1666666666667
+              price_roll: 625920.1666666666
+            - type: House
+              month: '2020-10-01'
+              rent_roll: 426.5
+              price_roll: 631672.0
+            - type: House
+              month: '2020-11-01'
+              rent_roll: 431.1666666666667
+              price_roll: 643309.0
+            - type: House
+              month: '2020-12-01'
+              rent_roll: 436.6666666666667
+              price_roll: 650069.3333333334
+            - type: House
+              month: '2021-01-01'
+              rent_roll: 435.0
+              price_roll: 666539.8333333334
+            - type: House
+              month: '2021-02-01'
+              rent_roll: 432.8333333333333
+              price_roll: 670322.1666666666
             group: null
             title: Campbelltown 2560 — Prices vs Rents (6-month rolling)
             height: fill
@@ -692,210 +684,206 @@ cases:
               \ = '2560'\n  AND month >= '2016-01-01'\n  AND property_type IN ('house', 'unit')\nORDER\
               \ BY property_type, month"
             rows:
-              _truncated: true
-              _total: 452
-              _sha: fe63a00294f4
-              _head:
-              - layer: actual
-                month: '2016-01-01'
-                value: 3.84
-                series: house
-              - layer: 6-mo avg
-                month: '2016-01-01'
-                value: 3.84
-                series: house
-              - layer: actual
-                month: '2016-02-01'
-                value: 3.83
-                series: house
-              - layer: 6-mo avg
-                month: '2016-02-01'
-                value: 3.83
-                series: house
-              - layer: actual
-                month: '2016-03-01'
-                value: 3.68
-                series: house
-              - layer: 6-mo avg
-                month: '2016-03-01'
-                value: 3.78
-                series: house
-              - layer: actual
-                month: '2016-04-01'
-                value: 3.86
-                series: house
-              - layer: 6-mo avg
-                month: '2016-04-01'
-                value: 3.8
-                series: house
-              - layer: actual
-                month: '2016-05-01'
-                value: 3.55
-                series: house
-              - layer: 6-mo avg
-                month: '2016-05-01'
-                value: 3.75
-                series: house
-              - layer: actual
-                month: '2016-06-01'
-                value: 3.66
-                series: house
-              - layer: 6-mo avg
-                month: '2016-06-01'
-                value: 3.74
-                series: house
-              - layer: actual
-                month: '2016-07-01'
-                value: 3.64
-                series: house
-              - layer: 6-mo avg
-                month: '2016-07-01'
-                value: 3.7
-                series: house
-              - layer: actual
-                month: '2016-08-01'
-                value: 3.59
-                series: house
-              - layer: 6-mo avg
-                month: '2016-08-01'
-                value: 3.66
-                series: house
-              - layer: actual
-                month: '2016-09-01'
-                value: 3.58
-                series: house
-              - layer: 6-mo avg
-                month: '2016-09-01'
-                value: 3.65
-                series: house
-              - layer: actual
-                month: '2016-10-01'
-                value: 3.4
-                series: house
-              - layer: 6-mo avg
-                month: '2016-10-01'
-                value: 3.57
-                series: house
-              - layer: actual
-                month: '2016-11-01'
-                value: 3.44
-                series: house
-              - layer: 6-mo avg
-                month: '2016-11-01'
-                value: 3.55
-                series: house
-              - layer: actual
-                month: '2016-12-01'
-                value: 3.61
-                series: house
-              - layer: 6-mo avg
-                month: '2016-12-01'
-                value: 3.54
-                series: house
-              - layer: actual
-                month: '2017-01-01'
-                value: 3.4
-                series: house
-              - layer: 6-mo avg
-                month: '2017-01-01'
-                value: 3.5
-                series: house
-              - layer: actual
-                month: '2017-02-01'
-                value: 3.46
-                series: house
-              - layer: 6-mo avg
-                month: '2017-02-01'
-                value: 3.48
-                series: house
-              - layer: actual
-                month: '2017-03-01'
-                value: 3.33
-                series: house
-              - layer: 6-mo avg
-                month: '2017-03-01'
-                value: 3.44
-                series: house
-              - layer: actual
-                month: '2017-04-01'
-                value: 3.34
-                series: house
-              - layer: 6-mo avg
-                month: '2017-04-01'
-                value: 3.43
-                series: house
-              - layer: actual
-                month: '2017-05-01'
-                value: 3.48
-                series: house
-              - layer: 6-mo avg
-                month: '2017-05-01'
-                value: 3.44
-                series: house
-              - layer: actual
-                month: '2017-06-01'
-                value: 3.24
-                series: house
-              - layer: 6-mo avg
-                month: '2017-06-01'
-                value: 3.38
-                series: house
-              - layer: actual
-                month: '2017-07-01'
-                value: 3.26
-                series: house
-              - layer: 6-mo avg
-                month: '2017-07-01'
-                value: 3.35
-                series: house
-              - layer: actual
-                month: '2017-08-01'
-                value: 3.24
-                series: house
-              - layer: 6-mo avg
-                month: '2017-08-01'
-                value: 3.31
-                series: house
-              - layer: actual
-                month: '2017-09-01'
-                value: 3.3
-                series: house
-              - layer: 6-mo avg
-                month: '2017-09-01'
-                value: 3.31
-                series: house
-              - layer: actual
-                month: '2017-10-01'
-                value: 3.31
-                series: house
-              - layer: 6-mo avg
-                month: '2017-10-01'
-                value: 3.3
-                series: house
-              - layer: actual
-                month: '2017-11-01'
-                value: 3.21
-                series: house
-              - layer: 6-mo avg
-                month: '2017-11-01'
-                value: 3.26
-                series: house
-              - layer: actual
-                month: '2017-12-01'
-                value: 3.27
-                series: house
-              - layer: 6-mo avg
-                month: '2017-12-01'
-                value: 3.27
-                series: house
-              - layer: actual
-                month: '2019-01-01'
-                value: 3.9
-                series: house
-              - layer: 6-mo avg
-                month: '2019-01-01'
-                value: 3.37
-                series: house
+            - layer: actual
+              month: '2016-01-01'
+              value: 3.84
+              series: house
+            - layer: 6-mo avg
+              month: '2016-01-01'
+              value: 3.84
+              series: house
+            - layer: actual
+              month: '2016-02-01'
+              value: 3.83
+              series: house
+            - layer: 6-mo avg
+              month: '2016-02-01'
+              value: 3.83
+              series: house
+            - layer: actual
+              month: '2016-03-01'
+              value: 3.68
+              series: house
+            - layer: 6-mo avg
+              month: '2016-03-01'
+              value: 3.78
+              series: house
+            - layer: actual
+              month: '2016-04-01'
+              value: 3.86
+              series: house
+            - layer: 6-mo avg
+              month: '2016-04-01'
+              value: 3.8
+              series: house
+            - layer: actual
+              month: '2016-05-01'
+              value: 3.55
+              series: house
+            - layer: 6-mo avg
+              month: '2016-05-01'
+              value: 3.75
+              series: house
+            - layer: actual
+              month: '2016-06-01'
+              value: 3.66
+              series: house
+            - layer: 6-mo avg
+              month: '2016-06-01'
+              value: 3.74
+              series: house
+            - layer: actual
+              month: '2016-07-01'
+              value: 3.64
+              series: house
+            - layer: 6-mo avg
+              month: '2016-07-01'
+              value: 3.7
+              series: house
+            - layer: actual
+              month: '2016-08-01'
+              value: 3.59
+              series: house
+            - layer: 6-mo avg
+              month: '2016-08-01'
+              value: 3.66
+              series: house
+            - layer: actual
+              month: '2016-09-01'
+              value: 3.58
+              series: house
+            - layer: 6-mo avg
+              month: '2016-09-01'
+              value: 3.65
+              series: house
+            - layer: actual
+              month: '2016-10-01'
+              value: 3.4
+              series: house
+            - layer: 6-mo avg
+              month: '2016-10-01'
+              value: 3.57
+              series: house
+            - layer: actual
+              month: '2016-11-01'
+              value: 3.44
+              series: house
+            - layer: 6-mo avg
+              month: '2016-11-01'
+              value: 3.55
+              series: house
+            - layer: actual
+              month: '2016-12-01'
+              value: 3.61
+              series: house
+            - layer: 6-mo avg
+              month: '2016-12-01'
+              value: 3.54
+              series: house
+            - layer: actual
+              month: '2017-01-01'
+              value: 3.4
+              series: house
+            - layer: 6-mo avg
+              month: '2017-01-01'
+              value: 3.5
+              series: house
+            - layer: actual
+              month: '2017-02-01'
+              value: 3.46
+              series: house
+            - layer: 6-mo avg
+              month: '2017-02-01'
+              value: 3.48
+              series: house
+            - layer: actual
+              month: '2017-03-01'
+              value: 3.33
+              series: house
+            - layer: 6-mo avg
+              month: '2017-03-01'
+              value: 3.44
+              series: house
+            - layer: actual
+              month: '2017-04-01'
+              value: 3.34
+              series: house
+            - layer: 6-mo avg
+              month: '2017-04-01'
+              value: 3.43
+              series: house
+            - layer: actual
+              month: '2017-05-01'
+              value: 3.48
+              series: house
+            - layer: 6-mo avg
+              month: '2017-05-01'
+              value: 3.44
+              series: house
+            - layer: actual
+              month: '2017-06-01'
+              value: 3.24
+              series: house
+            - layer: 6-mo avg
+              month: '2017-06-01'
+              value: 3.38
+              series: house
+            - layer: actual
+              month: '2017-07-01'
+              value: 3.26
+              series: house
+            - layer: 6-mo avg
+              month: '2017-07-01'
+              value: 3.35
+              series: house
+            - layer: actual
+              month: '2017-08-01'
+              value: 3.24
+              series: house
+            - layer: 6-mo avg
+              month: '2017-08-01'
+              value: 3.31
+              series: house
+            - layer: actual
+              month: '2017-09-01'
+              value: 3.3
+              series: house
+            - layer: 6-mo avg
+              month: '2017-09-01'
+              value: 3.31
+              series: house
+            - layer: actual
+              month: '2017-10-01'
+              value: 3.31
+              series: house
+            - layer: 6-mo avg
+              month: '2017-10-01'
+              value: 3.3
+              series: house
+            - layer: actual
+              month: '2017-11-01'
+              value: 3.21
+              series: house
+            - layer: 6-mo avg
+              month: '2017-11-01'
+              value: 3.26
+              series: house
+            - layer: actual
+              month: '2017-12-01'
+              value: 3.27
+              series: house
+            - layer: 6-mo avg
+              month: '2017-12-01'
+              value: 3.27
+              series: house
+            - layer: actual
+              month: '2019-01-01'
+              value: 3.9
+              series: house
+            - layer: 6-mo avg
+              month: '2019-01-01'
+              value: 3.37
+              series: house
             title: Campbelltown 2560 — Gross Rental Yield Trend (6-month rolling)
             height: fill
             intent: line
@@ -1544,210 +1532,206 @@ cases:
               \      SUM(n_rented) AS n_rented\nFROM marts.property_yield\nWHERE property_type IN ('house',\
               \ 'unit')\n  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY month, property_type"
             rows:
-              _truncated: true
-              _total: 452
-              _sha: 4ce7fa36e34a
-              _head:
-              - layer: actual
-                month: '2016-01-01'
-                value: 3.56
-                series: house
-              - layer: 6-mo avg
-                month: '2016-01-01'
-                value: 3.56
-                series: house
-              - layer: actual
-                month: '2016-02-01'
-                value: 3.28
-                series: house
-              - layer: 6-mo avg
-                month: '2016-02-01'
-                value: 3.42
-                series: house
-              - layer: actual
-                month: '2016-03-01'
-                value: 2.95
-                series: house
-              - layer: 6-mo avg
-                month: '2016-03-01'
-                value: 3.26
-                series: house
-              - layer: actual
-                month: '2016-04-01'
-                value: 3.1
-                series: house
-              - layer: 6-mo avg
-                month: '2016-04-01'
-                value: 3.22
-                series: house
-              - layer: actual
-                month: '2016-05-01'
-                value: 3.06
-                series: house
-              - layer: 6-mo avg
-                month: '2016-05-01'
-                value: 3.19
-                series: house
-              - layer: actual
-                month: '2016-06-01'
-                value: 3.01
-                series: house
-              - layer: 6-mo avg
-                month: '2016-06-01'
-                value: 3.16
-                series: house
-              - layer: actual
-                month: '2016-07-01'
-                value: 3.27
-                series: house
-              - layer: 6-mo avg
-                month: '2016-07-01'
-                value: 3.11
-                series: house
-              - layer: actual
-                month: '2016-08-01'
-                value: 3.08
-                series: house
-              - layer: 6-mo avg
-                month: '2016-08-01'
-                value: 3.08
-                series: house
-              - layer: actual
-                month: '2016-09-01'
-                value: 2.91
-                series: house
-              - layer: 6-mo avg
-                month: '2016-09-01'
-                value: 3.07
-                series: house
-              - layer: actual
-                month: '2016-10-01'
-                value: 2.96
-                series: house
-              - layer: 6-mo avg
-                month: '2016-10-01'
-                value: 3.05
-                series: house
-              - layer: actual
-                month: '2016-11-01'
-                value: 2.84
-                series: house
-              - layer: 6-mo avg
-                month: '2016-11-01'
-                value: 3.01
-                series: house
-              - layer: actual
-                month: '2016-12-01'
-                value: 3.0
-                series: house
-              - layer: 6-mo avg
-                month: '2016-12-01'
-                value: 3.01
-                series: house
-              - layer: actual
-                month: '2017-01-01'
-                value: 3.46
-                series: house
-              - layer: 6-mo avg
-                month: '2017-01-01'
-                value: 3.04
-                series: house
-              - layer: actual
-                month: '2017-02-01'
-                value: 3.01
-                series: house
-              - layer: 6-mo avg
-                month: '2017-02-01'
-                value: 3.03
-                series: house
-              - layer: actual
-                month: '2017-03-01'
-                value: 2.78
-                series: house
-              - layer: 6-mo avg
-                month: '2017-03-01'
-                value: 3.01
-                series: house
-              - layer: actual
-                month: '2017-04-01'
-                value: 2.82
-                series: house
-              - layer: 6-mo avg
-                month: '2017-04-01'
-                value: 2.98
-                series: house
-              - layer: actual
-                month: '2017-05-01'
-                value: 2.84
-                series: house
-              - layer: 6-mo avg
-                month: '2017-05-01'
-                value: 2.99
-                series: house
-              - layer: actual
-                month: '2017-06-01'
-                value: 2.77
-                series: house
-              - layer: 6-mo avg
-                month: '2017-06-01'
-                value: 2.95
-                series: house
-              - layer: actual
-                month: '2017-07-01'
-                value: 3.21
-                series: house
-              - layer: 6-mo avg
-                month: '2017-07-01'
-                value: 2.91
-                series: house
-              - layer: actual
-                month: '2017-08-01'
-                value: 2.96
-                series: house
-              - layer: 6-mo avg
-                month: '2017-08-01'
-                value: 2.9
-                series: house
-              - layer: actual
-                month: '2017-09-01'
-                value: 2.84
-                series: house
-              - layer: 6-mo avg
-                month: '2017-09-01'
-                value: 2.91
-                series: house
-              - layer: actual
-                month: '2017-10-01'
-                value: 2.94
-                series: house
-              - layer: 6-mo avg
-                month: '2017-10-01'
-                value: 2.93
-                series: house
-              - layer: actual
-                month: '2017-11-01'
-                value: 2.87
-                series: house
-              - layer: 6-mo avg
-                month: '2017-11-01'
-                value: 2.93
-                series: house
-              - layer: actual
-                month: '2017-12-01'
-                value: 3.04
-                series: house
-              - layer: 6-mo avg
-                month: '2017-12-01'
-                value: 2.98
-                series: house
-              - layer: actual
-                month: '2019-01-01'
-                value: 3.74
-                series: house
-              - layer: 6-mo avg
-                month: '2019-01-01'
-                value: 3.06
-                series: house
+            - layer: actual
+              month: '2016-01-01'
+              value: 3.56
+              series: house
+            - layer: 6-mo avg
+              month: '2016-01-01'
+              value: 3.56
+              series: house
+            - layer: actual
+              month: '2016-02-01'
+              value: 3.28
+              series: house
+            - layer: 6-mo avg
+              month: '2016-02-01'
+              value: 3.42
+              series: house
+            - layer: actual
+              month: '2016-03-01'
+              value: 2.95
+              series: house
+            - layer: 6-mo avg
+              month: '2016-03-01'
+              value: 3.26
+              series: house
+            - layer: actual
+              month: '2016-04-01'
+              value: 3.1
+              series: house
+            - layer: 6-mo avg
+              month: '2016-04-01'
+              value: 3.22
+              series: house
+            - layer: actual
+              month: '2016-05-01'
+              value: 3.06
+              series: house
+            - layer: 6-mo avg
+              month: '2016-05-01'
+              value: 3.19
+              series: house
+            - layer: actual
+              month: '2016-06-01'
+              value: 3.01
+              series: house
+            - layer: 6-mo avg
+              month: '2016-06-01'
+              value: 3.16
+              series: house
+            - layer: actual
+              month: '2016-07-01'
+              value: 3.27
+              series: house
+            - layer: 6-mo avg
+              month: '2016-07-01'
+              value: 3.11
+              series: house
+            - layer: actual
+              month: '2016-08-01'
+              value: 3.08
+              series: house
+            - layer: 6-mo avg
+              month: '2016-08-01'
+              value: 3.08
+              series: house
+            - layer: actual
+              month: '2016-09-01'
+              value: 2.91
+              series: house
+            - layer: 6-mo avg
+              month: '2016-09-01'
+              value: 3.07
+              series: house
+            - layer: actual
+              month: '2016-10-01'
+              value: 2.96
+              series: house
+            - layer: 6-mo avg
+              month: '2016-10-01'
+              value: 3.05
+              series: house
+            - layer: actual
+              month: '2016-11-01'
+              value: 2.84
+              series: house
+            - layer: 6-mo avg
+              month: '2016-11-01'
+              value: 3.01
+              series: house
+            - layer: actual
+              month: '2016-12-01'
+              value: 3.0
+              series: house
+            - layer: 6-mo avg
+              month: '2016-12-01'
+              value: 3.01
+              series: house
+            - layer: actual
+              month: '2017-01-01'
+              value: 3.46
+              series: house
+            - layer: 6-mo avg
+              month: '2017-01-01'
+              value: 3.04
+              series: house
+            - layer: actual
+              month: '2017-02-01'
+              value: 3.01
+              series: house
+            - layer: 6-mo avg
+              month: '2017-02-01'
+              value: 3.03
+              series: house
+            - layer: actual
+              month: '2017-03-01'
+              value: 2.78
+              series: house
+            - layer: 6-mo avg
+              month: '2017-03-01'
+              value: 3.01
+              series: house
+            - layer: actual
+              month: '2017-04-01'
+              value: 2.82
+              series: house
+            - layer: 6-mo avg
+              month: '2017-04-01'
+              value: 2.98
+              series: house
+            - layer: actual
+              month: '2017-05-01'
+              value: 2.84
+              series: house
+            - layer: 6-mo avg
+              month: '2017-05-01'
+              value: 2.99
+              series: house
+            - layer: actual
+              month: '2017-06-01'
+              value: 2.77
+              series: house
+            - layer: 6-mo avg
+              month: '2017-06-01'
+              value: 2.95
+              series: house
+            - layer: actual
+              month: '2017-07-01'
+              value: 3.21
+              series: house
+            - layer: 6-mo avg
+              month: '2017-07-01'
+              value: 2.91
+              series: house
+            - layer: actual
+              month: '2017-08-01'
+              value: 2.96
+              series: house
+            - layer: 6-mo avg
+              month: '2017-08-01'
+              value: 2.9
+              series: house
+            - layer: actual
+              month: '2017-09-01'
+              value: 2.84
+              series: house
+            - layer: 6-mo avg
+              month: '2017-09-01'
+              value: 2.91
+              series: house
+            - layer: actual
+              month: '2017-10-01'
+              value: 2.94
+              series: house
+            - layer: 6-mo avg
+              month: '2017-10-01'
+              value: 2.93
+              series: house
+            - layer: actual
+              month: '2017-11-01'
+              value: 2.87
+              series: house
+            - layer: 6-mo avg
+              month: '2017-11-01'
+              value: 2.93
+              series: house
+            - layer: actual
+              month: '2017-12-01'
+              value: 3.04
+              series: house
+            - layer: 6-mo avg
+              month: '2017-12-01'
+              value: 2.98
+              series: house
+            - layer: actual
+              month: '2019-01-01'
+              value: 3.74
+              series: house
+            - layer: 6-mo avg
+              month: '2019-01-01'
+              value: 3.06
+              series: house
             title: 'Gross Rental Yield: Houses vs Units (NSW)'
             height: fill
             intent: line
@@ -1801,210 +1785,206 @@ cases:
               \      SUM(n_rented) AS n_rented\nFROM marts.property_yield\nWHERE property_type IN ('house',\
               \ 'unit')\n  AND month >= '2015-01-01'\nGROUP BY month, property_type\nORDER BY month, property_type"
             rows:
-              _truncated: true
-              _total: 226
-              _sha: 66ef5eeec6e9
-              _head:
-              - layer: actual
-                month: '2016-01-01'
-                value: 0.14
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-01-01'
-                value: 0.14
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-02-01'
-                value: 0.25
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-02-01'
-                value: 0.19
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-03-01'
-                value: 0.41
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-03-01'
-                value: 0.27
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-04-01'
-                value: 0.27
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-04-01'
-                value: 0.27
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-05-01'
-                value: 0.2
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-05-01'
-                value: 0.25
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-06-01'
-                value: 0.39
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-06-01'
-                value: 0.28
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-07-01'
-                value: 0.16
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-07-01'
-                value: 0.28
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-08-01'
-                value: 0.39
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-08-01'
-                value: 0.3
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-09-01'
-                value: 0.44
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-09-01'
-                value: 0.31
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-10-01'
-                value: 0.41
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-10-01'
-                value: 0.33
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-11-01'
-                value: 0.34
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-11-01'
-                value: 0.35
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2016-12-01'
-                value: 0.27
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2016-12-01'
-                value: 0.33
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-01-01'
-                value: 0.12
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-01-01'
-                value: 0.33
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-02-01'
-                value: 0.29
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-02-01'
-                value: 0.31
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-03-01'
-                value: 0.51
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-03-01'
-                value: 0.32
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-04-01'
-                value: 0.5
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-04-01'
-                value: 0.34
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-05-01'
-                value: 0.4
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-05-01'
-                value: 0.35
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-06-01'
-                value: 0.28
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-06-01'
-                value: 0.35
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-07-01'
-                value: 0.31
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-07-01'
-                value: 0.38
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-08-01'
-                value: 0.47
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-08-01'
-                value: 0.41
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-09-01'
-                value: 0.43
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-09-01'
-                value: 0.4
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-10-01'
-                value: 0.4
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-10-01'
-                value: 0.38
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-11-01'
-                value: 0.48
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-11-01'
-                value: 0.4
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2017-12-01'
-                value: 0.4
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2017-12-01'
-                value: 0.42
-                series: Unit - House yield spread
-              - layer: actual
-                month: '2019-01-01'
-                value: -0.02
-                series: Unit - House yield spread
-              - layer: 6-mo avg
-                month: '2019-01-01'
-                value: 0.36
-                series: Unit - House yield spread
+            - layer: actual
+              month: '2016-01-01'
+              value: 0.14
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-01-01'
+              value: 0.14
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-02-01'
+              value: 0.25
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-02-01'
+              value: 0.19
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-03-01'
+              value: 0.41
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-03-01'
+              value: 0.27
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-04-01'
+              value: 0.27
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-04-01'
+              value: 0.27
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-05-01'
+              value: 0.2
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-05-01'
+              value: 0.25
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-06-01'
+              value: 0.39
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-06-01'
+              value: 0.28
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-07-01'
+              value: 0.16
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-07-01'
+              value: 0.28
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-08-01'
+              value: 0.39
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-08-01'
+              value: 0.3
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-09-01'
+              value: 0.44
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-09-01'
+              value: 0.31
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-10-01'
+              value: 0.41
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-10-01'
+              value: 0.33
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-11-01'
+              value: 0.34
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-11-01'
+              value: 0.35
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2016-12-01'
+              value: 0.27
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2016-12-01'
+              value: 0.33
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-01-01'
+              value: 0.12
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-01-01'
+              value: 0.33
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-02-01'
+              value: 0.29
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-02-01'
+              value: 0.31
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-03-01'
+              value: 0.51
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-03-01'
+              value: 0.32
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-04-01'
+              value: 0.5
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-04-01'
+              value: 0.34
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-05-01'
+              value: 0.4
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-05-01'
+              value: 0.35
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-06-01'
+              value: 0.28
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-06-01'
+              value: 0.35
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-07-01'
+              value: 0.31
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-07-01'
+              value: 0.38
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-08-01'
+              value: 0.47
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-08-01'
+              value: 0.41
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-09-01'
+              value: 0.43
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-09-01'
+              value: 0.4
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-10-01'
+              value: 0.4
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-10-01'
+              value: 0.38
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-11-01'
+              value: 0.48
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-11-01'
+              value: 0.4
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2017-12-01'
+              value: 0.4
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2017-12-01'
+              value: 0.42
+              series: Unit - House yield spread
+            - layer: actual
+              month: '2019-01-01'
+              value: -0.02
+              series: Unit - House yield spread
+            - layer: 6-mo avg
+              month: '2019-01-01'
+              value: 0.36
+              series: Unit - House yield spread
             title: Yield Spread (Unit minus House) Over Time
             height: fill
             intent: line

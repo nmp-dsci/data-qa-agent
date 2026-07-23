@@ -3,7 +3,7 @@
 // (blue) columns and signs the delta; `ranked` draws an inline delta bar per row.
 // Registered as the report-engine `table` object type, so Chat reports, Goldens
 // and the SQL editor can render tables through the same component Explore uses.
-import { chartTheme } from "./tokens";
+import { asRows, chartTheme } from "./tokens";
 
 export type CellFormat = "currency" | "number" | "percent" | "text";
 export type ColumnTone = "target" | "comparison" | "delta" | null;
@@ -58,9 +58,10 @@ function toneStyle(tone: ColumnTone, value: unknown): React.CSSProperties {
 export function DataTable({ data }: { data: TableData }) {
   const theme = chartTheme();
   const variant = data.variant ?? "plain";
+  const rows = asRows(data.rows);
   const barMax =
     variant === "ranked" && data.bar_key
-      ? Math.max(1, ...data.rows.map((r) => Math.abs(Number(r[data.bar_key as string]) || 0)))
+      ? Math.max(1, ...rows.map((r) => Math.abs(Number(r[data.bar_key as string]) || 0)))
       : 1;
 
   return (
@@ -82,7 +83,7 @@ export function DataTable({ data }: { data: TableData }) {
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((row, i) => (
+            {rows.map((row, i) => (
               <tr key={i}>
                 {data.columns.map((c) => {
                   const v = row[c.key];

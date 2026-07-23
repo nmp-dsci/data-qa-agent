@@ -281,3 +281,98 @@ def test_table_object_builds_and_lifts_to_valid_page_object() -> None:
     assert vols == sorted(vols, reverse=True)
     # The lifted dict validates through the agent-side pages contract.
     PageObject(**obj)
+
+
+# --- s28: augmented measure kinds (share / growth / latest) + composite x-axis ---
+
+
+def _rent_mix_frame() -> pd.DataFrame:
+    """A rent extract at postcode × property_type × bedroom_band × month."""
+    rows = []
+    months = [f"2024-{m:02d}" for m in range(1, 13)] + [f"2025-{m:02d}" for m in range(1, 7)]
+    for mo in months:
+        for pc in ("2077", "2076"):
+            for pt in ("house", "unit"):
+                for bb in ("1", "2", "3"):
+                    n = 10 if pt == "unit" else 4
+                    rows.append(
+                        {
+                            "month": mo,
+                            "postcode": pc,
+                            "property_type": pt,
+                            "bedroom_band": bb,
+                            "n_rented": n,
+                            "total_weekly_rent": n * (400 + int(bb) * 120),
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+def test_share_measure_over_composite_axis_sums_to_100_per_series() -> None:
+    """The user's chart, deterministically: a Line+Bar whose bars are the % share
+    of rentals within each postcode (a "mix"), over a composite bedroom_band ×
+    property_type x-axis, with the value-weighted rent as the line. No LLM."""
+    spec = {
+        "grain": ["month", "postcode", "property_type", "bedroom_band"],
+        "dimension": ["bedroom_band", "property_type"],  # composite axis
+        "group": "postcode",
+        "bar_measure": {"label": "share", "source": "n_rented", "how": "share"},
+        "line_measure": {"label": "avg_rent", "num": "total_weekly_rent", "den": "n_rented"},
+        "months": 12,
+    }
+    code = build_object_code(object_type="compare", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_mix_frame(), frames={"extract": _rent_mix_frame()})
+    assert outcome.error is None
+    assert "dual_axis_chart" in outcome.skills_used
+
+    obj = chart_object_from_spec(
+        (outcome.report or {}).get("main_chart"),
+        element_id=element_id_for("rent-mix"),
+        role="chart",
+        height="md",
+    )
+    assert obj is not None
+    d = obj.model_dump(exclude_none=True)
+    assert d["type"] == "compare"
+    assert d["data"]["dimension"] == "_x"  # the synthesized composite axis
+    assert d["data"]["measure"] == "share"
+    assert d["data"]["line_measure"] == "avg_rent"
+    assert d["data"]["group"] == "postcode"
+
+    rows = d["data"]["rows"]
+    assert rows and all(" · " in str(r["_x"]) for r in rows)  # "1 · house", …
+    per_postcode: dict[str, float] = {}
+    for r in rows:
+        per_postcode[r["postcode"]] = per_postcode.get(r["postcode"], 0.0) + float(r["share"])
+    assert per_postcode and all(abs(s - 100.0) < 0.5 for s in per_postcode.values())
+    assert all(0.0 <= float(r["share"]) <= 100.0 for r in rows)
+
+
+def test_growth_measure_kind_runs_and_is_positive() -> None:
+    """`how: growth` augments a base metric into a first-vs-last % change per key."""
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "rent_growth", "source": "total_weekly_rent", "how": "growth"},
+        "months": 18,
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_frame(), frames={"extract": _rent_frame()})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    assert values and all("rent_growth" in r for r in values)
+
+
+def test_latest_measure_kind_runs() -> None:
+    """`how: latest` takes the most recent month's value per key."""
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "current", "source": "n_rented", "how": "latest"},
+        "months": 12,
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_frame(), frames={"extract": _rent_frame()})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    assert values and all("current" in r for r in values)

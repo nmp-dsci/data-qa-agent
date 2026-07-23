@@ -5,7 +5,7 @@
 // reports and Goldens can emit maps too — it renders only for datasets whose
 // manifest declares a geo binding.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { cssVar } from "./tokens";
+import { asRows, cssVar } from "./tokens";
 
 export interface ChoroplethData {
   layer: string; // e.g. "poa_nsw" -> /geo/poa_nsw.paths.json
@@ -108,7 +108,7 @@ export function Choropleth({ data }: { data: ChoroplethData }) {
 
   const values = useMemo(() => {
     const m = new Map<string, number>();
-    for (const row of data.rows) {
+    for (const row of asRows(data.rows)) {
       const key = row[data.key_field];
       const v = Number(row[data.value_field]);
       if (key != null && Number.isFinite(v)) m.set(String(key), v);

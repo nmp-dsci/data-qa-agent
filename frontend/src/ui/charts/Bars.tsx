@@ -10,7 +10,7 @@ import { Bar } from "@visx/shape";
 import { ChartTip, TipState } from "./ChartTip";
 import { downloadSvgAsPng } from "./exportPng";
 import { ChartSqlButton } from "./sqlLink";
-import { chartPalette, chartTheme, cssVar, formatValue } from "./tokens";
+import { asRows, chartPalette, chartTheme, cssVar, formatValue } from "./tokens";
 
 export interface BarsData {
   dimension: string;
@@ -51,7 +51,7 @@ interface Datum {
 
 function parseData(data: BarsData): Datum[] {
   const out: Datum[] = [];
-  for (const row of data.rows) {
+  for (const row of asRows(data.rows)) {
     const value = Number(row[data.measure]);
     const category = row[data.dimension];
     if (category == null || !Number.isFinite(value)) continue;

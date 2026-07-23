@@ -62,28 +62,28 @@ cases:
       - - data:
             basis: 2026-05
             label: 2077 — Avg Weekly Rent
-            value: $724
+            value: $781
           role: headline
           type: kpi
           element_id: headline:0
         - data:
             basis: over ~3 years
             label: 2077 — Change (3yr)
-            value: 23.4%
+            value: 10.6%
           role: headline
           type: kpi
           element_id: headline:1
         - data:
             basis: 2026-05
             label: 2076 — Avg Weekly Rent
-            value: $1099
+            value: $1025
           role: headline
           type: kpi
           element_id: headline:2
         - data:
             basis: over ~3 years
             label: 2076 — Change (3yr)
-            value: 15.9%
+            value: 4.7%
           role: headline
           type: kpi
           element_id: headline:3
@@ -105,590 +105,267 @@ cases:
               \  SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode IN ('2077', '2076')\n\
               GROUP BY month, postcode, property_type\nORDER BY month, postcode, property_type"
             rows:
-              _sha: 8cd9314ea5b2
-              _head:
-              - layer: actual
-                month: '2016-01-01'
-                value: 512.61
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-01-01'
-                value: 512.61
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-02-01'
-                value: 511.21
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-02-01'
-                value: 511.91
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-03-01'
-                value: 517.16
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-03-01'
-                value: 513.66
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-04-01'
-                value: 496.22
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-04-01'
-                value: 509.3
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-05-01'
-                value: 518.25
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-05-01'
-                value: 511.09
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-06-01'
-                value: 519.32
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-06-01'
-                value: 512.46
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-07-01'
-                value: 509.67
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-07-01'
-                value: 511.97
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-08-01'
-                value: 550.34
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-08-01'
-                value: 518.49
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-09-01'
-                value: 509.54
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-09-01'
-                value: 517.22
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-10-01'
-                value: 527.09
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-10-01'
-                value: 522.37
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-11-01'
-                value: 507.68
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-11-01'
-                value: 520.61
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2016-12-01'
-                value: 515.61
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2016-12-01'
-                value: 519.99
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-01-01'
-                value: 501.05
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-01-01'
-                value: 518.55
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-02-01'
-                value: 518.01
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-02-01'
-                value: 513.17
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-03-01'
-                value: 528
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-03-01'
-                value: 516.24
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-04-01'
-                value: 518.97
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-04-01'
-                value: 514.89
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-05-01'
-                value: 518.01
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-05-01'
-                value: 516.61
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-06-01'
-                value: 519.56
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-06-01'
-                value: 517.27
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-07-01'
-                value: 527.81
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-07-01'
-                value: 521.73
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-08-01'
-                value: 532.38
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-08-01'
-                value: 524.12
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-09-01'
-                value: 522.93
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-09-01'
-                value: 523.28
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-10-01'
-                value: 526.48
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-10-01'
-                value: 524.53
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-11-01'
-                value: 513.78
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-11-01'
-                value: 523.82
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2017-12-01'
-                value: 522.5
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2017-12-01'
-                value: 524.32
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: actual
-                month: '2019-01-01'
-                value: 504.08
-                series: total_weekly_rent
-                postcode: '2077'
-              - layer: 6-mo avg
-                month: '2019-01-01'
-                value: 520.36
-                series: total_weekly_rent
-                postcode: '2077'
-              _total: 452
-              _truncated: true
+            - layer: actual
+              month: '2016-01-01'
+              value: 574.13
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-01-01'
+              value: 574.13
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-01-01'
+              value: 497.55
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-01-01'
+              value: 535.84
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-02-01'
+              value: 596.18
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-02-01'
+              value: 555.95
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-02-01'
+              value: 502.01
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-02-01'
+              value: 542.47
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-03-01'
+              value: 617.18
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-03-01'
+              value: 557.41
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-03-01'
+              value: 492.34
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-03-01'
+              value: 546.56
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-04-01'
+              value: 608.94
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-04-01'
+              value: 552.36
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-04-01'
+              value: 468.04
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-04-01'
+              value: 547.45
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-05-01'
+              value: 631.84
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-05-01'
+              value: 553.39
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-05-01'
+              value: 499.32
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-05-01'
+              value: 552.94
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-06-01'
+              value: 622.42
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-06-01'
+              value: 553.82
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-06-01'
+              value: 487.36
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-06-01'
+              value: 552.99
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-07-01'
+              value: 583.0
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-07-01'
+              value: 548.66
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-07-01'
+              value: 496.09
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-07-01'
+              value: 553.34
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-08-01'
+              value: 664.55
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-08-01'
+              value: 558.79
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-08-01'
+              value: 523.8
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-08-01'
+              value: 562.87
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-09-01'
+              value: 560.52
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-09-01'
+              value: 552.55
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-09-01'
+              value: 496.46
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-09-01'
+              value: 554.07
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-10-01'
+              value: 629.44
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-10-01'
+              value: 561.81
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-10-01'
+              value: 507.07
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-10-01'
+              value: 563.64
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-11-01'
+              value: 612.37
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-11-01'
+              value: 554.94
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-11-01'
+              value: 499.06
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-11-01'
+              value: 550.82
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-12-01'
+              value: 653.1
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-12-01'
+              value: 566.25
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2016-12-01'
+              value: 495.58
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2016-12-01'
+              value: 566.1
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: actual
+              month: '2017-01-01'
+              value: 621.09
+              series: total_weekly_rent
+              postcode: '2077'
+            - layer: 6-mo avg
+              month: '2017-01-01'
+              value: 564.71
+              series: total_weekly_rent
+              postcode: '2077'
             title: 'Average Weekly Rent: Postcode 2077 vs 2076'
             height: fill
             intent: line
-            series: postcode
+            series: series
           role: chart
           type: trend
           element_id: report:chart
       headline: '**Postcode 2077 vs 2076 — Rent Trends**  Comparing average weekly rent trends across
         all property types and bedroom ban…'
       template: two-col
-    - kind: insights
-      columns:
-      - - data:
-            refs: []
-            text: '**property_type** is the strongest factor explaining the rent gap between postcodes
-              (score: 19%). Postcode 2077 (Hornsby/Waitara) is dominated by **units** — 678 avg weekly
-              rent — while 2076 (Normanhurst/Thornleigh) leans towards **houses** at 1262/wk. 2077 units
-              have grown 22.9% over ~3 years, while 2076 houses rose 16.8%.'
-            heading: 🏠 property_type drives the rent difference
-          role: insight
-          type: insight
-          explains: headline:0
-          element_id: insight:0
-        - data:
-            refs: []
-            text: '**Postcode 2077:** Houses avg $858/wk, Units $678/wk
-
-              **Postcode 2076:** Houses avg $1262/wk, Units $772/wk
-
-
-              The biggest gap is in units: 2077 units rent ~$-95/wk more than 2076 units — reflecting
-              the higher-density, more centrally-located Hornsby area versus the leafy, house-dominated
-              Normanhurst belt.'
-            heading: 📊 Rent levels — side by side
-          role: insight
-          type: insight
-          explains: headline:0
-          element_id: insight:1
-        - data:
-            refs: []
-            text: 'Over the ~3-year window:
-
-              • **2077 Houses:** 21.8%
-
-              • **2077 Units:** 22.9%
-
-              • **2076 Houses:** 16.8%
-
-              • **2076 Units:** 18.9%
-
-
-              Unit rents in both postcodes have grown faster than house rents — consistent with the broader
-              Sydney rental market where apartment demand has intensified.'
-            heading: 📈 Growth comparison
-          role: insight
-          type: insight
-          explains: headline:0
-          element_id: insight:2
-      - - data:
-            x: month
-            y: value
-            sql: "SELECT\n  month,\n  postcode,\n  property_type,\n  SUM(total_weekly_rent) AS total_weekly_rent,\n\
-              \  SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode IN ('2077', '2076')\n\
-              GROUP BY month, postcode, property_type\nORDER BY month, postcode, property_type"
-            rows:
-              _sha: 894d44d0b638
-              _head:
-              - layer: actual
-                month: '2016-01-01'
-                value: 574.13
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-01-01'
-                value: 574.13
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-02-01'
-                value: 596.18
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-02-01'
-                value: 585.15
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-03-01'
-                value: 617.18
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-03-01'
-                value: 595.83
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-04-01'
-                value: 608.94
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-04-01'
-                value: 599.11
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-05-01'
-                value: 631.84
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-05-01'
-                value: 605.65
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-06-01'
-                value: 622.42
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-06-01'
-                value: 608.45
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-07-01'
-                value: 583
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-07-01'
-                value: 609.93
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-08-01'
-                value: 664.55
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-08-01'
-                value: 621.32
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-09-01'
-                value: 560.52
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-09-01'
-                value: 611.88
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-10-01'
-                value: 629.44
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-10-01'
-                value: 615.29
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-11-01'
-                value: 612.37
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-11-01'
-                value: 612.05
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2016-12-01'
-                value: 653.1
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2016-12-01'
-                value: 617.16
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-01-01'
-                value: 621.09
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-01-01'
-                value: 623.51
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-02-01'
-                value: 629.55
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-02-01'
-                value: 617.68
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-03-01'
-                value: 624.71
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-03-01'
-                value: 628.38
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-04-01'
-                value: 656.05
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-04-01'
-                value: 632.81
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-05-01'
-                value: 623.5
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-05-01'
-                value: 634.67
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-06-01'
-                value: 634
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-06-01'
-                value: 631.48
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-07-01'
-                value: 639.62
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-07-01'
-                value: 634.57
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-08-01'
-                value: 646.96
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-08-01'
-                value: 637.47
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-09-01'
-                value: 617.34
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-09-01'
-                value: 636.25
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-10-01'
-                value: 639.44
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-10-01'
-                value: 633.48
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-11-01'
-                value: 652.17
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-11-01'
-                value: 638.26
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2017-12-01'
-                value: 618.21
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2017-12-01'
-                value: 635.62
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: actual
-                month: '2019-01-01'
-                value: 596.02
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              - layer: 6-mo avg
-                month: '2019-01-01'
-                value: 628.36
-                series: total_weekly_rent
-                postcode_type: 2077 — House
-              _total: 904
-              _truncated: true
-            title: 'Average Weekly Rent by Property Type: 2077 vs 2076'
-            height: fill
-            intent: line
-            series: postcode_type
-          role: chart
-          type: trend
-          explains: headline:0
-          element_id: insight:0:chart
-      headline: 🏠 property_type drives the rent difference
-      template: two-col
-  golden_data_sha: f20825308e10
+  golden_data_sha: 5d6c6bed9f94
 - case_key: nsw_rent-what-s-the-median-weekly-rent-for-a-2-bedroom-un-4bb5
   question: What's the median weekly rent for a 2-bedroom unit in postcode 2000 right now?
   dataset: nsw_rent
@@ -746,210 +423,206 @@ cases:
             sql: "SELECT month, median_weekly_rent, n_rented\nFROM marts.property_rent\nWHERE postcode\
               \ = '2000'\n  AND property_type = 'unit'\n  AND bedroom_band = '2'\nORDER BY month DESC"
             rows:
-              _truncated: true
-              _total: 226
-              _sha: c0527e62c732
-              _head:
-              - layer: actual
-                month: '2016-01-01'
-                value: 16.36
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-01-01'
-                value: 16.36
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-02-01'
-                value: 7.93
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-02-01'
-                value: 12.15
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-03-01'
-                value: 7.63
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-03-01'
-                value: 10.64
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-04-01'
-                value: 10.47
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-04-01'
-                value: 10.6
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-05-01'
-                value: 10.11
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-05-01'
-                value: 10.5
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-06-01'
-                value: 11.84
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-06-01'
-                value: 10.72
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-07-01'
-                value: 10.17
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-07-01'
-                value: 9.69
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-08-01'
-                value: 7.96
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-08-01'
-                value: 9.7
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-09-01'
-                value: 12.68
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-09-01'
-                value: 10.54
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-10-01'
-                value: 10.99
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-10-01'
-                value: 10.63
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-11-01'
-                value: 9.28
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-11-01'
-                value: 10.49
-                series: median_weekly_rent
-              - layer: actual
-                month: '2016-12-01'
-                value: 10.59
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2016-12-01'
-                value: 10.28
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-01-01'
-                value: 16.48
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-01-01'
-                value: 11.33
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-02-01'
-                value: 9.89
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-02-01'
-                value: 11.65
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-03-01'
-                value: 9.68
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-03-01'
-                value: 11.15
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-04-01'
-                value: 10.58
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-04-01'
-                value: 11.08
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-05-01'
-                value: 8.99
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-05-01'
-                value: 11.04
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-06-01'
-                value: 8.45
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-06-01'
-                value: 10.68
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-07-01'
-                value: 9.07
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-07-01'
-                value: 9.44
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-08-01'
-                value: 7.6
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-08-01'
-                value: 9.06
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-09-01'
-                value: 10.58
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-09-01'
-                value: 9.21
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-10-01'
-                value: 10.69
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-10-01'
-                value: 9.23
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-11-01'
-                value: 10.92
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-11-01'
-                value: 9.55
-                series: median_weekly_rent
-              - layer: actual
-                month: '2017-12-01'
-                value: 12.37
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2017-12-01'
-                value: 10.2
-                series: median_weekly_rent
-              - layer: actual
-                month: '2019-01-01'
-                value: 12.01
-                series: median_weekly_rent
-              - layer: 6-mo avg
-                month: '2019-01-01'
-                value: 10.7
-                series: median_weekly_rent
+            - layer: actual
+              month: '2016-01-01'
+              value: 16.36
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-01-01'
+              value: 16.36
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-02-01'
+              value: 7.93
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-02-01'
+              value: 12.15
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-03-01'
+              value: 7.63
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-03-01'
+              value: 10.64
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-04-01'
+              value: 10.47
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-04-01'
+              value: 10.6
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-05-01'
+              value: 10.11
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-05-01'
+              value: 10.5
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-06-01'
+              value: 11.84
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-06-01'
+              value: 10.72
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-07-01'
+              value: 10.17
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-07-01'
+              value: 9.69
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-08-01'
+              value: 7.96
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-08-01'
+              value: 9.7
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-09-01'
+              value: 12.68
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-09-01'
+              value: 10.54
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-10-01'
+              value: 10.99
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-10-01'
+              value: 10.63
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-11-01'
+              value: 9.28
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-11-01'
+              value: 10.49
+              series: median_weekly_rent
+            - layer: actual
+              month: '2016-12-01'
+              value: 10.59
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2016-12-01'
+              value: 10.28
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-01-01'
+              value: 16.48
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-01-01'
+              value: 11.33
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-02-01'
+              value: 9.89
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-02-01'
+              value: 11.65
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-03-01'
+              value: 9.68
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-03-01'
+              value: 11.15
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-04-01'
+              value: 10.58
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-04-01'
+              value: 11.08
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-05-01'
+              value: 8.99
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-05-01'
+              value: 11.04
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-06-01'
+              value: 8.45
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-06-01'
+              value: 10.68
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-07-01'
+              value: 9.07
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-07-01'
+              value: 9.44
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-08-01'
+              value: 7.6
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-08-01'
+              value: 9.06
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-09-01'
+              value: 10.58
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-09-01'
+              value: 9.21
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-10-01'
+              value: 10.69
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-10-01'
+              value: 9.23
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-11-01'
+              value: 10.92
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-11-01'
+              value: 9.55
+              series: median_weekly_rent
+            - layer: actual
+              month: '2017-12-01'
+              value: 12.37
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2017-12-01'
+              value: 10.2
+              series: median_weekly_rent
+            - layer: actual
+              month: '2019-01-01'
+              value: 12.01
+              series: median_weekly_rent
+            - layer: 6-mo avg
+              month: '2019-01-01'
+              value: 10.7
+              series: median_weekly_rent
             title: 2-bedroom unit median weekly rent — Postcode 2000
             height: fill
             intent: line
@@ -1022,210 +695,206 @@ cases:
               \ >= '2020-01-01'\nGROUP BY month, property_type, bedroom_band\nORDER BY month, property_type,\
               \ bedroom_band"
             rows:
-              _truncated: true
-              _total: 154
-              _sha: 2acb88c4567e
-              _head:
-              - layer: actual
-                month: '2020-01-01'
-                value: 469.05
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-01-01'
-                value: 469.05
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-02-01'
-                value: 457.6
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-02-01'
-                value: 463.32
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-03-01'
-                value: 460.27
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-03-01'
-                value: 462.31
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-04-01'
-                value: 462.15
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-04-01'
-                value: 462.27
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-05-01'
-                value: 462.98
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-05-01'
-                value: 462.41
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-06-01'
-                value: 442.8
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-06-01'
-                value: 459.14
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-07-01'
-                value: 456.84
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-07-01'
-                value: 457.1
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-08-01'
-                value: 451.45
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-08-01'
-                value: 456.08
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-09-01'
-                value: 449.59
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-09-01'
-                value: 454.3
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-10-01'
-                value: 447.39
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-10-01'
-                value: 451.84
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-11-01'
-                value: 449.31
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-11-01'
-                value: 449.56
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2020-12-01'
-                value: 434.63
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2020-12-01'
-                value: 448.2
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-01-01'
-                value: 431.41
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-01-01'
-                value: 443.96
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-02-01'
-                value: 438.09
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-02-01'
-                value: 441.74
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-03-01'
-                value: 441.11
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-03-01'
-                value: 440.32
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-04-01'
-                value: 439.61
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-04-01'
-                value: 439.03
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-05-01'
-                value: 429.93
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-05-01'
-                value: 435.8
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-06-01'
-                value: 426.91
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-06-01'
-                value: 434.51
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-07-01'
-                value: 426.95
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-07-01'
-                value: 433.77
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-08-01'
-                value: 437.8
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-08-01'
-                value: 433.72
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-09-01'
-                value: 445.9
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-09-01'
-                value: 434.52
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-10-01'
-                value: 451.04
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-10-01'
-                value: 436.42
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-11-01'
-                value: 446.18
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-11-01'
-                value: 439.13
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2021-12-01'
-                value: 443.28
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2021-12-01'
-                value: 441.86
-                series: avg_weekly_rent
-              - layer: actual
-                month: '2022-01-01'
-                value: 447.21
-                series: avg_weekly_rent
-              - layer: 6-mo avg
-                month: '2022-01-01'
-                value: 445.23
-                series: avg_weekly_rent
+            - layer: actual
+              month: '2020-01-01'
+              value: 469.05
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-01-01'
+              value: 469.05
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-02-01'
+              value: 457.6
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-02-01'
+              value: 463.32
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-03-01'
+              value: 460.27
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-03-01'
+              value: 462.31
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-04-01'
+              value: 462.15
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-04-01'
+              value: 462.27
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-05-01'
+              value: 462.98
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-05-01'
+              value: 462.41
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-06-01'
+              value: 442.8
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-06-01'
+              value: 459.14
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-07-01'
+              value: 456.84
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-07-01'
+              value: 457.1
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-08-01'
+              value: 451.45
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-08-01'
+              value: 456.08
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-09-01'
+              value: 449.59
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-09-01'
+              value: 454.3
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-10-01'
+              value: 447.39
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-10-01'
+              value: 451.84
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-11-01'
+              value: 449.31
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-11-01'
+              value: 449.56
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2020-12-01'
+              value: 434.63
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2020-12-01'
+              value: 448.2
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-01-01'
+              value: 431.41
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-01-01'
+              value: 443.96
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-02-01'
+              value: 438.09
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-02-01'
+              value: 441.74
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-03-01'
+              value: 441.11
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-03-01'
+              value: 440.32
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-04-01'
+              value: 439.61
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-04-01'
+              value: 439.03
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-05-01'
+              value: 429.93
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-05-01'
+              value: 435.8
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-06-01'
+              value: 426.91
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-06-01'
+              value: 434.51
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-07-01'
+              value: 426.95
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-07-01'
+              value: 433.77
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-08-01'
+              value: 437.8
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-08-01'
+              value: 433.72
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-09-01'
+              value: 445.9
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-09-01'
+              value: 434.52
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-10-01'
+              value: 451.04
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-10-01'
+              value: 436.42
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-11-01'
+              value: 446.18
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-11-01'
+              value: 439.13
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2021-12-01'
+              value: 443.28
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2021-12-01'
+              value: 441.86
+              series: avg_weekly_rent
+            - layer: actual
+              month: '2022-01-01'
+              value: 447.21
+              series: avg_weekly_rent
+            - layer: 6-mo avg
+              month: '2022-01-01'
+              value: 445.23
+              series: avg_weekly_rent
             title: Average weekly rent in postcode 2145 (6-month rolling)
             height: fill
             intent: line
@@ -1263,160 +932,156 @@ cases:
               \ >= '2020-01-01'\nGROUP BY month, property_type, bedroom_band\nORDER BY month, property_type,\
               \ bedroom_band"
             rows:
-              _truncated: true
-              _total: 154
-              _sha: 0adb50f4fa67
-              _head:
-              - month: '2020-01-01'
-                property_type: House
-                avg_weekly_rent: 517.1111111111111
-              - month: '2020-01-01'
-                property_type: Unit
-                avg_weekly_rent: 439.8243243243243
-              - month: '2020-02-01'
-                property_type: House
-                avg_weekly_rent: 520.7246376811594
-              - month: '2020-02-01'
-                property_type: Unit
-                avg_weekly_rent: 423.82945736434107
-              - month: '2020-03-01'
-                property_type: House
-                avg_weekly_rent: 518.0272108843537
-              - month: '2020-03-01'
-                property_type: Unit
-                avg_weekly_rent: 431.7852348993289
-              - month: '2020-04-01'
-                property_type: House
-                avg_weekly_rent: 504.2432432432432
-              - month: '2020-04-01'
-                property_type: Unit
-                avg_weekly_rent: 432.38853503184714
-              - month: '2020-05-01'
-                property_type: House
-                avg_weekly_rent: 523.16
-              - month: '2020-05-01'
-                property_type: Unit
-                avg_weekly_rent: 419.7413793103448
-              - month: '2020-06-01'
-                property_type: House
-                avg_weekly_rent: 482.0
-              - month: '2020-06-01'
-                property_type: Unit
-                avg_weekly_rent: 422.165991902834
-              - month: '2020-07-01'
-                property_type: House
-                avg_weekly_rent: 514.6428571428571
-              - month: '2020-07-01'
-                property_type: Unit
-                avg_weekly_rent: 424.2016129032258
-              - month: '2020-08-01'
-                property_type: House
-                avg_weekly_rent: 502.3983739837398
-              - month: '2020-08-01'
-                property_type: Unit
-                avg_weekly_rent: 424.89830508474574
-              - month: '2020-09-01'
-                property_type: House
-                avg_weekly_rent: 516.7592592592592
-              - month: '2020-09-01'
-                property_type: Unit
-                avg_weekly_rent: 407.08984375
-              - month: '2020-10-01'
-                property_type: House
-                avg_weekly_rent: 492.44827586206895
-              - month: '2020-10-01'
-                property_type: Unit
-                avg_weekly_rent: 415.66990291262135
-              - month: '2020-11-01'
-                property_type: House
-                avg_weekly_rent: 505.22222222222223
-              - month: '2020-11-01'
-                property_type: Unit
-                avg_weekly_rent: 417.9875518672199
-              - month: '2020-12-01'
-                property_type: House
-                avg_weekly_rent: 491.05128205128204
-              - month: '2020-12-01'
-                property_type: Unit
-                avg_weekly_rent: 407.7967479674797
-              - month: '2021-01-01'
-                property_type: House
-                avg_weekly_rent: 509.57547169811323
-              - month: '2021-01-01'
-                property_type: Unit
-                avg_weekly_rent: 398.91764705882355
-              - month: '2021-02-01'
-                property_type: House
-                avg_weekly_rent: 512.7421875
-              - month: '2021-02-01'
-                property_type: Unit
-                avg_weekly_rent: 400.1666666666667
-              - month: '2021-03-01'
-                property_type: House
-                avg_weekly_rent: 525.1470588235294
-              - month: '2021-03-01'
-                property_type: Unit
-                avg_weekly_rent: 398.3071161048689
-              - month: '2021-04-01'
-                property_type: House
-                avg_weekly_rent: 489.0487804878049
-              - month: '2021-04-01'
-                property_type: Unit
-                avg_weekly_rent: 410.9339622641509
-              - month: '2021-05-01'
-                property_type: House
-                avg_weekly_rent: 491.81081081081084
-              - month: '2021-05-01'
-                property_type: Unit
-                avg_weekly_rent: 397.0967741935484
-              - month: '2021-06-01'
-                property_type: House
-                avg_weekly_rent: 494.1747572815534
-              - month: '2021-06-01'
-                property_type: Unit
-                avg_weekly_rent: 398.85425101214577
-              - month: '2021-07-01'
-                property_type: House
-                avg_weekly_rent: 507.3333333333333
-              - month: '2021-07-01'
-                property_type: Unit
-                avg_weekly_rent: 390.96268656716416
-              - month: '2021-08-01'
-                property_type: House
-                avg_weekly_rent: 501.3482142857143
-              - month: '2021-08-01'
-                property_type: Unit
-                avg_weekly_rent: 403.4154589371981
-              - month: '2021-09-01'
-                property_type: House
-                avg_weekly_rent: 518.3636363636364
-              - month: '2021-09-01'
-                property_type: Unit
-                avg_weekly_rent: 399.280701754386
-              - month: '2021-10-01'
-                property_type: House
-                avg_weekly_rent: 502.7350427350427
-              - month: '2021-10-01'
-                property_type: Unit
-                avg_weekly_rent: 424.63318777292574
-              - month: '2021-11-01'
-                property_type: House
-                avg_weekly_rent: 529.7222222222222
-              - month: '2021-11-01'
-                property_type: Unit
-                avg_weekly_rent: 418.06853582554515
-              - month: '2021-12-01'
-                property_type: House
-                avg_weekly_rent: 511.0081300813008
-              - month: '2021-12-01'
-                property_type: Unit
-                avg_weekly_rent: 413.3129496402878
-              - month: '2022-01-01'
-                property_type: House
-                avg_weekly_rent: 528.2616822429907
-              - month: '2022-01-01'
-                property_type: Unit
-                avg_weekly_rent: 417.5068493150685
+            - month: '2020-01-01'
+              property_type: House
+              avg_weekly_rent: 517.1111111111111
+            - month: '2020-01-01'
+              property_type: Unit
+              avg_weekly_rent: 439.8243243243243
+            - month: '2020-02-01'
+              property_type: House
+              avg_weekly_rent: 520.7246376811594
+            - month: '2020-02-01'
+              property_type: Unit
+              avg_weekly_rent: 423.82945736434107
+            - month: '2020-03-01'
+              property_type: House
+              avg_weekly_rent: 518.0272108843537
+            - month: '2020-03-01'
+              property_type: Unit
+              avg_weekly_rent: 431.7852348993289
+            - month: '2020-04-01'
+              property_type: House
+              avg_weekly_rent: 504.2432432432432
+            - month: '2020-04-01'
+              property_type: Unit
+              avg_weekly_rent: 432.38853503184714
+            - month: '2020-05-01'
+              property_type: House
+              avg_weekly_rent: 523.16
+            - month: '2020-05-01'
+              property_type: Unit
+              avg_weekly_rent: 419.7413793103448
+            - month: '2020-06-01'
+              property_type: House
+              avg_weekly_rent: 482.0
+            - month: '2020-06-01'
+              property_type: Unit
+              avg_weekly_rent: 422.165991902834
+            - month: '2020-07-01'
+              property_type: House
+              avg_weekly_rent: 514.6428571428571
+            - month: '2020-07-01'
+              property_type: Unit
+              avg_weekly_rent: 424.2016129032258
+            - month: '2020-08-01'
+              property_type: House
+              avg_weekly_rent: 502.3983739837398
+            - month: '2020-08-01'
+              property_type: Unit
+              avg_weekly_rent: 424.89830508474574
+            - month: '2020-09-01'
+              property_type: House
+              avg_weekly_rent: 516.7592592592592
+            - month: '2020-09-01'
+              property_type: Unit
+              avg_weekly_rent: 407.08984375
+            - month: '2020-10-01'
+              property_type: House
+              avg_weekly_rent: 492.44827586206895
+            - month: '2020-10-01'
+              property_type: Unit
+              avg_weekly_rent: 415.66990291262135
+            - month: '2020-11-01'
+              property_type: House
+              avg_weekly_rent: 505.22222222222223
+            - month: '2020-11-01'
+              property_type: Unit
+              avg_weekly_rent: 417.9875518672199
+            - month: '2020-12-01'
+              property_type: House
+              avg_weekly_rent: 491.05128205128204
+            - month: '2020-12-01'
+              property_type: Unit
+              avg_weekly_rent: 407.7967479674797
+            - month: '2021-01-01'
+              property_type: House
+              avg_weekly_rent: 509.57547169811323
+            - month: '2021-01-01'
+              property_type: Unit
+              avg_weekly_rent: 398.91764705882355
+            - month: '2021-02-01'
+              property_type: House
+              avg_weekly_rent: 512.7421875
+            - month: '2021-02-01'
+              property_type: Unit
+              avg_weekly_rent: 400.1666666666667
+            - month: '2021-03-01'
+              property_type: House
+              avg_weekly_rent: 525.1470588235294
+            - month: '2021-03-01'
+              property_type: Unit
+              avg_weekly_rent: 398.3071161048689
+            - month: '2021-04-01'
+              property_type: House
+              avg_weekly_rent: 489.0487804878049
+            - month: '2021-04-01'
+              property_type: Unit
+              avg_weekly_rent: 410.9339622641509
+            - month: '2021-05-01'
+              property_type: House
+              avg_weekly_rent: 491.81081081081084
+            - month: '2021-05-01'
+              property_type: Unit
+              avg_weekly_rent: 397.0967741935484
+            - month: '2021-06-01'
+              property_type: House
+              avg_weekly_rent: 494.1747572815534
+            - month: '2021-06-01'
+              property_type: Unit
+              avg_weekly_rent: 398.85425101214577
+            - month: '2021-07-01'
+              property_type: House
+              avg_weekly_rent: 507.3333333333333
+            - month: '2021-07-01'
+              property_type: Unit
+              avg_weekly_rent: 390.96268656716416
+            - month: '2021-08-01'
+              property_type: House
+              avg_weekly_rent: 501.3482142857143
+            - month: '2021-08-01'
+              property_type: Unit
+              avg_weekly_rent: 403.4154589371981
+            - month: '2021-09-01'
+              property_type: House
+              avg_weekly_rent: 518.3636363636364
+            - month: '2021-09-01'
+              property_type: Unit
+              avg_weekly_rent: 399.280701754386
+            - month: '2021-10-01'
+              property_type: House
+              avg_weekly_rent: 502.7350427350427
+            - month: '2021-10-01'
+              property_type: Unit
+              avg_weekly_rent: 424.63318777292574
+            - month: '2021-11-01'
+              property_type: House
+              avg_weekly_rent: 529.7222222222222
+            - month: '2021-11-01'
+              property_type: Unit
+              avg_weekly_rent: 418.06853582554515
+            - month: '2021-12-01'
+              property_type: House
+              avg_weekly_rent: 511.0081300813008
+            - month: '2021-12-01'
+              property_type: Unit
+              avg_weekly_rent: 413.3129496402878
+            - month: '2022-01-01'
+              property_type: House
+              avg_weekly_rent: 528.2616822429907
+            - month: '2022-01-01'
+              property_type: Unit
+              avg_weekly_rent: 417.5068493150685
             group: property_type
             title: House vs unit average weekly rent in 2145
             height: fill
@@ -1603,160 +1268,156 @@ cases:
               \ SUM(n_rented) AS n_rented\nFROM marts.property_rent\nWHERE postcode = '2765'\n  AND property_type\
               \ IN ('house', 'unit')\nGROUP BY postcode, property_type, month\nORDER BY month, property_type"
             rows:
-              _truncated: true
-              _total: 113
-              _sha: 1d2d53ea7313
-              _head:
-              - label: Rent gap ($/week)
-                month: '2016-01-01'
-                gap_value: null
-              - label: Rent gap ($/week)
-                month: '2016-02-01'
-                gap_value: null
-              - label: Rent gap ($/week)
-                month: '2016-03-01'
-                gap_value: -11.827697262479887
-              - label: Rent gap ($/week)
-                month: '2016-04-01'
-                gap_value: 7.111369910282946
-              - label: Rent gap ($/week)
-                month: '2016-05-01'
-                gap_value: 33.53809877722922
-              - label: Rent gap ($/week)
-                month: '2016-06-01'
-                gap_value: 48.86111406038943
-              - label: Rent gap ($/week)
-                month: '2016-07-01'
-                gap_value: 126.80190353407365
-              - label: Rent gap ($/week)
-                month: '2016-08-01'
-                gap_value: 140.45931094148105
-              - label: Rent gap ($/week)
-                month: '2016-09-01'
-                gap_value: 119.94706495583692
-              - label: Rent gap ($/week)
-                month: '2016-10-01'
-                gap_value: 132.90341416218612
-              - label: Rent gap ($/week)
-                month: '2016-11-01'
-                gap_value: 124.49458125580418
-              - label: Rent gap ($/week)
-                month: '2016-12-01'
-                gap_value: 131.28925611499517
-              - label: Rent gap ($/week)
-                month: '2017-01-01'
-                gap_value: 140.78934501968934
-              - label: Rent gap ($/week)
-                month: '2017-02-01'
-                gap_value: 125.88218786253218
-              - label: Rent gap ($/week)
-                month: '2017-03-01'
-                gap_value: 125.83437675551055
-              - label: Rent gap ($/week)
-                month: '2017-04-01'
-                gap_value: 117.6350303502818
-              - label: Rent gap ($/week)
-                month: '2017-05-01'
-                gap_value: 122.62524977138355
-              - label: Rent gap ($/week)
-                month: '2017-06-01'
-                gap_value: 117.69523735002572
-              - label: Rent gap ($/week)
-                month: '2017-07-01'
-                gap_value: 115.04369137127388
-              - label: Rent gap ($/week)
-                month: '2017-08-01'
-                gap_value: 135.405264482847
-              - label: Rent gap ($/week)
-                month: '2017-09-01'
-                gap_value: 139.5257751450243
-              - label: Rent gap ($/week)
-                month: '2017-10-01'
-                gap_value: 144.63653296166447
-              - label: Rent gap ($/week)
-                month: '2017-11-01'
-                gap_value: 151.34570608827946
-              - label: Rent gap ($/week)
-                month: '2017-12-01'
-                gap_value: 148.61659085178297
-              - label: Rent gap ($/week)
-                month: '2019-01-01'
-                gap_value: 150.88714301204104
-              - label: Rent gap ($/week)
-                month: '2019-02-01'
-                gap_value: 127.113710562138
-              - label: Rent gap ($/week)
-                month: '2019-03-01'
-                gap_value: 125.24773998162838
-              - label: Rent gap ($/week)
-                month: '2019-04-01'
-                gap_value: 123.8911370766167
-              - label: Rent gap ($/week)
-                month: '2019-05-01'
-                gap_value: 121.58609500413279
-              - label: Rent gap ($/week)
-                month: '2019-06-01'
-                gap_value: 122.47352190471759
-              - label: Rent gap ($/week)
-                month: '2019-07-01'
-                gap_value: 111.2244726959226
-              - label: Rent gap ($/week)
-                month: '2019-08-01'
-                gap_value: 119.35036749828801
-              - label: Rent gap ($/week)
-                month: '2019-09-01'
-                gap_value: 137.97393541972826
-              - label: Rent gap ($/week)
-                month: '2019-10-01'
-                gap_value: 139.85991638701276
-              - label: Rent gap ($/week)
-                month: '2019-11-01'
-                gap_value: 144.47367352375673
-              - label: Rent gap ($/week)
-                month: '2019-12-01'
-                gap_value: 125.93815824184128
-              - label: Rent gap ($/week)
-                month: '2020-01-01'
-                gap_value: 137.3510226543451
-              - label: Rent gap ($/week)
-                month: '2020-02-01'
-                gap_value: 139.36964292296534
-              - label: Rent gap ($/week)
-                month: '2020-03-01'
-                gap_value: 130.99060167435883
-              - label: Rent gap ($/week)
-                month: '2020-04-01'
-                gap_value: 136.56248749733052
-              - label: Rent gap ($/week)
-                month: '2020-05-01'
-                gap_value: 135.3231043569605
-              - label: Rent gap ($/week)
-                month: '2020-06-01'
-                gap_value: 162.50628045758944
-              - label: Rent gap ($/week)
-                month: '2020-07-01'
-                gap_value: 149.35379707923684
-              - label: Rent gap ($/week)
-                month: '2020-08-01'
-                gap_value: 157.87169909772845
-              - label: Rent gap ($/week)
-                month: '2020-09-01'
-                gap_value: 164.22701803689836
-              - label: Rent gap ($/week)
-                month: '2020-10-01'
-                gap_value: 172.27505625840277
-              - label: Rent gap ($/week)
-                month: '2020-11-01'
-                gap_value: 182.87883349018003
-              - label: Rent gap ($/week)
-                month: '2020-12-01'
-                gap_value: 184.9290319028784
-              - label: Rent gap ($/week)
-                month: '2021-01-01'
-                gap_value: 200.7857068159418
-              - label: Rent gap ($/week)
-                month: '2021-02-01'
-                gap_value: 192.70725331189865
+            - label: Rent gap ($/week)
+              month: '2016-01-01'
+              gap_value: null
+            - label: Rent gap ($/week)
+              month: '2016-02-01'
+              gap_value: null
+            - label: Rent gap ($/week)
+              month: '2016-03-01'
+              gap_value: -11.827697262479887
+            - label: Rent gap ($/week)
+              month: '2016-04-01'
+              gap_value: 7.111369910282946
+            - label: Rent gap ($/week)
+              month: '2016-05-01'
+              gap_value: 33.53809877722922
+            - label: Rent gap ($/week)
+              month: '2016-06-01'
+              gap_value: 48.86111406038943
+            - label: Rent gap ($/week)
+              month: '2016-07-01'
+              gap_value: 126.80190353407365
+            - label: Rent gap ($/week)
+              month: '2016-08-01'
+              gap_value: 140.45931094148105
+            - label: Rent gap ($/week)
+              month: '2016-09-01'
+              gap_value: 119.94706495583692
+            - label: Rent gap ($/week)
+              month: '2016-10-01'
+              gap_value: 132.90341416218612
+            - label: Rent gap ($/week)
+              month: '2016-11-01'
+              gap_value: 124.49458125580418
+            - label: Rent gap ($/week)
+              month: '2016-12-01'
+              gap_value: 131.28925611499517
+            - label: Rent gap ($/week)
+              month: '2017-01-01'
+              gap_value: 140.78934501968934
+            - label: Rent gap ($/week)
+              month: '2017-02-01'
+              gap_value: 125.88218786253218
+            - label: Rent gap ($/week)
+              month: '2017-03-01'
+              gap_value: 125.83437675551055
+            - label: Rent gap ($/week)
+              month: '2017-04-01'
+              gap_value: 117.6350303502818
+            - label: Rent gap ($/week)
+              month: '2017-05-01'
+              gap_value: 122.62524977138355
+            - label: Rent gap ($/week)
+              month: '2017-06-01'
+              gap_value: 117.69523735002572
+            - label: Rent gap ($/week)
+              month: '2017-07-01'
+              gap_value: 115.04369137127388
+            - label: Rent gap ($/week)
+              month: '2017-08-01'
+              gap_value: 135.405264482847
+            - label: Rent gap ($/week)
+              month: '2017-09-01'
+              gap_value: 139.5257751450243
+            - label: Rent gap ($/week)
+              month: '2017-10-01'
+              gap_value: 144.63653296166447
+            - label: Rent gap ($/week)
+              month: '2017-11-01'
+              gap_value: 151.34570608827946
+            - label: Rent gap ($/week)
+              month: '2017-12-01'
+              gap_value: 148.61659085178297
+            - label: Rent gap ($/week)
+              month: '2019-01-01'
+              gap_value: 150.88714301204104
+            - label: Rent gap ($/week)
+              month: '2019-02-01'
+              gap_value: 127.113710562138
+            - label: Rent gap ($/week)
+              month: '2019-03-01'
+              gap_value: 125.24773998162838
+            - label: Rent gap ($/week)
+              month: '2019-04-01'
+              gap_value: 123.8911370766167
+            - label: Rent gap ($/week)
+              month: '2019-05-01'
+              gap_value: 121.58609500413279
+            - label: Rent gap ($/week)
+              month: '2019-06-01'
+              gap_value: 122.47352190471759
+            - label: Rent gap ($/week)
+              month: '2019-07-01'
+              gap_value: 111.2244726959226
+            - label: Rent gap ($/week)
+              month: '2019-08-01'
+              gap_value: 119.35036749828801
+            - label: Rent gap ($/week)
+              month: '2019-09-01'
+              gap_value: 137.97393541972826
+            - label: Rent gap ($/week)
+              month: '2019-10-01'
+              gap_value: 139.85991638701276
+            - label: Rent gap ($/week)
+              month: '2019-11-01'
+              gap_value: 144.47367352375673
+            - label: Rent gap ($/week)
+              month: '2019-12-01'
+              gap_value: 125.93815824184128
+            - label: Rent gap ($/week)
+              month: '2020-01-01'
+              gap_value: 137.3510226543451
+            - label: Rent gap ($/week)
+              month: '2020-02-01'
+              gap_value: 139.36964292296534
+            - label: Rent gap ($/week)
+              month: '2020-03-01'
+              gap_value: 130.99060167435883
+            - label: Rent gap ($/week)
+              month: '2020-04-01'
+              gap_value: 136.56248749733052
+            - label: Rent gap ($/week)
+              month: '2020-05-01'
+              gap_value: 135.3231043569605
+            - label: Rent gap ($/week)
+              month: '2020-06-01'
+              gap_value: 162.50628045758944
+            - label: Rent gap ($/week)
+              month: '2020-07-01'
+              gap_value: 149.35379707923684
+            - label: Rent gap ($/week)
+              month: '2020-08-01'
+              gap_value: 157.87169909772845
+            - label: Rent gap ($/week)
+              month: '2020-09-01'
+              gap_value: 164.22701803689836
+            - label: Rent gap ($/week)
+              month: '2020-10-01'
+              gap_value: 172.27505625840277
+            - label: Rent gap ($/week)
+              month: '2020-11-01'
+              gap_value: 182.87883349018003
+            - label: Rent gap ($/week)
+              month: '2020-12-01'
+              gap_value: 184.9290319028784
+            - label: Rent gap ($/week)
+              month: '2021-01-01'
+              gap_value: 200.7857068159418
+            - label: Rent gap ($/week)
+              month: '2021-02-01'
+              gap_value: 192.70725331189865
             group: label
             title: House−Unit Weekly Rent Gap Over Time — Marsden Park (2765)
             height: fill
@@ -2041,210 +1702,206 @@ cases:
               \ Sydney', 'Rest of NSW')\nGROUP BY pr.month, dpg.sa4_name, dpg.gcc_name\nORDER BY pr.month,\
               \ dpg.sa4_name"
             rows:
-              _truncated: true
-              _total: 452
-              _sha: f815bd51c64d
-              _head:
-              - layer: actual
-                month: '2016-01-01'
-                value: 568.1
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-01-01'
-                value: 568.1
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-02-01'
-                value: 570.74
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-02-01'
-                value: 569.42
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-03-01'
-                value: 565.44
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-03-01'
-                value: 568.09
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-04-01'
-                value: 558.8
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-04-01'
-                value: 565.77
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-05-01'
-                value: 560.14
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-05-01'
-                value: 564.64
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-06-01'
-                value: 566.14
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-06-01'
-                value: 564.89
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-07-01'
-                value: 570.76
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-07-01'
-                value: 565.34
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-08-01'
-                value: 566.8
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-08-01'
-                value: 564.68
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-09-01'
-                value: 566.29
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-09-01'
-                value: 564.82
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-10-01'
-                value: 580.51
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-10-01'
-                value: 568.44
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-11-01'
-                value: 583.25
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-11-01'
-                value: 572.29
-                series: Greater Sydney
-              - layer: actual
-                month: '2016-12-01'
-                value: 577.78
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2016-12-01'
-                value: 574.23
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-01-01'
-                value: 576.16
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-01-01'
-                value: 575.13
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-02-01'
-                value: 580.87
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-02-01'
-                value: 577.48
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-03-01'
-                value: 575.37
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-03-01'
-                value: 578.99
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-04-01'
-                value: 589.49
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-04-01'
-                value: 580.49
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-05-01'
-                value: 583.19
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-05-01'
-                value: 580.48
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-06-01'
-                value: 586.35
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-06-01'
-                value: 581.91
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-07-01'
-                value: 574.93
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-07-01'
-                value: 581.7
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-08-01'
-                value: 583.79
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-08-01'
-                value: 582.19
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-09-01'
-                value: 580.15
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-09-01'
-                value: 582.98
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-10-01'
-                value: 593.91
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-10-01'
-                value: 583.72
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-11-01'
-                value: 584.39
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-11-01'
-                value: 583.92
-                series: Greater Sydney
-              - layer: actual
-                month: '2017-12-01'
-                value: 578.88
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2017-12-01'
-                value: 582.68
-                series: Greater Sydney
-              - layer: actual
-                month: '2019-01-01'
-                value: 578.88
-                series: Greater Sydney
-              - layer: 6-mo avg
-                month: '2019-01-01'
-                value: 583.34
-                series: Greater Sydney
+            - layer: actual
+              month: '2016-01-01'
+              value: 568.1
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-01-01'
+              value: 568.1
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-02-01'
+              value: 570.74
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-02-01'
+              value: 569.42
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-03-01'
+              value: 565.44
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-03-01'
+              value: 568.09
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-04-01'
+              value: 558.8
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-04-01'
+              value: 565.77
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-05-01'
+              value: 560.14
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-05-01'
+              value: 564.64
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-06-01'
+              value: 566.14
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-06-01'
+              value: 564.89
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-07-01'
+              value: 570.76
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-07-01'
+              value: 565.34
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-08-01'
+              value: 566.8
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-08-01'
+              value: 564.68
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-09-01'
+              value: 566.29
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-09-01'
+              value: 564.82
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-10-01'
+              value: 580.51
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-10-01'
+              value: 568.44
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-11-01'
+              value: 583.25
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-11-01'
+              value: 572.29
+              series: Greater Sydney
+            - layer: actual
+              month: '2016-12-01'
+              value: 577.78
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2016-12-01'
+              value: 574.23
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-01-01'
+              value: 576.16
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-01-01'
+              value: 575.13
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-02-01'
+              value: 580.87
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-02-01'
+              value: 577.48
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-03-01'
+              value: 575.37
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-03-01'
+              value: 578.99
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-04-01'
+              value: 589.49
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-04-01'
+              value: 580.49
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-05-01'
+              value: 583.19
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-05-01'
+              value: 580.48
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-06-01'
+              value: 586.35
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-06-01'
+              value: 581.91
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-07-01'
+              value: 574.93
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-07-01'
+              value: 581.7
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-08-01'
+              value: 583.79
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-08-01'
+              value: 582.19
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-09-01'
+              value: 580.15
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-09-01'
+              value: 582.98
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-10-01'
+              value: 593.91
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-10-01'
+              value: 583.72
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-11-01'
+              value: 584.39
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-11-01'
+              value: 583.92
+              series: Greater Sydney
+            - layer: actual
+              month: '2017-12-01'
+              value: 578.88
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2017-12-01'
+              value: 582.68
+              series: Greater Sydney
+            - layer: actual
+              month: '2019-01-01'
+              value: 578.88
+              series: Greater Sydney
+            - layer: 6-mo avg
+              month: '2019-01-01'
+              value: 583.34
+              series: Greater Sydney
             title: Avg Weekly Rent — Greater Sydney vs Rest of NSW
             height: fill
             intent: line

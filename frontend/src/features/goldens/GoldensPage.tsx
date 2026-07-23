@@ -340,14 +340,15 @@ const MEASURE_HOWS: { value: MeasureHow; label: string }[] = [
   { value: "growth", label: "growth %" },
   { value: "latest", label: "latest value" },
 ];
-// sum/share/growth/latest all sum the source column, which the server's
-// additive guard (and the window dedup) restrict to additive metrics — summing
-// a stored average is silently wrong. Only "mean" can read a non-additive
-// column, so every other how snaps a non-additive source to an additive one.
-const HOW_NEEDS_ADDITIVE = new Set<MeasureHow>(["sum", "share", "growth", "latest"]);
+// Every how sums the source column somewhere — the window dedup sums even a
+// "mean" measure's source — so the server's additive guard restricts them all
+// to additive metrics (summing a stored average is silently wrong). Picking any
+// how snaps a non-additive source to an additive one.
+const HOW_NEEDS_ADDITIVE = new Set<MeasureHow>(["sum", "mean", "share", "growth", "latest"]);
 // The augmented kinds only exist in the bar-family codegen (compare/breakdown/
 // table); trend and kpi read the raw column, so the form hides the modifier for
 // them and the spec never claims a share/growth it wouldn't compute.
+const AUGMENTED_HOWS = new Set<MeasureHow>(["share", "growth", "latest"]);
 const HOW_OBJECT_TYPES = new Set<PageObjectType>(["compare", "breakdown", "table"]);
 
 // The builder's flat form state (compare covers every field; simpler types read a
@@ -503,7 +504,7 @@ function measureFromHow(
 /** A stale augmented how (picked under a bar-family type, then the type switched
  *  to trend/kpi where the form hides the modifier) falls back to a plain agg. */
 function effectiveHow(objectType: PageObjectType, how: MeasureHow): MeasureHow {
-  return !HOW_OBJECT_TYPES.has(objectType) && HOW_NEEDS_ADDITIVE.has(how) ? "sum" : how;
+  return !HOW_OBJECT_TYPES.has(objectType) && AUGMENTED_HOWS.has(how) ? "sum" : how;
 }
 
 function barMeasure(f: BuilderForm): SandboxMeasure {
@@ -553,7 +554,13 @@ function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
 function measureChip(m: SandboxMeasure | undefined): string | null {
   if (!m) return null;
   const win = m.months ? `${m.months}-mo ` : "";
-  const kind = m.num && m.den ? "wtd-avg" : m.agg === "mean" ? "avg" : "sum";
+  const kind = m.how
+    ? { share: "% share", growth: "growth", latest: "latest" }[m.how]
+    : m.num && m.den
+      ? "wtd-avg"
+      : m.agg === "mean"
+        ? "avg"
+        : "sum";
   return `${m.label} · ${win}${kind}`;
 }
 
@@ -1972,9 +1979,22 @@ export function GoldensPage({
                 <select
                   data-testid="builder-type"
                   value={builder.object_type}
-                  onChange={(e) =>
-                    setBuilder((b) => ({ ...b, object_type: e.target.value as PageObjectType }))
-                  }
+                  onChange={(e) => {
+                    const type = e.target.value as PageObjectType;
+                    setBuilder((b) =>
+                      HOW_OBJECT_TYPES.has(type)
+                        ? {
+                            ...b,
+                            object_type: type,
+                            bar_source: resetToAdditive(b.bar_how, b.bar_source),
+                            line_source:
+                              b.line_mode === "column"
+                                ? resetToAdditive(b.line_how, b.line_source)
+                                : b.line_source,
+                          }
+                        : { ...b, object_type: type },
+                    );
+                  }}
                 >
                   {BUILDER_TYPES.map((t) => (
                     <option key={t.type} value={t.type}>
@@ -2111,9 +2131,17 @@ export function GoldensPage({
                 />
                 <select
                   value={builder.line_mode}
-                  onChange={(e) =>
-                    setBuilder((b) => ({ ...b, line_mode: e.target.value as "wavg" | "column" }))
-                  }
+                  onChange={(e) => {
+                    const mode = e.target.value as "wavg" | "column";
+                    setBuilder((b) => ({
+                      ...b,
+                      line_mode: mode,
+                      line_source:
+                        mode === "column" && howApplies
+                          ? resetToAdditive(b.line_how, b.line_source)
+                          : b.line_source,
+                    }));
+                  }}
                 >
                   <option value="wavg">wtd-avg</option>
                   <option value="column">column</option>

@@ -17,6 +17,8 @@ deterministic.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import pytest
 
@@ -361,6 +363,9 @@ def test_growth_measure_kind_runs_and_is_positive() -> None:
     assert outcome.error is None
     values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
     assert values and all("rent_growth" in r for r in values)
+    # The fixture's counts grow 20→37, so every band's growth must be positive —
+    # this locks the first-vs-last ordering, not just the column's presence.
+    assert all(float(r["rent_growth"]) > 0 for r in values)
 
 
 def test_latest_measure_kind_runs() -> None:
@@ -376,3 +381,99 @@ def test_latest_measure_kind_runs() -> None:
     assert outcome.error is None
     values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
     assert values and all("current" in r for r in values)
+
+
+def _growing_mix_frame() -> pd.DataFrame:
+    """Rentals at postcode × property_type × bedroom_band × month whose per-month
+    totals per band grow 28 → 96 while the sub-slice rows differ (house 4+i vs
+    unit 10+i), so any single row is a wrong stand-in for its month's total."""
+    rows = []
+    months = [f"2024-{m:02d}" for m in range(1, 13)] + [f"2025-{m:02d}" for m in range(1, 7)]
+    for i, mo in enumerate(months):
+        for pc in ("2077", "2076"):
+            for pt in ("house", "unit"):
+                for bb in ("1", "2", "3"):
+                    n = (10 if pt == "unit" else 4) + i
+                    rows.append(
+                        {
+                            "month": mo,
+                            "postcode": pc,
+                            "property_type": pt,
+                            "bedroom_band": bb,
+                            "n_rented": n,
+                            "total_weekly_rent": n * (400 + int(bb) * 120),
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+def _breakdown_values(spec: dict[str, Any], df: pd.DataFrame) -> list[dict[str, Any]]:
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=df, frames={"extract": df})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    return list(values)
+
+
+def test_growth_and_latest_use_per_month_totals_over_wider_grain() -> None:
+    """growth/latest collapse the source to per-month totals before taking
+    first/last, so a grain wider than the chart keys (postcode × property_type
+    here) contributes its month's total, not one sub-slice row.
+
+    Every band's per-month total grows 28 → 96, so true growth is exactly
+    (96-28)/28 = 242.9% and the latest value 96 — no first/last over raw
+    sub-slice rows (4+i / 10+i) can produce either number.
+    """
+    growth = _breakdown_values(
+        {
+            "grain": ["month", "postcode", "property_type", "bedroom_band"],
+            "dimension": "bedroom_band",
+            "bar_measure": {"label": "rent_growth", "source": "n_rented", "how": "growth"},
+            "months": 18,
+        },
+        _growing_mix_frame(),
+    )
+    assert growth and all(float(r["rent_growth"]) == 242.9 for r in growth)
+
+    latest = _breakdown_values(
+        {
+            "grain": ["month", "postcode", "property_type", "bedroom_band"],
+            "dimension": "bedroom_band",
+            "bar_measure": {"label": "current", "source": "n_rented", "how": "latest"},
+            "months": 18,
+        },
+        _growing_mix_frame(),
+    )
+    assert latest and all(float(r["current"]) == 96.0 for r in latest)
+
+
+def test_table_supports_composite_dimension() -> None:
+    """A list `dimension` on a table becomes the synthesized `_x` axis column
+    (labelled with the joined dimension names), exactly as compare/breakdown."""
+    from agent.main import _lift_object
+    from agent.pages import PageObject
+
+    spec = {
+        "grain": ["month", "postcode", "property_type", "bedroom_band"],
+        "dimension": ["bedroom_band", "property_type"],
+        "bar_measure": {"label": "volume", "source": "n_rented", "agg": "sum"},
+        "variant": "ranked",
+    }
+    code = build_object_code(object_type="table", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_mix_frame(), frames={"extract": _rent_mix_frame()})
+    assert outcome.error is None
+    assert "data_table" in outcome.skills_used
+
+    obj = _lift_object(
+        outcome.report,
+        element_id=element_id_for("mix-table"),
+        object_type="table",
+        sql="SELECT 1",
+    )
+    assert obj is not None
+    data = obj["data"]
+    assert [c["key"] for c in data["columns"]] == ["_x", "volume"]
+    labels = {c["key"]: c["label"] for c in data["columns"]}
+    assert labels["_x"] == "bedroom_band · property_type"
+    assert data["rows"] and all(" · " in str(r["_x"]) for r in data["rows"])
+    PageObject(**obj)

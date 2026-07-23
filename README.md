@@ -48,6 +48,7 @@ keep `make up` and CI fast while preserving suburbs present in both datasets acr
 ```bash
 make smoke    # end-to-end test: login -> ask -> response, query audit, and RLS isolation
 uv run pytest -q  # unit tests (guardrails/NL->SQL) + journey evals (skip if stack down)
+(cd services/backend-api && uv run pytest -q)  # backend-api handler tests (needs the fastapi stack)
 make logs     # tail service logs
 make down     # stop the stack
 make reset    # stop AND wipe the db volume (re-seeds + reloads on next `make up`)
@@ -95,7 +96,7 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 | Service | URL | Notes |
 |---------|-----|-------|
 | Frontend | http://localhost:5230 | React + Vite dev server |
-| Backend API | http://localhost:8000 | `/health`, `/auth/config`, `/auth/dev-login`, `/auth/logout`, `/me`, `/ask`, `/events`, `/admin/*` (incl. `/admin/eval-runs*`), `/explore/*` |
+| Backend API | http://localhost:8000 | `/health`, `/health/db`, `/auth/config`, `/auth/dev-login`, `/auth/logout`, `/me`, `/ask`, `/events`, `/admin/*` (incl. `/admin/eval-runs*`), `/explore/*` |
 | Data agent | http://localhost:8100 | `/health`, `/agent/config`, `/agent/version`, `/agent/ask(/stream)`, `/agent/sql(/assist)`, `/agent/title`, `/agent/analysis*`, `/agent/skills*`, `/agent/eval/grade`, `/agent/schema` |
 | Postgres | `localhost:5434` | user `postgres` / `postgres`, db `dataqa` (5432/5433 were in use) |
 
@@ -267,7 +268,10 @@ empty to trace locally with no extra configuration.
 The app is deployed to AWS (s12) with Terraform under [`infra/terraform/`](./infra/terraform/README.md):
 App Runner runs backend-api + data-agent, ECS Fargate one-shot jobs run the same `migrate`/`pipeline`
 images as local (the pipeline streams the full CSVs from S3), Aurora Serverless v2 (scale-to-zero) is the
-database, and the frontend is a static Vite build in S3 behind CloudFront. Merging to `main` is the
+database, and the frontend is a static Vite build in S3 behind CloudFront. Scale-to-zero means the first
+sign-in after an idle hour can take ~30s while Aurora resumes; the login card narrates this ("Waking
+warehouse…") instead of hanging silently (s29 — see `AGENTS.md`), and any other in-flight call rides out
+the same wake transparently via a bounded client-side retry. Merging to `main` is the
 push-button deploy — `.github/workflows/deploy-aws.yml` builds/pushes images, applies Terraform, runs
 migrations, deploys the frontend, and smoke-tests the live URL (`scripts/cloud_smoke.sh`); auth is GitHub
 OIDC, no stored keys. Cheap hardening ships with it: role-level statement timeouts (migration 0018), tiered

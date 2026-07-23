@@ -297,6 +297,23 @@ composited backdrop and checks it against the live `--text`/`--muted` tokens acr
 and a second probe checks row-luminance variation over the busiest card to confirm the airway is
 perceptible, not merely present.
 
+**Aurora cold-start login (s29).** Aurora Serverless v2 at min 0 ACU auto-pauses after an idle hour; a
+resume took ~30s in an observed prod session, and every request that landed in that window used to hang
+(asyncpg's default 60s connect timeout) with no feedback, so users answered the silence by signing in
+4-5 times. Fixed end to end: `db.py` bounds the connect phase to 5s so a stuck resume fails fast instead of
+hanging; `services/backend-api/app/waking.py::is_db_waking` classifies that failure (and SQLSTATE class 08 /
+`57P03`) from the exception chain, careful to exclude `57014 query_canceled` (a real bug) and DNS/httpx
+errors (unrelated outbound calls); the global error handler in `main.py` turns a classified failure into a
+retryable `503 {"detail": "db_warming"}` instead of the default 500. `GET /health/db` is an unauthenticated
+wake probe the login card fires on mount (`wakeDb()` in `frontend/src/lib/api.ts`) so Aurora starts resuming
+while the user is still in the Google sign-in dance, front-loading most of the wait; it only touches the
+database for requests carrying `X-Client-Channel: web` (a fence against generic pollers defeating
+auto-pause) and coalesces repeated probes within 5s to one cached result. `apiFetch` retries any `db_warming`
+503 transport-side (up to `WARMING_MAX_MS` = 75s, every `WARMING_RETRY_MS` = 4s) so mid-session calls ride
+out a wake behind their surface's existing pending UI; `/me` opts out of that generic retry because the
+login flow (`frontend/src/lib/auth.ts::exchangeCredential`) owns its own retry loop so it can narrate
+progress ("Waking warehouse · Ns") on the card via the `signing`/`LoginStatus` state in `Login.tsx`.
+
 ---
 
 ## Data model (Postgres)

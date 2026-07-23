@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -112,6 +113,11 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "env": settings.app_env}
 
 
+_HEALTH_DB_MIN_INTERVAL_S = 5.0
+_health_db_cache: dict[str, str] | None = None
+_health_db_cache_at: float = 0.0
+
+
 @app.get("/health/db")
 async def health_db(request: Request) -> dict[str, str]:
     """Unauthenticated DB wake probe (s29).
@@ -129,14 +135,29 @@ async def health_db(request: Request) -> dict[str, str]:
     uptime monitor, a scanner — pointed here would defeat auto-pause, the
     dominant idle cost. The marker is a fence against that traffic, not a
     secret; unmarked requests get a 200 saying the probe was skipped.
+
+    The marker alone doesn't stop a caller who copies it from the shipped
+    bundle from hammering this endpoint to keep forcing fresh connects, so
+    real probes are also coalesced: a marked request within
+    _HEALTH_DB_MIN_INTERVAL_S of the last one gets the cached result instead
+    of opening another connection, capping how often this path can wake
+    Aurora regardless of request volume.
     """
     if request.headers.get("x-client-channel") != "web":
         return {"status": "skipped", "env": settings.app_env}
+    global _health_db_cache, _health_db_cache_at
+    now = time.monotonic()
+    if _health_db_cache is not None and now - _health_db_cache_at < _HEALTH_DB_MIN_INTERVAL_S:
+        return _health_db_cache
     try:
         async with engine.connect() as conn:
             await conn.execute(text("select 1"))
     except Exception as exc:
         if not is_db_waking(exc):
             raise
-        return {"status": "waking", "env": settings.app_env}
-    return {"status": "ok", "env": settings.app_env}
+        result = {"status": "waking", "env": settings.app_env}
+        _health_db_cache, _health_db_cache_at = result, now
+        return result
+    result = {"status": "ok", "env": settings.app_env}
+    _health_db_cache, _health_db_cache_at = result, now
+    return result

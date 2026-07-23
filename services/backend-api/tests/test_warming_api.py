@@ -79,6 +79,12 @@ class _BrokenEngine:
         raise ValueError("not a connectivity problem")
 
 
+@pytest.fixture(autouse=True)
+def _reset_health_db_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(backend_main, "_health_db_cache", None)
+    monkeypatch.setattr(backend_main, "_health_db_cache_at", 0.0)
+
+
 def test_health_db_reports_waking_when_connect_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(backend_main, "engine", _RefusingEngine())
     result = asyncio.run(backend_main.health_db(_request(channel="web")))
@@ -99,3 +105,15 @@ def test_health_db_skips_the_probe_without_the_channel_marker(
     monkeypatch.setattr(backend_main, "engine", _BrokenEngine())
     assert asyncio.run(backend_main.health_db(_request()))["status"] == "skipped"
     assert asyncio.run(backend_main.health_db(_request(channel="api")))["status"] == "skipped"
+
+
+def test_health_db_coalesces_repeated_marked_probes_within_the_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backend_main, "engine", _RefusingEngine())
+    first = asyncio.run(backend_main.health_db(_request(channel="web")))
+    assert first["status"] == "waking"
+
+    monkeypatch.setattr(backend_main, "engine", _BrokenEngine())
+    second = asyncio.run(backend_main.health_db(_request(channel="web")))
+    assert second == first

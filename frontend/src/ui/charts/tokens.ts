@@ -32,10 +32,11 @@ export function chartTheme() {
 /**
  * Coerce whatever a stored report carries in a chart's `rows` field into a real
  * array the renderers can iterate. A report can arrive with `rows` as a plain
- * array (the normal case), as the eval-pack exporter's `{_truncated,_head,…}`
- * digest (a chart's rows capped for the version-controlled pack), or as
- * `undefined`/garbage from a malformed object. A chart must never throw on
- * `for…of` — an unusable shape renders empty, not a white screen.
+ * array (the normal case), as a legacy eval-pack export's `{_truncated,_head,…}`
+ * digest (the exporter now keeps truncated rows a plain array, but goldens
+ * imported from older packs still carry the envelope), or as `undefined`/garbage
+ * from a malformed object. A chart must never throw on `for…of` — an unusable
+ * shape renders empty, not a white screen.
  */
 export function asRows(v: unknown): Record<string, unknown>[] {
   if (Array.isArray(v)) return v as Record<string, unknown>[];

@@ -436,12 +436,14 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
  *  array reference; if the same element_id is already on a page (e.g. a rebuild
  *  after refining the instruction), its snapshot is replaced in place rather than
  *  left stale. */
-function placeObjectInReport(pages: Page[], obj: PageObject): Page[] {
+function placeObjectInReport(pages: Page[], obj: PageObject, pi = 0, ci = 0): Page[] {
   const copy = JSON.parse(JSON.stringify(obj)) as PageObject;
   if (pages.length === 0) {
     return [{ template: "one-col", columns: [[copy]] }];
   }
   const next = JSON.parse(JSON.stringify(pages)) as Page[];
+  // Replace in place if the same element_id is already on a page (a rebuild /
+  // edit-in-place updates the existing card rather than duplicating it).
   let found = false;
   for (const p of next) {
     for (const col of p.columns ?? []) {
@@ -454,9 +456,12 @@ function placeObjectInReport(pages: Page[], obj: PageObject): Page[] {
     }
   }
   if (found) return next;
-  const page = next[0];
+  // A new object goes exactly where the curator chose (page pi, column ci),
+  // clamped to what exists, rather than always the first column of the first page.
+  const page = next[Math.min(Math.max(pi, 0), next.length - 1)];
   if (!page.columns || page.columns.length === 0) page.columns = [[]];
-  page.columns[0] = [...page.columns[0], copy];
+  const col = Math.min(Math.max(ci, 0), page.columns.length - 1);
+  page.columns[col] = [...page.columns[col], copy];
   return next;
 }
 
@@ -796,6 +801,10 @@ export function GoldensPage({
   const [previewEditId, setPreviewEditId] = useState<string | null>(null);
   const previewToken = useRef(0);
   const builderRef = useRef<HTMLDivElement | null>(null);
+  // Where a NEW built object lands (page index, column index). Editing an object
+  // ignores these — it replaces the card in place.
+  const [placePage, setPlacePage] = useState(0);
+  const [placeCol, setPlaceCol] = useState(0);
   // The typed vocabulary that populates the structured builder's dropdowns — each
   // dataset's dimensions (the cuts) and metrics (the columns) from the manifest,
   // so a curator can only pick columns the data actually has (no hallucination).
@@ -1011,6 +1020,8 @@ export function GoldensPage({
     setBuilder(defaultBuilder(dataset));
     setBuildMsg(null);
     setPreviewEditId(null);
+    setPlacePage(0);
+    setPlaceCol(0);
   }
 
   /** Edit an existing report object in the Structured Builder (s30): seed the
@@ -1171,9 +1182,15 @@ export function GoldensPage({
         setSqlRevert(draft.golden_sql);
         patch("golden_sql", formatSql(res.sql));
       }
+      // Edit-in-place keeps the ORIGINAL object's identity: reuse previewEditId as
+      // the element_id (not the name-derived one the server returns) so the edited
+      // card is replaced, never duplicated — even if the name re-slugifies. A new
+      // object keeps the server's element_id and lands at the chosen page/column.
+      const eid = previewEditId ?? res.element_id;
+      const placedObj = { ...(res.object as PageObject), element_id: eid };
       const go: GoldenObject = {
         name,
-        element_id: res.element_id,
+        element_id: eid,
         object_type: res.object_type,
         code: res.code,
         spec,
@@ -1181,20 +1198,17 @@ export function GoldensPage({
       patch(
         "golden_objects",
         (() => {
-          const rest = draft.golden_objects.filter((o) => o.element_id !== res.element_id);
+          const rest = draft.golden_objects.filter((o) => o.element_id !== eid);
           return [...rest, go];
         })(),
       );
-      setBuiltObjects((prev) => upsertObject(prev, res.object as PageObject));
-      // Auto-place the built chart into the interactive report — first column of
-      // the first page, creating a page when the report is empty (same as the old
-      // AI path). The shared element_id links the card to the sandbox object.
-      setDraftPages(placeObjectInReport(pendingPages, res.object as PageObject));
+      setBuiltObjects((prev) => upsertObject(prev, placedObj));
+      setDraftPages(placeObjectInReport(pendingPages, placedObj, placePage, placeCol));
       setPreviewEditId(null);
       setBuildMsg(
-        `Built “${name}” (${res.rows.length} extract rows) and added it to the report${
-          res.error ? ` · note: ${res.error}` : ""
-        }. Review & Save.`,
+        previewEditId
+          ? `Updated “${name}” in place (${res.rows.length} extract rows).${res.error ? ` · note: ${res.error}` : ""} Review & Save.`
+          : `Built “${name}” (${res.rows.length} extract rows) and placed it on page ${placePage + 1}, column ${placeCol + 1}${res.error ? ` · note: ${res.error}` : ""}. Review & Save.`,
       );
     } catch (e) {
       setBuildMsg((e as Error).message);
@@ -2333,10 +2347,70 @@ export function GoldensPage({
                   }}
                   onClick={() => void buildObject()}
                   disabled={busy === "build" || !!buildBlocker}
-                  title="Run the extract (rewriting the SQL if it lacks a column) → sandbox builds the object → chart is added to the report"
+                  title={
+                    previewEditId
+                      ? "Rebuild this object from the options above and update the same card in place"
+                      : "Build the object and place it at the chosen page/column"
+                  }
                 >
-                  {busy === "build" ? "Building…" : "＋ Build object"}
+                  {busy === "build"
+                    ? previewEditId
+                      ? "Updating…"
+                      : "Building…"
+                    : previewEditId
+                      ? "↻ Update object"
+                      : "＋ Build object"}
                 </button>
+                {/* Placement: editing updates the same card in place; a new object
+                    lands exactly where the curator picks (not a fixed slot). */}
+                {previewEditId ? (
+                  <span style={{ ...label, color: "rgb(120,160,255)" }}>
+                    ↻ updates the edited object in place
+                  </span>
+                ) : (
+                  pendingPages.length > 0 && (
+                    <span
+                      style={{ ...label, display: "inline-flex", gap: 6, alignItems: "center" }}
+                    >
+                      place at page
+                      <select
+                        data-testid="builder-place-page"
+                        value={Math.min(placePage, pendingPages.length - 1)}
+                        onChange={(e) => {
+                          setPlacePage(Number(e.target.value));
+                          setPlaceCol(0);
+                        }}
+                        style={sel}
+                      >
+                        {pendingPages.map((_, i) => (
+                          <option key={i} value={i}>
+                            {i + 1}
+                          </option>
+                        ))}
+                      </select>
+                      column
+                      <select
+                        data-testid="builder-place-col"
+                        value={placeCol}
+                        onChange={(e) => setPlaceCol(Number(e.target.value))}
+                        style={sel}
+                      >
+                        {Array.from(
+                          {
+                            length:
+                              pendingPages[Math.min(placePage, pendingPages.length - 1)]?.columns
+                                ?.length ?? 1,
+                          },
+                          (_, i) => (
+                            <option key={i} value={i}>
+                              {i + 1}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </span>
+                  )
+                )}
                 {/* Deterministic pre-flight: the config is validated against the same
                     rules the builder enforces, so a green tick means it WILL build —
                     no LLM, no round-trip. */}

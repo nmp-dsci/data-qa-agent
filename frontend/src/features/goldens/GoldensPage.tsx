@@ -650,6 +650,27 @@ function builderFromSpec(
   };
 }
 
+/** Best-effort builder seed for a chart object that has NO stored spec (a drafted
+ *  base-report chart, e.g. `report:chart`). Its rendered encodings can't be
+ *  trusted as extract-column names — the chart skills rename them (e.g. the series
+ *  column becomes the literal `"series"`) — so we seed valid dataset defaults plus
+ *  the object's type and name, and let the curator re-pick the columns/measures.
+ *  Editing still sets `previewEditId`, so Build updates this object in place
+ *  instead of orphaning a new one. */
+function builderFromObject(o: PageObject, dataset: string): BuilderForm {
+  const d = defaultBuilder(dataset);
+  const data = (o.data ?? {}) as Record<string, unknown>;
+  const s = (k: string) => (data[k] != null && data[k] !== "" ? String(data[k]) : "");
+  const type = (["trend", "breakdown", "compare", "kpi", "table"] as string[]).includes(o.type)
+    ? (o.type as PageObjectType)
+    : d.object_type;
+  return {
+    ...d,
+    name: s("title") || s("label") || s("heading") || o.element_id.replace(/^obj:/, "") || d.name,
+    object_type: type,
+  };
+}
+
 // The mart table each dataset extracts from — mirrors the backend MartProfile
 // tables (agent/object_builder.py). Lets the builder derive its dataset from the
 // SQL Extract's FROM clause rather than the golden's stored (and sometimes
@@ -1090,24 +1111,22 @@ export function GoldensPage({
    *  pressing Build re-runs the deterministic pipeline and replaces the card in
    *  place (placeObjectInReport matches on element_id). No LLM, no free text. */
   function editObjectInBuilder(o: PageObject) {
+    const ds = datasetFromSql(draft.golden_sql) ?? draft.dataset;
     const go = draft.golden_objects.find((g) => g.element_id === o.element_id);
-    if (!go?.spec) {
+    if (go?.spec) {
+      setBuilder(builderFromSpec(go.spec, ds, go.object_type as PageObjectType, go.name));
+      setBuildMsg(`Editing “${go.name}” — change the options below, then Build to update it in place.`);
+    } else {
+      // A drafted base-report chart (e.g. report:chart) with no stored recipe:
+      // seed what we can from its encodings so the curator isn't starting blank.
+      setBuilder(builderFromObject(o, ds));
       setBuildMsg(
-        "This object has no builder spec to edit (it wasn't built from the structured builder). Build a new one below.",
+        "Editing this chart in place — its exact recipe wasn't stored, so review the options (the measures especially), then Build to update it.",
       );
-      builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
     }
-    setBuilder(
-      builderFromSpec(
-        go.spec,
-        datasetFromSql(draft.golden_sql) ?? draft.dataset,
-        go.object_type as PageObjectType,
-        go.name,
-      ),
-    );
+    // Either way, mark the edit so Build REPLACES this object in place (by its
+    // element_id) instead of orphaning a new one somewhere in the report.
     setPreviewEditId(o.element_id);
-    setBuildMsg(`Editing “${go.name}” — change the options below, then Build to update it in place.`);
     builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -1207,7 +1226,10 @@ export function GoldensPage({
 
   /** Build (or rebuild) a named presentation object from the builder form. */
   async function buildObject() {
-    const name = builder.name.trim();
+    // When editing in place the identity is previewEditId, so a blank name is
+    // fine — fall back to the object's own id-derived label rather than blocking.
+    const name =
+      builder.name.trim() || (previewEditId ? previewEditId.replace(/^(obj|report):/, "") : "");
     if (!name) {
       setBuildMsg("Give the object a name first.");
       return;

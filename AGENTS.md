@@ -533,7 +533,11 @@ chart via `ObjectBody` at the top of the builder, so what you see is what Build 
 a chart card's **◆ edit in Structured Builder** button seeds the builder from the object's stored
 `SandboxObjectSpec` (`builderFromSpec`, the inverse of `specFromBuilder`) and scrolls to it, so the preview
 becomes the object's chart and the options below are how you change it — Build replaces it in place by
-`element_id`. Objects with no stored spec (a drafted base report's chart) say so instead of seeding. (4)
+`element_id`. A chart with **no stored spec** (a drafted base-report chart like `report:chart`, whose
+`golden_objects` is empty and whose element_id isn't `obj:<slug>`) still edits in place: `editObjectInBuilder`
+sets `previewEditId` and seeds valid dataset defaults + the object's type/name (`builderFromObject` — the
+rendered encodings can't be trusted as extract columns, so it doesn't reconstruct them), and Build (name
+falling back to the id when blank) replaces that object rather than orphaning a new one. (4)
 **Move to any page + column** — the edit panel gained a page picker beside the column picker (`moveTo(pi,
 ci)`), so a card relocates across pages without dragging. (5) **Dataset from the SQL, not the tag** — the
 builder derives its dataset (vocabulary, defaults, and build target) from the ① SQL extract's `FROM` table

@@ -78,7 +78,12 @@ DERIVED_FIELDS = {"golden_data"}
 
 
 def _psql(query: str, service: str) -> str:
-    """Run one statement in the compose Postgres and return raw stdout."""
+    """Run one statement in the compose Postgres and return raw stdout.
+
+    The query is piped over stdin (psql -f -) rather than passed as a -c
+    argument: a large pack's combined upsert statement can exceed the
+    container exec's argv size limit, but stdin has no such cap.
+    """
     proc = subprocess.run(
         [
             "docker",
@@ -92,10 +97,11 @@ def _psql(query: str, service: str) -> str:
             "-d",
             "dataqa",
             "-tA",
-            "-c",
-            query,
+            "-f",
+            "-",
         ],
         cwd=REPO_ROOT,
+        input=query,
         capture_output=True,
         text=True,
     )

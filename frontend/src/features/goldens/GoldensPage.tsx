@@ -850,6 +850,11 @@ export function GoldensPage({
   seed?: { id: string; nonce: number } | null;
 }) {
   const [dataset, setDataset] = useState<string>("nsw_sales");
+  // Tracks the latest selected dataset so an in-flight refresh() for a dataset
+  // the curator has since navigated away from can detect it's stale and drop
+  // its response instead of overwriting the current list.
+  const datasetRef = useRef(dataset);
+  datasetRef.current = dataset;
   const [datasets, setDatasets] = useState<string[]>(FALLBACK_DATASETS);
   const [list, setList] = useState<GoldenListItem[]>([]);
   const [draft, setDraft] = useState<Draft>(() => emptyDraft("nsw_sales"));
@@ -986,9 +991,13 @@ export function GoldensPage({
   }, []);
 
   const refresh = useCallback(async () => {
+    const requestedDataset = dataset;
     try {
-      setList(await listGoldens(dataset));
+      const rows = await listGoldens(requestedDataset);
+      if (requestedDataset !== datasetRef.current) return;
+      setList(rows);
     } catch (e) {
+      if (requestedDataset !== datasetRef.current) return;
       setMsg((e as Error).message);
     }
   }, [dataset]);

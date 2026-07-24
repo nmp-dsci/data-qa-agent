@@ -503,6 +503,24 @@ and the snippet's window-dedup grain can never drift (trend/kpi keep the typed g
 the extract per month). A bad spec surfaces as `invalid spec: …` from `/agent/analysis/build-object`,
 never a traceback.
 
+**Grader-spec editor — promote draft → ready from the Golden tab.** A golden's `grader` (jsonb, migration
+0030) is what the eval runner scores against (`scripts/eval_run.py` → `POST /agent/eval/grade`), but until
+now it could only be written by hand-editing the YAML pack, so a curator could never make a draft
+*scoreable* from the UI — the one gap that kept the Golden tab from closing the loop. The `◆ GRADER` panel
+(`frontend/src/features/goldens/GraderEditor.tsx`, logic in `graderSpec.ts`) turns that jsonb into
+grain-driven dropdowns: pick a `kind` (`scalar`/`row_set`/`ranked_set`/`series` — the tier suggests one),
+its key column(s) (one → `key`, many → the composite `key: "_key"` + `key_fields`, mirroring the builder's
+composite x-axis), a `value`, `tolerance_pct`/`k`, an optional `aggregate` (`sum`, or `ratio` with
+numerator/denominator so a weighted average is graded, never an average-of-averages), and the
+`expected_objects` the report must contain. A deterministic, no-LLM `graderIssue()` renders `✓ ready to
+promote` / `✗ <reason>` and gates both the **Promote to ready** button and the header status dropdown's
+`ready` option — its rules mirror the CI pack-lint (`tests/test_eval_pack.py`: dispatchable kind, required
+fields per kind, and every named column present in the ① SQL extract), so the UI blocks exactly what CI
+would reject. The `grader` column is now wired through `GoldenIn`/`GoldenPatch` + `_FULL_COLS`/`_JSONB_COLS`
+(create/update/get round-trip it), the list carries a `grader_kind` badge, and `frontend/e2e/grader.spec.ts`
+asserts the real composite-ratio-series grader decodes on load and that a fresh golden can't promote without
+a kind.
+
 ---
 
 ## Conventions

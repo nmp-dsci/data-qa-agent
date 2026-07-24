@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Structured Builder — metric aggregation + derived augmentations</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#141a24; --panel2:#1b2230; --border:rgba(140,150,170,.22);
+    --border2:rgba(140,150,170,.35); --text:#e7eaf0; --muted:rgba(231,234,240,.58);
+    --blue:#78a0ff; --blue-dim:rgba(120,160,255,.14); --green:#5aaa5a; --green-dim:rgba(90,170,90,.16);
+    --amber:#d2a03c; --bad:#e5686d; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1060px;margin:0 auto;padding:34px 20px 90px}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin:38px 0 12px;font-weight:700}
+  .sub{color:var(--muted);font-size:15px;margin:0 0 6px}
+  .tag{display:inline-block;font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;border-radius:5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(120,160,255,.4)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:12px 0}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px}
+  .mono{font-family:var(--mono);font-size:13px}
+  code{font-family:var(--mono);font-size:.86em;background:rgba(140,150,170,.14);padding:1px 5px;border-radius:4px}
+  .muted{color:var(--muted)}
+  .lead{color:var(--muted);max-width:78ch}
+  /* builder mock */
+  .mock{background:linear-gradient(180deg,rgba(120,160,255,.06),transparent);border:1px solid rgba(120,160,255,.4);border-radius:10px;padding:14px}
+  .mockhead{font:700 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--blue);margin-bottom:12px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0;min-width:0}
+  .lbl{font:700 10px/1 var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+  .pill{font-family:var(--mono);font-size:12.5px;padding:5px 9px;border-radius:6px;border:1px solid var(--border2);background:var(--panel2);white-space:nowrap}
+  .pill.name{color:var(--text);border-color:rgba(140,150,170,.5)}
+  .pill.sel{position:relative;padding-right:22px}
+  .pill.sel::after{content:"▾";position:absolute;right:8px;top:50%;transform:translateY(-50%);opacity:.5;font-size:10px}
+  .pill.agg{color:#9fd39f;border-color:rgba(90,170,90,.4);background:var(--green-dim)}
+  .pill.der{color:var(--blue);border-color:rgba(120,160,255,.5);background:var(--blue-dim)}
+  .pill.col{color:#cdd6e6}
+  .num{width:46px;text-align:center}
+  .arrow{color:var(--muted);font-family:var(--mono)}
+  .barline{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .b-green{background:var(--green)} .b-blue{background:var(--blue)}
+  /* tables */
+  .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+  .tbl th,.tbl td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  .tbl th{font:700 10.5px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+  .tbl td.c{text-align:center;width:64px}
+  .yes{color:var(--green);font-weight:700}
+  .no{color:var(--muted);opacity:.6}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .kicker{font:700 10px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;padding:3px 7px;border-radius:5px;display:inline-block}
+  .k-core{background:var(--green-dim);color:#9fd39f;border:1px solid rgba(90,170,90,.4)}
+  .k-rec{background:var(--blue-dim);color:var(--blue);border:1px solid rgba(120,160,255,.4)}
+  .k-opt{background:rgba(210,160,60,.14);color:var(--amber);border:1px solid rgba(210,160,60,.4)}
+  /* before/after */
+  .ba{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:12px}
+  .ba .card{margin:0}
+  .badge{font:700 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:5px}
+  .now{background:rgba(210,160,60,.14);color:var(--amber);border:1px solid rgba(210,160,60,.35)}
+  .next{background:var(--green-dim);color:#9fd39f;border:1px solid rgba(90,170,90,.35)}
+  ul.tight{margin:8px 0 0;padding-left:18px} ul.tight li{margin:5px 0}
+  .step{display:flex;gap:12px;margin:10px 0} .step .n{flex:0 0 26px;height:26px;border-radius:50%;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(120,160,255,.45);font:700 12px/26px var(--mono);text-align:center}
+  /* decisions */
+  form.q{background:var(--panel);border:1px solid rgba(120,160,255,.35);border-radius:12px;padding:16px 18px;margin:12px 0}
+  form.q h3{margin:0 0 4px;font-size:15px}
+  .opts{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+  .opt{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--panel2)}
+  .opt:hover{border-color:var(--border2)}
+  .opt input{margin-top:3px}
+  .opt .t{font-weight:600} .opt .d{color:var(--muted);font-size:13px}
+  .queue{margin-top:6px;background:var(--blue);color:#0b0e14;border:none;border-radius:8px;padding:9px 16px;font-weight:700;font-size:14px;cursor:pointer}
+  .queue:hover{filter:brightness(1.08)}
+  .note{font-size:12.5px;color:var(--muted);margin-top:8px}
+  hr{border:none;border-top:1px solid var(--border);margin:34px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="tag">Structured Builder · s29 plan</span>
+  <h1 style="margin-top:14px">Metric = aggregation + a derived augmentation</h1>
+  <p class="lead">Restructure the builder's metric row so each measure reads <b>name = aggregation of column(s) · window · derive</b>, and add a <b>derive</b> step that turns a base metric into a growth rate, a % of total, and more — computed deterministically over the window, no LLM.</p>
+
+  <h2>Goal · current state · desired behavior</h2>
+  <div class="grid2">
+    <div class="card">
+      <div class="lbl" style="color:var(--amber)">Today</div>
+      <p style="margin:8px 0 0">One dropdown (<code>how</code>) mixes the <b>base aggregation</b> (sum / mean) with <b>augmentations</b> (% share / growth / latest). The augmentations <b>replace</b> the base rather than layering on it, and <code>growth</code> compares the window's <b>first month vs its last month</b> — two single months, not two periods.</p>
+    </div>
+    <div class="card">
+      <div class="lbl" style="color:var(--green)">Desired</div>
+      <p style="margin:8px 0 0">Pick the <b>aggregation</b> (sum / average / weighted-avg) and its column(s) first — that's the metric. Then a separate <b>derive</b> dropdown augments it: <b>% of total</b> by group, <b>growth</b> over the window (last N months vs the prior N), and others. Growth of a 12-month window = this year vs last year.</p>
+    </div>
+  </div>
+
+  <h2>The new metric row</h2>
+  <p class="lead">Both the bar and the line metric use the same shape. Green = the base aggregation; blue = the optional derive step.</p>
+
+  <div class="card">
+    <div class="mock">
+      <div class="mockhead">◆ proposed — one consistent metric row</div>
+      <div class="row">
+        <span><span class="barline b-green"></span><span class="lbl">bars =</span></span>
+        <span class="pill name">rentals_volume</span>
+        <span class="arrow">=</span>
+        <span class="pill sel agg">sum</span>
+        <span class="lbl">of</span>
+        <span class="pill sel col">Bonds (n_rented)</span>
+        <span class="lbl">· window</span><span class="pill num">12</span>
+        <span class="lbl">· derive</span>
+        <span class="pill sel der">growth %</span>
+      </div>
+      <div class="row">
+        <span><span class="barline b-blue"></span><span class="lbl">line =</span></span>
+        <span class="pill name">avg_weekly_rent</span>
+        <span class="arrow">=</span>
+        <span class="pill sel agg">weighted-avg</span>
+        <span class="lbl">of</span>
+        <span class="pill sel col">Total weekly rent</span><span class="arrow">/</span><span class="pill sel col">Bonds</span>
+        <span class="lbl">· window</span><span class="pill num">12</span>
+        <span class="lbl">· derive</span>
+        <span class="pill sel der">— none —</span>
+      </div>
+      <div class="note" style="margin-top:12px">Box 1 <b>name</b> · Box 2 <b>aggregation</b> · Box 3(/4) <b>column(s) from the SQL extract</b> · <b>window</b> months · Box 5 <b>derive</b>. The live preview re-renders on every change.</div>
+    </div>
+  </div>
+
+  <div class="ba" style="margin-top:14px">
+    <div class="card">
+      <div><span class="badge now">Now</span></div>
+      <div class="mono" style="margin-top:10px;line-height:2">
+        rentals_volume &nbsp;<span class="pill sel" style="padding:3px 20px 3px 7px">growth %</span>&nbsp; of &nbsp;<span class="pill" style="padding:3px 7px">Bonds</span>&nbsp; window <span class="pill num" style="padding:3px 0">12</span>
+      </div>
+      <ul class="tight muted">
+        <li>agg + augmentation share one dropdown</li>
+        <li>growth = value in month&nbsp;1 vs month&nbsp;12 of the window</li>
+        <li>can't do "growth of a weighted average"</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div><span class="badge next">Proposed</span></div>
+      <div class="mono" style="margin-top:10px;line-height:2">
+        rentals_volume = <span class="pill sel agg" style="padding:3px 20px 3px 7px">sum</span> of <span class="pill" style="padding:3px 7px">Bonds</span> · window <span class="pill num" style="padding:3px 0">12</span> · derive <span class="pill sel der" style="padding:3px 20px 3px 7px">growth %</span>
+      </div>
+      <ul class="tight">
+        <li><b>base</b> and <b>derive</b> are separate, composable</li>
+        <li>growth = <b>last 12 mo vs the prior 12 mo</b></li>
+        <li>any base can be augmented (sum, average, weighted-avg)</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Derive catalog — what to offer (and for which aggregation)</h2>
+  <p class="lead">This is the design question you raised. Below is every augmentation I'd consider, what it computes over the window, and whether it's meaningful for a <b>sum</b>, an <b>average</b>, or a <b>weighted-average</b>. <span class="kicker k-core">core</span> = build now, <span class="kicker k-rec">recommended</span> extra, <span class="kicker k-opt">optional</span>.</p>
+  <div class="card scroll">
+    <table class="tbl">
+      <thead><tr>
+        <th>Derive</th><th>What it computes</th><th class="c">sum</th><th class="c">avg</th><th class="c">wtd-avg</th><th>NSW example</th><th style="width:96px">Tier</th>
+      </tr></thead>
+      <tbody>
+        <tr><td><b>none</b></td><td>the base metric as-is</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td>weekly rentals per month</td><td><span class="kicker k-core">core</span></td></tr>
+        <tr><td><b>% of total</b> <span class="muted">(mix / share)</span></td><td>metric ÷ total across the group (each group sums to 100% across the x-axis); or ÷ grand total</td><td class="c yes">✓</td><td class="c no">—</td><td class="c no">—</td><td>each bedroom band's share of a postcode's rentals</td><td><span class="kicker k-core">core</span></td></tr>
+        <tr><td><b>growth %</b> <span class="muted">(period-over-period)</span></td><td>base over the recent <code>window</code> months vs the base over the <i>prior</i> <code>window</code> months, as % change</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td>12-mo rent growth: avg rent this year vs last</td><td><span class="kicker k-core">core</span></td></tr>
+        <tr><td><b>latest</b></td><td>the base value in the most recent month (a snapshot)</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td>current avg weekly rent</td><td><span class="kicker k-core">core</span></td></tr>
+        <tr><td><b>rolling average</b></td><td>trailing N-month moving average of the base — smooths a noisy monthly series</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td>3-mo smoothed rent trend</td><td><span class="kicker k-rec">rec</span></td></tr>
+        <tr><td><b>index (=100)</b></td><td>base rebased so the window's first period = 100 — compares trends of different magnitudes on one axis</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td>2077 vs 2076 rent, both indexed to 100</td><td><span class="kicker k-rec">rec</span></td></tr>
+        <tr><td><b>cumulative</b> <span class="muted">(running total)</span></td><td>cumulative base over the months</td><td class="c yes">✓</td><td class="c no">—</td><td class="c no">—</td><td>rentals lodged, running total</td><td><span class="kicker k-opt">opt</span></td></tr>
+        <tr><td><b>rank</b> <span class="muted">(within group)</span></td><td>dense rank of the base within the group — leaderboards</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td>rank postcodes by rent growth</td><td><span class="kicker k-opt">opt</span></td></tr>
+        <tr><td><b>YoY %</b></td><td>a growth preset fixed to 12 months (this month vs 12 months ago)</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td>year-on-year change, ignoring the window</td><td><span class="kicker k-opt">opt</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Rule of thumb: <b>% of total</b> and <b>cumulative</b> are meaningful only for a <b>sum</b> (you can add up additive parts; you can't add up averages). Everything else works on any base, because it operates on the base value the aggregation already produced.</p>
+
+  <h2>Growth semantics — the one behavior change to confirm</h2>
+  <div class="ba">
+    <div class="card">
+      <div><span class="badge now">Now — first vs last month</span></div>
+      <p style="margin:10px 0 0" class="muted">Over a 12-month window: <code>(month₁₂ − month₁) / month₁</code>. Two single months — noisy, and sensitive to which months bound the window.</p>
+      <div class="mono note" style="margin-top:10px">■□□□□□□□□□□■ &nbsp;→&nbsp; compares just the two ■</div>
+    </div>
+    <div class="card">
+      <div><span class="badge next">Proposed — period over period</span></div>
+      <p style="margin:10px 0 0">Over a 12-month window: <code>(Σ/avg of the last 12 mo) − (Σ/avg of the prior 12 mo)</code>, ÷ the prior. The window length <i>is</i> the comparison period, exactly as you described (months 1–12 vs 13–24).</p>
+      <div class="mono note" style="margin-top:10px">[■■■■■■■■■■■■][▨▨▨▨▨▨▨▨▨▨▨▨] &nbsp;→&nbsp; recent vs prior</div>
+    </div>
+  </div>
+  <p class="note">Needs 2×window months of history; when there isn't enough, the metric returns 0/NaN for that key (same honest-failure posture as today's growth requiring <code>month</code> in the grain).</p>
+
+  <h2>How it's built</h2>
+  <div class="card">
+    <div class="step"><div class="n">1</div><div><b>Frontend model</b> — split the single <code>how</code> into <code>agg</code> (sum / mean / weighted-avg) + <code>derive</code> (none / share / growth / …). The metric row renders name · agg · column(s) · window · derive; the <b>derive</b> dropdown only offers augmentations valid for the chosen aggregation (e.g. % of total & cumulative hidden unless the base is a sum). <code>buildabilityIssue</code> gains the same guards.</div></div>
+    <div class="step"><div class="n">2</div><div><b>Backend measure math</b> (<code>agent/object_builder.py</code>) — <code>_measure_block</code> computes the base first, then applies the augmentation over the window. Rework <code>growth</code> to period-over-period; add the chosen new augmentations as deterministic pandas blocks (same style as today's <code>share</code>). The spec carries <code>{agg, source|num/den, months, derive, within}</code>.</div></div>
+    <div class="step"><div class="n">3</div><div><b>Tests</b> — one per augmentation × base, asserting the emitted pandas and a worked number (mirrors the existing <code>test_object_builder</code> measure tests), plus the pack-lint stays green.</div></div>
+    <div class="step"><div class="n">4</div><div><b>Verify live</b> — build the rent line+bar with <code>growth %</code> and with <code>% of total</code>, confirm the preview + report render, and that edit-in-place round-trips the new derive field.</div></div>
+  </div>
+
+  <hr />
+
+  <h2>Decisions for you</h2>
+  <p class="lead">Pick the augmentation set and confirm the growth change. Tick options, then press <b>Queue this answer</b> under each — you can change any tick before you send.</p>
+
+  <form class="q" data-lavish-question="augments"
+    onsubmit="event.preventDefault();const f=new FormData(event.currentTarget);const v=f.getAll('aug');window.lavish.queuePrompt('Build these derive augmentations: '+(v.join(', ')||'(none picked)'),{tag:'augmentations',text:'Augmentations: '+v.join(', '),element:event.currentTarget,data:{augments:v}});">
+    <h3>1 · Which augmentations should the <span style="color:var(--blue)">derive</span> dropdown offer?</h3>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" name="aug" value="% of total" checked><span><span class="t">% of total</span> <span class="kicker k-core">core</span><br><span class="d">share / mix within the group — sum only</span></span></label>
+      <label class="opt"><input type="checkbox" name="aug" value="growth % (period-over-period)" checked><span><span class="t">growth %</span> <span class="kicker k-core">core</span><br><span class="d">recent window vs prior window — any base</span></span></label>
+      <label class="opt"><input type="checkbox" name="aug" value="latest" checked><span><span class="t">latest</span> <span class="kicker k-core">core</span><br><span class="d">most recent month's value — any base</span></span></label>
+      <label class="opt"><input type="checkbox" name="aug" value="rolling average"><span><span class="t">rolling average</span> <span class="kicker k-rec">rec</span><br><span class="d">trailing N-month smoothing — any base</span></span></label>
+      <label class="opt"><input type="checkbox" name="aug" value="index to 100"><span><span class="t">index (=100)</span> <span class="kicker k-rec">rec</span><br><span class="d">rebased trend for comparing lines — any base</span></span></label>
+      <label class="opt"><input type="checkbox" name="aug" value="cumulative"><span><span class="t">cumulative</span> <span class="kicker k-opt">opt</span><br><span class="d">running total — sum only</span></span></label>
+      <label class="opt"><input type="checkbox" name="aug" value="rank"><span><span class="t">rank</span> <span class="kicker k-opt">opt</span><br><span class="d">rank within group — any base</span></span></label>
+      <label class="opt"><input type="checkbox" name="aug" value="YoY %"><span><span class="t">YoY %</span> <span class="kicker k-opt">opt</span><br><span class="d">a 12-month growth preset</span></span></label>
+    </div>
+    <button class="queue" type="submit">Queue this answer</button>
+    <div class="note">My recommendation: the 3 core + the 2 recommended (rolling average, index). The 3 optional add value but more surface area.</div>
+  </form>
+
+  <form class="q" data-lavish-question="growth"
+    onsubmit="event.preventDefault();const c=new FormData(event.currentTarget).get('growth');if(c)window.lavish.queuePrompt('Growth semantics: '+c,{tag:'growth',text:'Growth: '+c,element:event.currentTarget,data:{growth:c}});">
+    <h3>2 · Growth semantics</h3>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="growth" value="replace with period-over-period" checked><span><span class="t">Replace</span> with period-over-period (recent window vs prior window)<br><span class="d">the meaningful annual-growth reading you described</span></span></label>
+      <label class="opt"><input type="radio" name="growth" value="keep both first-vs-last and period-over-period"><span><span class="t">Keep both</span><br><span class="d">offer the old first-vs-last month too, as a separate derive option</span></span></label>
+    </div>
+    <button class="queue" type="submit">Queue this answer</button>
+  </form>
+
+  <form class="q" data-lavish-question="share"
+    onsubmit="event.preventDefault();const c=new FormData(event.currentTarget).get('share');if(c)window.lavish.queuePrompt('% of total scope: '+c,{tag:'share',text:'% of total: '+c,element:event.currentTarget,data:{share:c}});">
+    <h3>3 · What should <span style="color:var(--blue)">% of total</span> divide by?</h3>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="share" value="within the group column (current behavior)" checked><span><span class="t">Within the group</span> <span class="muted">(current)</span><br><span class="d">each series sums to 100% across the x-axis — the "mix" reading</span></span></label>
+      <label class="opt"><input type="radio" name="share" value="of the grand total"><span><span class="t">Of the grand total</span><br><span class="d">share of everything, not just the series</span></span></label>
+      <label class="opt"><input type="radio" name="share" value="offer both as a sub-choice"><span><span class="t">Offer both</span><br><span class="d">a small toggle when % of total is chosen</span></span></label>
+    </div>
+    <button class="queue" type="submit">Queue this answer</button>
+  </form>
+
+  <h2>Risks &amp; notes</h2>
+  <ul class="tight muted">
+    <li><b>Backwards compatibility</b> — existing goldens store <code>how: "share"|"growth"|"latest"</code>. The loader maps them onto the new <code>{agg, derive}</code> shape so saved objects keep working; <code>growth</code> ones will re-render with the new period-over-period math (values change — that's the intended fix).</li>
+    <li><b>Scope</b> — every augmentation is deterministic pandas over the extract, no LLM and no new SQL. But each one is code + tests, so the set you pick sizes the work.</li>
+    <li><b>Non-additive guard</b> stays — <code>% of total</code> / <code>cumulative</code> are offered only when the base is a <code>sum</code> of an additive column; the builder won't let you sum a stored average.</li>
+  </ul>
+
+  <p class="note" style="margin-top:26px">Once you've queued your answers (or annotated anything), press <b>Send to Agent</b> and I'll implement exactly the set you chose.</p>
+
+</div>
+</body>
+</html>

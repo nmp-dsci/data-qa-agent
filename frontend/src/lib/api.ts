@@ -1035,16 +1035,34 @@ export interface GoldenInput {
   expectation?: string | null;
 }
 
-/** One measure a Presentation Object builds — a plain agg of one column
- *  (source + agg), a weighted average (num / den), or an *augmented* metric
- *  (source + how) that turns a base column into a % share, growth, or latest
- *  value deterministically. ``months`` windows it. */
+/** A derived augmentation applied on top of a measure's base aggregation, over
+ *  the window (s29). ``share`` = % of the total within the series; ``growth`` =
+ *  the recent window vs the prior window, % change; ``latest`` = the most recent
+ *  month; ``rolling`` = window mean; ``index`` = rebased to 100; ``cumulative`` =
+ *  running total; ``rank`` = rank within the series; ``yoy`` = vs 12 months prior.
+ *  ``share``/``cumulative`` need a ``sum`` base; the time ones need month. */
+export type MeasureDerive =
+  | ""
+  | "share"
+  | "growth"
+  | "latest"
+  | "rolling"
+  | "index"
+  | "cumulative"
+  | "rank"
+  | "yoy";
+
+/** One measure a Presentation Object builds — a base aggregation (``sum``/``mean``
+ *  of one ``source`` column, or a weighted average ``num``/``den``) plus an
+ *  optional ``derive`` that augments it deterministically over ``months``. ``how``
+ *  is the pre-s29 augmentation field, still read so saved goldens keep working. */
 export interface SandboxMeasure {
   label: string;
   source?: string;
   agg?: "sum" | "mean";
-  /** Augmented kind (s28): % share within the series, first-vs-last growth, or
-   *  the latest month's value. Mutually exclusive with agg/num-den. */
+  /** The derived augmentation (s29). Empty / absent = the plain window aggregate. */
+  derive?: MeasureDerive;
+  /** Pre-s29 augmentation field — mapped forward to ``derive`` on load. */
   how?: "share" | "growth" | "latest";
   num?: string;
   den?: string;

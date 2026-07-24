@@ -542,6 +542,20 @@ builder derives its dataset (vocabulary, defaults, and build target) from the �
 lines: line 1 is the golden's own WHERE, carried from the SQL and always kept (read-only); line 2 is the
 builder's `filter` field, an additional predicate ANDed on top.
 
+**Metric = aggregation + a derived augmentation (s29).** A bar/line measure is now a **base aggregation**
+(`sum`/`mean` of one column, or a weighted-average `num`/`den`) plus an optional **derive** that augments it
+over the window — the two were previously conflated in one `how` dropdown. The metric row reads
+`name = agg of column · window · derive`. `agent/object_builder.py::_measure_block` builds the monthly
+additive components once, then the `derive` reduces them to one value per key: `share` (% of total within
+the series), `growth` (**period-over-period** — the recent window vs the prior window, replacing the old
+first-vs-last-month math), `latest`, `rolling` (window mean), `index` (=100 at the window's start),
+`cumulative` (running total), `rank` (within the series), `yoy` (vs 12 months prior). `share`/`cumulative`
+need a `sum` base and the time derives need `month` in the grain — both rejected at codegen, and mirrored in
+the frontend `buildabilityIssue` so the green check gates them. Old goldens stored the augmentation as `how`
+(share/growth/latest, sum base); `_measure`/`aggOf`/`deriveOf` map it forward so they keep working, and the
+`none`/`sum`/`mean`/`wavg` paths are byte-identical to before so existing objects don't shift. The derive
+dropdown only shows for the bar family (compare/breakdown/table).
+
 ---
 
 ## Conventions

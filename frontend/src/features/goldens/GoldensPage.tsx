@@ -15,6 +15,7 @@ import {
   GoldenListItem,
   GoldenObject,
   GraderSpec,
+  MeasureDerive,
   OrdinalRow,
   Page,
   PageObject,
@@ -333,27 +334,49 @@ const BUILDER_TYPES: { type: PageObjectType; label: string }[] = [
   { type: "table", label: "Table" },
 ];
 
-// How a measure turns its source column into a value. sum/mean are plain aggs;
-// share/growth/latest are the s28 augmented kinds (a base metric → % of series,
-// first-vs-last growth, or the latest month's value) computed deterministically.
-type MeasureHow = "sum" | "mean" | "share" | "growth" | "latest";
-const MEASURE_HOWS: { value: MeasureHow; label: string }[] = [
+// A measure is a BASE aggregation of its column(s) + an optional DERIVE that
+// augments it over the window (s29). sum/mean are the single-column base aggs (a
+// weighted average is the num/den line mode); the derive turns the base into a %
+// of total, a growth rate, a rank, etc. — all deterministic, no LLM.
+type MeasureAgg = "sum" | "mean";
+const MEASURE_AGGS: { value: MeasureAgg; label: string }[] = [
   { value: "sum", label: "sum" },
   { value: "mean", label: "average" },
-  { value: "share", label: "% share (of series)" },
-  { value: "growth", label: "growth %" },
-  { value: "latest", label: "latest value" },
 ];
-// Every how sums the source column somewhere — the window dedup sums even a
-// "mean" measure's source — so the server's additive guard restricts them all
-// to additive metrics (summing a stored average is silently wrong). Picking any
-// how snaps a non-additive source to an additive one.
-const HOW_NEEDS_ADDITIVE = new Set<MeasureHow>(["sum", "mean", "share", "growth", "latest"]);
-// The augmented kinds only exist in the bar-family codegen (compare/breakdown/
-// table); trend and kpi read the raw column, so the form hides the modifier for
-// them and the spec never claims a share/growth it wouldn't compute.
-const AUGMENTED_HOWS = new Set<MeasureHow>(["share", "growth", "latest"]);
+const MEASURE_DERIVES: { value: MeasureDerive; label: string }[] = [
+  { value: "", label: "— none —" },
+  { value: "share", label: "% of total" },
+  { value: "growth", label: "growth %" },
+  { value: "latest", label: "latest" },
+  { value: "rolling", label: "rolling average" },
+  { value: "index", label: "index (=100)" },
+  { value: "cumulative", label: "cumulative" },
+  { value: "rank", label: "rank" },
+  { value: "yoy", label: "YoY %" },
+];
+// % of total / cumulative only mean something for an additive total, so they need
+// a sum base; the time derives read a value over months, so they need month in
+// the grain. The builder blocks the invalid combos the backend would reject.
+const SUM_ONLY_DERIVES = new Set<MeasureDerive>(["share", "cumulative"]);
+const TIME_DERIVES = new Set<MeasureDerive>([
+  "growth",
+  "latest",
+  "rolling",
+  "index",
+  "cumulative",
+  "yoy",
+]);
+// Derives only exist in the bar-family codegen (compare/breakdown/table); trend
+// and kpi read the raw column, so the form hides the derive for them and the spec
+// never claims one it wouldn't compute.
 const HOW_OBJECT_TYPES = new Set<PageObjectType>(["compare", "breakdown", "table"]);
+// A saved measure's base aggregation. Pre-s29 measures stored the base agg in
+// `agg` (an augmented `how` always implied a sum base), so this reads across both.
+const aggOf = (m: SandboxMeasure): MeasureAgg => (m.agg === "mean" ? "mean" : "sum");
+// A saved measure's derive, mapping the pre-s29 `how` forward.
+const deriveOf = (m: SandboxMeasure): MeasureDerive =>
+  m.derive ??
+  (m.how === "share" || m.how === "growth" || m.how === "latest" ? m.how : "");
 
 // The builder's flat form state (compare covers every field; simpler types read a
 // subset). Defaults are the house line+bar recipe so a first build just works.
@@ -370,14 +393,16 @@ interface BuilderForm {
   months: number;
   bar_label: string;
   bar_source: string;
-  bar_how: MeasureHow;
+  bar_agg: MeasureAgg;
+  bar_derive: MeasureDerive;
   bar_months: number;
   line_label: string;
   line_mode: "wavg" | "column";
   line_num: string;
   line_den: string;
   line_source: string;
-  line_how: MeasureHow;
+  line_agg: MeasureAgg;
+  line_derive: MeasureDerive;
   line_months: number;
   instruction: string;
 }
@@ -397,14 +422,16 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
         months: 12,
         bar_label: "rentals_volume",
         bar_source: "n_rented",
-        bar_how: "sum",
+        bar_agg: "sum",
+        bar_derive: "",
         bar_months: 12,
         line_label: "avg_weekly_rent",
         line_mode: "wavg",
         line_num: "total_weekly_rent",
         line_den: "n_rented",
         line_source: "avg_weekly_rent",
-        line_how: "mean",
+        line_agg: "mean",
+        line_derive: "",
         line_months: 6,
         instruction: "",
       }
@@ -418,14 +445,16 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
         months: 12,
         bar_label: "sales_volume",
         bar_source: "n_sold",
-        bar_how: "sum",
+        bar_agg: "sum",
+        bar_derive: "",
         bar_months: 12,
         line_label: "avg_sale_price",
         line_mode: "wavg",
         line_num: "total_sale_value",
         line_den: "n_sold",
         line_source: "avg_sale_price",
-        line_how: "mean",
+        line_agg: "mean",
+        line_derive: "",
         line_months: 6,
         instruction: "",
       };
@@ -465,42 +494,49 @@ function placeObjectInReport(pages: Page[], obj: PageObject, pi = 0, ci = 0): Pa
   return next;
 }
 
-/** A measure from a source + "how": sum/mean are plain aggs; share/growth/latest
- *  are the augmented kinds the deterministic builder recomposes. */
-function measureFromHow(
+/** A measure from a column + base aggregation + optional derive. */
+function measureFromParts(
   label: string,
   source: string,
-  how: MeasureHow,
+  agg: MeasureAgg,
+  derive: MeasureDerive,
   months: number,
 ): SandboxMeasure {
-  if (how === "sum" || how === "mean") return { label, source, agg: how, months };
-  return { label, source, how, months };
+  const m: SandboxMeasure = { label, source, agg, months };
+  if (derive) m.derive = derive;
+  return m;
 }
 
-/** A stale augmented how (picked under a bar-family type, then the type switched
- *  to trend/kpi where the form hides the modifier) falls back to a plain agg. */
-function effectiveHow(objectType: PageObjectType, how: MeasureHow): MeasureHow {
-  return !HOW_OBJECT_TYPES.has(objectType) && AUGMENTED_HOWS.has(how) ? "sum" : how;
+/** Derives only compute for the bar family (compare/breakdown/table). A derive
+ *  left over after switching to trend/kpi is dropped so the spec never claims one
+ *  the codegen wouldn't build. */
+function effectiveDerive(objectType: PageObjectType, derive: MeasureDerive): MeasureDerive {
+  return HOW_OBJECT_TYPES.has(objectType) ? derive : "";
 }
 
 function barMeasure(f: BuilderForm): SandboxMeasure {
-  return measureFromHow(
+  return measureFromParts(
     f.bar_label,
     f.bar_source,
-    effectiveHow(f.object_type, f.bar_how),
+    f.bar_agg,
+    effectiveDerive(f.object_type, f.bar_derive),
     f.bar_months,
   );
 }
 
 function lineMeasure(f: BuilderForm): SandboxMeasure {
-  return f.line_mode === "wavg"
-    ? { label: f.line_label, num: f.line_num, den: f.line_den, months: f.line_months }
-    : measureFromHow(
-        f.line_label,
-        f.line_source,
-        effectiveHow(f.object_type, f.line_how),
-        f.line_months,
-      );
+  const derive = effectiveDerive(f.object_type, f.line_derive);
+  if (f.line_mode === "wavg") {
+    const m: SandboxMeasure = {
+      label: f.line_label,
+      num: f.line_num,
+      den: f.line_den,
+      months: f.line_months,
+    };
+    if (derive) m.derive = derive;
+    return m;
+  }
+  return measureFromParts(f.line_label, f.line_source, f.line_agg, derive, f.line_months);
 }
 
 /** Assemble the structured spec the deterministic builder emits code from. */
@@ -523,19 +559,29 @@ function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
   return spec;
 }
 
-/** Invert a saved object's measure back into the builder's bar fields. */
+/** Invert a saved object's measure back into the builder's bar fields (base agg +
+ *  derive, tolerant of the pre-s29 `how` shape). */
 function barFields(m: SandboxMeasure | undefined, d: BuilderForm) {
-  if (!m) return { bar_label: d.bar_label, bar_source: d.bar_source, bar_how: d.bar_how, bar_months: d.bar_months };
+  if (!m) {
+    return {
+      bar_label: d.bar_label,
+      bar_source: d.bar_source,
+      bar_agg: d.bar_agg,
+      bar_derive: d.bar_derive,
+      bar_months: d.bar_months,
+    };
+  }
   return {
     bar_label: m.label ?? d.bar_label,
     bar_source: m.source ?? d.bar_source,
-    bar_how: (m.how ?? m.agg ?? "sum") as MeasureHow,
+    bar_agg: aggOf(m),
+    bar_derive: deriveOf(m),
     bar_months: m.months ?? d.bar_months,
   };
 }
 
 /** Invert a saved object's line measure back into the builder's line fields — a
- *  num/den measure is a weighted average, otherwise it's a plain source + how. */
+ *  num/den measure is a weighted average, otherwise it's a column + base agg. */
 function lineFields(m: SandboxMeasure | undefined, d: BuilderForm) {
   if (!m) {
     return {
@@ -543,7 +589,8 @@ function lineFields(m: SandboxMeasure | undefined, d: BuilderForm) {
       line_num: d.line_num,
       line_den: d.line_den,
       line_source: d.line_source,
-      line_how: d.line_how,
+      line_agg: d.line_agg,
+      line_derive: d.line_derive,
       line_label: d.line_label,
       line_months: d.line_months,
     };
@@ -554,7 +601,8 @@ function lineFields(m: SandboxMeasure | undefined, d: BuilderForm) {
       line_num: m.num ?? d.line_num,
       line_den: m.den ?? d.line_den,
       line_source: d.line_source,
-      line_how: d.line_how,
+      line_agg: d.line_agg,
+      line_derive: deriveOf(m),
       line_label: m.label ?? d.line_label,
       line_months: m.months ?? d.line_months,
     };
@@ -564,7 +612,8 @@ function lineFields(m: SandboxMeasure | undefined, d: BuilderForm) {
     line_num: d.line_num,
     line_den: d.line_den,
     line_source: m.source ?? d.line_source,
-    line_how: (m.how ?? m.agg ?? "mean") as MeasureHow,
+    line_agg: aggOf(m),
+    line_derive: deriveOf(m),
     line_label: m.label ?? d.line_label,
     line_months: m.months ?? d.line_months,
   };
@@ -651,12 +700,23 @@ function buildabilityIssue(
     if (stray) return `x column ${stray} must be in the grain`;
   }
   if (f.group && !grain.includes(f.group)) return `group ${f.group} must be in the grain`;
-  // The bar measure is summed (every how), so its source must be additive.
+  // A derive is only meaningful under the right base + grain: % of total /
+  // cumulative need a sum base; the time derives (growth, rolling, …) need month.
+  const deriveIssue = (derive: MeasureDerive, isSum: boolean, what: string): string | null => {
+    if (!derive) return null;
+    if (SUM_ONLY_DERIVES.has(derive) && !isSum)
+      return `${what} ${derive} needs a sum aggregation`;
+    if (TIME_DERIVES.has(derive) && !grain.includes("month"))
+      return `${what} ${derive} needs month in the grain`;
+    return null;
+  };
+  // The bar measure's source is summed through the window dedup, so it must be
+  // additive; then its derive must fit the base/grain.
   if (HOW_OBJECT_TYPES.has(chart)) {
     const barIssue = needsAdditive(f.bar_source);
     if (barIssue) return `bars: ${barIssue} — pick an additive metric`;
-    if (AUGMENTED_HOWS.has(f.bar_how) && !grain.includes("month"))
-      return `bars use ${f.bar_how} — add month to the grain`;
+    const bd = deriveIssue(f.bar_derive, f.bar_agg === "sum", "bars");
+    if (bd) return bd;
   }
   // The line: wavg legs or a summed column must be additive.
   if (chart === "compare" || chart === "trend" || chart === "kpi") {
@@ -669,22 +729,22 @@ function buildabilityIssue(
       const s = needsAdditive(f.line_source);
       if (s) return `line: ${s} — pick an additive metric`;
     }
+    if (HOW_OBJECT_TYPES.has(chart)) {
+      // wavg is not a sum, so a sum-only derive on a wavg line is rejected.
+      const ld = deriveIssue(f.line_derive, f.line_mode === "column" && f.line_agg === "sum", "line");
+      if (ld) return ld;
+    }
   }
   return null;
 }
 
-/** A short human label for a measure — the "6-mo avg" / "12-mo sum" chip. */
+/** A short human label for a measure — the "6-mo avg · growth" chip. */
 function measureChip(m: SandboxMeasure | undefined): string | null {
   if (!m) return null;
   const win = m.months ? `${m.months}-mo ` : "";
-  const kind = m.how
-    ? { share: "% share", growth: "growth", latest: "latest" }[m.how]
-    : m.num && m.den
-      ? "wtd-avg"
-      : m.agg === "mean"
-        ? "avg"
-        : "sum";
-  return `${m.label} · ${win}${kind}`;
+  const base = m.num && m.den ? "wtd-avg" : m.agg === "mean" ? "avg" : "sum";
+  const derive = deriveOf(m);
+  return `${m.label} · ${win}${base}${derive ? ` · ${derive}` : ""}`;
 }
 
 const box: React.CSSProperties = {
@@ -1616,15 +1676,13 @@ export function GoldensPage({
     additive: m.kind === "additive",
   }));
   const additiveMetricOpts = metricOpts.filter((m) => m.additive);
-  // The how modifier only renders for the bar family — trend/kpi ignore it.
+  // The derive dropdown only renders for the bar family — trend/kpi ignore it.
   const howApplies = HOW_OBJECT_TYPES.has(builder.object_type);
-  // Switching how to an augmented kind while a non-additive source is selected
-  // (a legacy free-text value the dropdown re-injects) snaps the source to the
-  // first additive metric so the invalid combo can't reach the build.
-  const resetToAdditive = (how: MeasureHow, source: string): string =>
-    HOW_NEEDS_ADDITIVE.has(how) &&
-    additiveMetricOpts.length > 0 &&
-    !additiveMetricOpts.some((m) => m.value === source)
+  // Every base aggregation sums the source through the window dedup, so a source
+  // must be additive; snap a non-additive (e.g. legacy free-text) one to the first
+  // additive metric so the invalid combo can't reach the build.
+  const ensureAdditive = (source: string): string =>
+    additiveMetricOpts.length > 0 && !additiveMetricOpts.some((m) => m.value === source)
       ? additiveMetricOpts[0].value
       : source;
   // A <select> whose current value is always present (even before the vocab
@@ -2086,10 +2144,10 @@ export function GoldensPage({
                         ? {
                             ...b,
                             object_type: type,
-                            bar_source: resetToAdditive(b.bar_how, b.bar_source),
+                            bar_source: ensureAdditive(b.bar_source),
                             line_source:
                               b.line_mode === "column"
-                                ? resetToAdditive(b.line_how, b.line_source)
+                                ? ensureAdditive(b.line_source)
                                 : b.line_source,
                           }
                         : { ...b, object_type: type },
@@ -2188,36 +2246,36 @@ export function GoldensPage({
                   style={{ ...mono, fontSize: 12, padding: "3px 5px", width: "100%", marginTop: 4 }}
                 />
               </div>
+              {/* bars = <name> = <agg> of <column> · window <N> · derive <derive> */}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ ...label, color: "rgb(90,170,90)" }}>bars =</span>
                 <input
                   data-testid="builder-bar-label"
-                  title="series label"
+                  title="metric name"
                   value={builder.bar_label}
                   onChange={(e) => setBuilder((b) => ({ ...b, bar_label: e.target.value }))}
                   style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
                 />
-                {howApplies && (
-                  <select
-                    data-testid="builder-bar-how"
-                    value={builder.bar_how}
-                    onChange={(e) => {
-                      const how = e.target.value as MeasureHow;
-                      setBuilder((b) => ({
-                        ...b,
-                        bar_how: how,
-                        bar_source: resetToAdditive(how, b.bar_source),
-                      }));
-                    }}
-                    style={sel}
-                  >
-                    {MEASURE_HOWS.map((h) => (
-                      <option key={h.value} value={h.value}>
-                        {h.label}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                <span style={label}>=</span>
+                <select
+                  data-testid="builder-bar-agg"
+                  title="aggregation"
+                  value={builder.bar_agg}
+                  onChange={(e) =>
+                    setBuilder((b) => ({
+                      ...b,
+                      bar_agg: e.target.value as MeasureAgg,
+                      bar_source: ensureAdditive(b.bar_source),
+                    }))
+                  }
+                  style={sel}
+                >
+                  {MEASURE_AGGS.map((a) => (
+                    <option key={a.value} value={a.value}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
                 <span style={label}>of</span>
                 <select
                   data-testid="builder-bar-source"
@@ -2239,6 +2297,25 @@ export function GoldensPage({
                     style={{ fontSize: 12, padding: "2px 4px", width: 50 }}
                   />
                 </label>
+                {howApplies && (
+                  <label style={label}>
+                    derive{" "}
+                    <select
+                      data-testid="builder-bar-derive"
+                      value={builder.bar_derive}
+                      onChange={(e) =>
+                        setBuilder((b) => ({ ...b, bar_derive: e.target.value as MeasureDerive }))
+                      }
+                      style={sel}
+                    >
+                      {MEASURE_DERIVES.map((dv) => (
+                        <option key={dv.value} value={dv.value}>
+                          {dv.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ ...label, color: "rgb(120,160,255)" }}>line =</span>
@@ -2250,6 +2327,7 @@ export function GoldensPage({
                   style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
                 />
                 <select
+                  data-testid="builder-line-mode"
                   value={builder.line_mode}
                   onChange={(e) => {
                     const mode = e.target.value as "wavg" | "column";
@@ -2257,9 +2335,7 @@ export function GoldensPage({
                       ...b,
                       line_mode: mode,
                       line_source:
-                        mode === "column" && howApplies
-                          ? resetToAdditive(b.line_how, b.line_source)
-                          : b.line_source,
+                        mode === "column" ? ensureAdditive(b.line_source) : b.line_source,
                     }));
                   }}
                 >
@@ -2290,27 +2366,25 @@ export function GoldensPage({
                   </>
                 ) : (
                   <>
-                    {howApplies && (
-                      <select
-                        data-testid="builder-line-how"
-                        value={builder.line_how}
-                        onChange={(e) => {
-                          const how = e.target.value as MeasureHow;
-                          setBuilder((b) => ({
-                            ...b,
-                            line_how: how,
-                            line_source: resetToAdditive(how, b.line_source),
-                          }));
-                        }}
-                        style={sel}
-                      >
-                        {MEASURE_HOWS.map((h) => (
-                          <option key={h.value} value={h.value}>
-                            {h.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    <select
+                      data-testid="builder-line-agg"
+                      title="aggregation"
+                      value={builder.line_agg}
+                      onChange={(e) =>
+                        setBuilder((b) => ({
+                          ...b,
+                          line_agg: e.target.value as MeasureAgg,
+                          line_source: ensureAdditive(b.line_source),
+                        }))
+                      }
+                      style={sel}
+                    >
+                      {MEASURE_AGGS.map((a) => (
+                        <option key={a.value} value={a.value}>
+                          {a.label}
+                        </option>
+                      ))}
+                    </select>
                     <span style={label}>of</span>
                     <select
                       data-testid="builder-line-source"
@@ -2334,6 +2408,25 @@ export function GoldensPage({
                     style={{ fontSize: 12, padding: "2px 4px", width: 50 }}
                   />
                 </label>
+                {howApplies && (
+                  <label style={label}>
+                    derive{" "}
+                    <select
+                      data-testid="builder-line-derive"
+                      value={builder.line_derive}
+                      onChange={(e) =>
+                        setBuilder((b) => ({ ...b, line_derive: e.target.value as MeasureDerive }))
+                      }
+                      style={sel}
+                    >
+                      {MEASURE_DERIVES.map((dv) => (
+                        <option key={dv.value} value={dv.value}>
+                          {dv.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <button

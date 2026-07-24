@@ -129,12 +129,54 @@ def element_id_for(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-# The "how" modifier augments a base metric into a derived one, deterministically
-# — so a count like ``n_sold`` becomes "% of sold by X" (share) or "growth over
-# the window" without needing a stored derived column or the LLM.
-_SHARE_HOWS = {"share", "pct", "percent", "% share", "share_of_x", "pct_of_x"}
-_GROWTH_HOWS = {"growth", "growth %", "growth_pct", "delta", "delta %"}
-_LATEST_HOWS = {"latest", "latest value", "current"}
+# A measure is a BASE aggregation (sum / mean / weighted-avg) plus an optional
+# DERIVE that augments it over the window. Aliases map old/free-text values onto
+# the canonical derive so saved goldens (which stored ``how``) keep working.
+_DERIVE_ALIASES = {
+    "share": "share",
+    "pct": "share",
+    "percent": "share",
+    "% share": "share",
+    "% of total": "share",
+    "share_of_x": "share",
+    "pct_of_x": "share",
+    "mix": "share",
+    "growth": "growth",
+    "growth %": "growth",
+    "growth_pct": "growth",
+    "delta": "growth",
+    "delta %": "growth",
+    "growth % (period-over-period)": "growth",
+    "latest": "latest",
+    "latest value": "latest",
+    "current": "latest",
+    "rolling": "rolling",
+    "rolling average": "rolling",
+    "rolling_avg": "rolling",
+    "moving average": "rolling",
+    "moving_avg": "rolling",
+    "index": "index",
+    "index to 100": "index",
+    "index=100": "index",
+    "indexed": "index",
+    "cumulative": "cumulative",
+    "running total": "cumulative",
+    "cumsum": "cumulative",
+    "rank": "rank",
+    "ranking": "rank",
+    "yoy": "yoy",
+    "yoy %": "yoy",
+    "year over year": "yoy",
+    "year-over-year": "yoy",
+}
+# Derives that read a value *over time* — they need ``month`` in the grain.
+_TIME_DERIVES = {"growth", "latest", "rolling", "index", "cumulative", "yoy"}
+# Derives that only make sense for an additive total (you sum parts, not averages).
+_SUM_ONLY_DERIVES = {"share", "cumulative"}
+
+
+def _canon_derive(raw: Any) -> str:
+    return _DERIVE_ALIASES.get(str(raw or "").strip().lower(), "")
 
 
 def _measure(
@@ -145,16 +187,17 @@ def _measure(
     default_num: str | None = None,
     default_den: str | None = None,
 ) -> dict[str, Any]:
-    """Normalise a measure dict from the form.
+    """Normalise a measure dict from the form into ``{label, base, …, months,
+    derive}``.
 
-    Shapes accepted:
-      * ``{"label","source","agg","months"}``          — sum/mean of one column
-      * ``{"label","num","den","months"}``              — weighted avg num/den
-      * ``{"label","source","how":"share"|"growth"|"latest","months"}``
-        — a base metric *augmented*: ``share`` = % of the source within the
-        chart's series (each series sums to 100% across the x-axis, the "mix"
-        reading); ``growth`` = first-vs-last % change over the window; ``latest``
-        = the value at the most recent month. All computed deterministically.
+    ``base`` is the aggregation — ``sum``/``mean`` of one ``source`` column, or a
+    weighted average ``wavg`` of ``num``/``den``. ``derive`` (optional) augments
+    that base over the window: ``share`` (% of the total within the series),
+    ``growth`` (recent-window vs prior-window % change), ``latest``, ``rolling``
+    (mean over the window), ``index`` (rebased to 100), ``cumulative`` (running
+    total), ``rank`` (within the series), ``yoy`` (vs 12 months prior). All
+    deterministic. Old goldens stored the augmentation as ``how`` — it's mapped
+    forward, and an old augmented ``how`` implied a ``sum`` base.
 
     ``default_num``/``default_den`` recompose a recomposed-average default: when
     the form supplies no measure at all and the fallback is a non-additive ratio
@@ -163,29 +206,20 @@ def _measure(
     a partial (or empty) spec still yields runnable code.
     """
     m = raw if isinstance(raw, dict) else {}
-    num = m.get("num")
-    den = m.get("den")
     label = str(m.get("label") or default_label)
     months = int(m.get("months") or 0) or None
-    how = str(m.get("how") or "").strip().lower()
-    if not num and not den and not m.get("source") and not how and default_num and default_den:
+    derive = _canon_derive(m.get("derive") or m.get("how") or "")
+    num = m.get("num")
+    den = m.get("den")
+    if not num and not den and not m.get("source") and not derive and default_num and default_den:
         num, den = default_num, default_den
     source = str(m.get("source") or default_source)
-    if num and den and how not in _SHARE_HOWS | _GROWTH_HOWS | _LATEST_HOWS:
-        return {"kind": "wavg", "label": label, "num": str(num), "den": str(den), "months": months}
-    if how in _SHARE_HOWS:
-        return {"kind": "share", "label": label, "source": source, "months": months}
-    if how in _GROWTH_HOWS:
-        return {"kind": "growth", "label": label, "source": source, "months": months}
-    if how in _LATEST_HOWS:
-        return {"kind": "latest", "label": label, "source": source, "months": months}
-    return {
-        "kind": "agg",
-        "label": label,
-        "source": source,
-        "agg": str(m.get("agg") or "sum"),
-        "months": months,
-    }
+    agg = str(m.get("agg") or "").strip().lower()
+    common = {"label": label, "months": months, "derive": derive}
+    # Weighted average: explicit agg=wavg, or a num/den pair with no plain agg.
+    if agg == "wavg" or (num and den and agg not in ("sum", "mean")):
+        return {**common, "base": "wavg", "num": str(num or source), "den": str(den or source)}
+    return {**common, "base": ("mean" if agg == "mean" else "sum"), "source": source}
 
 
 def dimension_cols(raw: Any, prof: MartProfile) -> list[str]:
@@ -454,89 +488,164 @@ def _measure_block(
     var: str,
     has_month: bool,
     within: list[str] | None = None,
+    default_months: int = 12,
 ) -> list[str]:
     """Emit pandas that builds one measure at ``keys`` grain into DataFrame ``var``
     with a single value column named ``m['label']``.
 
-    ``within`` scopes a ``share`` measure's denominator (the series/group column,
-    so each series sums to 100% across the x-axis); empty ⇒ share of the grand
-    total.
+    The measure is a BASE aggregation over the window (``sum``/``mean`` of one
+    column, or a weighted-average ``num``/``den``) plus an optional DERIVE that
+    augments it. The base's monthly additive components are built once into
+    ``<var>_c`` (``_num``/``_den`` per key per month, and ``_v`` = the monthly
+    value); the derive then reduces them to one value per key:
+
+    * ``""``          — the value aggregated over the window.
+    * ``share``       — % of the window value within ``within`` (each series sums
+                        to 100% across the x-axis); empty ``within`` ⇒ grand total.
+    * ``rank``        — dense rank of the window value within ``within`` (1 = top).
+    * ``growth``      — the window value over the recent ``w`` months vs the prior
+                        ``w`` months, as a % change (period over period).
+    * ``latest``      — the most recent month's value.
+    * ``rolling``     — the mean of the monthly values over the window.
+    * ``index``       — the latest value ÷ the window's first value × 100.
+    * ``cumulative``  — the running total over the window (a sum's window total).
+    * ``yoy``         — the latest month vs 12 months prior, as a % change.
+
+    ``share``/``cumulative`` need an additive (``sum``) base; the time derives need
+    ``month`` in the grain — both are rejected honestly rather than silently
+    collapsing to a static aggregate while the label still claims otherwise.
     """
     keys_lit = json.dumps(keys)
-    win = m.get("months")
-    src = (
-        f"base[base['month'].isin(set(_months[-{int(win)}:]))]"
-        if (has_month and win)
-        else ("base[base['month'].isin(_win_default)]" if has_month else "base")
-    )
     label = json.dumps(m["label"])
-    kind = m["kind"]
-    if kind == "wavg":
-        num = json.dumps(_additive_source(m["num"]))
-        den = json.dumps(_additive_source(m["den"]))
-        return [
-            f"{var} = {src}.groupby({keys_lit}, as_index=False).agg("
-            f"_num=({num}, 'sum'), _den=({den}, 'sum'))",
-            f"{var}[{label}] = ({var}['_num'] / {var}['_den'].where({var}['_den'] != 0)).round()",
-            f"{var} = {var}[{keys_lit} + [{label}]]",
-        ]
-    if kind == "share":
-        # % of the source within the series (`within`); each series then sums to
-        # 100% across the x-axis. Always a Series denominator so the empty-`within`
-        # (grand-total) case divides cleanly too.
-        src_col = json.dumps(_additive_source(m["source"]))
-        within_lit = json.dumps([c for c in (within or []) if c])
-        return [
-            f"{var} = {src}.groupby({keys_lit}, as_index=False)[{src_col}].sum()",
-            f"_wl = {within_lit}",
-            f"_den = ({var}.groupby(_wl)[{src_col}].transform('sum') if _wl "
-            f"else pd.Series({var}[{src_col}].sum(), index={var}.index))",
-            f"{var}[{label}] = "
-            f"({var}[{src_col}] * 100.0 / _den.where(_den != 0)).round(2).fillna(0.0)",
-            f"{var} = {var}[{keys_lit} + [{label}]]",
-        ]
-    if kind in ("growth", "latest"):
-        # growth/latest are changes *over time* — without a month to order on they
-        # would silently collapse to a plain sum while the label still claims
-        # "growth"/"latest". Fail honestly instead (matches the branch's
-        # reject-silently-wrong posture) so the curator adds month to the grain.
-        if not has_month:
-            raise ValueError(
-                f"{kind} measure {m['label']!r} needs 'month' in the grain — it is a "
-                "change over time, not a static aggregate"
-            )
-        # Per chart key over the window's months: first-vs-last % change, or the
-        # most recent value — computed on per-month totals of the source, so a
-        # grain wider than the chart keys never leaks one sub-slice row into the
-        # boundary months.
-        src_col = json.dumps(_additive_source(m["source"]))
-        month_keys = keys if "month" in keys else [*keys, "month"]
-        ordered = (
-            f"{src}.groupby({json.dumps(month_keys)}, as_index=False)"
-            f"[{src_col}].sum().sort_values('month')"
+    base = m["base"]
+    derive = m.get("derive") or ""
+    additive = base == "sum"
+    within_lit = json.dumps([c for c in (within or []) if c])
+    w = int(m.get("months") or 0) or default_months
+
+    if derive in _TIME_DERIVES and not has_month:
+        raise ValueError(
+            f"{derive} measure {m['label']!r} needs 'month' in the grain — it is a "
+            "change over time, not a static aggregate"
         )
-        if kind == "latest":
+    if derive in _SUM_ONLY_DERIVES and not additive:
+        raise ValueError(
+            f"{derive} measure {m['label']!r} needs a sum aggregation — % of total / "
+            "cumulative are only meaningful for an additive total"
+        )
+
+    # Monthly additive components at (keys[, month]). For a sum the value IS the
+    # numerator; for mean/wavg it is num/den (count for mean, denominator leg for
+    # wavg) — so any period aggregates correctly by summing the legs first.
+    if base == "wavg":
+        num, den = json.dumps(_additive_source(m["num"])), json.dumps(_additive_source(m["den"]))
+        comp = f"_num=({num}, 'sum'), _den=({den}, 'sum')"
+    elif base == "mean":
+        sc = json.dumps(_additive_source(m["source"]))
+        comp = f"_num=({sc}, 'sum'), _den=({sc}, 'count')"
+    else:
+        comp = f"_num=({json.dumps(_additive_source(m['source']))}, 'sum')"
+    mkeys_lit = json.dumps([*keys, *(["month"] if has_month else [])])
+    lines = [f"{var}_c = base.groupby({mkeys_lit}, as_index=False).agg({comp})"]
+    lines.append(
+        f"{var}_c['_v'] = {var}_c['_num']"
+        if additive
+        else f"{var}_c['_v'] = ({var}_c['_num'] / {var}_c['_den'].where({var}_c['_den'] != 0))"
+    )
+    win_slice = f"{var}_c[{var}_c['month'].isin(set(_months[-{w}:]))]" if has_month else f"{var}_c"
+
+    def agg_val(df_expr: str, out: str, col: str) -> list[str]:
+        """Sum the components of ``df_expr`` to one value per key in ``out[col]``."""
+        if additive:
             return [
-                f"{var} = {ordered}.groupby({keys_lit}, as_index=False)[{src_col}].last()",
-                f"{var} = {var}.rename(columns={{{src_col}: {label}}})",
+                f"{out} = {df_expr}.groupby({keys_lit}, as_index=False).agg(_num=('_num', 'sum'))",
+                f"{out}[{col}] = {out}['_num']",
             ]
         return [
-            f"{var} = {ordered}.groupby({keys_lit}, as_index=False).agg("
-            f"_first=({src_col}, 'first'), _last=({src_col}, 'last'))",
-            f"{var}[{label}] = "
-            f"(({var}['_last'] - {var}['_first']) * 100.0 / "
-            f"{var}['_first'].where({var}['_first'] != 0))"
-            f".round(1).fillna(0.0)",
-            f"{var} = {var}[{keys_lit} + [{label}]]",
+            f"{out} = {df_expr}.groupby({keys_lit}, as_index=False)"
+            f".agg(_num=('_num', 'sum'), _den=('_den', 'sum'))",
+            f"{out}[{col}] = ({out}['_num'] / {out}['_den'].where({out}['_den'] != 0))",
         ]
-    # Plain aggregate — sum/mean of one additive column.
-    agg = "mean" if m.get("agg") == "mean" else "sum"
-    round_ = ".round()" if agg == "mean" else ""
-    src_col = json.dumps(_additive_source(m["source"]))
-    return [
-        f"{var} = {src}.groupby({keys_lit}, as_index=False)[{src_col}].{agg}(){round_}",
-        f"{var} = {var}.rename(columns={{{src_col}: {label}}})",
-    ]
+
+    tail = f"{var} = {var}[{keys_lit} + [{label}]]"
+
+    if derive == "share":
+        lines += [
+            f"{var} = {win_slice}.groupby({keys_lit}, as_index=False).agg(_num=('_num', 'sum'))",
+            f"_wl = {within_lit}",
+            f"_den = ({var}.groupby(_wl)['_num'].transform('sum') if _wl "
+            f"else pd.Series({var}['_num'].sum(), index={var}.index))",
+            f"{var}[{label}] = "
+            f"({var}['_num'] * 100.0 / _den.where(_den != 0)).round(2).fillna(0.0)",
+            tail,
+        ]
+    elif derive == "cumulative":
+        lines += [
+            f"{var} = {win_slice}.groupby({keys_lit}, as_index=False).agg(_num=('_num', 'sum'))",
+            f"{var}[{label}] = {var}['_num']",
+            tail,
+        ]
+    elif derive == "rank":
+        lines += agg_val(win_slice, var, "'_val'")
+        lines += [
+            f"_wl = {within_lit}",
+            f"{var}[{label}] = ({var}.groupby(_wl)['_val'].rank(ascending=False, method='dense') "
+            f"if _wl else {var}['_val'].rank(ascending=False, method='dense')).astype(int)",
+            tail,
+        ]
+    elif derive == "growth":
+        lines += [f"_rec = set(_months[-{w}:])", f"_pri = set(_months[-{2 * w}:-{w}])"]
+        lines += agg_val(f"{var}_c[{var}_c['month'].isin(_rec)]", f"{var}_r", "'_r'")
+        lines += agg_val(f"{var}_c[{var}_c['month'].isin(_pri)]", f"{var}_p", "'_p'")
+        lines += [
+            f"{var} = {var}_r[{keys_lit} + ['_r']].merge({var}_p[{keys_lit} + ['_p']], "
+            f"on={keys_lit}, how='left')",
+            f"{var}[{label}] = (({var}['_r'] - {var}['_p']) * 100.0 / "
+            f"{var}['_p'].where({var}['_p'] != 0)).round(1).fillna(0.0)",
+            tail,
+        ]
+    elif derive == "latest":
+        lines += ["_lm = _months[-1]"]
+        lines += agg_val(f"{var}_c[{var}_c['month'] == _lm]", var, label)
+        lines += [f"{var}[{label}] = {var}[{label}].round()", tail]
+    elif derive == "rolling":
+        lines += [
+            f"{var} = {win_slice}.groupby({keys_lit}, as_index=False)['_v'].mean()",
+            f"{var} = {var}.rename(columns={{'_v': {label}}})",
+            f"{var}[{label}] = {var}[{label}].round()",
+            tail,
+        ]
+    elif derive == "index":
+        lines += [
+            f"_wm = _months[-{w}:]",
+            f"_first = {var}_c[{var}_c['month'] == _wm[0]]"
+            f"[{keys_lit} + ['_v']].rename(columns={{'_v': '_f'}})",
+            f"_last = {var}_c[{var}_c['month'] == _wm[-1]]"
+            f"[{keys_lit} + ['_v']].rename(columns={{'_v': '_l'}})",
+            f"{var} = _last.merge(_first, on={keys_lit}, how='left')",
+            f"{var}[{label}] = "
+            f"({var}['_l'] / {var}['_f'].where({var}['_f'] != 0) * 100.0).round(1).fillna(0.0)",
+            tail,
+        ]
+    elif derive == "yoy":
+        lines += [
+            "_lm = _months[-1]",
+            "_pm = _months[-13:][0]",
+            f"_last = {var}_c[{var}_c['month'] == _lm]"
+            f"[{keys_lit} + ['_v']].rename(columns={{'_v': '_l'}})",
+            f"_prior = {var}_c[{var}_c['month'] == _pm]"
+            f"[{keys_lit} + ['_v']].rename(columns={{'_v': '_p'}})",
+            f"{var} = _last.merge(_prior, on={keys_lit}, how='left')",
+            f"{var}[{label}] = (({var}['_l'] - {var}['_p']) * 100.0 / "
+            f"{var}['_p'].where({var}['_p'] != 0)).round(1).fillna(0.0)",
+            tail,
+        ]
+    else:  # "" — the plain window aggregate (unchanged from the pre-derive builder)
+        lines += agg_val(win_slice, var, label)
+        if not additive:
+            lines.append(f"{var}[{label}] = {var}[{label}].round()")
+        lines.append(tail)
+    return lines
 
 
 def _bar_grain(spec: dict[str, Any], prof: MartProfile) -> tuple[list[str], list[str], str | None]:
@@ -565,8 +674,22 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
     # A share bar is a share *within the series* — each series sums to 100% across
     # the x-axis (the "mix" reading). No series ⇒ share of the grand total.
     within = [group] if group else []
-    lines += _measure_block(bar, chart_keys, "bar_df", has_month, within=within)
-    lines += _measure_block(line, chart_keys, "line_df", has_month, within=within)
+    lines += _measure_block(
+        bar,
+        chart_keys,
+        "bar_df",
+        has_month,
+        within=within,
+        default_months=int(spec.get("months") or 12),
+    )
+    lines += _measure_block(
+        line,
+        chart_keys,
+        "line_df",
+        has_month,
+        within=within,
+        default_months=int(spec.get("months") or 12),
+    )
     keys_lit = json.dumps(chart_keys)
     lines += [
         f"agg = bar_df.merge(line_df, on={keys_lit}, how='left')",
@@ -602,7 +725,14 @@ def _breakdown_code(spec: dict[str, Any], prof: MartProfile) -> str:
     lines += x_lines
     chart_keys = [x_col] + ([group] if group else [])
     within = [group] if group else []
-    lines += _measure_block(bar, chart_keys, "agg", has_month, within=within)
+    lines += _measure_block(
+        bar,
+        chart_keys,
+        "agg",
+        has_month,
+        within=within,
+        default_months=int(spec.get("months") or 12),
+    )
     series = f", series_col={json.dumps(group)}" if group else ""
     x_label = " · ".join(dim_cols)
     title = json.dumps(spec.get("title") or f"{bar['label']} by {x_label}")
@@ -629,7 +759,7 @@ def _trend_code(spec: dict[str, Any], prof: MartProfile) -> str:
         default_den=prof.count_col,
     )
     group_arg = f", group_col={json.dumps(str(group))}" if group else ""
-    if line["kind"] == "wavg":
+    if line["base"] == "wavg":
         val = f"value_col={json.dumps(line['num'])}, den_col={json.dumps(line['den'])}"
     else:
         val = f"value_col={json.dumps(line['source'])}"
@@ -652,7 +782,7 @@ def _kpi_code(spec: dict[str, Any], prof: MartProfile) -> str:
         default_num=prof.value_col,
         default_den=prof.count_col,
     )
-    if m["kind"] == "wavg":
+    if m["base"] == "wavg":
         val = f"value_col={json.dumps(m['num'])}, den_col={json.dumps(m['den'])}"
     else:
         val = f"value_col={json.dumps(m['source'])}"
@@ -693,9 +823,23 @@ def _table_code(spec: dict[str, Any], prof: MartProfile) -> str:
     chart_keys = [x_col] + ([group] if group else [])
     keys_lit = json.dumps(chart_keys)
     within = [group] if group else []
-    lines += _measure_block(measures[0], chart_keys, "agg", has_month, within=within)
+    lines += _measure_block(
+        measures[0],
+        chart_keys,
+        "agg",
+        has_month,
+        within=within,
+        default_months=int(spec.get("months") or 12),
+    )
     if len(measures) > 1:
-        lines += _measure_block(measures[1], chart_keys, "m2", has_month, within=within)
+        lines += _measure_block(
+            measures[1],
+            chart_keys,
+            "m2",
+            has_month,
+            within=within,
+            default_months=int(spec.get("months") or 12),
+        )
         lines += [f"agg = agg.merge(m2, on={keys_lit}, how='left')"]
 
     variant = str(spec.get("variant") or "ranked")

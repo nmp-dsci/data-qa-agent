@@ -385,22 +385,26 @@ def test_share_measure_over_composite_axis_sums_to_100_per_series() -> None:
     assert all(0.0 <= float(r["share"]) <= 100.0 for r in rows)
 
 
-def test_growth_measure_kind_runs_and_is_positive() -> None:
-    """`how: growth` augments a base metric into a first-vs-last % change per key."""
+def test_growth_derive_is_period_over_period() -> None:
+    """A `growth` derive is a period-over-period % change — the base over the
+    recent window vs the base over the prior window. Old goldens' `how: growth`
+    maps onto the new derive (backwards compatible).
+
+    total_weekly_rent per band-month is (20+i)*base_rent. Over a 9-month window the
+    recent 9 months sum to base_rent*297 and the prior 9 to base_rent*216, so every
+    band's growth is exactly (297-216)/216 = 37.5% — not a first-vs-last month read.
+    """
     spec = {
         "grain": ["month", "bedroom_band"],
         "dimension": "bedroom_band",
         "bar_measure": {"label": "rent_growth", "source": "total_weekly_rent", "how": "growth"},
-        "months": 18,
+        "months": 9,
     }
     code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
     outcome = run_code(code, df=_rent_frame(), frames={"extract": _rent_frame()})
     assert outcome.error is None
     values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
-    assert values and all("rent_growth" in r for r in values)
-    # The fixture's counts grow 20→37, so every band's growth must be positive —
-    # this locks the first-vs-last ordering, not just the column's presence.
-    assert all(float(r["rent_growth"]) > 0 for r in values)
+    assert values and all(float(r["rent_growth"]) == 37.5 for r in values)
 
 
 def test_latest_measure_kind_runs() -> None:
@@ -451,35 +455,101 @@ def _breakdown_values(spec: dict[str, Any], df: pd.DataFrame) -> list[dict[str, 
 
 
 def test_growth_and_latest_use_per_month_totals_over_wider_grain() -> None:
-    """growth/latest collapse the source to per-month totals before taking
-    first/last, so a grain wider than the chart keys (postcode × property_type
-    here) contributes its month's total, not one sub-slice row.
+    """growth/latest collapse the source to per-month totals before comparing, so
+    a grain wider than the chart keys (postcode × property_type here) contributes
+    its month's total, not one sub-slice row.
 
-    Every band's per-month total grows 28 → 96, so true growth is exactly
-    (96-28)/28 = 242.9% and the latest value 96 — no first/last over raw
-    sub-slice rows (4+i / 10+i) can produce either number.
+    Every band's per-month total grows 28 → 96. Growth is period over period: over a
+    9-month window the recent 9 months total 720 and the prior 9 total 396, so
+    growth is (720-396)/396 = 81.8%; latest is the last month's 96.
     """
     growth = _breakdown_values(
         {
             "grain": ["month", "postcode", "property_type", "bedroom_band"],
             "dimension": "bedroom_band",
             "bar_measure": {"label": "rent_growth", "source": "n_rented", "how": "growth"},
-            "months": 18,
+            "months": 9,
         },
         _growing_mix_frame(),
     )
-    assert growth and all(float(r["rent_growth"]) == 242.9 for r in growth)
+    assert growth and all(float(r["rent_growth"]) == 81.8 for r in growth)
 
     latest = _breakdown_values(
         {
             "grain": ["month", "postcode", "property_type", "bedroom_band"],
             "dimension": "bedroom_band",
             "bar_measure": {"label": "current", "source": "n_rented", "how": "latest"},
-            "months": 18,
+            "months": 9,
         },
         _growing_mix_frame(),
     )
     assert latest and all(float(r["current"]) == 96.0 for r in latest)
+
+
+def _band_derive(derive: str, source: str, months: int = 9) -> dict[str, float]:
+    """One value per bedroom_band for a derive over ``_rent_frame`` (n_rented =
+    20+i over 18 months; the 9-month window is months i=9..17, n 29..37)."""
+    rows = _breakdown_values(
+        {
+            "grain": ["month", "bedroom_band"],
+            "dimension": "bedroom_band",
+            "bar_measure": {"label": "v", "source": source, "derive": derive},
+            "months": months,
+        },
+        _rent_frame(),
+    )
+    return {r["bedroom_band"]: float(r["v"]) for r in rows}
+
+
+def test_rolling_index_cumulative_yoy_derives_over_window() -> None:
+    """The s29 time derives reduce a base metric to one value per key over the
+    window: rolling = window mean, index = latest ÷ first × 100, cumulative =
+    window total, yoy = latest vs 12 months prior."""
+    # rolling = mean of the monthly n_rented over the window = mean(29..37) = 33
+    assert all(v == 33.0 for v in _band_derive("rolling", "n_rented").values())
+    # index = latest / first * 100 = 37 / 29 * 100 = 127.6
+    assert all(v == 127.6 for v in _band_derive("index", "n_rented").values())
+    # cumulative = window total = sum(29..37) = 297
+    assert all(v == 297.0 for v in _band_derive("cumulative", "n_rented").values())
+    # yoy = latest vs the month 12 prior = (37 - 25) / 25 * 100 = 48.0
+    assert all(v == 48.0 for v in _band_derive("yoy", "n_rented").values())
+
+
+def test_rank_derive_orders_within_series() -> None:
+    """rank is a dense rank of the window value (1 = highest). total_weekly_rent
+    scales with base_rent (450 < 600 < 780), so band 3 ranks 1 and band 1 ranks 3."""
+    rank = _band_derive("rank", "total_weekly_rent")
+    assert rank == {"1": 3.0, "2": 2.0, "3": 1.0}
+
+
+def test_derive_guards_reject_invalid_combos() -> None:
+    """% of total / cumulative need an additive sum base; time derives need month
+    in the grain. Both are rejected at codegen rather than computed wrongly."""
+    with pytest.raises(ValueError):  # share on a non-sum (mean) base
+        build_object_code(
+            object_type="breakdown",
+            dataset="nsw_rent",
+            spec={
+                "grain": ["month", "bedroom_band"],
+                "dimension": "bedroom_band",
+                "bar_measure": {
+                    "label": "x",
+                    "agg": "mean",
+                    "source": "n_rented",
+                    "derive": "share",
+                },
+            },
+        )
+    with pytest.raises(ValueError):  # growth with no month in the grain
+        build_object_code(
+            object_type="breakdown",
+            dataset="nsw_rent",
+            spec={
+                "grain": ["bedroom_band"],
+                "dimension": "bedroom_band",
+                "bar_measure": {"label": "x", "source": "n_rented", "derive": "growth"},
+            },
+        )
 
 
 def test_yield_extract_selects_non_profile_measure_sources() -> None:

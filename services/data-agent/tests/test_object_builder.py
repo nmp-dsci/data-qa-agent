@@ -130,6 +130,40 @@ def test_canonical_extract_carries_suburb_filter_when_no_override() -> None:
     assert "property_type = 'house'" in sql
 
 
+def test_canonical_extract_preserves_original_filter_and_ands_override() -> None:
+    # The golden's original filter (which the question captured) is never dropped
+    # or replaced — the builder's filter field only ADDs a further predicate, so an
+    # object narrows the same governed rows rather than re-scoping them.
+    sql = canonical_extract_sql(
+        "SELECT month, postcode FROM marts.property_rent "
+        "WHERE postcode IN ('2077', '2076') GROUP BY month, postcode",
+        grain=["month", "postcode"],
+        measure_source_cols={"n_rented", "total_weekly_rent"},
+        where_override="bedroom_band = '2'",
+        dataset="nsw_rent",
+    )
+    assert "postcode IN ('2077', '2076')" in sql  # original preserved verbatim
+    assert "bedroom_band = '2'" in sql  # additional filter ANDed on top
+    # Two predicates are each parenthesised and joined with AND (neither replaced).
+    assert "(postcode IN ('2077', '2076'))" in sql
+    assert "(bedroom_band = '2')" in sql
+    assert "WHERE (postcode" in sql and " AND (bedroom_band" in sql
+
+
+def test_canonical_extract_preserves_non_equality_original_filter() -> None:
+    # The old best-effort lift only carried IN/= predicates on the profile's carry
+    # columns, so a range/date filter silently vanished on rewrite. The full
+    # original WHERE is now preserved verbatim regardless of predicate shape.
+    sql = canonical_extract_sql(
+        "SELECT month FROM marts.property_sales "
+        "WHERE suburb = 'Hornsby' AND month >= '2024-01-01' GROUP BY month",
+        grain=["month"],
+        measure_source_cols={"n_sold", "total_sale_value"},
+    )
+    assert "suburb = 'Hornsby'" in sql
+    assert "month >= '2024-01-01'" in sql
+
+
 def test_compare_object_lifts_to_combo_at_chart_grain() -> None:
     code = build_object_code(object_type="compare", spec=_SPEC)
     outcome = run_code(code, df=_frame(), frames={"extract": _frame()})

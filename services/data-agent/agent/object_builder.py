@@ -48,7 +48,6 @@ class MartProfile:
     value_col: str  # additive total, e.g. total_sale_value / total_weekly_rent
     ratio_col: str  # recomposed average (line default), e.g. avg_sale_price
     default_grain: tuple[str, ...]
-    carry_cols: tuple[str, ...]
 
     @property
     def additive(self) -> tuple[str, str]:
@@ -62,7 +61,6 @@ _PROFILES: dict[str, MartProfile] = {
         value_col="total_sale_value",
         ratio_col="avg_sale_price",
         default_grain=("suburb", "area_band", "month"),
-        carry_cols=("suburb", "property_type"),
     ),
     "nsw_rent": MartProfile(
         table=RENT_MART,
@@ -70,7 +68,6 @@ _PROFILES: dict[str, MartProfile] = {
         value_col="total_weekly_rent",
         ratio_col="avg_weekly_rent",
         default_grain=("postcode", "bedroom_band", "month"),
-        carry_cols=("postcode", "property_type", "bedroom_band"),
     ),
     # The yield mart is sales ⨝ rent at postcode/type/month — it has no suburb or
     # band columns, so without its own profile the builder fell back to sales and
@@ -86,7 +83,6 @@ _PROFILES: dict[str, MartProfile] = {
         value_col="total_weekly_rent",
         ratio_col="avg_weekly_rent",
         default_grain=("postcode", "property_type", "month"),
-        carry_cols=("postcode", "property_type"),
     ),
 }
 
@@ -330,22 +326,24 @@ def validate_where_override(where_override: str) -> str:
     return frag
 
 
-def _carry_filters(base_sql: str, carry_cols: tuple[str, ...]) -> list[str]:
-    """Best-effort WHERE predicates lifted verbatim from the golden's current
-    extract — an ``IN (...)`` list or an ``= '…'`` equality for each carried
-    column (suburb/property_type for sales; postcode/property_type/bedroom_band
-    for rent). ``carry_cols`` are fixed profile literals, never user input."""
-    preds: list[str] = []
-    sql = base_sql or ""
-    for col in carry_cols:
-        m = re.search(rf"\b{col}\s+IN\s*\(([^)]*)\)", sql, re.IGNORECASE)
-        if m and m.group(1).strip():
-            preds.append(f"{col} IN ({m.group(1).strip()})")
-            continue
-        m = re.search(rf"\b{col}\s*=\s*('[^']*')", sql, re.IGNORECASE)
-        if m:
-            preds.append(f"{col} = {m.group(1)}")
-    return preds
+# The golden's original WHERE clause is preserved verbatim on every rewrite: the
+# object is a *summary of the same governed rows the question already scoped*, so
+# its extract must never drop or replace that filter. The builder's `filter` field
+# only ANDs a further predicate on top — an object can narrow, never widen.
+_WHERE_RE = re.compile(
+    r"\bWHERE\b(?P<pred>.*?)"
+    r"(?=\bGROUP\s+BY\b|\bORDER\s+BY\b|\bHAVING\b|\bLIMIT\b|\bWINDOW\b|;|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def original_where(base_sql: str) -> str:
+    """The base extract's WHERE predicate, verbatim and whitespace-collapsed (or
+    empty). The base SQL is the golden's own admin-authored extract, so it is
+    carried as-is — the builder never re-derives, widens, or drops it; it only
+    ANDs the optional ``filter`` field on top."""
+    m = _WHERE_RE.search(base_sql or "")
+    return " ".join(m.group("pred").split()) if m else ""
 
 
 def canonical_extract_sql(
@@ -361,15 +359,16 @@ def canonical_extract_sql(
     (+ a recomposed average convenience column, e.g. ``avg_sale_price`` for sales,
     ``avg_weekly_rent`` for rent).
 
-    ``dataset`` selects the mart profile (table, additive legs, recomposed ratio,
-    carried filters). ``measure_source_cols`` are the spec's measure source
-    columns — any not already covered by the grain or the profile's legs (e.g.
-    ``n_sold`` on the yield mart) are summed too, so the extract carries every
-    column the generated snippet reads. ``where_override`` is the exact WHERE
-    predicate to scope the object (from the builder's filter field, e.g.
-    ``property_type = 'house' AND suburb IN (...)``); when empty the golden's
-    carried filters are best-effort lifted from ``base_sql`` instead. The filter
-    is surfaced in the form so it's editable lineage, not a hidden guess."""
+    ``dataset`` selects the mart profile (table, additive legs, recomposed ratio).
+    ``measure_source_cols`` are the spec's measure source columns — any not already
+    covered by the grain or the profile's legs (e.g. ``n_sold`` on the yield mart)
+    are summed too, so the extract carries every column the generated snippet reads.
+
+    The golden's original WHERE is **always preserved verbatim** — the object is a
+    summary of the same governed rows the question already scoped, so a rewrite
+    never drops or replaces that filter. ``where_override`` (the builder's optional
+    ``filter`` field) is ANDed *on top* as an additional predicate — an object can
+    narrow the golden's rows further, never widen them."""
     prof = profile_for(dataset)
     tbl = table or prof.table
     grain_cols = [_ident(c) for c in grain if c] or list(prof.default_grain)
@@ -386,12 +385,17 @@ def canonical_extract_sql(
         if c and c not in covered:
             select.append(f"sum({_additive_source(_ident(c))}) AS {c}")
             covered.add(c)
-    where = (
-        [validate_where_override(where_override)]
-        if where_override.strip()
-        else _carry_filters(base_sql, prof.carry_cols)
-    )
-    where_sql = ("\nWHERE " + "\n  AND ".join(where)) if where else ""
+    # Preserve the golden's original filter verbatim, then AND the builder's
+    # optional additional predicate. A single part is emitted bare; two parts are
+    # each parenthesised so their operator precedence can't cross-contaminate.
+    add = validate_where_override(where_override) if where_override.strip() else ""
+    parts = [p for p in (original_where(base_sql), add) if p]
+    if not parts:
+        where_sql = ""
+    elif len(parts) == 1:
+        where_sql = "\nWHERE " + parts[0]
+    else:
+        where_sql = "\nWHERE " + "\n  AND ".join(f"({p})" for p in parts)
     return (
         "SELECT\n  "
         + ",\n  ".join(select)

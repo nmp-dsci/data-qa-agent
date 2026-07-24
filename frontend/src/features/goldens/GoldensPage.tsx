@@ -1558,27 +1558,58 @@ export function GoldensPage({
     );
   };
   const sel: React.CSSProperties = { fontSize: 12, padding: "2px 4px" };
-  const multiSel: React.CSSProperties = { fontSize: 12, padding: "2px 4px", minWidth: 150 };
-  // The selected values of a native multi-select.
-  const multiVals = (e: React.ChangeEvent<HTMLSelectElement>) =>
-    Array.from(e.target.selectedOptions, (o) => o.value);
-  // <option> list for a multi-select, always keeping any current value present.
-  const multiOptions = (current: string[], opts: { value: string; label: string }[]) => {
+  // A checkbox list for a multi-select field: every option is visible and toggled
+  // with one click (no native multi-select / cmd-click). Toggling ON appends, so
+  // the selection order is the click order — which the composite x-axis concat
+  // (concat(x1,'-',x2,…)) follows. Any current value not in `opts` is still shown
+  // checked, so a saved column the extract dropped never silently disappears.
+  const checkList = (
+    current: string[],
+    opts: { value: string; label: string }[],
+    onChange: (next: string[]) => void,
+    testid: string,
+  ) => {
     const seen = new Set(opts.map((o) => o.value));
-    const extra = current.filter((c) => c && !seen.has(c));
+    const all = [
+      ...opts,
+      ...current.filter((c) => c && !seen.has(c)).map((c) => ({ value: c, label: c })),
+    ];
     return (
-      <>
-        {extra.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-        {opts.map((o) => (
-          <option key={o.value} value={o.value}>
+      <div
+        data-testid={testid}
+        role="group"
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "3px 12px",
+          maxWidth: 320,
+          padding: "5px 7px",
+          border: "1px solid var(--border-2, rgba(128,128,128,0.35))",
+          borderRadius: 6,
+        }}
+      >
+        {all.length === 0 && <span style={{ ...label, opacity: 0.5 }}>— none —</span>}
+        {all.map((o) => (
+          <label
+            key={o.value}
+            style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" }}
+          >
+            <input
+              type="checkbox"
+              aria-label={o.value}
+              checked={current.includes(o.value)}
+              onChange={(e) =>
+                onChange(
+                  e.target.checked
+                    ? [...current, o.value]
+                    : current.filter((c) => c !== o.value),
+                )
+              }
+            />
             {o.label}
-          </option>
+          </label>
         ))}
-      </>
+      </div>
     );
   };
   // x / dimension and group are chosen FROM the grain, so their options are the
@@ -1880,45 +1911,37 @@ export function GoldensPage({
                 </select>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <label
+                <div
                   style={{ ...label, display: "flex", flexDirection: "column", gap: 3 }}
                   title="Columns the extract is grouped to. X and group are chosen from these."
                 >
-                  grain (multi-select)
-                  <select
-                    multiple
-                    data-testid="builder-grain"
-                    value={builder.grain}
-                    onChange={(e) => {
-                      const g = multiVals(e);
+                  grain (tick all that apply)
+                  {checkList(
+                    builder.grain,
+                    dimOpts,
+                    (g) =>
                       setBuilder((b) => ({
                         ...b,
                         grain: g,
                         // Cascade: x and group can only be grain columns.
                         dimension: b.dimension.filter((c) => g.includes(c)),
                         group: g.includes(b.group) ? b.group : "",
-                      }));
-                    }}
-                    style={{ ...multiSel, minHeight: 74 }}
-                  >
-                    {multiOptions(builder.grain, dimOpts)}
-                  </select>
-                </label>
-                <label
+                      })),
+                    "builder-grain",
+                  )}
+                </div>
+                <div
                   style={{ ...label, display: "flex", flexDirection: "column", gap: 3 }}
-                  title="X-axis column(s), from the grain. Pick 2+ for a composite axis concat(x1,'-',x2,…)."
+                  title="X-axis column(s), from the grain. Tick 2+ for a composite axis concat(x1,'-',x2,…)."
                 >
                   x / dimension (from grain)
-                  <select
-                    multiple
-                    data-testid="builder-dimension"
-                    value={builder.dimension}
-                    onChange={(e) => setBuilder((b) => ({ ...b, dimension: multiVals(e) }))}
-                    style={{ ...multiSel, minHeight: 74 }}
-                  >
-                    {multiOptions(builder.dimension, grainOpts)}
-                  </select>
-                </label>
+                  {checkList(
+                    builder.dimension,
+                    grainOpts,
+                    (d) => setBuilder((b) => ({ ...b, dimension: d })),
+                    "builder-dimension",
+                  )}
+                </div>
                 <label style={label}>
                   group (from grain){" "}
                   <select

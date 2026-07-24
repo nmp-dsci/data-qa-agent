@@ -43,13 +43,16 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
 
   // --- 2. Build the named presentation object -----------------------------
   // The structured builder is the primary (always-visible) panel in the ② Sandbox
-  // section — grain/x/group are grain-driven dropdowns from the dataset's typed
-  // vocabulary (s28), not free text. grain and x are multi-selects.
+  // section — grain/x are grain-driven checkbox lists from the dataset's typed
+  // vocabulary (s28), group is a dropdown of the grain. Not free text.
   await page.getByTestId("builder-name").fill(OBJECT);
   await page.getByTestId("builder-type").selectOption({ label: "Line + bar chart" });
-  await page.getByTestId("builder-grain").selectOption(["month", "suburb", "area_band"]);
-  // x / dimension and group are chosen from the grain columns.
-  await page.getByTestId("builder-dimension").selectOption(["area_band"]);
+  const grain = page.getByTestId("builder-grain");
+  for (const c of ["month", "suburb", "area_band"]) {
+    await grain.getByLabel(c, { exact: true }).check();
+  }
+  // x / dimension (checkboxes from grain) and group (dropdown of grain).
+  await page.getByTestId("builder-dimension").getByLabel("area_band", { exact: true }).check();
   await page.getByTestId("builder-group").selectOption("suburb");
   await page.getByTestId("builder-filter").fill(FILTER);
   // bars = sum(n_sold) as sales_volume; line = wtd-avg total_sale_value / n_sold.

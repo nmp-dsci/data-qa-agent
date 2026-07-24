@@ -966,6 +966,29 @@ export function getEvalCases(): Promise<EvalCase[]> {
 }
 
 // --- Golden Answer (Builder) — s14 E1 --------------------------------------
+/** How a golden is scored (s24 M2 / grader-spec editor). Stored as the
+ *  ``eval_cases.grader`` jsonb and consumed verbatim by the eval runner
+ *  (`scripts/eval_run.py`) + `/agent/eval/grade`. The ``kind`` dispatches G1:
+ *  ``scalar`` (one value, % tolerance), ``row_set`` (F1 over ``key``),
+ *  ``ranked_set`` (top-``k`` overlap on ``key``), ``series`` (per-point
+ *  tolerance on ``key``→``value``). ``key: "_key"`` + ``key_fields`` is a
+ *  composite key the runner joins; ``aggregate: "ratio"`` rolls both sides to
+ *  the key grain and rebuilds ``value`` = ``numerator``/``denominator`` (so a
+ *  weighted average is graded, never an average-of-averages). ``expected_objects``
+ *  are the page object types the report must contain (G3-structural). */
+export interface GraderSpec {
+  kind?: "scalar" | "row_set" | "ranked_set" | "series" | "";
+  key?: string;
+  key_fields?: string[];
+  value?: string;
+  k?: number;
+  tolerance_pct?: number;
+  aggregate?: "sum" | "ratio" | "";
+  numerator?: string;
+  denominator?: string;
+  expected_objects?: string[];
+}
+
 export interface GoldenListItem {
   id: string;
   dataset: string | null;
@@ -979,6 +1002,7 @@ export interface GoldenListItem {
   has_sandbox: boolean;
   has_data: boolean;
   has_report: boolean;
+  grader_kind: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -991,6 +1015,7 @@ export interface GoldenFull extends GoldenListItem {
   golden_data: unknown;
   golden_report: unknown;
   golden_objects?: GoldenObject[] | null;
+  grader?: GraderSpec | null;
 }
 
 export interface GoldenInput {
@@ -1006,15 +1031,39 @@ export interface GoldenInput {
   golden_data?: unknown;
   golden_report?: unknown;
   golden_objects?: GoldenObject[] | null;
+  grader?: GraderSpec | null;
   expectation?: string | null;
 }
 
-/** One measure a Presentation Object builds — either a plain agg of one column
- *  (source + agg) or a weighted average (num / den). ``months`` windows it. */
+/** A derived augmentation applied on top of a measure's base aggregation, over
+ *  the window (s29). ``share`` = % of the total within the series; ``growth`` =
+ *  the recent window vs the prior window, % change; ``latest`` = the most recent
+ *  month; ``rolling`` = window mean; ``index`` = rebased to 100; ``cumulative`` =
+ *  running total; ``rank`` = rank within the series; ``yoy`` = vs 12 months prior.
+ *  ``share``/``cumulative`` need a ``sum`` base; the time ones need month. */
+export type MeasureDerive =
+  | ""
+  | "share"
+  | "growth"
+  | "latest"
+  | "rolling"
+  | "index"
+  | "cumulative"
+  | "rank"
+  | "yoy";
+
+/** One measure a Presentation Object builds — a base aggregation (``sum``/``mean``
+ *  of one ``source`` column, or a weighted average ``num``/``den``) plus an
+ *  optional ``derive`` that augments it deterministically over ``months``. ``how``
+ *  is the pre-s29 augmentation field, still read so saved goldens keep working. */
 export interface SandboxMeasure {
   label: string;
   source?: string;
   agg?: "sum" | "mean";
+  /** The derived augmentation (s29). Empty / absent = the plain window aggregate. */
+  derive?: MeasureDerive;
+  /** Pre-s29 augmentation field — mapped forward to ``derive`` on load. */
+  how?: "share" | "growth" | "latest";
   num?: string;
   den?: string;
   months?: number | null;
@@ -1025,7 +1074,9 @@ export interface SandboxMeasure {
  *  it, and it stays on the object so the builder can re-edit columns (lineage). */
 export interface SandboxObjectSpec {
   grain?: string[];
-  dimension?: string;
+  /** The x-axis column, or a list for a *composite* axis (col_a × col_b joined
+   *  into one nominal label, e.g. bedroom_band × property_type). */
+  dimension?: string | string[];
   group?: string | null;
   bar_measure?: SandboxMeasure;
   line_measure?: SandboxMeasure;

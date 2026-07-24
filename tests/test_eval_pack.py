@@ -128,6 +128,42 @@ def test_case_leaks_nothing(filename: str, case: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize("filename,case", CASES, ids=[c.get("case_key", "?") for _, c in CASES])
+def test_report_rows_stay_arrays(filename: str, case: dict[str, Any]) -> None:
+    """A chart's rows must survive export as an ARRAY, never a digest dict.
+
+    The row cap once replaced a chart's ``rows`` with a ``{_truncated, _head, …}``
+    dict. golden_report is *rendered* by iterating those rows, so the dict blanks
+    the whole Golden tab (there was no error boundary to contain it). This locks
+    the pack shape so the regression can't return: no capped-to-dict or
+    budget-stub envelope may appear anywhere in a rendered field, and a
+    ``rows``/``values`` node stays a list.
+    """
+    key = case.get("case_key")
+
+    def walk(node: Any, path: str) -> None:
+        if isinstance(node, dict):
+            assert "_truncated" not in node and "_head" not in node, (
+                f"{key}: capped-to-dict rows at {path} — a chart's rows must stay an array. "
+                "Re-export with the current scripts/eval_pack.py."
+            )
+            assert "_omitted" not in node, (
+                f"{key}: budget-stubbed value at {path} — a rendered field must never be "
+                "reduced to a digest dict. Re-export with the current scripts/eval_pack.py."
+            )
+            for k, v in node.items():
+                assert not (k in {"rows", "values"} and isinstance(v, dict)), (
+                    f"{key}: {k!r} at {path} is a dict, must be a list (unrenderable otherwise)"
+                )
+                walk(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, f"{path}[{i}]")
+
+    for field in ("golden_report", "golden_objects"):
+        walk(case.get(field), field)
+
+
+@pytest.mark.parametrize("filename,case", CASES, ids=[c.get("case_key", "?") for _, c in CASES])
 def test_grader_spec_is_dispatchable(filename: str, case: dict[str, Any]) -> None:
     """A grader the runner cannot dispatch scores 0 and looks like an agent failure."""
     key = case.get("case_key")

@@ -175,7 +175,15 @@ latency, and engine.
 
 Admins also get a **Golden Examples** tab for authoring *golden answers* — the 100/100 benchmarks the eval
 loop scores the agent against — stage by stage (① SQL extract → ② sandbox analysis objects, built from the
-tested skill library → ③ presentation report), starting from an agent-drafted first pass. Goldens live on
+tested skill library → ③ presentation report), starting from an agent-drafted first pass. Stage-② objects
+are built with no LLM at all: a structured builder binds its dimension/group/measure dropdowns to each
+dataset's typed column vocabulary (derived from the ① SQL extract's `FROM` table, not the golden's dataset
+tag), lets each measure combine a base aggregation (sum / mean / weighted-average) with an optional derived
+augmentation (share / growth / latest / rolling / index / cumulative / rank / yoy) over additive columns,
+and can join two dimensions into a composite x-axis. Whenever the config is valid a debounced live preview
+renders the actual chart at the top of the builder, and a **◆ GRADER** panel authors the golden's grader
+spec and gates draft → ready promotion with the same checks CI's pack-lint runs — and a per-object error
+boundary renders one malformed object as a fallback card instead of blanking the tab. Goldens live on
 `app.eval_cases` (CRUD under `/admin/eval-goldens`; the backend proxies draft/build actions to the
 data-agent's `/agent/analysis*` and `/agent/skills*` helpers), and the dataset picker covers all three
 governed datasets (`nsw_sales`, `nsw_rent`, `nsw_yield`). Deterministic graders
@@ -188,7 +196,10 @@ repo is the source of truth, the DB a working surface), redacting anything promo
 — remapped user, size-capped rows — and `make eval-import` seeds any environment from the pack. `make eval`
 (down to a single `CASE=`) scores the pack against the running agent, including an LLM-as-judge for insight
 quality that refuses to grade a model of its own family and records a `skipped` verdict rather than a faked
-score when no cross-family judge key is configured. `make eval-compare A=<run> B=<run>` is the regression
+score when no cross-family judge key is configured. Every golden carries a question tier (`T1`–`T7`, the
+coverage ladder documented in `AGENTS.md`), and `draft` goldens — agent-drafted first passes not yet curated
+to `ready` — are skipped by `make eval` unless `INCLUDE_DRAFTS=1` is passed, so an un-curated question is
+never scored against empty ground truth. `make eval-compare A=<run> B=<run>` is the regression
 gate: it blocks on **any** case flipping pass → fail, not on the headline average moving, and CI runs a
 free, zero-LLM-cost lint of the pack itself on every merge (`tests/test_eval_pack.py`). `make eval-diagnose`
 reads a scored run's traces and proposes one-lever hypotheses — read-only, it never writes a fix. An
@@ -198,9 +209,12 @@ improvement cycles run against this loop are written up in `docs/evals/cycle-001
 
 A chat answer can skip straight to a draft golden: admins see a **"★ save as golden"** chip on any answered
 chat result, which copies the already-captured question/SQL/sandbox script/report into a new draft (no
-agent re-run) and opens it in the editor. Inside the editor, the primary way to add a stage-② object is the
-**"New object with AI"** panel — describe it in one sentence and it's built and placed onto the report
-automatically (the structured form is still there as a manual fallback). Ordinal columns like `area_band`
+agent re-run) and opens it in the editor. Inside the editor, the structured builder is how a stage-②
+object gets added: a new object lets the curator pick its destination page and column, while a chart
+card's **◆ edit in Structured Builder** button seeds the builder from that object's stored spec (or, for a
+spec-less drafted chart, from safe defaults) and replaces it in place by `element_id` on Build — never
+orphaning a new object. The base extract's own `WHERE` is always preserved verbatim; the builder's `filter`
+field only ANDs a further predicate on top. Ordinal columns like `area_band`
 and `bedroom_band` render in their natural order rather than alphabetically; curators can tweak the order
 per dataset from a data-knowledge panel in the Sandbox tab (backed by `app.dataset_ordinals`), or override
 one chart's x-axis order manually in the report editor.

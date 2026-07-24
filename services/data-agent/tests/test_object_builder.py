@@ -17,6 +17,8 @@ deterministic.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import pytest
 
@@ -24,6 +26,7 @@ from agent.object_builder import (
     build_object_code,
     canonical_extract_sql,
     element_id_for,
+    extract_grain,
     name_from_instruction,
     needed_columns,
     profile_for,
@@ -125,6 +128,40 @@ def test_canonical_extract_carries_suburb_filter_when_no_override() -> None:
     )
     assert "suburb IN ('Hornsby', 'Normanhurst')" in sql
     assert "property_type = 'house'" in sql
+
+
+def test_canonical_extract_preserves_original_filter_and_ands_override() -> None:
+    # The golden's original filter (which the question captured) is never dropped
+    # or replaced — the builder's filter field only ADDs a further predicate, so an
+    # object narrows the same governed rows rather than re-scoping them.
+    sql = canonical_extract_sql(
+        "SELECT month, postcode FROM marts.property_rent "
+        "WHERE postcode IN ('2077', '2076') GROUP BY month, postcode",
+        grain=["month", "postcode"],
+        measure_source_cols={"n_rented", "total_weekly_rent"},
+        where_override="bedroom_band = '2'",
+        dataset="nsw_rent",
+    )
+    assert "postcode IN ('2077', '2076')" in sql  # original preserved verbatim
+    assert "bedroom_band = '2'" in sql  # additional filter ANDed on top
+    # Two predicates are each parenthesised and joined with AND (neither replaced).
+    assert "(postcode IN ('2077', '2076'))" in sql
+    assert "(bedroom_band = '2')" in sql
+    assert "WHERE (postcode" in sql and " AND (bedroom_band" in sql
+
+
+def test_canonical_extract_preserves_non_equality_original_filter() -> None:
+    # The old best-effort lift only carried IN/= predicates on the profile's carry
+    # columns, so a range/date filter silently vanished on rewrite. The full
+    # original WHERE is now preserved verbatim regardless of predicate shape.
+    sql = canonical_extract_sql(
+        "SELECT month FROM marts.property_sales "
+        "WHERE suburb = 'Hornsby' AND month >= '2024-01-01' GROUP BY month",
+        grain=["month"],
+        measure_source_cols={"n_sold", "total_sale_value"},
+    )
+    assert "suburb = 'Hornsby'" in sql
+    assert "month >= '2024-01-01'" in sql
 
 
 def test_compare_object_lifts_to_combo_at_chart_grain() -> None:
@@ -281,3 +318,467 @@ def test_table_object_builds_and_lifts_to_valid_page_object() -> None:
     assert vols == sorted(vols, reverse=True)
     # The lifted dict validates through the agent-side pages contract.
     PageObject(**obj)
+
+
+# --- s28: augmented measure kinds (share / growth / latest) + composite x-axis ---
+
+
+def _rent_mix_frame() -> pd.DataFrame:
+    """A rent extract at postcode × property_type × bedroom_band × month."""
+    rows = []
+    months = [f"2024-{m:02d}" for m in range(1, 13)] + [f"2025-{m:02d}" for m in range(1, 7)]
+    for mo in months:
+        for pc in ("2077", "2076"):
+            for pt in ("house", "unit"):
+                for bb in ("1", "2", "3"):
+                    n = 10 if pt == "unit" else 4
+                    rows.append(
+                        {
+                            "month": mo,
+                            "postcode": pc,
+                            "property_type": pt,
+                            "bedroom_band": bb,
+                            "n_rented": n,
+                            "total_weekly_rent": n * (400 + int(bb) * 120),
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+def test_share_measure_over_composite_axis_sums_to_100_per_series() -> None:
+    """The user's chart, deterministically: a Line+Bar whose bars are the % share
+    of rentals within each postcode (a "mix"), over a composite bedroom_band ×
+    property_type x-axis, with the value-weighted rent as the line. No LLM."""
+    spec = {
+        "grain": ["month", "postcode", "property_type", "bedroom_band"],
+        "dimension": ["bedroom_band", "property_type"],  # composite axis
+        "group": "postcode",
+        "bar_measure": {"label": "share", "source": "n_rented", "how": "share"},
+        "line_measure": {"label": "avg_rent", "num": "total_weekly_rent", "den": "n_rented"},
+        "months": 12,
+    }
+    code = build_object_code(object_type="compare", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_mix_frame(), frames={"extract": _rent_mix_frame()})
+    assert outcome.error is None
+    assert "dual_axis_chart" in outcome.skills_used
+
+    obj = chart_object_from_spec(
+        (outcome.report or {}).get("main_chart"),
+        element_id=element_id_for("rent-mix"),
+        role="chart",
+        height="md",
+    )
+    assert obj is not None
+    d = obj.model_dump(exclude_none=True)
+    assert d["type"] == "compare"
+    assert d["data"]["dimension"] == "_x"  # the synthesized composite axis
+    assert d["data"]["measure"] == "share"
+    assert d["data"]["line_measure"] == "avg_rent"
+    assert d["data"]["group"] == "postcode"
+
+    rows = d["data"]["rows"]
+    assert rows and all("-" in str(r["_x"]) for r in rows)  # "1-house", …
+    per_postcode: dict[str, float] = {}
+    for r in rows:
+        per_postcode[r["postcode"]] = per_postcode.get(r["postcode"], 0.0) + float(r["share"])
+    assert per_postcode and all(abs(s - 100.0) < 0.5 for s in per_postcode.values())
+    assert all(0.0 <= float(r["share"]) <= 100.0 for r in rows)
+
+
+def test_growth_derive_is_period_over_period() -> None:
+    """A `growth` derive is a period-over-period % change — the base over the
+    recent window vs the base over the prior window. Old goldens' `how: growth`
+    maps onto the new derive (backwards compatible).
+
+    total_weekly_rent per band-month is (20+i)*base_rent. Over a 9-month window the
+    recent 9 months sum to base_rent*297 and the prior 9 to base_rent*216, so every
+    band's growth is exactly (297-216)/216 = 37.5% — not a first-vs-last month read.
+    """
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "rent_growth", "source": "total_weekly_rent", "how": "growth"},
+        "months": 9,
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_frame(), frames={"extract": _rent_frame()})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    assert values and all(float(r["rent_growth"]) == 37.5 for r in values)
+
+
+def test_latest_measure_kind_runs() -> None:
+    """`how: latest` takes the most recent month's value per key."""
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "current", "source": "n_rented", "how": "latest"},
+        "months": 12,
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_frame(), frames={"extract": _rent_frame()})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    assert values and all("current" in r for r in values)
+
+
+def _growing_mix_frame() -> pd.DataFrame:
+    """Rentals at postcode × property_type × bedroom_band × month whose per-month
+    totals per band grow 28 → 96 while the sub-slice rows differ (house 4+i vs
+    unit 10+i), so any single row is a wrong stand-in for its month's total."""
+    rows = []
+    months = [f"2024-{m:02d}" for m in range(1, 13)] + [f"2025-{m:02d}" for m in range(1, 7)]
+    for i, mo in enumerate(months):
+        for pc in ("2077", "2076"):
+            for pt in ("house", "unit"):
+                for bb in ("1", "2", "3"):
+                    n = (10 if pt == "unit" else 4) + i
+                    rows.append(
+                        {
+                            "month": mo,
+                            "postcode": pc,
+                            "property_type": pt,
+                            "bedroom_band": bb,
+                            "n_rented": n,
+                            "total_weekly_rent": n * (400 + int(bb) * 120),
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+def _breakdown_values(spec: dict[str, Any], df: pd.DataFrame) -> list[dict[str, Any]]:
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=df, frames={"extract": df})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    return list(values)
+
+
+def test_growth_and_latest_use_per_month_totals_over_wider_grain() -> None:
+    """growth/latest collapse the source to per-month totals before comparing, so
+    a grain wider than the chart keys (postcode × property_type here) contributes
+    its month's total, not one sub-slice row.
+
+    Every band's per-month total grows 28 → 96. Growth is period over period: over a
+    9-month window the recent 9 months total 720 and the prior 9 total 396, so
+    growth is (720-396)/396 = 81.8%; latest is the last month's 96.
+    """
+    growth = _breakdown_values(
+        {
+            "grain": ["month", "postcode", "property_type", "bedroom_band"],
+            "dimension": "bedroom_band",
+            "bar_measure": {"label": "rent_growth", "source": "n_rented", "how": "growth"},
+            "months": 9,
+        },
+        _growing_mix_frame(),
+    )
+    assert growth and all(float(r["rent_growth"]) == 81.8 for r in growth)
+
+    latest = _breakdown_values(
+        {
+            "grain": ["month", "postcode", "property_type", "bedroom_band"],
+            "dimension": "bedroom_band",
+            "bar_measure": {"label": "current", "source": "n_rented", "how": "latest"},
+            "months": 9,
+        },
+        _growing_mix_frame(),
+    )
+    assert latest and all(float(r["current"]) == 96.0 for r in latest)
+
+
+def _band_derive(derive: str, source: str, months: int = 9) -> dict[str, float]:
+    """One value per bedroom_band for a derive over ``_rent_frame`` (n_rented =
+    20+i over 18 months; the 9-month window is months i=9..17, n 29..37)."""
+    rows = _breakdown_values(
+        {
+            "grain": ["month", "bedroom_band"],
+            "dimension": "bedroom_band",
+            "bar_measure": {"label": "v", "source": source, "derive": derive},
+            "months": months,
+        },
+        _rent_frame(),
+    )
+    return {r["bedroom_band"]: float(r["v"]) for r in rows}
+
+
+def test_rolling_index_cumulative_yoy_derives_over_window() -> None:
+    """The s31 time derives reduce a base metric to one value per key over the
+    window: rolling = window mean, index = latest ÷ first × 100, cumulative =
+    window total, yoy = latest vs 12 months prior."""
+    # rolling = mean of the monthly n_rented over the window = mean(29..37) = 33
+    assert all(v == 33.0 for v in _band_derive("rolling", "n_rented").values())
+    # index = latest / first * 100 = 37 / 29 * 100 = 127.6
+    assert all(v == 127.6 for v in _band_derive("index", "n_rented").values())
+    # cumulative = window total = sum(29..37) = 297
+    assert all(v == 297.0 for v in _band_derive("cumulative", "n_rented").values())
+    # yoy = latest vs the month 12 prior = (37 - 25) / 25 * 100 = 48.0
+    assert all(v == 48.0 for v in _band_derive("yoy", "n_rented").values())
+
+
+def test_rank_derive_orders_within_series() -> None:
+    """rank is a dense rank of the window value (1 = highest). total_weekly_rent
+    scales with base_rent (450 < 600 < 780), so band 3 ranks 1 and band 1 ranks 3."""
+    rank = _band_derive("rank", "total_weekly_rent")
+    assert rank == {"1": 3.0, "2": 2.0, "3": 1.0}
+
+
+def test_derive_guards_reject_invalid_combos() -> None:
+    """% of total / cumulative need an additive sum base; time derives need month
+    in the grain. Both are rejected at codegen rather than computed wrongly."""
+    with pytest.raises(ValueError):  # share on a non-sum (mean) base
+        build_object_code(
+            object_type="breakdown",
+            dataset="nsw_rent",
+            spec={
+                "grain": ["month", "bedroom_band"],
+                "dimension": "bedroom_band",
+                "bar_measure": {
+                    "label": "x",
+                    "agg": "mean",
+                    "source": "n_rented",
+                    "derive": "share",
+                },
+            },
+        )
+    with pytest.raises(ValueError):  # growth with no month in the grain
+        build_object_code(
+            object_type="breakdown",
+            dataset="nsw_rent",
+            spec={
+                "grain": ["bedroom_band"],
+                "dimension": "bedroom_band",
+                "bar_measure": {"label": "x", "source": "n_rented", "derive": "growth"},
+            },
+        )
+
+
+def test_yield_extract_selects_non_profile_measure_sources() -> None:
+    """The yield profile's legs are the rent pair, but the mart also carries the
+    additive sales legs — a spec sourcing them gets them summed into the extract
+    (the previously unused ``measure_source_cols``)."""
+    sql = canonical_extract_sql(
+        "SELECT * FROM marts.property_yield WHERE property_type = 'house'",
+        grain=["month", "postcode"],
+        measure_source_cols={"n_sold", "total_sale_value"},
+        dataset="nsw_yield",
+    )
+    assert "FROM marts.property_yield" in sql
+    assert "sum(n_rented) AS n_rented" in sql
+    assert "sum(n_sold) AS n_sold" in sql
+    assert "sum(total_sale_value) AS total_sale_value" in sql
+
+
+def _yield_frame() -> pd.DataFrame:
+    """A yield mart extract at postcode × month with all four additive legs."""
+    rows = []
+    months = [f"2024-{m:02d}" for m in range(1, 13)]
+    for i, mo in enumerate(months):
+        for pc in ("2077", "2076"):
+            n = 5 + i
+            rows.append(
+                {
+                    "month": mo,
+                    "postcode": pc,
+                    "n_sold": n,
+                    "total_sale_value": n * 1_000_000,
+                    "n_rented": n * 3,
+                    "total_weekly_rent": n * 3 * 550,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_yield_breakdown_over_sales_leg_survives_dedup() -> None:
+    """A measure over ``n_sold`` on nsw_yield builds: the window dedup sums the
+    union of the profile legs and the measure sources, not just the rent pair."""
+    spec = {
+        "grain": ["month", "postcode"],
+        "dimension": "postcode",
+        "bar_measure": {"label": "sales", "source": "n_sold", "agg": "sum"},
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_yield")
+    outcome = run_code(code, df=_yield_frame(), frames={"extract": _yield_frame()})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    assert values and all("sales" in r for r in values)
+    assert all(float(r["sales"]) > 0 for r in values)
+
+
+def test_label_with_apostrophe_emits_runnable_code() -> None:
+    """Labels are json-escaped into the snippet, so an apostrophe can't break it."""
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "what's rented", "source": "n_rented", "how": "share"},
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_frame(), frames={"extract": _rent_frame()})
+    assert outcome.error is None
+    values = ((outcome.report or {}).get("main_chart") or {}).get("data", {}).get("values", [])
+    assert values and all("what's rented" in r for r in values)
+
+
+def test_extract_grain_extends_bar_family_only() -> None:
+    """Bar-family extracts append the dimension/group columns their snippet
+    groups by; trend/kpi keep the typed grain untouched apart from defensively
+    appending ``group`` (needed by trend_series's group_col) so a spec that
+    violates the frontend's group-is-a-grain-member invariant still gets a
+    usable extract instead of a runtime KeyError."""
+    spec = {
+        "grain": ["month"],
+        "dimension": ["bedroom_band", "property_type"],
+        "group": "postcode",
+    }
+    for object_type in ("compare", "breakdown", "table"):
+        assert extract_grain(spec, object_type=object_type, dataset="nsw_rent") == [
+            "month",
+            "bedroom_band",
+            "property_type",
+            "postcode",
+        ]
+    for object_type in ("trend", "kpi"):
+        assert extract_grain(spec, object_type=object_type, dataset="nsw_rent") == [
+            "month",
+            "postcode",
+        ]
+
+
+def test_canonical_extract_rejects_non_identifier_grain() -> None:
+    with pytest.raises(ValueError, match="identifier"):
+        canonical_extract_sql(
+            "SELECT 1",
+            grain=["month", "(SELECT username FROM app.users LIMIT 1)"],
+            measure_source_cols=set(),
+        )
+
+
+def test_canonical_extract_rejects_non_identifier_measure_source() -> None:
+    with pytest.raises(ValueError, match="identifier"):
+        canonical_extract_sql(
+            "SELECT 1",
+            grain=["month", "postcode"],
+            measure_source_cols={"n_sold) AS x FROM app.users --"},
+            dataset="nsw_yield",
+        )
+
+
+def test_canonical_extract_rejects_non_additive_measure_source() -> None:
+    """gross_yield_pct is a real yield-mart column, but summing a ratio across
+    grain rows is silently wrong — the extract refuses instead."""
+    with pytest.raises(ValueError, match="not additive"):
+        canonical_extract_sql(
+            "SELECT 1",
+            grain=["month", "postcode"],
+            measure_source_cols={"gross_yield_pct"},
+            dataset="nsw_yield",
+        )
+
+
+def test_build_object_code_rejects_summed_non_additive_source() -> None:
+    spec = {
+        "grain": ["month", "postcode"],
+        "dimension": "postcode",
+        "bar_measure": {"label": "yield", "source": "gross_yield_pct", "agg": "sum"},
+    }
+    with pytest.raises(ValueError, match="not additive"):
+        build_object_code(object_type="breakdown", spec=spec, dataset="nsw_yield")
+
+
+def test_build_object_code_rejects_share_of_non_additive_source() -> None:
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "mix", "source": "avg_weekly_rent", "how": "share"},
+    }
+    with pytest.raises(ValueError, match="not additive"):
+        build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+
+
+def test_build_object_code_rejects_mean_of_non_additive_source() -> None:
+    """The window dedup sums a mean measure's source before the mean is taken,
+    so averaging a stored average charts silently wrong numbers — refuse it."""
+    spec = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "rent", "source": "avg_weekly_rent", "agg": "mean"},
+    }
+    with pytest.raises(ValueError, match="not additive"):
+        build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+
+
+def test_build_object_code_rejects_non_identifier_column() -> None:
+    spec = {
+        "grain": ["month"],
+        "dimension": "postcode'; import os",
+        "bar_measure": {"label": "n", "source": "n_rented", "agg": "sum"},
+    }
+    with pytest.raises(ValueError, match="identifier"):
+        build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+
+
+def test_trend_column_mode_over_ratio_still_builds() -> None:
+    """A trend plotting a bucket-level average directly (line_mode 'column') is
+    legitimate — the extract recomposes it per month — so the additive guard
+    must not reject it."""
+    spec = {"line_measure": {"label": "avg_weekly_rent", "source": "avg_weekly_rent"}}
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    assert 'value_col="avg_weekly_rent"' in code
+
+
+def test_table_supports_composite_dimension() -> None:
+    """A list `dimension` on a table becomes the synthesized `_x` axis column
+    (labelled with the joined dimension names), exactly as compare/breakdown."""
+    from agent.main import _lift_object
+    from agent.pages import PageObject
+
+    spec = {
+        "grain": ["month", "postcode", "property_type", "bedroom_band"],
+        "dimension": ["bedroom_band", "property_type"],
+        "bar_measure": {"label": "volume", "source": "n_rented", "agg": "sum"},
+        "variant": "ranked",
+    }
+    code = build_object_code(object_type="table", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=_rent_mix_frame(), frames={"extract": _rent_mix_frame()})
+    assert outcome.error is None
+    assert "data_table" in outcome.skills_used
+
+    obj = _lift_object(
+        outcome.report,
+        element_id=element_id_for("mix-table"),
+        object_type="table",
+        sql="SELECT 1",
+    )
+    assert obj is not None
+    data = obj["data"]
+    assert [c["key"] for c in data["columns"]] == ["_x", "volume"]
+    labels = {c["key"]: c["label"] for c in data["columns"]}
+    assert labels["_x"] == "bedroom_band · property_type"
+    assert data["rows"] and all("-" in str(r["_x"]) for r in data["rows"])
+    PageObject(**obj)
+
+
+def test_composite_x_columns_land_in_the_regenerated_extract() -> None:
+    """s28 build flow: when the x-axis is a composite of grain columns, both columns
+    are in needed_columns AND the regenerated extract's GROUP BY — so 'check whether
+    the SQL extract has the columns, else rewrite and rerun it' lands them at the
+    right grain before the sandbox builds the object."""
+    spec = {
+        "grain": ["month", "postcode", "property_type", "bedroom_band"],
+        "dimension": ["bedroom_band", "property_type"],  # composite x from the grain
+        "group": "postcode",
+        "bar_measure": {"label": "n", "source": "n_rented", "agg": "sum"},
+    }
+    need = needed_columns(spec)
+    assert {"bedroom_band", "property_type", "postcode", "n_rented"} <= need
+
+    sql = canonical_extract_sql(
+        "SELECT * FROM marts.property_rent WHERE postcode IN ('2077', '2076')",
+        grain=spec["grain"],
+        measure_source_cols=need,
+        dataset="nsw_rent",
+    )
+    assert "FROM marts.property_rent" in sql
+    assert "GROUP BY month, postcode, property_type, bedroom_band" in sql
+    # The composite x uses a dash join in the generated sandbox code (concat(x1,'-',x2)).
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    assert "+ '-' +" in code

@@ -1134,9 +1134,10 @@ async def agent_analysis_build_object(
         build_object_code,
         canonical_extract_sql,
         element_id_for,
+        extract_grain,
+        measure_source_cols,
         name_from_instruction,
         needed_columns,
-        profile_for,
     )
     from .ordinals import load_overrides
 
@@ -1176,17 +1177,21 @@ async def agent_analysis_build_object(
     need = needed_columns(body.spec)
     must_rewrite = bool(body.spec) and (base_error is not None or not need.issubset(set(columns)))
     if must_rewrite:
-        grain = body.spec.get("grain") or list(profile_for(body.dataset).default_grain)
+        # The extract must carry every column the generated snippet groups by —
+        # a composite 2nd dimension or a group the curator didn't type into the
+        # grain field is appended for the bar family, exactly as the codegen's
+        # _bar_grain does; trend/kpi keep the typed grain.
+        grain = extract_grain(body.spec, object_type=body.object_type, dataset=body.dataset)
         try:
             new_sql = canonical_extract_sql(
                 body.sql,
                 grain=grain,
-                measure_source_cols=need,
+                measure_source_cols=measure_source_cols(body.spec),
                 where_override=str(body.spec.get("filter") or ""),
                 dataset=body.dataset,
             )
         except ValueError as exc:
-            return _err(f"invalid filter: {exc}", sql=body.sql)
+            return _err(f"invalid spec: {exc}", sql=body.sql)
         try:
             frame, meta = await extract(new_sql, user_id=body.user.id)
             columns = meta.get("columns", [])
@@ -1225,7 +1230,12 @@ async def agent_analysis_build_object(
         if not code.strip():
             return _err(gen.get("error") or "no code generated", sql=effective_sql)
     else:
-        code = build_object_code(object_type=body.object_type, spec=body.spec, dataset=body.dataset)
+        try:
+            code = build_object_code(
+                object_type=body.object_type, spec=body.spec, dataset=body.dataset
+            )
+        except ValueError as exc:
+            return _err(f"invalid spec: {exc}", sql=effective_sql)
 
     # 3. Run + lift the object (the lift orders any ordinal x-axis for the dataset).
     outcome = run_code(code, df=frame, frames={"extract": frame})

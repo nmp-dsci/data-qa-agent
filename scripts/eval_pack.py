@@ -48,10 +48,6 @@ FALLBACK_USER = "user1"
 # not the whole result set — and an uncapped dump is how PII reaches git.
 MAX_GOLDEN_ROWS = 50
 
-# Per-field ceiling in serialised bytes. Past this a field stops being a
-# reviewable specification and becomes a data dump, so it is stored by hash.
-MAX_FIELD_BYTES = 16_384
-
 # Columns pulled from app.eval_cases, in pack order.
 FIELDS = [
     "case_key",
@@ -82,7 +78,12 @@ DERIVED_FIELDS = {"golden_data"}
 
 
 def _psql(query: str, service: str) -> str:
-    """Run one statement in the compose Postgres and return raw stdout."""
+    """Run one statement in the compose Postgres and return raw stdout.
+
+    The query is piped over stdin (psql -f -) rather than passed as a -c
+    argument: a large pack's combined upsert statement can exceed the
+    container exec's argv size limit, but stdin has no such cap.
+    """
     proc = subprocess.run(
         [
             "docker",
@@ -96,10 +97,11 @@ def _psql(query: str, service: str) -> str:
             "-d",
             "dataqa",
             "-tA",
-            "-c",
-            query,
+            "-f",
+            "-",
         ],
         cwd=REPO_ROOT,
+        input=query,
         capture_output=True,
         text=True,
     )
@@ -116,45 +118,28 @@ def _digest(value: Any) -> str:
 
 
 def _cap_rows(node: Any) -> Any:
-    """Recursively truncate every embedded data array, keeping a digest of the whole.
+    """Recursively truncate every embedded data array to a shorter *array*.
 
-    Bulk data hides at many depths and under many names — ``golden_data.rows``,
-    ``queries[].rows``, a chart spec's ``values``, per-insight payloads. Dumping
-    it all made a single golden a 24k-line file: unreviewable in a PR, which
-    defeats the reason the pack is version-controlled, and the most likely way
-    real result data reaches git.
+    Bulk data hides at many depths and under many names — ``queries[].rows``, a
+    chart spec's ``values``, per-insight payloads. Dumping it all made a single
+    golden a 24k-line file: unreviewable in a PR, which defeats the reason the
+    pack is version-controlled, and the most likely way real result data reaches
+    git. So the rule is by shape, not key name: any list longer than
+    ``MAX_GOLDEN_ROWS`` is truncated to its head.
 
-    So the rule is by shape, not by key name: any list longer than
-    ``MAX_GOLDEN_ROWS`` is truncated. What survives is what grading needs — the
-    leading values G1 compares — plus a total and a content hash of the full
-    list, so a change to a dropped element is still detected as drift.
+    Critically, a truncated list stays a *list*. ``_cap_rows`` is only ever
+    applied to ``golden_report``/``golden_objects`` (see ``_redact``) — the
+    fields the frontend *renders* — and a chart whose ``rows`` became a
+    ``{_truncated, _head, …}`` dict is unrenderable: the renderer iterates it and
+    throws, blanking the page. Drift in the ground-truth values is tracked by
+    ``golden_data_sha`` (``golden_data`` is digested separately), not by these
+    presentation rows, so the head is all the pack needs.
     """
     if isinstance(node, list):
-        if len(node) > MAX_GOLDEN_ROWS:
-            return {
-                "_truncated": True,
-                "_total": len(node),
-                "_sha": _digest(node),
-                "_head": [_cap_rows(item) for item in node[:MAX_GOLDEN_ROWS]],
-            }
-        return [_cap_rows(item) for item in node]
+        return [_cap_rows(item) for item in node[:MAX_GOLDEN_ROWS]]
     if isinstance(node, dict):
         return {key: _cap_rows(value) for key, value in node.items()}
     return node
-
-
-def _budget(field: str, value: Any) -> Any:
-    """Replace a field that is still oversized with a digest stub.
-
-    A backstop for payloads that are large without being list-shaped (a long
-    generated narrative, a chart spec with inlined data). The pack is a
-    specification; anything past the budget is a data dump that a reviewer
-    cannot meaningfully read, so it is recorded by hash instead of by value.
-    """
-    encoded = json.dumps(value, default=str)
-    if len(encoded) <= MAX_FIELD_BYTES:
-        return value
-    return {"_omitted": True, "_bytes": len(encoded), "_sha": _digest(value), "_field": field}
 
 
 def _redact(case: dict[str, Any]) -> dict[str, Any]:
@@ -167,7 +152,7 @@ def _redact(case: dict[str, Any]) -> dict[str, Any]:
         case["golden_data_sha"] = _digest(data)
     for field in ("golden_report", "golden_objects"):
         if case.get(field) is not None:
-            case[field] = _budget(field, _cap_rows(case[field]))
+            case[field] = _cap_rows(case[field])
     return case
 
 

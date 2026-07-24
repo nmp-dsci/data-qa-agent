@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -35,20 +36,54 @@ from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["goldens"])
 
+
+async def _resolve_user_id(as_user: str | None, admin: CurrentUser) -> str:
+    """The user id the agent runs its RLS extract under, from a golden's ``as_user``.
+
+    A golden stores ``as_user`` as a seeded *username* ("user1"/"user2"/"admin")
+    or blank — but the agent and Postgres RLS key on the user *id* (a uuid). A raw
+    username passed straight through fails every build/prep/draft with
+    ``invalid input syntax for type uuid: "user1"``, which is what made curating a
+    golden's answer impossible. So: blank → the admin; an id → itself; a known
+    username → its id.
+
+    An *unknown* username is rejected (400), not silently run as the admin: a
+    typo would otherwise build the extract under full-admin RLS visibility while
+    still claiming the seeded identity, masking a governance mismatch — and eval
+    replay (dev-login by username) fails loudly on the same typo, so curation and
+    eval must behave the same way.
+    """
+    if not as_user:
+        return admin.id
+    try:
+        uuid.UUID(str(as_user))
+        return str(as_user)
+    except ValueError:
+        pass
+    async with rls_connection(admin.id) as conn:
+        row = (
+            await conn.execute(text("SELECT id FROM app.users WHERE username = :u"), {"u": as_user})
+        ).scalar()
+    if row is None:
+        raise HTTPException(status_code=400, detail=f"unknown as_user: {as_user!r}")
+    return str(jsonable(row))
+
+
 # Column names below are fixed literals / driven by the Pydantic models — never
 # raw user strings — so building them into the SQL text is injection-safe.
 _LIST_COLS = (
     "id, dataset, tier, question, as_user, tags, holdout, authoring_status, "
     "(golden_sql IS NOT NULL) AS has_sql, (golden_sandbox IS NOT NULL) AS has_sandbox, "
     "(golden_data IS NOT NULL) AS has_data, (golden_report IS NOT NULL) AS has_report, "
+    "(grader->>'kind') AS grader_kind, "
     "created_at, updated_at"
 )
 _FULL_COLS = (
     "id, source, dataset, tier, question, expectation, as_user, tags, holdout, "
     "authoring_status, golden_sql, golden_sandbox, golden_data, golden_report, "
-    "golden_objects, created_at, updated_at"
+    "golden_objects, grader, created_at, updated_at"
 )
-_JSONB_COLS = {"tags", "golden_data", "golden_report", "golden_objects"}
+_JSONB_COLS = {"tags", "golden_data", "golden_report", "golden_objects", "grader"}
 
 
 class GoldenIn(BaseModel):
@@ -64,6 +99,7 @@ class GoldenIn(BaseModel):
     golden_data: Any | None = None
     golden_report: Any | None = None
     golden_objects: Any | None = None
+    grader: Any | None = None
     expectation: str | None = None
 
 
@@ -80,6 +116,7 @@ class GoldenPatch(BaseModel):
     golden_data: Any | None = None
     golden_report: Any | None = None
     golden_objects: Any | None = None
+    grader: Any | None = None
     expectation: str | None = None
 
 
@@ -206,11 +243,12 @@ async def create_golden(
                     "INSERT INTO app.eval_cases "
                     "(source, question, expectation, dataset, tier, as_user, tags, holdout, "
                     " authoring_status, golden_sql, golden_sandbox, golden_data, golden_report, "
-                    " golden_objects) "
+                    " golden_objects, grader) "
                     "VALUES ('authored', :q, :exp, :ds, :tier, :as_user, CAST(:tags AS jsonb), "
                     " :holdout, :status, :sql, :sandbox, "
                     " CAST(:data AS jsonb), CAST(:report AS jsonb), "
-                    " CAST(COALESCE(:objects, '[]') AS jsonb)) "
+                    " CAST(COALESCE(:objects, '[]') AS jsonb), "
+                    " CAST(COALESCE(:grader, '{}') AS jsonb)) "
                     "RETURNING id"
                 ),
                 {
@@ -227,6 +265,7 @@ async def create_golden(
                     "data": _jsonb_param(body.golden_data),
                     "report": _jsonb_param(body.golden_report),
                     "objects": _jsonb_param(body.golden_objects),
+                    "grader": _jsonb_param(body.grader),
                 },
             )
         ).scalar()
@@ -298,7 +337,7 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
         sql=body.sql,
         code=body.code,
         objects=body.objects,
-        user_id=body.as_user or admin.id,
+        user_id=await _resolve_user_id(body.as_user, admin),
         role="user",
     )
 
@@ -333,7 +372,7 @@ async def build_object_endpoint(
         spec=body.spec,
         instruction=body.instruction,
         dataset=body.dataset,
-        user_id=body.as_user or admin.id,
+        user_id=await _resolve_user_id(body.as_user, admin),
         role="user",
     )
 
@@ -367,7 +406,7 @@ async def author_object_endpoint(
         instruction=body.instruction,
         objects=body.objects,
         target_element_id=body.target_element_id,
-        user_id=body.as_user or admin.id,
+        user_id=await _resolve_user_id(body.as_user, admin),
         role="user",
     )
 
@@ -433,7 +472,7 @@ async def draft(body: DraftIn, admin: CurrentUser = Depends(require_admin)) -> d
     """
     ans = await ask_agent(
         question=body.question,
-        user_id=body.as_user or admin.id,
+        user_id=await _resolve_user_id(body.as_user, admin),
         role="user",
         plan="pro",
         dataset_slug=body.dataset or "nsw_sales",
@@ -590,7 +629,7 @@ async def draft_stream(
         try:
             async for ev in ask_agent_stream(
                 question=body.question,
-                user_id=body.as_user or admin.id,
+                user_id=await _resolve_user_id(body.as_user, admin),
                 role="user",
                 plan="pro",
                 dataset_slug=body.dataset or "nsw_sales",

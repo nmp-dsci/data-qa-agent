@@ -42,24 +42,25 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
   await expect(page.getByTestId("page-0")).toBeVisible({ timeout: 360_000 });
 
   // --- 2. Build the named presentation object -----------------------------
-  // The structured builder lives in a <details> whose summary reads "advanced
-  // — structured builder…". It was renamed and demoted under the AI panel in
-  // s22 (d70d1dd) and this spec was never updated: "Presentation Object
-  // builder" now survives only in a source comment, so the old locator matched
-  // nothing in the DOM and the test could only ever time out here.
-  await page.getByText(/structured builder/i).click(); // expand the builder
+  // The structured builder is the primary (always-visible) panel in the ② Sandbox
+  // section — grain/x are grain-driven checkbox lists from the dataset's typed
+  // vocabulary (s28), group is a dropdown of the grain. Not free text.
   await page.getByTestId("builder-name").fill(OBJECT);
   await page.getByTestId("builder-type").selectOption({ label: "Line + bar chart" });
-  await page.getByTestId("builder-grain").fill("month, suburb, area_band");
-  await page.getByTestId("builder-dimension").fill("area_band");
-  await page.getByTestId("builder-group").fill("suburb");
+  const grain = page.getByTestId("builder-grain");
+  for (const c of ["month", "suburb", "area_band"]) {
+    await grain.getByLabel(c, { exact: true }).check();
+  }
+  // x / dimension (checkboxes from grain) and group (dropdown of grain).
+  await page.getByTestId("builder-dimension").getByLabel("area_band", { exact: true }).check();
+  await page.getByTestId("builder-group").selectOption("suburb");
   await page.getByTestId("builder-filter").fill(FILTER);
   // bars = sum(n_sold) as sales_volume; line = wtd-avg total_sale_value / n_sold.
   await page.getByTestId("builder-bar-label").fill("sales_volume");
-  await page.getByTestId("builder-bar-source").fill("n_sold");
+  await page.getByTestId("builder-bar-source").selectOption("n_sold");
   await page.getByTestId("builder-line-label").fill("avg_sale_price");
-  await page.getByTestId("builder-line-num").fill("total_sale_value");
-  await page.getByTestId("builder-line-den").fill("n_sold");
+  await page.getByTestId("builder-line-num").selectOption("total_sale_value");
+  await page.getByTestId("builder-line-den").selectOption("n_sold");
   await page.getByTestId("builder-build").click();
 
   // The built object appears with real, sandbox-computed rows + its skills.

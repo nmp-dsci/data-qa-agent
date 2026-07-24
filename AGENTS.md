@@ -395,8 +395,9 @@ comparison can prove exactly one lever moved. Runs predating M1 carry a null sta
 Batch scores land in `eval_runs`/`eval_results` (migrations 0019–0024, extended by 0029; the pack's
 per-golden `grader` spec — which `kind` of comparison G1 dispatches on — is migration 0030). Since a golden can
 be promoted from a real prod chat answer, `scripts/eval_pack.py export` redacts it on the way into the repo
-(decision D-2): `as_user` is remapped to a seeded test identity and embedded row data is capped to a size
-budget with a digest kept for the rest, so the pack can never become a back door around RLS. The Golden
+(decision D-2): `as_user` is remapped to a seeded test identity and embedded row data is capped to its
+leading rows (originally with a digest stub kept for the remainder — replaced in s28, below, because the
+frontend renders those fields), so the pack can never become a back door around RLS. The Golden
 tab's dataset picker now reads the dataset registry instead of a hardcoded `["nsw_sales", "nsw_rent"]`
 literal, which had silently locked `nsw_yield` out of golden authoring since migration 0025.
 
@@ -435,9 +436,10 @@ Three more ways to seed and refine a golden (s21–s23): an admin chat answer ca
 "★ save as golden" chip in the chat result (shown whenever the answer has an audited `run_id`) calls
 `POST /admin/eval-goldens/from-run` to copy the question/SQL/sandbox script/report already captured on
 `query_runs`/`messages` into a new draft (idempotent per run) and opens it straight in the editor, no agent
-re-run. Inside the editor, a **"New object with AI"** panel is the NL-first way to author stage-②
-presentation objects: one sentence auto-derives a name/type and the built object is auto-placed onto the
-report, with the structured/advanced form kept as a manual fallback. Ordinal dimensions (`area_band`,
+re-run. Inside the editor, stage-② presentation objects were originally authored via a NL-first
+**"New object with AI"** panel (one sentence auto-derived a name/type and auto-placed the built object onto
+the report); that panel has since been dropped in favour of the deterministic structured builder (s28,
+below). Ordinal dimensions (`area_band`,
 `bedroom_band`, …) render in their natural order instead of alphabetically — `agent/ordinals.py` is the
 registry (a code-level `BAND_ORDERS` seed plus a curator-editable override), consulted by the chart lift on
 every surface; curators edit the override per `(dataset, column)` in `app.dataset_ordinals` (migration 0028)
@@ -453,6 +455,115 @@ returns one once `group_col` is passed; `skills.top_growth` returns a DataFrame 
 like a mapping). It's wired into both `object_codegen`'s correction loop (only two passes, so the first
 piece of feedback has to carry the real cause) and every `/agent/analysis*` endpoint's `error` field, so
 the UI can never show a bare traceback.
+
+**Question tiers (s27).** Every golden carries a `tier` (`app.eval_cases.tier`, free-text; the Golden tab
+picker and the pack lint both accept `T1`–`T7`). A tier classifies *what kind of question* the golden is, so
+the pack's coverage can be read at a glance and `make eval TIER=T3` / the Evaluations tab can break scores
+down by difficulty. The ladder:
+
+| Tier | Kind | What it tests |
+|------|------|---------------|
+| **T1** | Lookup | one value at the latest month (`scalar` grader) |
+| **T2** | Trend | a time series and its variants — trend, ranking, comparison, segmentation (`series`/`ranked_set`/`row_set`) |
+| **T3** | Multi-mart | a join across datasets (sales ⨝ rent, rent ⨝ yield, …) |
+| **T4** | Ambiguous | an underspecified ask the agent must scope and state its assumptions for (no fixed grader) |
+| **T5** | Adversarial | a data boundary or trap — out-of-coverage dates, thin cells, forecast requests — where the right answer names the limit instead of fabricating |
+| **T6** | Geo roll-up | postcode rolled up to SA3/SA4/GCC via `marts.dim_postcode_geo` (weight by the count leg, never average the averages) |
+| **T7** | Recommendation | a composite "where to buy next & why" verdict combining several measures into a justified shortlist |
+
+The s27 coverage pack seeds 10 draft goldens per mart against this ladder (one per direction, T2 carrying the
+four time-series shapes). Drafts (`authoring_status='draft'`) are skipped by `make eval` unless
+`INCLUDE_DRAFTS=1` is passed (the runner's `--include-drafts`; naming one directly via `CASE=` also runs
+it), so an un-curated question is never scored against empty ground truth.
+
+**Crash-proof object rendering + schema-driven builder (s28).** A rendering exception in any single report
+object used to unmount the whole SPA — opening a golden whose stored `golden_objects` carried a non-array
+`rows` (the pack exporter's old `{_truncated,…}`/`{_omitted,…}` digest stubs) white-screened the entire
+Golden tab. Every object now renders inside `frontend/src/report-engine/ChartErrorBoundary.tsx`, wrapped
+once in `PageLayout.tsx`'s `ObjectBody` so every consumer (chat, Explore, Goldens, the Template Studio
+preview) is covered: a failed object degrades to a fallback card, the rest of the report renders, and a
+data-derived `resetKey` un-fails the boundary when the object is rebuilt. Chart renderers also coerce
+`rows` through `asRows` (`ui/charts/tokens.ts`) so an unusable shape renders empty rather than throwing.
+The exporter side of the same bug is fixed too: `scripts/eval_pack.py` no longer wraps oversized rendered
+fields in digest envelopes — `golden_report`/`golden_objects` lists are truncated to a plain head (still
+lists, so they stay renderable), with ground-truth drift tracked by `golden_data_sha` alone.
+
+The Sandbox tab's structured builder is now schema-driven end-to-end: its x/dimension, optional 2nd
+dimension, group and measure-source fields are dropdowns bound to the dataset's typed vocabulary from the
+Explore manifest (`GET /explore/datasets`) — mart-backed dimensions only (geo rollups and computed dims
+need a JOIN the builder can't emit) and additive metrics only (every path sums the source through the
+window dedup, and summing a stored average is silently wrong; non-additive figures are recomposed as
+num/den weighted averages instead). Each measure is a base aggregation plus an optional derived
+augmentation over the window (share / growth / latest / …, see "Metric = aggregation + a derived
+augmentation (s31)" below) — share is deliberately *within-series*, so each series sums to 100% across the
+x-axis (the "mix" reading) — and a 2nd dimension synthesises a composite x-axis (e.g. `bedroom_band ×
+property_type` joined into one nominal label). `agent/object_builder.py` guards what the form can't: column
+identifiers are validated, non-additive sources rejected from any summing path, `filter` fragments refused
+if they smuggle statement separators or nested SELECTs, and `extract_grain` shares `_grain_with_chart_cols`
+with the codegen's `_bar_grain` so the rewritten extract and the snippet's window-dedup grain can never
+drift (trend/kpi keep the typed grain, defensively including `group` when set, since `trend_series`'s
+`group_col` must always be present in the extract even for a spec authored before the frontend enforced
+that invariant). A bad spec surfaces as `invalid spec: …` from `/agent/analysis/build-object`, never a
+traceback.
+
+**Grader-spec editor — promote draft → ready from the Golden tab.** A golden's `grader` (jsonb, migration
+0030) is what the eval runner scores against (`scripts/eval_run.py` → `POST /agent/eval/grade`), but until
+now it could only be written by hand-editing the YAML pack, so a curator could never make a draft
+*scoreable* from the UI — the one gap that kept the Golden tab from closing the loop. The `◆ GRADER` panel
+(`frontend/src/features/goldens/GraderEditor.tsx`, logic in `graderSpec.ts`) turns that jsonb into
+grain-driven dropdowns: pick a `kind` (`scalar`/`row_set`/`ranked_set`/`series` — the tier suggests one),
+its key column(s) (one → `key`, many → the composite `key: "_key"` + `key_fields`, mirroring the builder's
+composite x-axis), a `value`, `tolerance_pct`/`k`, an optional `aggregate` (`sum`, or `ratio` with
+numerator/denominator so a weighted average is graded, never an average-of-averages), and the
+`expected_objects` the report must contain. A deterministic, no-LLM `graderIssue()` renders `✓ ready to
+promote` / `✗ <reason>` and gates both the **Promote to ready** button and the header status dropdown's
+`ready` option — its rules mirror the CI pack-lint (`tests/test_eval_pack.py`: dispatchable kind, required
+fields per kind, and every named column present in the ① SQL extract — a grader that names columns but
+hasn't had the SQL run yet, or was edited after it ran, blocks with "run ▶ Run SQL" rather than silently
+passing), so the UI blocks exactly what CI would reject. The `grader` column is now wired through `GoldenIn`/`GoldenPatch` + `_FULL_COLS`/`_JSONB_COLS`
+(create/update/get round-trip it), the list carries a `grader_kind` badge, and `frontend/e2e/grader.spec.ts`
+asserts the real composite-ratio-series grader decodes on load and that a fresh golden can't promote without
+a kind.
+
+**Builder live preview + edit-in-place + filter preservation (s30).** Four connected refinements to the
+object builder / report editor: (1) **Filter preservation** — building an object could silently drop the
+question's own filter, because `canonical_extract_sql` replaced the WHERE with the builder's `filter` field
+(or best-effort per-column lifted it). An object is a summary of the *same* governed rows the question
+scoped, so `original_where()` now lifts the base extract's full WHERE verbatim and always preserves it —
+scanning at paren-depth 0 so a subquery/CTE's own WHERE is skipped in favour of the outer query's — and the
+`filter` field is only ANDed on top (an object narrows, never widens). (2) **Live preview** — whenever the
+structured builder's config is green, a debounced deterministic build (minus placement) renders the actual
+chart via `ObjectBody` at the top of the builder, so what you see is what Build will drop in. (3)
+**Edit-in-place** — the per-object edit panel's plain-English "describe this object's data" LLM box is gone;
+a chart card's **◆ edit in Structured Builder** button seeds the builder from the object's stored
+`SandboxObjectSpec` (`builderFromSpec`, the inverse of `specFromBuilder`) and scrolls to it, so the preview
+becomes the object's chart and the options below are how you change it — Build replaces it in place by
+`element_id`. A chart with **no stored spec** (a drafted base-report chart like `report:chart`, whose
+`golden_objects` is empty and whose element_id isn't `obj:<slug>`) still edits in place: `editObjectInBuilder`
+sets `previewEditId` and seeds valid dataset defaults + the object's type/name (`builderFromObject` — the
+rendered encodings can't be trusted as extract columns, so it doesn't reconstruct them), and Build (name
+falling back to the id when blank) replaces that object rather than orphaning a new one. (4)
+**Move to any page + column** — the edit panel gained a page picker beside the column picker (`moveTo(pi,
+ci)`), so a card relocates across pages without dragging. (5) **Dataset from the SQL, not the tag** — the
+builder derives its dataset (vocabulary, defaults, and build target) from the ① SQL extract's `FROM` table
+(`datasetFromSql`, mirroring the backend mart tables), so a golden mis-tagged `nsw_sales` whose SQL reads
+`marts.property_rent` still opens with rent grains/metrics instead of sales ones. The filter is shown as two
+lines: line 1 is the golden's own WHERE, carried from the SQL and always kept (read-only); line 2 is the
+builder's `filter` field, an additional predicate ANDed on top.
+
+**Metric = aggregation + a derived augmentation (s31).** A bar/line measure is now a **base aggregation**
+(`sum`/`mean` of one column, or a weighted-average `num`/`den`) plus an optional **derive** that augments it
+over the window — the two were previously conflated in one `how` dropdown. The metric row reads
+`name = agg of column · window · derive`. `agent/object_builder.py::_measure_block` builds the monthly
+additive components once, then the `derive` reduces them to one value per key: `share` (% of total within
+the series), `growth` (**period-over-period** — the recent window vs the prior window, replacing the old
+first-vs-last-month math), `latest`, `rolling` (window mean), `index` (=100 at the window's start),
+`cumulative` (running total), `rank` (within the series), `yoy` (vs 12 months prior). `share`/`cumulative`
+need a `sum` base and the time derives need `month` in the grain — both rejected at codegen, and mirrored in
+the frontend `buildabilityIssue` so the green check gates them. Old goldens stored the augmentation as `how`
+(share/growth/latest, sum base); `_measure`/`aggOf`/`deriveOf` map it forward so they keep working, and the
+`none`/`sum`/`mean`/`wavg` paths are byte-identical to before so existing objects don't shift. The derive
+dropdown only shows for the bar family (compare/breakdown/table).
 
 ---
 

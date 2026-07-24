@@ -70,11 +70,13 @@ eval-pack-version:
 # runner works down to a single golden, which is the inner diagnose->fix loop.
 #   make eval                          make eval DATASET=nsw_rent
 #   make eval CASE=nsw_rent-give-...   make eval EXPERIMENT=fewer-turns
+#   make eval INCLUDE_DRAFTS=1         # also score draft goldens
 eval:
 	uv run python scripts/eval_run.py \
 	  $(if $(DATASET),--dataset $(DATASET)) $(if $(TIER),--tier $(TIER)) \
 	  $(if $(CASE),--case $(CASE)) $(if $(EXPERIMENT),--experiment $(EXPERIMENT)) \
-	  $(if $(HYPOTHESIS),--hypothesis "$(HYPOTHESIS)") $(if $(NO_JUDGE),--no-judge)
+	  $(if $(HYPOTHESIS),--hypothesis "$(HYPOTHESIS)") $(if $(NO_JUDGE),--no-judge) \
+	  $(if $(INCLUDE_DRAFTS),--include-drafts)
 
 # Base vs experiment, with the regression gate.
 #   make eval-compare A=<run-id> B=<run-id>

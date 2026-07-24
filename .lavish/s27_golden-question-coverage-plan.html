@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s27 · Golden question coverage — 10 drafts per mart, one per direction</title>
+<style>
+  :root{
+    --bg:#0a0d15;--panel:#111522;--panel-2:#171c2b;--panel-3:#1e2434;--border:#242b3d;--border-2:#333d55;
+    --text:#eaecf3;--muted:#9aa4bb;--faint:#7a84a0;--code-bg:#0a0d13;
+    --accent:#d9a84e;--accent-ink:#1a1204;--accent-soft:#f2ca79;--accent-2:#7fb0ff;
+    --good:#9ece6a;--good-border:#33502f;--warn:#e0af68;--warn-border:#6b5a2a;--bad:#f2777a;--bad-border:#6b2a2a;
+    --purple:#c58fff;--info:#7dcfff;--info-border:#2f5a7a;
+    --radius:8px;--radius-lg:10px;--radius-xl:14px;
+    --sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;}
+  :where(.grid,.flex)>*{min-width:0;}
+  :where(p,h1,h2,h3,h4,li,dd,td,th,.chip){overflow-wrap:anywhere;}
+  :where(img,svg){max-width:100%;height:auto;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 22px 90px;}
+  h1{font-size:26px;line-height:1.2;margin:8px 0 6px;letter-spacing:-0.01em;}
+  h2{font-size:19px;margin:0 0 4px;letter-spacing:-0.01em;}
+  h3{font-size:15px;margin:0 0 4px;}
+  section{margin-top:36px;}
+  p{margin:8px 0;}
+  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:var(--accent);font-weight:600;}
+  .sub{color:var(--muted);max-width:64rem;}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;color:var(--accent-soft);white-space:nowrap;}
+  code.w{white-space:normal;}
+  a{color:var(--accent-2);}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .chip{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .chip.gold{color:var(--accent);border-color:#6b5a2a;background:rgba(217,168,78,0.08);}
+  .chip.blue{color:var(--accent-2);border-color:var(--info-border);background:rgba(127,176,255,0.08);}
+  .chip.good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px 20px;}
+  .panel.tight{padding:14px 16px;}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;}
+
+  .thesis{margin-top:18px;border-left:3px solid var(--accent);background:linear-gradient(90deg,rgba(217,168,78,0.09),rgba(217,168,78,0));padding:14px 18px;border-radius:0 var(--radius-lg) var(--radius-lg) 0;}
+  .thesis .q{font-size:17px;line-height:1.45;}
+
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px;}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);font-weight:600;padding:0 10px 7px;border-bottom:1px solid var(--border);}
+  td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .st{font-family:var(--mono);font-size:11px;white-space:nowrap;padding:2px 8px;border-radius:5px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);}
+  .st.ok{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+  .st.no{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,0.08);}
+  .st.part{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,0.08);}
+
+  .grid{display:grid;gap:14px;}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr));}
+  @media(max-width:880px){.g2,.g3{grid-template-columns:1fr;}}
+
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:13px 15px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.6;margin:10px 0 0;color:#cfd6e6;}
+  pre .c{color:var(--faint);}
+  pre .g{color:var(--good);}
+  pre .y{color:var(--accent);}
+  pre .b{color:var(--accent-2);}
+
+  .num{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:6px;background:var(--panel-3);border:1px solid var(--border-2);font-family:var(--mono);font-size:11px;color:var(--accent);flex:none;}
+  .step{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--border);}
+  .step:last-child{border-bottom:none;}
+
+  /* tier lamps — echo of the Golden tab Annunciator */
+  .lamp{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:2px 7px;border-radius:5px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.5px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--muted);white-space:nowrap;}
+  .lamp.t1{color:#9ece6a;border-color:#33502f;background:rgba(158,206,106,0.08);}
+  .lamp.t2{color:#7fb0ff;border-color:#2f5a7a;background:rgba(127,176,255,0.08);}
+  .lamp.t3{color:#7dcfff;border-color:#2f5a7a;background:rgba(125,207,255,0.08);}
+  .lamp.t4{color:#e0af68;border-color:#6b5a2a;background:rgba(224,175,104,0.08);}
+  .lamp.t5{color:#f2777a;border-color:#6b2a2a;background:rgba(242,119,122,0.08);}
+  .lamp.t6{color:#c58fff;border-color:#503a6b;background:rgba(197,143,255,0.08);}
+  .lamp.t7{color:#d9a84e;border-color:#6b5a2a;background:rgba(217,168,78,0.10);}
+  .lamp.draft{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,0.08);}
+  .lamp.ready{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,0.08);}
+
+  .qnote{display:block;color:var(--faint);font-size:12px;margin-top:3px;}
+  .dir{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;}
+
+  /* composition bar */
+  .comp{display:flex;height:30px;border-radius:7px;overflow:hidden;border:1px solid var(--border-2);margin-top:12px;}
+  .comp>div{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10.5px;font-weight:600;color:#0d0f16;}
+  .complg{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted);}
+  .complg b{color:var(--text);font-weight:600;}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px;}
+
+  /* mock golden tab row */
+  .mockrow{display:flex;align-items:center;gap:9px;background:var(--bg);border:1px solid var(--border-2);border-radius:var(--radius);padding:9px 13px;margin-top:10px;flex-wrap:wrap;}
+  .mockrow .qq{font-size:13.5px;flex:1;min-width:200px;}
+
+  /* input forms */
+  .decision{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px 20px;}
+  .decision h3{display:flex;align-items:center;gap:9px;}
+  .opt{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius);margin-top:8px;cursor:pointer;background:var(--panel-2);}
+  .opt:hover{border-color:var(--border-2);}
+  .opt input{margin-top:3px;accent-color:var(--accent);}
+  .opt .t{font-size:13.5px;}
+  .opt .d{font-size:12px;color:var(--faint);margin-top:2px;}
+  .qbtn{margin-top:12px;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--accent-ink);background:var(--accent);border:none;border-radius:7px;padding:8px 16px;cursor:pointer;}
+  .qbtn:hover{background:var(--accent-soft);}
+  .rec{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--good);border:1px solid var(--good-border);border-radius:4px;padding:1px 6px;}
+
+  .foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--border);color:var(--faint);font-size:12px;}
+  .foot code{font-size:11px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">s27 · plan for review — branch <span style="font-family:var(--mono)">golden-question-drafts</span></div>
+  <h1>Golden question coverage — 10 drafts per mart, one question per direction</h1>
+  <p class="sub">Seed the golden pack with 30 draft questions — 10 for each of <code>nsw_sales</code>, <code>nsw_rent</code>, <code>nsw_yield</code> — written as a property researcher deciding <em>where to buy next and why</em>. The set is built so the tier ladder <em>is</em> the coverage rubric: every direction a question can take on the data maps to exactly one tier.</p>
+  <div class="chips">
+    <span class="chip gold">app.eval_cases</span>
+    <span class="chip">evals/cases/&lt;dataset&gt;.yaml</span>
+    <span class="chip blue">30 drafts · authoring_status=draft</span>
+    <span class="chip">tiers T1–T7</span>
+    <span class="chip good">pack lint stays green</span>
+  </div>
+  <div class="thesis" style="margin-top:16px;">
+    <span class="lbl" style="color:var(--good);">Decisions locked — 2026-07-22</span>
+    <p class="q" style="font-size:14px;margin:6px 0 0;">Q1 → <b>Adopt T6 = geo roll-up, T7 = recommendation</b>, and document the ladder in AGENTS.md.
+    Q2 → <b>Prefill all 30 drafts with the agent</b> (full SQL/sandbox/report first pass, then curate).
+    Q3 → <b>All four hygiene fixes</b>: runner draft-guard · yield MartProfile · archive the stray test row · document the tier ladder.</p>
+  </div>
+
+  <!-- ============ 1. CURRENT STATE ============ -->
+  <section>
+    <div class="lbl">1 · Where goldens live today</div>
+    <h2>Current state — 4 goldens in the dev DB, 2 in the pack, 0 for yield</h2>
+    <p class="sub">Goldens are rows in <code>app.eval_cases</code> (<code>source='authored'</code>). The version-controlled pack <code>evals/cases/&lt;dataset&gt;.yaml</code> is the source of truth, moved DB&nbsp;↔&nbsp;YAML by <code>scripts/eval_pack.py</code> (upsert on <code>case_key</code>). The Golden tab renders each question with two lamps — its <b>tier</b> and its <b>authoring status</b>:</p>
+
+    <div class="mockrow">
+      <span class="lamp t2">T2</span><span class="lamp draft">DRAFT</span>
+      <span class="qq">how has house price moved by land-size band?</span>
+      <span class="chip">nsw_sales</span>
+    </div>
+
+    <div class="tw"><table>
+      <thead><tr><th>Existing golden</th><th>Dataset</th><th>Tier</th><th>Status</th><th>In pack?</th><th>Fate under this plan</th></tr></thead>
+      <tbody>
+        <tr><td>show house price growth for hornsby / normanhurst</td><td><code>nsw_sales</code></td><td><span class="lamp t2">T2</span></td><td><span class="lamp ready">READY</span></td><td><span class="st ok">yes</span></td><td>kept — new set avoids these anchors</td></tr>
+        <tr><td>Give me rent trends for postcode 2077 vs 2076</td><td><code>nsw_rent</code></td><td><span class="lamp t2">T2</span></td><td><span class="lamp ready">READY</span></td><td><span class="st ok">yes</span></td><td>kept — new set avoids these anchors</td></tr>
+        <tr><td>how has house price moved by land-size band?</td><td><code>nsw_sales</code></td><td><span class="lamp t1">T1</span></td><td><span class="lamp draft">DRAFT</span></td><td><span class="st no">DB only</span></td><td>absorbed by new S5 (same direction, correct tier T2)</td></tr>
+        <tr><td>…rent trends 2077 vs 2076 — curated 1784610466146</td><td><code>nsw_sales</code></td><td><span class="lamp t1">T1</span></td><td><span class="lamp ready">READY</span></td><td><span class="st no">DB only</span></td><td>stray test row (rent question filed under sales) — propose archive</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="grid g3" style="margin-top:16px;">
+      <div class="panel tight">
+        <div class="lbl">nsw_sales → marts.property_sales</div>
+        <p style="font-size:13px;margin-top:6px;">816k rows · <b>2010-01 → 2026-06</b><br>postcode + <b>suburb</b> + type + <code>area_band</code> + zoning + month<br>median/avg/min/max price, <code>n_sold</code>, total value</p>
+      </div>
+      <div class="panel tight">
+        <div class="lbl">nsw_rent → marts.property_rent</div>
+        <p style="font-size:13px;margin-top:6px;">367k rows · <b>2016-01 → 2026-05</b><br>postcode (<b>no suburb</b>) + type + <code>bedroom_band</code> + month<br>median/avg/min/max weekly rent, <code>n_rented</code></p>
+      </div>
+      <div class="panel tight">
+        <div class="lbl">nsw_yield → marts.property_yield</div>
+        <p style="font-size:13px;margin-top:6px;">63k rows · <b>2016-01 → 2026-05</b><br>postcode + type + month (sales ⨝ rent)<br><code>gross_yield_pct</code>; thin cells floored at n_sold ≥ 5 ∧ n_rented ≥ 5</p>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:10px;">Shared dimension: <code>marts.dim_postcode_geo</code> (2,267 postcodes → SA2/SA3/SA4/GCC/state) — readable with any grant, and the only way to say "Greater Sydney" or "SA4" in SQL. Ordinal band orders are registered for <code>area_band</code> and <code>bedroom_band</code> (migration 0028); yield has none.</p>
+  </section>
+
+  <!-- ============ 2. TIER LADDER ============ -->
+  <section>
+    <div class="lbl">2 · "A question is a tier"</div>
+    <h2>The tier ladder becomes the coverage rubric</h2>
+    <p class="sub">The Golden tab offers <code>T1–T7</code> (<code>GoldensPage.tsx:48</code>) but only T1–T5 had documented meaning (from the s24 eval-loop plan); T6/T7 were selectable and undefined. <b>Decision Q1 adopts them</b> for the two directions a "where should I buy" researcher actually needs — geographic roll-up and composite recommendation — so that <b>10 questions per dataset = the full ladder, one direction each, with T2 carrying the four time-series shapes</b>. The full ladder gets documented in AGENTS.md.</p>
+
+    <div class="tw"><table>
+      <thead><tr><th>Tier</th><th>Meaning</th><th>Status</th><th>Per dataset</th><th>Direction it covers</th></tr></thead>
+      <tbody>
+        <tr><td><span class="lamp t1">T1</span></td><td>Lookup — one value, latest month</td><td><span class="st ok">established (s24)</span></td><td>1</td><td class="dir">point lookup</td></tr>
+        <tr><td><span class="lamp t2">T2</span></td><td>Trend — time series and its variants</td><td><span class="st ok">established (s24)</span></td><td>4</td><td class="dir">trend · ranking · comparison · segmentation</td></tr>
+        <tr><td><span class="lamp t3">T3</span></td><td>Multi-mart — joins across datasets</td><td><span class="st ok">established (s24)</span></td><td>1</td><td class="dir">cross-mart</td></tr>
+        <tr><td><span class="lamp t4">T4</span></td><td>Ambiguous — agent must scope &amp; state assumptions</td><td><span class="st ok">established (s24)</span></td><td>1</td><td class="dir">underspecified ask</td></tr>
+        <tr><td><span class="lamp t5">T5</span></td><td>Adversarial — data boundaries, traps, refusals</td><td><span class="st ok">established (s24)</span></td><td>1</td><td class="dir">boundary / trust</td></tr>
+        <tr><td><span class="lamp t6">T6</span></td><td>Geo roll-up — postcode → SA3/SA4/GCC via <code>dim_postcode_geo</code></td><td><span class="st ok">adopted (Q1)</span></td><td>1</td><td class="dir">regional aggregation</td></tr>
+        <tr><td><span class="lamp t7">T7</span></td><td>Recommendation — composite "where to buy &amp; why" shortlist</td><td><span class="st ok">adopted (Q1)</span></td><td>1</td><td class="dir">multi-measure verdict</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="comp">
+      <div style="flex:1;background:#9ece6a;">T1</div>
+      <div style="flex:4;background:#7fb0ff;">T2 ×4</div>
+      <div style="flex:1;background:#7dcfff;">T3</div>
+      <div style="flex:1;background:#e0af68;">T4</div>
+      <div style="flex:1;background:#f2777a;">T5</div>
+      <div style="flex:1;background:#c58fff;">T6</div>
+      <div style="flex:1;background:#d9a84e;">T7</div>
+    </div>
+    <div class="complg">
+      <span><span class="dot" style="background:#9ece6a"></span><b>1</b> lookup</span>
+      <span><span class="dot" style="background:#7fb0ff"></span><b>4</b> trend / rank / compare / segment</span>
+      <span><span class="dot" style="background:#7dcfff"></span><b>1</b> cross-mart</span>
+      <span><span class="dot" style="background:#e0af68"></span><b>1</b> ambiguous</span>
+      <span><span class="dot" style="background:#f2777a"></span><b>1</b> adversarial</span>
+      <span><span class="dot" style="background:#c58fff"></span><b>1</b> geo roll-up</span>
+      <span><span class="dot" style="background:#d9a84e"></span><b>1</b> recommendation</span>
+    </div>
+  </section>
+
+  <!-- ============ 3. THE 30 QUESTIONS ============ -->
+  <section>
+    <div class="lbl">3 · The 30 draft questions</div>
+    <h2>Every anchor verified against the live marts</h2>
+    <p class="sub">Postcodes and suburbs below were checked for real volume in the dev DB (2160 Merrylands and 2765 Marsden Park lead sales since 2024; far-west 2840 tops yield at ~14%). Each row shows the question as it will be seeded, the note that becomes its <code>expectation</code>, and the grader kind it will need once promoted to ready. Annotate any row to reword, swap anchors, or retarget the tier.</p>
+
+    <h3 style="margin-top:20px;">nsw_sales — <span style="color:var(--muted);font-weight:400;">prices at suburb grain, 2010 → now</span></h3>
+    <div class="tw"><table>
+      <thead><tr><th>#</th><th>Tier</th><th>Question (seeded verbatim)</th><th>Direction</th><th>Data touched</th><th>Grader</th></tr></thead>
+      <tbody>
+        <tr><td>S1</td><td><span class="lamp t1">T1</span></td><td>What's the current median house price in Merrylands (2160)?
+          <span class="qnote">One value, latest month (2026-06). Top-volume postcode since 2024, so the cell is fat.</span></td>
+          <td class="dir">point lookup</td><td><code>median_sale_price</code></td><td><span class="st">scalar</span></td></tr>
+        <tr><td>S2</td><td><span class="lamp t2">T2</span></td><td>How have unit prices in Liverpool (2170) moved over the last five years?
+          <span class="qnote">Monthly median series for units; expects a trend chart, not a number.</span></td>
+          <td class="dir">trend</td><td><code>median_sale_price</code> · type=unit</td><td><span class="st">series</span></td></tr>
+        <tr><td>S3</td><td><span class="lamp t2">T2</span></td><td>Which suburbs had the strongest house-price growth over the last three years?
+          <span class="qnote">First-vs-last ratio with an n_sold volume floor so thin suburbs don't top the list. Distinct from the existing 2-suburb Hornsby golden.</span></td>
+          <td class="dir">ranking</td><td><code>median_sale_price</code>, <code>n_sold</code></td><td><span class="st">ranked_set</span></td></tr>
+        <tr><td>S4</td><td><span class="lamp t2">T2</span></td><td>Houses vs units on the Central Coast (2250): how has the price gap moved since 2015?
+          <span class="qnote">Two series plus the spread between them.</span></td>
+          <td class="dir">comparison</td><td><code>median_sale_price</code> × type</td><td><span class="st">series</span></td></tr>
+        <tr><td>S5</td><td><span class="lamp t2">T2</span></td><td>Do bigger blocks appreciate faster? Compare house-price growth across land-size bands.
+          <span class="qnote">Absorbs the existing DB-only draft ("house price by land-size band", mislabeled T1). Exercises the area_band ordinal ordering (&lt;400 … 5000+).</span></td>
+          <td class="dir">segmentation</td><td><code>area_band</code> ordinal</td><td><span class="st">row_set</span></td></tr>
+        <tr><td>S6</td><td><span class="lamp t3">T3</span></td><td>Did the suburbs with the biggest price growth also see yields compress the most?
+          <span class="qnote">sales ⨝ yield by postcode — growth vs Δyield scatter/rank.</span></td>
+          <td class="dir">cross-mart</td><td>sales + <code>gross_yield_pct</code></td><td><span class="st">row_set</span></td></tr>
+        <tr><td>S7</td><td><span class="lamp t6">T6</span></td><td>Roll median house prices up to SA3 regions — which parts of Greater Sydney are still under $1m?
+          <span class="qnote">⨝ dim_postcode_geo, filter gcc_name = 'Greater Sydney', group by sa3_name.</span></td>
+          <td class="dir">geo roll-up</td><td>+ <code>dim_postcode_geo</code></td><td><span class="st">row_set</span></td></tr>
+        <tr><td>S8</td><td><span class="lamp t7">T7</span></td><td>I have $950k for a house — shortlist five suburbs with momentum and liquidity, and say why.
+          <span class="qnote">Composite: median ≤ budget ∧ growth ∧ n_sold depth. The "why" must cite the numbers.</span></td>
+          <td class="dir">recommendation</td><td>growth + <code>n_sold</code> + median</td><td><span class="st">ranked_set</span></td></tr>
+        <tr><td>S9</td><td><span class="lamp t4">T4</span></td><td>Is now a good time to buy in the Hills District?
+          <span class="qnote">"Hills District" is not a column and "good time" is not a metric — agent must scope (e.g. 2154/2155) and state its assumptions.</span></td>
+          <td class="dir">ambiguous</td><td>agent's choice</td><td><span class="st">—</span></td></tr>
+        <tr><td>S10</td><td><span class="lamp t5">T5</span></td><td>What will the median price in Marsden Park (2765) be next year?
+          <span class="qnote">Forecast is out of scope — expected behaviour is a reframe to the historical trend plus an explicit "this data doesn't predict".</span></td>
+          <td class="dir">adversarial</td><td>boundary: future</td><td><span class="st">—</span></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3 style="margin-top:26px;">nsw_rent — <span style="color:var(--muted);font-weight:400;">weekly rents at postcode grain, 2016 → now (no suburb column)</span></h3>
+    <div class="tw"><table>
+      <thead><tr><th>#</th><th>Tier</th><th>Question (seeded verbatim)</th><th>Direction</th><th>Data touched</th><th>Grader</th></tr></thead>
+      <tbody>
+        <tr><td>R1</td><td><span class="lamp t1">T1</span></td><td>What's the median weekly rent for a 2-bedroom unit in postcode 2000 right now?
+          <span class="qnote">One value, latest month (2026-05), bedroom_band='2'.</span></td>
+          <td class="dir">point lookup</td><td><code>median_weekly_rent</code></td><td><span class="st">scalar</span></td></tr>
+        <tr><td>R2</td><td><span class="lamp t2">T2</span></td><td>How has average weekly rent in postcode 2145 moved since 2020?
+          <span class="qnote">Top-volume rent postcode; post-COVID window.</span></td>
+          <td class="dir">trend</td><td><code>avg_weekly_rent</code></td><td><span class="st">series</span></td></tr>
+        <tr><td>R3</td><td><span class="lamp t2">T2</span></td><td>Which postcodes had the fastest rent growth over the last two years?
+          <span class="qnote">Ranked growth with an n_rented floor.</span></td>
+          <td class="dir">ranking</td><td>growth, <code>n_rented</code></td><td><span class="st">ranked_set</span></td></tr>
+        <tr><td>R4</td><td><span class="lamp t2">T2</span></td><td>Do houses or units rent for more in Marsden Park (2765) — and is the gap widening?
+          <span class="qnote">Two series × property_type plus the spread.</span></td>
+          <td class="dir">comparison</td><td><code>avg_weekly_rent</code> × type</td><td><span class="st">series</span></td></tr>
+        <tr><td>R5</td><td><span class="lamp t2">T2</span></td><td>How much does each extra bedroom add? Weekly rent by bedroom band in Liverpool (2170).
+          <span class="qnote">Exercises the bedroom_band ordinal (0,1,2,3,4,5+) — the axis must not sort alphabetically.</span></td>
+          <td class="dir">segmentation</td><td><code>bedroom_band</code> ordinal</td><td><span class="st">row_set</span></td></tr>
+        <tr><td>R6</td><td><span class="lamp t3">T3</span></td><td>Is rent keeping up with prices in Liverpool (2170)? Compare rent growth vs sale-price growth since 2016.
+          <span class="qnote">rent ⨝ sales — two indexed growth lines from different marts.</span></td>
+          <td class="dir">cross-mart</td><td>rent + sales</td><td><span class="st">series</span></td></tr>
+        <tr><td>R7</td><td><span class="lamp t6">T6</span></td><td>Average weekly rent by SA4 — Greater Sydney vs Rest of NSW: where is rent pressure spreading?
+          <span class="qnote">⨝ dim_postcode_geo; roll-up must weight by n_rented, not average the averages.</span></td>
+          <td class="dir">geo roll-up</td><td>+ <code>dim_postcode_geo</code></td><td><span class="st">row_set</span></td></tr>
+        <tr><td>R8</td><td><span class="lamp t7">T7</span></td><td>Where is rental demand strongest? Find postcodes combining high bond volume with above-average rent growth.
+          <span class="qnote">Composite demand shortlist — the investor's "where are tenants".</span></td>
+          <td class="dir">recommendation</td><td><code>n_rented</code> + growth</td><td><span class="st">ranked_set</span></td></tr>
+        <tr><td>R9</td><td><span class="lamp t4">T4</span></td><td>Which areas are becoming unaffordable for renters?
+          <span class="qnote">"Unaffordable" and "areas" both undefined — agent must pick a threshold and a geography and say so.</span></td>
+          <td class="dir">ambiguous</td><td>agent's choice</td><td><span class="st">—</span></td></tr>
+        <tr><td>R10</td><td><span class="lamp t5">T5</span></td><td>Show me weekly rents in postcode 2000 for 2010–2015.
+          <span class="qnote">Bond data starts 2016-01 — the right answer states the coverage boundary instead of fabricating.</span></td>
+          <td class="dir">adversarial</td><td>boundary: pre-2016</td><td><span class="st">—</span></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3 style="margin-top:26px;">nsw_yield — <span style="color:var(--muted);font-weight:400;">gross yield at postcode grain, 2016 → now, thin cells floored at n ≥ 5</span></h3>
+    <div class="tw"><table>
+      <thead><tr><th>#</th><th>Tier</th><th>Question (seeded verbatim)</th><th>Direction</th><th>Data touched</th><th>Grader</th></tr></thead>
+      <tbody>
+        <tr><td>Y1</td><td><span class="lamp t1">T1</span></td><td>What's the current gross rental yield for units in Liverpool (2170)?
+          <span class="qnote">One value, latest month.</span></td>
+          <td class="dir">point lookup</td><td><code>gross_yield_pct</code></td><td><span class="st">scalar</span></td></tr>
+        <tr><td>Y2</td><td><span class="lamp t2">T2</span></td><td>How have prices, rents and yield in Campbelltown (2560) moved together since 2016?
+          <span class="qnote">The yield mart carries all three measures — a Combo object (bars + line). Combo needs pre-aggregated rows (s18).</span></td>
+          <td class="dir">trend</td><td>price + rent + yield</td><td><span class="st">series</span></td></tr>
+        <tr><td>Y3</td><td><span class="lamp t2">T2</span></td><td>Top 10 postcodes by gross yield right now — and how much data sits behind each number.
+          <span class="qnote">Ranked yields with n_sold/n_rented as evidence columns; the current top is far-west 2840 at ~14%.</span></td>
+          <td class="dir">ranking</td><td><code>gross_yield_pct</code>, n cols</td><td><span class="st">ranked_set</span></td></tr>
+        <tr><td>Y4</td><td><span class="lamp t2">T2</span></td><td>Units vs houses: which yields more, and how has the spread moved?
+          <span class="qnote">Two statewide series × property_type.</span></td>
+          <td class="dir">comparison</td><td><code>gross_yield_pct</code> × type</td><td><span class="st">series</span></td></tr>
+        <tr><td>Y5</td><td><span class="lamp t2">T2</span></td><td>Do cheaper markets yield more? Bucket postcodes by average sale price and compare yields.
+          <span class="qnote">No stored price band — the banding happens in the sandbox, which is exactly what it tests.</span></td>
+          <td class="dir">segmentation</td><td>derived price bands</td><td><span class="st">row_set</span></td></tr>
+        <tr><td>Y6</td><td><span class="lamp t3">T3</span></td><td>Where can I get yield above 5% without giving up capital growth? Cross current yields with three-year price growth.
+          <span class="qnote">yield ⨝ sales — the classic two-axis screen.</span></td>
+          <td class="dir">cross-mart</td><td>yield + sales growth</td><td><span class="st">ranked_set</span></td></tr>
+        <tr><td>Y7</td><td><span class="lamp t6">T6</span></td><td>Compare gross yields across SA4 regions — Greater Sydney vs Rest of NSW.
+          <span class="qnote">Roll-up trap: yield must be recomputed from totals (52 × Σrent / Σvalue), never averaged from gross_yield_pct.</span></td>
+          <td class="dir">geo roll-up</td><td>+ <code>dim_postcode_geo</code></td><td><span class="st">row_set</span></td></tr>
+        <tr><td>Y8</td><td><span class="lamp t7">T7</span></td><td>Where should I buy next? Under $800k, yield at least 4.5%, rents still rising — shortlist Greater Sydney postcodes and justify each.
+          <span class="qnote">The capstone question — the whole persona in one ask. Three filters + a written "why" per pick.</span></td>
+          <td class="dir">recommendation</td><td>yield + price + rent trend + geo</td><td><span class="st">ranked_set</span></td></tr>
+        <tr><td>Y9</td><td><span class="lamp t4">T4</span></td><td>What's the best safe high-yield area?
+          <span class="qnote">"Safe" is undefined (volume? volatility? the data has no vacancy) — agent must define it or ask.</span></td>
+          <td class="dir">ambiguous</td><td>agent's choice</td><td><span class="st">—</span></td></tr>
+        <tr><td>Y10</td><td><span class="lamp t5">T5</span></td><td>Postcode 2840 shows a ~14% gross yield — can I trust that number?
+          <span class="qnote">Thin-cell interrogation: n near the ≥5 floor, remote-area volatility, single-month artifacts. Data literacy as a golden.</span></td>
+          <td class="dir">adversarial</td><td><code>n_sold</code>/<code>n_rented</code> floor</td><td><span class="st">—</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ============ 4. POPULATION MECHANICS ============ -->
+  <section>
+    <div class="lbl">4 · How they get populated</div>
+    <h2>Pack-first seeding, then the normal curation loop</h2>
+    <p class="sub">The pack is already the designed seeding path (<code>eval_pack.py</code>: "seeds any env, reviewable in a PR"). Drafts are legal pack citizens: CI's pack lint only requires <code>case_key</code> / <code>question</code> / <code>dataset</code> / tier ∈ T1–T7, and skips the SQL &amp; grader checks when those fields are absent. Verified against <code>tests/test_eval_pack.py</code>.</p>
+
+    <div class="panel" style="margin-top:14px;">
+      <div class="step"><span class="num">1</span><div><b>Author 30 minimal pack entries</b> — append 10 to <code>evals/cases/nsw_sales.yaml</code> and <code>nsw_rent.yaml</code>, create <code>nsw_yield.yaml</code>. Each entry is question-only: no SQL, no report, no grader yet.
+<pre>- case_key: nsw_yield-trust-the-2840-yield-&lt;uuid&gt;
+  question: Postcode 2840 shows a ~14% gross yield — can I trust that number?
+  dataset: nsw_yield
+  tier: T5
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  <span class="y">authoring_status: draft</span>
+  expectation: &gt;-
+    Flags thin data — n_sold/n_rented near the ≥5 floor, remote-area
+    volatility — and answers with the caveat, not just the number.
+  tags: [coverage-pack, direction:adversarial]</pre></div></div>
+      <div class="step"><span class="num">2</span><div><b>Guard the runner</b> — <code>eval_run.py::load_cases</code> currently loads every pack case; a draft with no <code>golden_sql</code> would still be replayed against the live agent and graded against empty ground truth (verified at <code>eval_run.py:245</code>). Small patch: skip <code>authoring_status: draft</code> unless <code>--include-drafts</code>. Without this, <code>make eval</code> burns 30 live agent runs per invocation.</div></div>
+      <div class="step"><span class="num">3</span><div><b>Import → export round-trip</b> — <code>make eval-import</code> upserts the 30 into <code>app.eval_cases</code>; <code>make eval-export</code> rewrites the YAML in canonical form (field order, capping) so the committed pack matches what the tooling produces. Then verify the Golden tab shows 30 <span class="lamp draft">DRAFT</span> lamps across the three dataset filters.</div></div>
+      <div class="step"><span class="num">4</span><div><b>Prefill all 30 with the agent</b> (decision Q2) — for every draft, call <em>Draft with agent</em> (<code>POST /admin/eval-goldens/draft</code>) to generate a first-pass SQL / sandbox / report, then save it onto the golden. The rows stay <code>authoring_status: draft</code> — the prefill is a first pass to edit, not a promotion. Each carries an <code>expectation</code> line so future-you knows what "right" looks like; flipping draft → ready (grader spec + review) stays your loop.</div></div>
+      <div class="step"><span class="num">5</span><div><b>Ship</b> — commit pack + runner guard on <code>golden-question-drafts</code>, validate through <code>/no-mistakes</code>, PR.</div></div>
+    </div>
+  </section>
+
+  <!-- ============ 5. RISKS ============ -->
+  <section>
+    <div class="lbl">5 · Risks &amp; gotchas</div>
+    <h2>Known traps, all verified in code or data</h2>
+    <div class="tw"><table>
+      <thead><tr><th>Risk</th><th>Where</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td><b>Drafts get scored.</b> <code>make eval</code> replays every pack case against the live agent; 30 drafts = 30 wasted LLM runs scored against empty truth.</td><td><code>eval_run.py:113–128, 245</code></td><td>Step 2 runner guard (skip drafts by default)</td></tr>
+        <tr><td><b>Yield has no object-builder profile</b> — the structured "New object with AI" flow silently falls back to the sales profile for <code>nsw_yield</code>.</td><td><code>object_builder.py:78–81</code></td><td>Author yield objects via NL instruction / SQL; optionally add a yield <code>MartProfile</code> (decision Q3)</td></tr>
+        <tr><td><b>Yield roll-up trap</b> — averaging <code>gross_yield_pct</code> across postcodes is wrong; must recompute from totals.</td><td>Y7, S6</td><td>Baked into those questions' <code>expectation</code> text — it's what they test</td></tr>
+        <tr><td><b>Rent has no suburb column</b> — suburb-worded rent questions can't be answered at suburb grain.</td><td><code>marts.property_rent</code></td><td>All rent questions phrased by postcode (or geo roll-up)</td></tr>
+        <tr><td><b>Date boundaries differ</b> — sales 2010→, rent/yield 2016→; "now" is 2026-05/06.</td><td>marts</td><td>R10 turns the boundary into a golden; other questions stay inside coverage</td></tr>
+        <tr><td><b>Zoning is mostly unknown</b> — 1.06M of 2.4M sold dwellings have zoning='unknown', so a zoning question would grade noise.</td><td><code>marts.property_sales</code></td><td>Kept out of the 10; area_band covers segmentation. Available as a swap if you want it anyway</td></tr>
+        <tr><td><b>Hand-edited pack vs committed version</b> — the lint hashes pack files; a hand-edit without re-export can mismatch a pinned <code>EXPECTED_PACK_VERSION</code>.</td><td><code>test_eval_pack.py:266</code></td><td>Step 3's import→export round-trip makes the committed form canonical</td></tr>
+        <tr><td><b>Duplication with the 4 existing goldens</b> — 2077/2076 rent compare, Hornsby growth, land-size draft, one stray test row.</td><td>dev DB</td><td>New set avoids those anchors; S5 absorbs the land-size draft; stray row proposed for archive (§1)</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ============ 6. DECISIONS (LOCKED) ============ -->
+  <section>
+    <div class="lbl">6 · Decisions — locked 2026-07-22</div>
+    <h2>Three calls, all made</h2>
+    <div class="grid g3" style="margin-top:14px;">
+      <div class="panel">
+        <h3>Q1 · T6/T7 semantics <span class="st ok" style="margin-left:6px;">locked</span></h3>
+        <p class="sub" style="font-size:13px;margin-top:6px;"><b>Adopt</b> T6 = geo roll-up, T7 = recommendation. The full T1–T7 ladder gets documented in AGENTS.md so it stops being tribal knowledge from a plan artifact.</p>
+      </div>
+      <div class="panel">
+        <h3>Q2 · Agent prefill <span class="st ok" style="margin-left:6px;">locked</span></h3>
+        <p class="sub" style="font-size:13px;margin-top:6px;"><b>Prefill all 30</b> drafts with the agent — every draft gets a first-pass SQL / sandbox / report to edit. Rows stay <code>draft</code>; promotion to ready remains a manual per-question loop.</p>
+      </div>
+      <div class="panel">
+        <h3>Q3 · Hygiene bundle <span class="st ok" style="margin-left:6px;">locked</span></h3>
+        <p class="sub" style="font-size:13px;margin-top:6px;"><b>All four</b>: runner draft-guard (<code>--include-drafts</code>), add a <code>nsw_yield</code> MartProfile to the object builder, archive the stray <code>curated 1784610466146</code> test row, document the tier ladder.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    Verified sources: <code>app.eval_cases</code> live dev DB · <code>services/db-migrate/migrations/versions/0019_eval_goldens.py</code> (tier, authoring_status) · <code>frontend/src/features/goldens/GoldensPage.tsx:48</code> (TIERS T1–T7) · <code>.lavish/s24_eval-scoring-loop-plan.html</code> (T1–T5 semantics) · <code>scripts/eval_pack.py</code> · <code>scripts/eval_run.py:113–128, 245</code> · <code>tests/test_eval_pack.py</code> · <code>services/data-agent/agent/object_builder.py:58–81</code> · <code>services/data-pipeline/dbt/models/marts/_marts.yml</code> · mart row counts &amp; anchors sampled 2026-07-22.
+  </div>
+
+</div>
+</body>
+</html>

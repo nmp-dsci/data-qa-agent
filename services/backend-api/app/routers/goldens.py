@@ -66,7 +66,7 @@ async def _resolve_user_id(as_user: str | None, admin: CurrentUser) -> str:
         ).scalar()
     if row is None:
         raise HTTPException(status_code=400, detail=f"unknown as_user: {as_user!r}")
-    return jsonable(row)
+    return str(jsonable(row))
 
 
 # Column names below are fixed literals / driven by the Pydantic models — never

@@ -620,8 +620,10 @@ def test_label_with_apostrophe_emits_runnable_code() -> None:
 
 def test_extract_grain_extends_bar_family_only() -> None:
     """Bar-family extracts append the dimension/group columns their snippet
-    groups by; trend/kpi keep the typed grain so their per-month numbers can't
-    shift to a finer grain."""
+    groups by; trend/kpi keep the typed grain untouched apart from defensively
+    appending ``group`` (needed by trend_series's group_col) so a spec that
+    violates the frontend's group-is-a-grain-member invariant still gets a
+    usable extract instead of a runtime KeyError."""
     spec = {
         "grain": ["month"],
         "dimension": ["bedroom_band", "property_type"],
@@ -635,7 +637,10 @@ def test_extract_grain_extends_bar_family_only() -> None:
             "postcode",
         ]
     for object_type in ("trend", "kpi"):
-        assert extract_grain(spec, object_type=object_type, dataset="nsw_rent") == ["month"]
+        assert extract_grain(spec, object_type=object_type, dataset="nsw_rent") == [
+            "month",
+            "postcode",
+        ]
 
 
 def test_canonical_extract_rejects_non_identifier_grain() -> None:

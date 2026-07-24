@@ -666,7 +666,8 @@ function builderFromObject(o: PageObject, dataset: string): BuilderForm {
     : d.object_type;
   return {
     ...d,
-    name: s("title") || s("label") || s("heading") || o.element_id.replace(/^obj:/, "") || d.name,
+    name:
+      s("title") || s("label") || s("heading") || (o.element_id || "").replace(/^obj:/, "") || d.name,
     object_type: type,
   };
 }
@@ -1182,6 +1183,9 @@ export function GoldensPage({
     setSqlRevert(null);
     setBuiltObjects([]);
     setBuildMsg(null);
+    setPreviewEditId(null);
+    setPlacePage(0);
+    setPlaceCol(0);
     try {
       const g = await getGolden(id);
       const sandbox = g.golden_sandbox ?? "";
@@ -1268,7 +1272,7 @@ export function GoldensPage({
       // the element_id (not the name-derived one the server returns) so the edited
       // card is replaced, never duplicated — even if the name re-slugifies. A new
       // object keeps the server's element_id and lands at the chosen page/column.
-      const eid = previewEditId ?? res.element_id;
+      const eid = previewEditId || res.element_id;
       const placedObj = { ...(res.object as PageObject), element_id: eid };
       const go: GoldenObject = {
         name,
@@ -1767,7 +1771,6 @@ export function GoldensPage({
           >
             <input
               type="checkbox"
-              aria-label={o.value}
               checked={current.includes(o.value)}
               onChange={(e) =>
                 onChange(
@@ -1805,6 +1808,7 @@ export function GoldensPage({
         });
   useEffect(() => {
     if (!previewKey) {
+      previewToken.current++; // invalidate any in-flight request from a prior valid config
       setPreviewObject(null);
       setPreviewError(null);
       setPreviewBusy(false);
@@ -2020,6 +2024,7 @@ export function GoldensPage({
             onChange={(e) => {
               patch("golden_sql", e.target.value);
               setSqlRevert(null); // a manual edit supersedes the AI's rewrite
+              setPrep(null); // stale extract columns no longer describe this SQL
             }}
             spellCheck={false}
             rows={Math.min(16, Math.max(5, draft.golden_sql.split("\n").length + 1))}

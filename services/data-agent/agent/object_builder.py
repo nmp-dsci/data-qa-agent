@@ -291,12 +291,19 @@ def extract_grain(
 
     Bar-family objects (compare/breakdown/table) append the dimension/group
     columns their snippet groups by, sharing ``_grain_with_chart_cols`` with the
-    codegen's ``_bar_grain``. Trend/kpi keep the typed grain untouched:
+    codegen's ``_bar_grain``. Trend/kpi keep the typed grain untouched apart
+    from defensively appending ``group`` (if set) so ``trend_series``'s
+    ``group_col`` is always present in the extract even for a spec authored
+    before the frontend enforced group-is-a-grain-member invariant:
     ``trend_series``/``latest_value`` read the extract per month, so a finer
-    grain would change their numbers."""
+    grain would otherwise change their numbers."""
     prof = profile_for(dataset)
     if object_type in ("trend", "kpi"):
-        return _typed_grain(spec, prof)
+        grain = _typed_grain(spec, prof)
+        group = spec.get("group")
+        if group and str(group) not in grain:
+            grain.append(str(group))
+        return grain
     return _grain_with_chart_cols(spec, prof)
 
 
@@ -364,20 +371,51 @@ def validate_where_override(where_override: str) -> str:
 # object is a *summary of the same governed rows the question already scoped*, so
 # its extract must never drop or replace that filter. The builder's `filter` field
 # only ANDs a further predicate on top — an object can narrow, never widen.
-_WHERE_RE = re.compile(
-    r"\bWHERE\b(?P<pred>.*?)"
-    r"(?=\bGROUP\s+BY\b|\bORDER\s+BY\b|\bHAVING\b|\bLIMIT\b|\bWINDOW\b|;|$)",
-    re.IGNORECASE | re.DOTALL,
+# Scanned at paren-depth 0 so a subquery/CTE's own WHERE (nested inside
+# parentheses) is skipped in favour of the outer query's WHERE.
+_WHERE_START_RE = re.compile(r"[()]|\bWHERE\b", re.IGNORECASE)
+_WHERE_END_RE = re.compile(
+    r"[()]|\bGROUP\s+BY\b|\bORDER\s+BY\b|\bHAVING\b|\bLIMIT\b|\bWINDOW\b|;",
+    re.IGNORECASE,
 )
 
 
 def original_where(base_sql: str) -> str:
-    """The base extract's WHERE predicate, verbatim and whitespace-collapsed (or
-    empty). The base SQL is the golden's own admin-authored extract, so it is
-    carried as-is — the builder never re-derives, widens, or drops it; it only
-    ANDs the optional ``filter`` field on top."""
-    m = _WHERE_RE.search(base_sql or "")
-    return " ".join(m.group("pred").split()) if m else ""
+    """The base extract's outermost WHERE predicate, verbatim and
+    whitespace-collapsed (or empty). The base SQL is the golden's own
+    admin-authored extract, so it is carried as-is — the builder never
+    re-derives, widens, or drops it; it only ANDs the optional ``filter`` field
+    on top. Any WHERE nested inside parentheses (a subquery or CTE) is skipped
+    so a nested predicate is never mistaken for the outer query's own filter."""
+    sql = base_sql or ""
+    depth = 0
+    where_start = None
+    for m in _WHERE_START_RE.finditer(sql):
+        tok = m.group(0)
+        if tok == "(":
+            depth += 1
+        elif tok == ")":
+            depth = max(depth - 1, 0)
+        elif depth == 0:
+            where_start = m.end()
+            break
+    if where_start is None:
+        return ""
+    depth = 0
+    where_end = len(sql)
+    for m in _WHERE_END_RE.finditer(sql, where_start):
+        tok = m.group(0)
+        if tok == "(":
+            depth += 1
+        elif tok == ")":
+            if depth == 0:
+                where_end = m.start()
+                break
+            depth -= 1
+        elif depth == 0:
+            where_end = m.start()
+            break
+    return " ".join(sql[where_start:where_end].split())
 
 
 def canonical_extract_sql(

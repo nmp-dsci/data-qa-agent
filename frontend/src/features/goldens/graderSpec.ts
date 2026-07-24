@@ -101,10 +101,16 @@ export function graderIssue(g: GraderSpec, columns: string[]): string | null {
     return "sum needs a value column";
   }
 
-  // Column existence — only enforceable once we know the extract's columns
-  // (i.e. the SQL has been run). Until then the shape checks above still apply.
-  if (columns.length) {
-    const missing = namedColumns(g).find((c) => !columns.includes(c));
+  // Column existence — needs the extract's columns (i.e. the SQL has been run)
+  // to check against. A grader that names columns but has never had the SQL run
+  // (or was run then edited, invalidating the known columns) can't be verified,
+  // so it blocks rather than silently passing — mirrors the backend's
+  // test_eval_pack.py column-existence test, which always has real columns to
+  // check against.
+  const named = namedColumns(g);
+  if (named.length) {
+    if (!columns.length) return "run ▶ Run SQL so the grader's columns can be checked";
+    const missing = named.find((c) => !columns.includes(c));
     if (missing) return `column "${missing}" is not in the extract — run ▶ Run SQL`;
   }
   return null;

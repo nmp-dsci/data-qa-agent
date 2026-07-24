@@ -502,7 +502,7 @@ def _band_derive(derive: str, source: str, months: int = 9) -> dict[str, float]:
 
 
 def test_rolling_index_cumulative_yoy_derives_over_window() -> None:
-    """The s29 time derives reduce a base metric to one value per key over the
+    """The s31 time derives reduce a base metric to one value per key over the
     window: rolling = window mean, index = latest ÷ first × 100, cumulative =
     window total, yoy = latest vs 12 months prior."""
     # rolling = mean of the monthly n_rented over the window = mean(29..37) = 33

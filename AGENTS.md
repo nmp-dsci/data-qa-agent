@@ -535,7 +535,12 @@ a chart card's **◆ edit in Structured Builder** button seeds the builder from 
 becomes the object's chart and the options below are how you change it — Build replaces it in place by
 `element_id`. Objects with no stored spec (a drafted base report's chart) say so instead of seeding. (4)
 **Move to any page + column** — the edit panel gained a page picker beside the column picker (`moveTo(pi,
-ci)`), so a card relocates across pages without dragging.
+ci)`), so a card relocates across pages without dragging. (5) **Dataset from the SQL, not the tag** — the
+builder derives its dataset (vocabulary, defaults, and build target) from the ① SQL extract's `FROM` table
+(`datasetFromSql`, mirroring the backend mart tables), so a golden mis-tagged `nsw_sales` whose SQL reads
+`marts.property_rent` still opens with rent grains/metrics instead of sales ones. The filter is shown as two
+lines: line 1 is the golden's own WHERE, carried from the SQL and always kept (read-only); line 2 is the
+builder's `filter` field, an additional predicate ANDed on top.
 
 ---
 

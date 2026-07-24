@@ -596,6 +596,35 @@ function builderFromSpec(
   };
 }
 
+// The mart table each dataset extracts from — mirrors the backend MartProfile
+// tables (agent/object_builder.py). Lets the builder derive its dataset from the
+// SQL Extract's FROM clause rather than the golden's stored (and sometimes
+// mis-tagged) `dataset`, so the grain/metric vocabulary always matches the table
+// the SQL actually queries.
+const TABLE_TO_DATASET: Record<string, string> = {
+  "marts.property_sales": "nsw_sales",
+  "marts.property_rent": "nsw_rent",
+  "marts.property_yield": "nsw_yield",
+};
+
+/** The dataset a SQL extract actually queries, from its FROM clause (else null). */
+function datasetFromSql(sql: string): string | null {
+  const m = /\bfrom\s+(marts\.\w+)/i.exec(sql || "");
+  const tbl = m?.[1]?.toLowerCase();
+  return (tbl && TABLE_TO_DATASET[tbl]) || null;
+}
+
+/** The golden SQL's own WHERE predicate (whitespace-collapsed, or ""). Mirrors the
+ *  backend `original_where`: the extract always keeps this filter (line 1) and the
+ *  builder's `filter` field only ANDs an additional predicate on top (line 2). */
+function whereFromSql(sql: string): string {
+  const m =
+    /\bwhere\b([\s\S]*?)(?:\bgroup\s+by\b|\border\s+by\b|\bhaving\b|\blimit\b|\bwindow\b|;|$)/i.exec(
+      sql || "",
+    );
+  return m ? m[1].replace(/\s+/g, " ").trim() : "";
+}
+
 /** Deterministic pre-flight: does this config build? Returns the blocking reason
  *  or null. Mirrors the builder's own rules (grain-derived x/group, additive
  *  measure sources, month required for growth/latest) so the curator sees a green
@@ -998,7 +1027,14 @@ export function GoldensPage({
       builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
-    setBuilder(builderFromSpec(go.spec, draft.dataset, go.object_type as PageObjectType, go.name));
+    setBuilder(
+      builderFromSpec(
+        go.spec,
+        datasetFromSql(draft.golden_sql) ?? draft.dataset,
+        go.object_type as PageObjectType,
+        go.name,
+      ),
+    );
     setPreviewEditId(o.element_id);
     setBuildMsg(`Editing “${go.name}” — change the options below, then Build to update it in place.`);
     builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1077,7 +1113,10 @@ export function GoldensPage({
         golden_objects: goldenObjects,
         grader: g.grader ?? {},
       });
-      setBuilder(defaultBuilder(g.dataset ?? dataset));
+      // Seed the builder from the dataset the SQL actually queries (its FROM
+      // table), not the golden's stored tag — a mis-tagged golden (rent SQL tagged
+      // nsw_sales) must still open with rent grains/metrics.
+      setBuilder(defaultBuilder(datasetFromSql(sql) ?? g.dataset ?? dataset));
       setDraftPages(pagesFromReport(g.golden_report));
       seedSelectedSkills(sandbox);
       // Seed each named object from its saved report copy so it shows immediately
@@ -1116,7 +1155,10 @@ export function GoldensPage({
         object_type: builder.object_type,
         spec,
         instruction: builder.instruction.trim() || undefined,
-        dataset: draft.dataset,
+        // Build against the dataset the SQL actually queries (its FROM table), so
+        // the extract rewrite uses the right mart profile even if the golden's tag
+        // is wrong.
+        dataset: datasetFromSql(draft.golden_sql) ?? draft.dataset,
         as_user: draft.as_user || null,
       });
       if (!res.object) {
@@ -1546,7 +1588,11 @@ export function GoldensPage({
   // (geo rollups and computed year dims need a JOIN/expression the builder can't
   // emit); `additiveMetricOpts` = the additive columns (the window dedup sums —
   // a derived ratio like avg_* doesn't survive it; wtd-avg recomposes instead).
-  const dsVocab = vocab.find((d) => d.slug === draft.dataset) ?? null;
+  // The builder's dataset follows the SQL Extract's FROM table (else the golden's
+  // stored tag) so its vocabulary always matches the rows the SQL queries — a
+  // rent SQL mis-tagged nsw_sales still offers rent dimensions/metrics.
+  const builderDataset = datasetFromSql(draft.golden_sql) ?? draft.dataset;
+  const dsVocab = vocab.find((d) => d.slug === builderDataset) ?? null;
   const dimOpts = (dsVocab?.dimensions ?? [])
     .filter((d) => d.source === "mart")
     .map((d) => ({ value: d.name, label: d.label }));
@@ -1661,7 +1707,7 @@ export function GoldensPage({
           type: builder.object_type,
           sql: draft.golden_sql,
           user: draft.as_user,
-          dataset: draft.dataset,
+          dataset: builderDataset,
         });
   useEffect(() => {
     if (!previewKey) {
@@ -2098,16 +2144,36 @@ export function GoldensPage({
                   />
                 </label>
               </div>
-              <label style={{ ...label, display: "block" }}>
-                filter (WHERE) · scopes the extract — blank carries the golden's filters
+              <div>
+                <div style={{ ...label, display: "block" }}>filter (WHERE)</div>
+                {/* Line 1 — the golden's own filter, carried from the ① SQL extract
+                    and ALWAYS kept (an object is a summary of the same rows the
+                    question scoped). Read-only; the builder never changes it. */}
+                <div
+                  data-testid="builder-carried-filter"
+                  style={{
+                    ...mono,
+                    fontSize: 12,
+                    padding: "3px 6px",
+                    marginTop: 3,
+                    borderRadius: 4,
+                    border: "1px solid rgba(128,128,128,0.3)",
+                    background: "rgba(128,128,128,0.08)",
+                    opacity: 0.85,
+                  }}
+                >
+                  <span style={{ opacity: 0.6 }}>1 · carried from the golden's SQL: </span>
+                  {whereFromSql(draft.golden_sql) || "— none —"}
+                </div>
+                {/* Line 2 — an ADDITIONAL predicate, ANDed on top of line 1. */}
                 <input
                   data-testid="builder-filter"
                   value={builder.filter}
-                  placeholder="property_type = 'house' AND suburb IN ('Hornsby', 'Normanhurst')"
+                  placeholder="2 · additional filter (ANDed), e.g. property_type = 'house'"
                   onChange={(e) => setBuilder((b) => ({ ...b, filter: e.target.value }))}
-                  style={{ ...mono, fontSize: 12, padding: "3px 5px", width: "100%", marginTop: 3 }}
+                  style={{ ...mono, fontSize: 12, padding: "3px 5px", width: "100%", marginTop: 4 }}
                 />
-              </label>
+              </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ ...label, color: "rgb(90,170,90)" }}>bars =</span>
                 <input

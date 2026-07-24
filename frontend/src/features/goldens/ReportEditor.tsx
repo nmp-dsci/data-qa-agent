@@ -208,28 +208,19 @@ const fieldInput: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export type InstructResult =
-  | {
-      type: PageObjectType;
-      data: Record<string, unknown>;
-      /** The full recomposed report; present only when the extract changed, so the
-       *  OTHER objects' pipeline data is refreshed too (s16 Q2). */
-      refresh?: Page[];
-    }
-  | { error: string };
-
 export function ReportEditor({
   pages,
   onChange,
-  onInstruct,
+  onEditInBuilder,
   sandboxObjects = [],
 }: {
   pages: Page[];
   onChange: (pages: Page[]) => void;
-  /** Author an object's data from a plain-English instruction — the parent
-   *  rewrites + reruns the sandbox and resolves with the object's new type+data
-   *  (or an error). When absent, the AI "describe this object" box is hidden. */
-  onInstruct?: (o: PageObject, instruction: string) => Promise<InstructResult>;
+  /** Edit a chart object in the deterministic Structured Builder (s30): the parent
+   *  seeds the builder from the object's stored spec and scrolls to it. Replaces
+   *  the old plain-English "describe this object" LLM path. When absent, the
+   *  "edit in builder" button is hidden (e.g. a non-golden consumer). */
+  onEditInBuilder?: (o: PageObject) => void;
   /** The objects the ② Sandbox produced — an object can be *linked* to one of
    *  these (by element_id) to base its data on it (the "linked object" picker). */
   sandboxObjects?: PageObject[];
@@ -245,10 +236,6 @@ export function ReportEditor({
   const focusNext = useRef<string | null>(null);
   // Which column's visual "add object" picker is open ("pi:ci"), if any.
   const [pickerKey, setPickerKey] = useState<string | null>(null);
-  // Per-object AI-instruction box: draft text, in-flight id, and last message.
-  const [instructText, setInstructText] = useState<Record<string, string>>({});
-  const [instructBusy, setInstructBusy] = useState<string | null>(null);
-  const [instructMsg, setInstructMsg] = useState<Record<string, string>>({});
 
   const emit = (next: Page[]) => onChange(next.map(normColumns));
 
@@ -504,64 +491,6 @@ export function ReportEditor({
     emit(next);
   }
 
-  /** Apply an AI object-edit (s16): replace the edited (target) object's type +
-   *  data AND — when the extract changed (`refresh` present) — re-sync the OTHER
-   *  objects from the recomposed pages (matched by element_id). Their rows AND
-   *  encoding move together (a refresh that swapped only rows would leave the old
-   *  x/y pointing at renamed columns → "no chartable rows"); we keep only the
-   *  curator's presentation keys (height / title / label / heading). One emit. */
-  function applyInstruct(
-    id: string,
-    type: PageObjectType,
-    data: Record<string, unknown>,
-    refresh?: Page[],
-  ) {
-    const loc = locate(pages, id);
-    if (!loc) return;
-    const next = clone(pages);
-    const target = next[loc.pi].columns[loc.ci][loc.oi];
-    target.type = type;
-    target.data = data;
-    if (refresh && refresh.length) {
-      const byId = new Map<string, PageObject>();
-      for (const p of refresh) for (const col of p.columns ?? []) for (const ob of col) byId.set(ob.element_id, ob);
-      const keepKeys = ["height", "title", "label", "heading"] as const;
-      for (const p of next)
-        for (const col of p.columns)
-          for (const ob of col) {
-            if (ob.element_id === id) continue; // the target is already applied
-            const match = byId.get(ob.element_id);
-            if (!match || !match.data || match.type !== ob.type) continue;
-            const kept: Record<string, unknown> = {};
-            for (const k of keepKeys) if (k in ob.data) kept[k] = ob.data[k];
-            ob.data = { ...match.data, ...kept };
-          }
-    }
-    emit(next);
-  }
-
-  async function runInstruct(o: PageObject) {
-    if (!onInstruct) return;
-    const text = (instructText[o.element_id] ?? "").trim();
-    if (!text) return;
-    setInstructBusy(o.element_id);
-    setInstructMsg((m) => ({ ...m, [o.element_id]: "" }));
-    try {
-      const res = await onInstruct(o, text);
-      if ("error" in res) {
-        setInstructMsg((m) => ({ ...m, [o.element_id]: res.error }));
-        return;
-      }
-      applyInstruct(o.element_id, res.type, res.data, res.refresh);
-      setInstructMsg((m) => ({ ...m, [o.element_id]: "" }));
-      toggleOpen(o.element_id); // success → close the panel; the object re-renders
-    } catch (e) {
-      setInstructMsg((m) => ({ ...m, [o.element_id]: (e as Error).message }));
-    } finally {
-      setInstructBusy(null);
-    }
-  }
-
   function moveInCol(id: string, dir: -1 | 1) {
     const loc = locate(pages, id);
     if (!loc) return;
@@ -574,12 +503,20 @@ export function ReportEditor({
     emit(next);
   }
 
-  function moveToColumn(id: string, ci: number) {
+  /** Move an object to a specific page + column (appends to the target column's
+   *  end). The column is clamped to the target page's width, since a two-col page's
+   *  column 2 has no equivalent on a one-col page. Powers the page/column pickers
+   *  in the edit panel so a card can be relocated across pages without dragging. */
+  function moveTo(id: string, pi: number, ci: number) {
     const loc = locate(pages, id);
-    if (!loc || loc.ci === ci) return;
+    if (!loc || pi < 0 || pi >= pages.length) return;
+    const targetCols = colCount(normTemplate(pages[pi].template));
+    const col = Math.max(0, Math.min(ci, targetCols - 1));
+    if (loc.pi === pi && loc.ci === col) return;
     const next = clone(pages);
     const [obj] = next[loc.pi].columns[loc.ci].splice(loc.oi, 1);
-    next[loc.pi].columns[ci].push(obj);
+    if (!next[pi].columns[col]) next[pi].columns[col] = [];
+    next[pi].columns[col].push(obj);
     emit(next);
   }
 
@@ -760,54 +697,35 @@ export function ReportEditor({
             );
           })()}
         </div>
-        {isChart && onInstruct && (
+        {isChart && onEditInBuilder && (
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
-              gap: 4,
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
               padding: 6,
               borderRadius: 6,
               border: "1px solid rgba(120,160,255,0.45)",
               background: "rgba(120,160,255,0.07)",
             }}
           >
-            <span style={{ ...label, color: "rgb(120,160,255)", opacity: 0.95 }}>
-              ✦ describe this object's data — AI rewrites the sandbox &amp; fills it
+            <button
+              type="button"
+              data-testid="edit-in-builder"
+              style={{
+                ...ctrl,
+                padding: "3px 10px",
+                background: "rgba(120,160,255,0.28)",
+                borderColor: "rgba(120,160,255,0.6)",
+              }}
+              onClick={() => onEditInBuilder(o)}
+            >
+              ◆ edit in Structured Builder
+            </button>
+            <span style={{ ...label, opacity: 0.55, textTransform: "none", letterSpacing: 0 }}>
+              change columns · measures · group · filter deterministically, with a live preview
             </span>
-            <textarea
-              value={instructText[o.element_id] ?? ""}
-              onChange={(e) =>
-                setInstructText((m) => ({ ...m, [o.element_id]: e.target.value }))
-              }
-              placeholder="e.g. bars = number of sales (volume), line = median sale price, grouped by suburb, x-axis = SQM band"
-              rows={2}
-              spellCheck={false}
-              style={fieldInput}
-            />
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                style={{
-                  ...ctrl,
-                  padding: "3px 10px",
-                  background:
-                    instructBusy === o.element_id ? ctrl.background : "rgba(120,160,255,0.28)",
-                  borderColor: "rgba(120,160,255,0.6)",
-                }}
-                onClick={() => void runInstruct(o)}
-                disabled={
-                  instructBusy === o.element_id || !(instructText[o.element_id] ?? "").trim()
-                }
-              >
-                {instructBusy === o.element_id ? "⟳ generating…" : "⟳ Generate & run"}
-              </button>
-              {instructMsg[o.element_id] && (
-                <span style={{ fontSize: 11, color: "var(--bad)", whiteSpace: "pre-wrap" }}>
-                  {instructMsg[o.element_id]}
-                </span>
-              )}
-            </div>
           </div>
         )}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -824,12 +742,29 @@ export function ReportEditor({
               ))}
             </select>
           </label>
+          {pages.length > 1 && loc && (
+            <label style={{ ...label }}>
+              page{" "}
+              <select
+                data-testid="move-page"
+                value={loc.pi}
+                onChange={(e) => moveTo(o.element_id, Number(e.target.value), loc.ci)}
+              >
+                {pages.map((_, i) => (
+                  <option key={i} value={i}>
+                    {i + 1}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {cols > 1 && loc && (
             <label style={{ ...label }}>
               column{" "}
               <select
+                data-testid="move-column"
                 value={loc.ci}
-                onChange={(e) => moveToColumn(o.element_id, Number(e.target.value))}
+                onChange={(e) => moveTo(o.element_id, loc.pi, Number(e.target.value))}
               >
                 {Array.from({ length: cols }, (_, i) => (
                   <option key={i} value={i}>

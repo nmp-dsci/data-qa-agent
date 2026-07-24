@@ -7,7 +7,7 @@
 // Save persists through /admin/eval-goldens; a `ready` golden is the 100/100
 // benchmark the eval runner (E2) scores the agent against. A run of any upstream
 // stage refreshes the extract that feeds the next — the A→B→C cascade from the plan.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ExploreDataset,
@@ -15,7 +15,6 @@ import {
   GoldenListItem,
   GoldenObject,
   GraderSpec,
-  ObjectDigest,
   OrdinalRow,
   Page,
   PageObject,
@@ -24,7 +23,6 @@ import {
   SandboxMeasure,
   SandboxObjectSpec,
   SkillInfo,
-  authorObject,
   buildGoldenObject,
   createGolden,
   deleteGolden,
@@ -40,10 +38,11 @@ import {
   scaffoldGolden,
   updateGolden,
 } from "../../lib/api";
+import { ObjectBody } from "../../report-engine/PageLayout";
 import { Annunciator, Annunciators } from "../../ui/flightdeck";
 import { GraderEditor } from "./GraderEditor";
 import { graderColumns, graderIssue, pruneGrader } from "./graderSpec";
-import { InstructResult, ReportEditor } from "./ReportEditor";
+import { ReportEditor } from "./ReportEditor";
 
 // The dataset list comes from the registry, not a literal (s24 M1). Hardcoding
 // it silently locked nsw_yield — a registered dataset since migration 0025 —
@@ -519,6 +518,84 @@ function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
   return spec;
 }
 
+/** Invert a saved object's measure back into the builder's bar fields. */
+function barFields(m: SandboxMeasure | undefined, d: BuilderForm) {
+  if (!m) return { bar_label: d.bar_label, bar_source: d.bar_source, bar_how: d.bar_how, bar_months: d.bar_months };
+  return {
+    bar_label: m.label ?? d.bar_label,
+    bar_source: m.source ?? d.bar_source,
+    bar_how: (m.how ?? m.agg ?? "sum") as MeasureHow,
+    bar_months: m.months ?? d.bar_months,
+  };
+}
+
+/** Invert a saved object's line measure back into the builder's line fields — a
+ *  num/den measure is a weighted average, otherwise it's a plain source + how. */
+function lineFields(m: SandboxMeasure | undefined, d: BuilderForm) {
+  if (!m) {
+    return {
+      line_mode: d.line_mode,
+      line_num: d.line_num,
+      line_den: d.line_den,
+      line_source: d.line_source,
+      line_how: d.line_how,
+      line_label: d.line_label,
+      line_months: d.line_months,
+    };
+  }
+  if (m.num || m.den) {
+    return {
+      line_mode: "wavg" as const,
+      line_num: m.num ?? d.line_num,
+      line_den: m.den ?? d.line_den,
+      line_source: d.line_source,
+      line_how: d.line_how,
+      line_label: m.label ?? d.line_label,
+      line_months: m.months ?? d.line_months,
+    };
+  }
+  return {
+    line_mode: "column" as const,
+    line_num: d.line_num,
+    line_den: d.line_den,
+    line_source: m.source ?? d.line_source,
+    line_how: (m.how ?? m.agg ?? "mean") as MeasureHow,
+    line_label: m.label ?? d.line_label,
+    line_months: m.months ?? d.line_months,
+  };
+}
+
+/** Seed the structured builder from an existing object's stored spec — the
+ *  inverse of specFromBuilder, so "edit" re-opens the same deterministic form
+ *  the object was built with. Falls back to the dataset defaults for any field
+ *  the spec omits. */
+function builderFromSpec(
+  spec: SandboxObjectSpec,
+  dataset: string,
+  objectType: PageObjectType,
+  name: string,
+): BuilderForm {
+  const d = defaultBuilder(dataset);
+  const dims = Array.isArray(spec.dimension)
+    ? spec.dimension
+    : spec.dimension
+      ? [spec.dimension]
+      : [];
+  return {
+    ...d,
+    name: spec.title || name,
+    object_type: objectType,
+    grain: spec.grain?.length ? spec.grain : d.grain,
+    dimension: dims.length ? dims : d.dimension,
+    group: spec.group ?? "",
+    filter: spec.filter ?? "",
+    months: spec.months ?? d.months,
+    ...barFields(spec.bar_measure, d),
+    ...lineFields(spec.line_measure, d),
+    instruction: "",
+  };
+}
+
 /** Deterministic pre-flight: does this config build? Returns the blocking reason
  *  or null. Mirrors the builder's own rules (grain-derived x/group, additive
  *  measure sources, month required for growth/latest) so the curator sees a green
@@ -680,6 +757,16 @@ export function GoldensPage({
   const [builtObjects, setBuiltObjects] = useState<PageObject[]>([]);
   const [builder, setBuilder] = useState<BuilderForm>(defaultBuilder);
   const [buildMsg, setBuildMsg] = useState<string | null>(null);
+  // Live chart preview of the current builder config (shown when it's green). The
+  // preview is a real deterministic build minus placement — so what you see is
+  // exactly what "+ Build object" will drop into the report. `previewEditId` marks
+  // that the builder was seeded from an existing object (edit-in-place).
+  const [previewObject, setPreviewObject] = useState<PageObject | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewEditId, setPreviewEditId] = useState<string | null>(null);
+  const previewToken = useRef(0);
+  const builderRef = useRef<HTMLDivElement | null>(null);
   // The typed vocabulary that populates the structured builder's dropdowns — each
   // dataset's dimensions (the cuts) and metrics (the columns) from the manifest,
   // so a curator can only pick columns the data actually has (no hallucination).
@@ -894,6 +981,27 @@ export function GoldensPage({
     setBuiltObjects([]);
     setBuilder(defaultBuilder(dataset));
     setBuildMsg(null);
+    setPreviewEditId(null);
+  }
+
+  /** Edit an existing report object in the Structured Builder (s30): seed the
+   *  builder from the object's stored spec, then scroll to it. The builder's live
+   *  preview replaces the chart, and its options are the controls to change it;
+   *  pressing Build re-runs the deterministic pipeline and replaces the card in
+   *  place (placeObjectInReport matches on element_id). No LLM, no free text. */
+  function editObjectInBuilder(o: PageObject) {
+    const go = draft.golden_objects.find((g) => g.element_id === o.element_id);
+    if (!go?.spec) {
+      setBuildMsg(
+        "This object has no builder spec to edit (it wasn't built from the structured builder). Build a new one below.",
+      );
+      builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    setBuilder(builderFromSpec(go.spec, draft.dataset, go.object_type as PageObjectType, go.name));
+    setPreviewEditId(o.element_id);
+    setBuildMsg(`Editing “${go.name}” — change the options below, then Build to update it in place.`);
+    builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   /** Replace/insert an object in a list keyed by element_id. */
@@ -1040,6 +1148,7 @@ export function GoldensPage({
       // the first page, creating a page when the report is empty (same as the old
       // AI path). The shared element_id links the card to the sandbox object.
       setDraftPages(placeObjectInReport(pendingPages, res.object as PageObject));
+      setPreviewEditId(null);
       setBuildMsg(
         `Built “${name}” (${res.rows.length} extract rows) and added it to the report${
           res.error ? ` · note: ${res.error}` : ""
@@ -1131,84 +1240,6 @@ export function GoldensPage({
   // presentation — so the golden stays reproducible; on failure NOTHING is
   // clobbered. Resolves with the target's type+data (+ a refresh set when the SQL
   // changed) for ReportEditor to apply, or an error string.
-  async function instructObject(o: PageObject, instruction: string): Promise<InstructResult> {
-    if (!draft.golden_sql.trim()) return { error: "Add the ① SQL extract first." };
-    // Send every current object minus its (large) row payload so the agent knows
-    // what to preserve; mark the one being edited so it changes only that.
-    const digest: ObjectDigest[] = pendingPages
-      .flatMap((p) => p.columns.flat())
-      .map((obj) => {
-        const { rows: _rows, ...fields } = obj.data as Record<string, unknown>;
-        return {
-          element_id: obj.element_id,
-          type: obj.type,
-          role: obj.role ?? null,
-          data: fields,
-          _target: obj.element_id === o.element_id,
-        };
-      });
-    try {
-      const res = await authorObject({
-        sql: draft.golden_sql,
-        code: draft.golden_sandbox,
-        object_type: o.type,
-        instruction,
-        objects: digest,
-        target_element_id: o.element_id,
-        as_user: draft.as_user || null,
-      });
-      if (!res.object) {
-        // Nothing usable was produced — leave every stored stage untouched.
-        return {
-          error:
-            res.error ||
-            "The run produced no chart — describe the measures/dimension more explicitly.",
-        };
-      }
-      if (res.engine === "stub") {
-        // The agent couldn't author the edit (no LLM key, or it hit its budget).
-        // Don't apply the fallback's stand-in object or clobber any stage.
-        return {
-          error:
-            res.error ||
-            "Couldn't author this edit automatically — try rephrasing the measures/dimension.",
-        };
-      }
-      // Success → apply the cascade in sync. Every stage the agent rebuilt lands
-      // together, keeping SQL ↔ sandbox ↔ data ↔ presentation reproducible.
-      const sqlChanged = !!res.sql && res.sql.trim() !== draft.golden_sql.trim();
-      if (sqlChanged) {
-        setSqlRevert(draft.golden_sql); // one-click revert of the previous extract
-        patch("golden_sql", formatSql(res.sql as string));
-      }
-      if (res.code) patch("golden_sandbox", res.code);
-      if (res.report) patch("golden_data", res.report);
-      // Reflect the run in the ② Sandbox panel too (output table + skills used).
-      setPrep({
-        columns: res.columns,
-        rows: res.rows,
-        row_count: res.rows.length,
-        report: res.report,
-        pages: res.pages,
-        skills_used: res.skills_used,
-        skill_gaps: res.skill_gaps,
-        error: res.error,
-      });
-      setMsg(
-        `Object authored via ${res.engine} — ${sqlChanged ? "SQL + " : ""}sandbox code + ` +
-          `output JSON updated${sqlChanged ? " · SQL changed (review/revert in ① SQL)" : ""}.`,
-      );
-      return {
-        type: res.object.type,
-        data: res.object.data,
-        // Q2: refresh the OTHER objects' data only when the extract really changed.
-        refresh: sqlChanged ? res.pages ?? undefined : undefined,
-      };
-    } catch (e) {
-      return { error: (e as Error).message };
-    }
-  }
-
   async function save() {
     if (!draft.question.trim()) {
       setMsg("A question is required.");
@@ -1618,6 +1649,70 @@ export function GoldensPage({
   const grainOpts = builder.grain.filter(Boolean).map((v) => ({ value: v, label: dimLabel(v) }));
   const buildBlocker = buildabilityIssue(builder, metricOpts);
 
+  // Live preview: whenever the config is green (buildBlocker null) and an extract
+  // exists, deterministically build the object — minus placement — and show its
+  // chart. Debounced so typing doesn't storm the sandbox; a token guards against a
+  // slow build landing after a newer edit. A blocked config clears the preview.
+  const previewKey =
+    buildBlocker || !draft.golden_sql.trim()
+      ? ""
+      : JSON.stringify({
+          spec: specFromBuilder(builder),
+          type: builder.object_type,
+          sql: draft.golden_sql,
+          user: draft.as_user,
+          dataset: draft.dataset,
+        });
+  useEffect(() => {
+    if (!previewKey) {
+      setPreviewObject(null);
+      setPreviewError(null);
+      setPreviewBusy(false);
+      return;
+    }
+    const token = ++previewToken.current;
+    setPreviewBusy(true);
+    const parsed = JSON.parse(previewKey) as {
+      spec: SandboxObjectSpec;
+      type: PageObjectType;
+      sql: string;
+      user: string;
+      dataset: string;
+    };
+    const timer = setTimeout(() => {
+      void buildGoldenObject({
+        sql: parsed.sql,
+        name: builder.name.trim() || "preview",
+        object_type: parsed.type,
+        spec: parsed.spec,
+        dataset: parsed.dataset,
+        as_user: parsed.user || null,
+      })
+        .then((res) => {
+          if (token !== previewToken.current) return; // a newer edit superseded this
+          if (res.object) {
+            setPreviewObject(res.object);
+            setPreviewError(res.error || null);
+          } else {
+            setPreviewObject(null);
+            setPreviewError(res.error || "no preview");
+          }
+        })
+        .catch((e: unknown) => {
+          if (token === previewToken.current) {
+            setPreviewObject(null);
+            setPreviewError((e as Error).message);
+          }
+        })
+        .finally(() => {
+          if (token === previewToken.current) setPreviewBusy(false);
+        });
+    }, 800);
+    return () => clearTimeout(timer);
+    // builder.name is intentionally excluded — renaming shouldn't re-fetch a preview.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey]);
+
   return (
     <section
       className="goldens-page"
@@ -1856,16 +1951,54 @@ export function GoldensPage({
               config → same object, every time. (The NL "New object with AI" panel
               was removed in favour of this.) */}
           <div
+            ref={builderRef}
             style={{
               ...box,
               marginTop: 10,
-              borderColor: "rgba(120,160,255,0.55)",
+              borderColor: previewEditId ? "rgba(120,160,255,0.85)" : "rgba(120,160,255,0.55)",
               background: "rgba(120,160,255,0.06)",
             }}
           >
             <div style={{ ...label, color: "rgb(120,160,255)", marginBottom: 4 }}>
-              ◆ Structured builder — pick columns; deterministic (no LLM)
+              {previewEditId
+                ? "◆ Structured builder — editing this object in place; change the options, then Build"
+                : "◆ Structured builder — pick columns; deterministic (no LLM)"}
             </div>
+            {/* Live chart preview (s30): shown while the config is green, so what
+                you see is exactly what Build will place. When editing an object the
+                preview replaces its chart and the options below are the controls to
+                change it. */}
+            {!buildBlocker && (
+              <div
+                data-testid="builder-preview"
+                style={{
+                  marginTop: 8,
+                  padding: 10,
+                  border: "1px solid rgba(120,160,255,0.4)",
+                  borderRadius: 8,
+                  background: "var(--panel)",
+                }}
+              >
+                <div style={{ ...label, marginBottom: 6, display: "flex", gap: 8, alignItems: "center" }}>
+                  live preview
+                  {previewBusy && <span style={{ opacity: 0.7 }}>· rendering…</span>}
+                  {previewEditId && <span style={{ color: "rgb(120,160,255)" }}>· editing in place</span>}
+                </div>
+                {previewObject ? (
+                  <ObjectBody o={previewObject} />
+                ) : (
+                  <div style={{ ...label, opacity: 0.75, color: previewError ? "var(--bad)" : undefined }}>
+                    {!draft.golden_sql.trim()
+                      ? "add the ① SQL extract to preview"
+                      : previewBusy
+                        ? "building preview…"
+                        : previewError
+                          ? `preview unavailable: ${previewError}`
+                          : "adjust the options below to preview"}
+                  </div>
+                )}
+              </div>
+            )}
             {vocabError && (
               <div
                 data-testid="builder-vocab-error"
@@ -2500,7 +2633,7 @@ export function GoldensPage({
             <ReportEditor
               pages={pendingPages}
               onChange={setDraftPages}
-              onInstruct={instructObject}
+              onEditInBuilder={editObjectInBuilder}
               sandboxObjects={sandboxObjects}
             />
           </div>

@@ -521,6 +521,22 @@ would reject. The `grader` column is now wired through `GoldenIn`/`GoldenPatch` 
 asserts the real composite-ratio-series grader decodes on load and that a fresh golden can't promote without
 a kind.
 
+**Builder live preview + edit-in-place + filter preservation (s30).** Four connected refinements to the
+object builder / report editor: (1) **Filter preservation** — building an object could silently drop the
+question's own filter, because `canonical_extract_sql` replaced the WHERE with the builder's `filter` field
+(or best-effort per-column lifted it). An object is a summary of the *same* governed rows the question
+scoped, so `original_where()` now lifts the base extract's full WHERE verbatim and always preserves it; the
+`filter` field is only ANDed on top (an object narrows, never widens). (2) **Live preview** — whenever the
+structured builder's config is green, a debounced deterministic build (minus placement) renders the actual
+chart via `ObjectBody` at the top of the builder, so what you see is what Build will drop in. (3)
+**Edit-in-place** — the per-object edit panel's plain-English "describe this object's data" LLM box is gone;
+a chart card's **◆ edit in Structured Builder** button seeds the builder from the object's stored
+`SandboxObjectSpec` (`builderFromSpec`, the inverse of `specFromBuilder`) and scrolls to it, so the preview
+becomes the object's chart and the options below are how you change it — Build replaces it in place by
+`element_id`. Objects with no stored spec (a drafted base report's chart) say so instead of seeding. (4)
+**Move to any page + column** — the edit panel gained a page picker beside the column picker (`moveTo(pi,
+ci)`), so a card relocates across pages without dragging.
+
 ---
 
 ## Conventions

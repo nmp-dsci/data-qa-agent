@@ -335,7 +335,7 @@ const BUILDER_TYPES: { type: PageObjectType; label: string }[] = [
 ];
 
 // A measure is a BASE aggregation of its column(s) + an optional DERIVE that
-// augments it over the window (s29). sum/mean are the single-column base aggs (a
+// augments it over the window (s31). sum/mean are the single-column base aggs (a
 // weighted average is the num/den line mode); the derive turns the base into a %
 // of total, a growth rate, a rank, etc. — all deterministic, no LLM.
 type MeasureAgg = "sum" | "mean";
@@ -370,10 +370,10 @@ const TIME_DERIVES = new Set<MeasureDerive>([
 // and kpi read the raw column, so the form hides the derive for them and the spec
 // never claims one it wouldn't compute.
 const HOW_OBJECT_TYPES = new Set<PageObjectType>(["compare", "breakdown", "table"]);
-// A saved measure's base aggregation. Pre-s29 measures stored the base agg in
+// A saved measure's base aggregation. Pre-s31 measures stored the base agg in
 // `agg` (an augmented `how` always implied a sum base), so this reads across both.
 const aggOf = (m: SandboxMeasure): MeasureAgg => (m.agg === "mean" ? "mean" : "sum");
-// A saved measure's derive, mapping the pre-s29 `how` forward.
+// A saved measure's derive, mapping the pre-s31 `how` forward.
 const deriveOf = (m: SandboxMeasure): MeasureDerive =>
   m.derive ??
   (m.how === "share" || m.how === "growth" || m.how === "latest" ? m.how : "");
@@ -560,7 +560,7 @@ function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
 }
 
 /** Invert a saved object's measure back into the builder's bar fields (base agg +
- *  derive, tolerant of the pre-s29 `how` shape). */
+ *  derive, tolerant of the pre-s31 `how` shape). */
 function barFields(m: SandboxMeasure | undefined, d: BuilderForm) {
   if (!m) {
     return {

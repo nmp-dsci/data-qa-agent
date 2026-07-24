@@ -436,9 +436,10 @@ Three more ways to seed and refine a golden (s21–s23): an admin chat answer ca
 "★ save as golden" chip in the chat result (shown whenever the answer has an audited `run_id`) calls
 `POST /admin/eval-goldens/from-run` to copy the question/SQL/sandbox script/report already captured on
 `query_runs`/`messages` into a new draft (idempotent per run) and opens it straight in the editor, no agent
-re-run. Inside the editor, a **"New object with AI"** panel is the NL-first way to author stage-②
-presentation objects: one sentence auto-derives a name/type and the built object is auto-placed onto the
-report, with the structured/advanced form kept as a manual fallback. Ordinal dimensions (`area_band`,
+re-run. Inside the editor, stage-② presentation objects were originally authored via a NL-first
+**"New object with AI"** panel (one sentence auto-derived a name/type and auto-placed the built object onto
+the report); that panel has since been dropped in favour of the deterministic structured builder (s28,
+below). Ordinal dimensions (`area_band`,
 `bedroom_band`, …) render in their natural order instead of alphabetically — `agent/ordinals.py` is the
 registry (a code-level `BAND_ORDERS` seed plus a curator-editable override), consulted by the chart lift on
 every surface; curators edit the override per `(dataset, column)` in `app.dataset_ordinals` (migration 0028)
@@ -492,16 +493,18 @@ dimension, group and measure-source fields are dropdowns bound to the dataset's 
 Explore manifest (`GET /explore/datasets`) — mart-backed dimensions only (geo rollups and computed dims
 need a JOIN the builder can't emit) and additive metrics only (every path sums the source through the
 window dedup, and summing a stored average is silently wrong; non-additive figures are recomposed as
-num/den weighted averages instead). A per-measure **how** modifier (sum / average / % share of series /
-growth / latest) augments a base additive column deterministically — share is deliberately *within-series*,
-so each series sums to 100% across the x-axis (the "mix" reading) — and a 2nd dimension synthesises a
-composite x-axis (e.g. `bedroom_band × property_type` joined into one nominal label). `agent/object_builder.py`
-guards what the form can't: column identifiers are validated, non-additive sources rejected from any
-summing path, `filter` fragments refused if they smuggle statement separators or nested SELECTs, and
-`extract_grain` shares `_grain_with_chart_cols` with the codegen's `_bar_grain` so the rewritten extract
-and the snippet's window-dedup grain can never drift (trend/kpi keep the typed grain — their skills read
-the extract per month). A bad spec surfaces as `invalid spec: …` from `/agent/analysis/build-object`,
-never a traceback.
+num/den weighted averages instead). Each measure is a base aggregation plus an optional derived
+augmentation over the window (share / growth / latest / …, see "Metric = aggregation + a derived
+augmentation (s31)" below) — share is deliberately *within-series*, so each series sums to 100% across the
+x-axis (the "mix" reading) — and a 2nd dimension synthesises a composite x-axis (e.g. `bedroom_band ×
+property_type` joined into one nominal label). `agent/object_builder.py` guards what the form can't: column
+identifiers are validated, non-additive sources rejected from any summing path, `filter` fragments refused
+if they smuggle statement separators or nested SELECTs, and `extract_grain` shares `_grain_with_chart_cols`
+with the codegen's `_bar_grain` so the rewritten extract and the snippet's window-dedup grain can never
+drift (trend/kpi keep the typed grain, defensively including `group` when set, since `trend_series`'s
+`group_col` must always be present in the extract even for a spec authored before the frontend enforced
+that invariant). A bad spec surfaces as `invalid spec: …` from `/agent/analysis/build-object`, never a
+traceback.
 
 **Grader-spec editor — promote draft → ready from the Golden tab.** A golden's `grader` (jsonb, migration
 0030) is what the eval runner scores against (`scripts/eval_run.py` → `POST /agent/eval/grade`), but until
@@ -515,8 +518,9 @@ numerator/denominator so a weighted average is graded, never an average-of-avera
 `expected_objects` the report must contain. A deterministic, no-LLM `graderIssue()` renders `✓ ready to
 promote` / `✗ <reason>` and gates both the **Promote to ready** button and the header status dropdown's
 `ready` option — its rules mirror the CI pack-lint (`tests/test_eval_pack.py`: dispatchable kind, required
-fields per kind, and every named column present in the ① SQL extract), so the UI blocks exactly what CI
-would reject. The `grader` column is now wired through `GoldenIn`/`GoldenPatch` + `_FULL_COLS`/`_JSONB_COLS`
+fields per kind, and every named column present in the ① SQL extract — a grader that names columns but
+hasn't had the SQL run yet, or was edited after it ran, blocks with "run ▶ Run SQL" rather than silently
+passing), so the UI blocks exactly what CI would reject. The `grader` column is now wired through `GoldenIn`/`GoldenPatch` + `_FULL_COLS`/`_JSONB_COLS`
 (create/update/get round-trip it), the list carries a `grader_kind` badge, and `frontend/e2e/grader.spec.ts`
 asserts the real composite-ratio-series grader decodes on load and that a fresh golden can't promote without
 a kind.
@@ -525,7 +529,8 @@ a kind.
 object builder / report editor: (1) **Filter preservation** — building an object could silently drop the
 question's own filter, because `canonical_extract_sql` replaced the WHERE with the builder's `filter` field
 (or best-effort per-column lifted it). An object is a summary of the *same* governed rows the question
-scoped, so `original_where()` now lifts the base extract's full WHERE verbatim and always preserves it; the
+scoped, so `original_where()` now lifts the base extract's full WHERE verbatim and always preserves it —
+scanning at paren-depth 0 so a subquery/CTE's own WHERE is skipped in favour of the outer query's — and the
 `filter` field is only ANDed on top (an object narrows, never widens). (2) **Live preview** — whenever the
 structured builder's config is green, a debounced deterministic build (minus placement) renders the actual
 chart via `ObjectBody` at the top of the builder, so what you see is what Build will drop in. (3)
@@ -546,7 +551,7 @@ builder derives its dataset (vocabulary, defaults, and build target) from the �
 lines: line 1 is the golden's own WHERE, carried from the SQL and always kept (read-only); line 2 is the
 builder's `filter` field, an additional predicate ANDed on top.
 
-**Metric = aggregation + a derived augmentation (s29).** A bar/line measure is now a **base aggregation**
+**Metric = aggregation + a derived augmentation (s31).** A bar/line measure is now a **base aggregation**
 (`sum`/`mean` of one column, or a weighted-average `num`/`den`) plus an optional **derive** that augments it
 over the window — the two were previously conflated in one `how` dropdown. The metric row reads
 `name = agg of column · window · derive`. `agent/object_builder.py::_measure_block` builds the monthly

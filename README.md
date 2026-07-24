@@ -176,10 +176,14 @@ latency, and engine.
 Admins also get a **Golden Examples** tab for authoring *golden answers* — the 100/100 benchmarks the eval
 loop scores the agent against — stage by stage (① SQL extract → ② sandbox analysis objects, built from the
 tested skill library → ③ presentation report), starting from an agent-drafted first pass. Stage-② objects
-can also be built with no LLM at all: a structured builder binds its dimension/group/measure dropdowns to
-each dataset's typed column vocabulary, offers per-measure sum / average / % share / growth / latest
-modifiers over additive columns, and can join two dimensions into a composite x-axis — and a per-object
-error boundary renders one malformed object as a fallback card instead of blanking the tab. Goldens live on
+are built with no LLM at all: a structured builder binds its dimension/group/measure dropdowns to each
+dataset's typed column vocabulary (derived from the ① SQL extract's `FROM` table, not the golden's dataset
+tag), lets each measure combine a base aggregation (sum / mean / weighted-average) with an optional derived
+augmentation (share / growth / latest / rolling / index / cumulative / rank / yoy) over additive columns,
+and can join two dimensions into a composite x-axis. Whenever the config is valid a debounced live preview
+renders the actual chart at the top of the builder, and a **◆ GRADER** panel authors the golden's grader
+spec and gates draft → ready promotion with the same checks CI's pack-lint runs — and a per-object error
+boundary renders one malformed object as a fallback card instead of blanking the tab. Goldens live on
 `app.eval_cases` (CRUD under `/admin/eval-goldens`; the backend proxies draft/build actions to the
 data-agent's `/agent/analysis*` and `/agent/skills*` helpers), and the dataset picker covers all three
 governed datasets (`nsw_sales`, `nsw_rent`, `nsw_yield`). Deterministic graders
@@ -205,9 +209,12 @@ improvement cycles run against this loop are written up in `docs/evals/cycle-001
 
 A chat answer can skip straight to a draft golden: admins see a **"★ save as golden"** chip on any answered
 chat result, which copies the already-captured question/SQL/sandbox script/report into a new draft (no
-agent re-run) and opens it in the editor. Inside the editor, the primary way to add a stage-② object is the
-**"New object with AI"** panel — describe it in one sentence and it's built and placed onto the report
-automatically (the structured form is still there as a manual fallback). Ordinal columns like `area_band`
+agent re-run) and opens it in the editor. Inside the editor, the structured builder is how a stage-②
+object gets added: a new object lets the curator pick its destination page and column, while a chart
+card's **◆ edit in Structured Builder** button seeds the builder from that object's stored spec (or, for a
+spec-less drafted chart, from safe defaults) and replaces it in place by `element_id` on Build — never
+orphaning a new object. The base extract's own `WHERE` is always preserved verbatim; the builder's `filter`
+field only ANDs a further predicate on top. Ordinal columns like `area_band`
 and `bedroom_band` render in their natural order rather than alphabetically; curators can tweak the order
 per dataset from a data-knowledge panel in the Sandbox tab (backed by `app.dataset_ordinals`), or override
 one chart's x-axis order manually in the report editor.

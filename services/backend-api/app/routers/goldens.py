@@ -75,14 +75,15 @@ _LIST_COLS = (
     "id, dataset, tier, question, as_user, tags, holdout, authoring_status, "
     "(golden_sql IS NOT NULL) AS has_sql, (golden_sandbox IS NOT NULL) AS has_sandbox, "
     "(golden_data IS NOT NULL) AS has_data, (golden_report IS NOT NULL) AS has_report, "
+    "(grader->>'kind') AS grader_kind, "
     "created_at, updated_at"
 )
 _FULL_COLS = (
     "id, source, dataset, tier, question, expectation, as_user, tags, holdout, "
     "authoring_status, golden_sql, golden_sandbox, golden_data, golden_report, "
-    "golden_objects, created_at, updated_at"
+    "golden_objects, grader, created_at, updated_at"
 )
-_JSONB_COLS = {"tags", "golden_data", "golden_report", "golden_objects"}
+_JSONB_COLS = {"tags", "golden_data", "golden_report", "golden_objects", "grader"}
 
 
 class GoldenIn(BaseModel):
@@ -98,6 +99,7 @@ class GoldenIn(BaseModel):
     golden_data: Any | None = None
     golden_report: Any | None = None
     golden_objects: Any | None = None
+    grader: Any | None = None
     expectation: str | None = None
 
 
@@ -114,6 +116,7 @@ class GoldenPatch(BaseModel):
     golden_data: Any | None = None
     golden_report: Any | None = None
     golden_objects: Any | None = None
+    grader: Any | None = None
     expectation: str | None = None
 
 
@@ -240,11 +243,12 @@ async def create_golden(
                     "INSERT INTO app.eval_cases "
                     "(source, question, expectation, dataset, tier, as_user, tags, holdout, "
                     " authoring_status, golden_sql, golden_sandbox, golden_data, golden_report, "
-                    " golden_objects) "
+                    " golden_objects, grader) "
                     "VALUES ('authored', :q, :exp, :ds, :tier, :as_user, CAST(:tags AS jsonb), "
                     " :holdout, :status, :sql, :sandbox, "
                     " CAST(:data AS jsonb), CAST(:report AS jsonb), "
-                    " CAST(COALESCE(:objects, '[]') AS jsonb)) "
+                    " CAST(COALESCE(:objects, '[]') AS jsonb), "
+                    " CAST(COALESCE(:grader, '{}') AS jsonb)) "
                     "RETURNING id"
                 ),
                 {
@@ -261,6 +265,7 @@ async def create_golden(
                     "data": _jsonb_param(body.golden_data),
                     "report": _jsonb_param(body.golden_report),
                     "objects": _jsonb_param(body.golden_objects),
+                    "grader": _jsonb_param(body.grader),
                 },
             )
         ).scalar()

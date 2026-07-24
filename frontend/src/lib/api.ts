@@ -884,6 +884,29 @@ export function getEvalCases(): Promise<EvalCase[]> {
 }
 
 // --- Golden Answer (Builder) — s14 E1 --------------------------------------
+/** How a golden is scored (s24 M2 / grader-spec editor). Stored as the
+ *  ``eval_cases.grader`` jsonb and consumed verbatim by the eval runner
+ *  (`scripts/eval_run.py`) + `/agent/eval/grade`. The ``kind`` dispatches G1:
+ *  ``scalar`` (one value, % tolerance), ``row_set`` (F1 over ``key``),
+ *  ``ranked_set`` (top-``k`` overlap on ``key``), ``series`` (per-point
+ *  tolerance on ``key``→``value``). ``key: "_key"`` + ``key_fields`` is a
+ *  composite key the runner joins; ``aggregate: "ratio"`` rolls both sides to
+ *  the key grain and rebuilds ``value`` = ``numerator``/``denominator`` (so a
+ *  weighted average is graded, never an average-of-averages). ``expected_objects``
+ *  are the page object types the report must contain (G3-structural). */
+export interface GraderSpec {
+  kind?: "scalar" | "row_set" | "ranked_set" | "series" | "";
+  key?: string;
+  key_fields?: string[];
+  value?: string;
+  k?: number;
+  tolerance_pct?: number;
+  aggregate?: "sum" | "ratio" | "";
+  numerator?: string;
+  denominator?: string;
+  expected_objects?: string[];
+}
+
 export interface GoldenListItem {
   id: string;
   dataset: string | null;
@@ -897,6 +920,7 @@ export interface GoldenListItem {
   has_sandbox: boolean;
   has_data: boolean;
   has_report: boolean;
+  grader_kind: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -909,6 +933,7 @@ export interface GoldenFull extends GoldenListItem {
   golden_data: unknown;
   golden_report: unknown;
   golden_objects?: GoldenObject[] | null;
+  grader?: GraderSpec | null;
 }
 
 export interface GoldenInput {
@@ -924,6 +949,7 @@ export interface GoldenInput {
   golden_data?: unknown;
   golden_report?: unknown;
   golden_objects?: GoldenObject[] | null;
+  grader?: GraderSpec | null;
   expectation?: string | null;
 }
 

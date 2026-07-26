@@ -1,6 +1,6 @@
 # Security — threat model & guarantees
 
-**data-qa-agent / Data Pilot** · last reviewed 2026-07-26 (s32 W3)
+**data-qa-agent / Data Pilot** · last reviewed 2026-07-27 (s32 W3)
 
 This app lets people ask questions in natural language and answers them by running
 generated SQL against a shared database. That is a genuinely dangerous shape, so
@@ -33,7 +33,7 @@ rather than a pipeline (decision Q4).
 | Unauthenticated access | Google OIDC ID tokens verified against Google's JWKS per request; a signed dev stub in local mode only | `evals/journeys.yaml` auth journeys · `scripts/smoke_test.py` |
 | Cross-user data access | **Postgres RLS** on every `app.*` table, scoped by `SET LOCAL app.current_user_id` inside each request transaction — enforced by the database, so an app-code bug cannot leak rows | RLS isolation journeys (user2 must never see user1's rows) |
 | The agent writing data | The agent connects as **`agent_ro`** (read-only). Admin SQL-editor reads use `admin_ro` (BYPASSRLS, still SELECT-only) | Role grants in migrations `0001`/`0012`; DML payloads in `tests/security/test_injection.py` |
-| Generated / typed SQL doing more than reading | Three stacked layers: shape check (SELECT/WITH, single statement) → keyword denylist over code only → **sqlglot AST walk** rejecting DML/DDL, `exp.Command`, and CTE-hidden mutations | `tests/security/test_injection.py` (42 cases, zero-LLM, blocks every merge) |
+| Generated / typed SQL doing more than reading | Three stacked layers: shape check (SELECT/WITH, single statement) → keyword denylist over code only → **sqlglot AST walk** rejecting DML/DDL, `exp.Command`, and CTE-hidden mutations | `tests/security/test_injection.py` (43 cases, zero-LLM, blocks every merge) |
 | **Rewriting the RLS context from inside a SELECT** | `set_config` and friends are denied by name in the AST guard. This is not covered by the read-only role — `set_config` needs no write privilege — and it parses as an ordinary `Select`, so no node-type check catches it | `test_rls_bypass_attempts_are_refused` |
 | Filesystem / network escape from SQL | `pg_read_file`, `lo_export`, `dblink`, `pg_sleep`, … denied by the same function list | same |
 | Model-written analysis code escaping | Analysis runs in **Pyodide/WASM**: no syscalls, no host filesystem, no network. Attempt budgets bound retries | `services/data-agent/tests/test_pyodide_sandbox.py` |
@@ -73,7 +73,10 @@ argument for having written it:
 
 1. **`SELECT set_config('app.current_user_id', …)` was accepted.** Read-only in
    form, RLS-context-rewriting in effect, and invisible to the node-type check.
-   Fixed with a denied-function list.
+   Fixed with a denied-function list — which had the same gap for a
+   double-quoted call (`SELECT "set_config"(...)`, whose name sqlglot
+   represents as an `exp.Identifier` rather than a bare string); the
+   function-name check now unwraps that before matching.
 2. **The keyword denylist scanned string literals**, so a query filtering on the
    address `'GRANT ST'` — a value present in the committed sample data — was
    refused. Over-blocking is a defect too: a guard that rejects real queries gets

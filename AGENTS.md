@@ -635,10 +635,14 @@ bare runner, and it exits 0 on failure because telemetry must never fail a deplo
   by exception *name* down the `__cause__` chain so the module needs no
   provider SDK and is unit-testable in the dependency-light root venv. The
   multi-turn sandbox site passes a `should_retry` veto so a failure *after* work
-  was done is salvaged, not replayed at double cost. The backend→agent hop gets
-  the same shape; on exhaustion `/ask` returns a **degraded answer**
-  (`status='degraded'`, a plain sentence, a Retry button) instead of a raw 502.
-  `load/k6/chat.js` + `make loadtest` produce the first load numbers.
+  was done is salvaged, not replayed at double cost. The backend→agent hop
+  retries the same way for connect failures and upstream 5xx/429, but
+  deliberately *excludes* read/write/pool timeouts — a timeout means the
+  request already reached the agent, whose own retry policy may be mid-flight,
+  so retrying at the hop too would stack a second retry cycle on top; on
+  exhaustion `/ask` returns a **degraded answer** (`status='degraded'`, a
+  plain sentence, a Retry button) instead of a raw 502. `load/k6/chat.js` +
+  `make loadtest` produce the first load numbers.
 
 - **W2 · observability & cost** — `agent/pricing.py` prices a run **cache-aware**:
   most input tokens on this workload are prompt-cache hits billed ~10x cheaper, so
@@ -661,7 +665,7 @@ bare runner, and it exits 0 on failure because telemetry must never fail a deplo
   (through `/ask`, as a real user), not a bare model, in four classes that match
   the deck's bars: `rls-bypass`, `jailbreak-to-dml`, `prompt-injection`,
   `pii-exfil`. `tests/security/test_injection.py` is the deterministic,
-  zero-LLM, zero-network subset that blocks every merge (42 cases). Writing it
+  zero-LLM, zero-network subset that blocks every merge (43 cases). Writing it
   found two **real** defects in the SQL guard: `SELECT set_config('app.current_
   user_id', …)` was accepted — read-only in form, RLS-context-rewriting in effect,
   and invisible to a node-type check because it parses as an ordinary `Select`
@@ -669,7 +673,11 @@ bare runner, and it exits 0 on failure because telemetry must never fail a deplo
   and the keyword denylist scanned string literals, so a query filtering on the
   address `'GRANT ST'` — present in the committed sample — was refused.
   Over-blocking is a defect too: a guard that rejects real queries gets removed.
-  Both fixed (`_FORBIDDEN_FUNCTIONS`, `_blank_quoted`). Chat-path guard
+  Both fixed (`_FORBIDDEN_FUNCTIONS`, `_blank_quoted`) — including a follow-up
+  variant where a double-quoted call (`SELECT "set_config"(...)`) slipped the
+  same denylist because sqlglot represents its name as an `exp.Identifier`
+  rather than a bare string; `_function_name` now unwraps that before
+  matching. Chat-path guard
   rejections no longer log as `status='success'`; refusals record `error` +
   `denied` and emit a `security_denied` event, which is the deck's denial counter.
   Questions are length-bounded and PII-scrubbed **on persistence only** (masking
@@ -689,9 +697,14 @@ bare runner, and it exits 0 on failure because telemetry must never fail a deplo
   `:latest`, which would redeploy the thing being rolled back). Per **decision Q6**
   the CI deploy role drops `AdministratorAccess` for a scoped policy whose real
   value is the two explicit denies: no IAM users or access keys, and no modifying
-  its own role or the OIDC trust. `scripts/ops_judge_sample.py` scores a slice of
-  live traffic for quality drift — advisory only, since without a golden it can
-  judge whether an answer reads well but never whether the numbers are right.
+  its own role or the OIDC trust. Updating that scoped policy's *own version* is a
+  narrow, explicit exception (`AllowSelfPolicyVersionUpdate`, paired with a
+  matching `NotResource` carve-out on the deny) so a routine `terraform apply`
+  permission change doesn't deadlock behind an out-of-band admin credential —
+  every other policy in the account stays denied. `scripts/ops_judge_sample.py`
+  scores a slice of live traffic for quality drift — advisory only, since
+  without a golden it can judge whether an answer reads well but never whether
+  the numbers are right.
 
 ### Honest constraints (corrections to the parent plan)
 

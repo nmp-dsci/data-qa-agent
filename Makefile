@@ -23,7 +23,7 @@ help:
 	@echo "make redteam       - promptfoo red-team the governed boundary -> app.security_runs"
 	@echo "make injection-suite - the deterministic, zero-LLM guard tests (also runs in CI)"
 	@echo "make ops-rollup    - recompute the /ops deck's windows now"
-	@echo "make rollback      - revert App Runner to the previous image tag (prod)"
+	@echo "make rollback      - revert App Runner to the previous image digest (prod)"
 	@echo ""
 	@echo "Then open http://localhost:5230 and sign in as admin / user1 / user2."
 

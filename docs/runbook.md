@@ -1,7 +1,7 @@
 # Runbook — Data Pilot in production
 
 **Audience:** whoever is holding the pager, which is one person. Last reviewed
-2026-07-26 (s32 W2).
+2026-07-27 (s32 W2).
 
 Start at **`/ops`** — the flight deck answers "is it healthy, safe, fast and
 affordable?" in one screen, and every symptom below maps to a lamp on it. Logfire
@@ -61,8 +61,11 @@ is the microscope for a single slow run; CloudWatch is the last resort.
    for a burst.
 2. **Provider outage.** `attempts_mean` above 1 means the LLM provider is flaky
    and the retries are absorbing it. Nothing to do while the graph is flat.
-3. **Agent unreachable (`engine: unavailable`).** The backend→agent hop retried 3
-   times and gave up. Check the agent service:
+3. **Agent unreachable (`engine: unavailable`).** The backend→agent hop retried a
+   connection failure up to 3 times and gave up — a timeout is deliberately *not*
+   retried here, since it means the request reached the agent and its own retry
+   policy may already be mid-flight on a slow answer; retrying both would just
+   stack latency and spend. Check the agent service:
    ```bash
    curl -s "$(terraform -chdir=infra/terraform/foundations output -raw data_agent_url)/health"
    aws apprunner list-operations --service-arn <agent-arn> --max-results 5

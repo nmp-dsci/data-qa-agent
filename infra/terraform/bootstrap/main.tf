@@ -218,12 +218,30 @@ data "aws_iam_policy_document" "github_deploy_scoped" {
       "iam:CreateOpenIDConnectProvider",
       "iam:UpdateOpenIDConnectProviderThumbprint",
       "iam:AddClientIDToOpenIDConnectProvider",
-      "iam:CreatePolicyVersion",
-      "iam:SetDefaultPolicyVersion",
       "organizations:*",
       "account:*",
     ]
     resources = ["*"]
+  }
+
+  # CreatePolicyVersion/SetDefaultPolicyVersion are how a compromised role
+  # could widen its OWN permissions by rewriting a managed policy in place —
+  # but denying them on every resource would also block a legitimate
+  # `terraform apply` from ever updating this role's own least-privilege
+  # policy, forcing an out-of-band admin credential for routine permission
+  # changes. NotResource keeps the deny in force on every OTHER policy while
+  # carving out only this role's own scoped policy (name-derived, not a
+  # reference to the resource below, to avoid a cycle).
+  statement {
+    sid    = "DenyPolicyVersionEscalation"
+    effect = "Deny"
+    actions = [
+      "iam:CreatePolicyVersion",
+      "iam:SetDefaultPolicyVersion",
+    ]
+    not_resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.project}-github-deploy",
+    ]
   }
 
   statement {

@@ -57,9 +57,19 @@ def _inject_trace_context(headers: dict[str, str]) -> None:
 
 
 def _is_retryable_hop(exc: BaseException) -> bool:
-    """Transport failures and upstream 5xx/429 are worth another attempt."""
+    """Connection failures and upstream 5xx/429 are worth another attempt.
+
+    A read/write/pool timeout means the request reached the agent and the
+    agent's own model_factory retry policy (up to 4 attempts) may already be
+    mid-flight on a legitimately slow answer — retrying here would restart
+    that work from scratch and stack ~3x latency/spend on top of it. Only a
+    failure to even establish the connection (nothing sent, no agent-side
+    work possible yet) is retried at this hop.
+    """
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in _RETRYABLE_STATUS
+    if isinstance(exc, (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout)):
+        return False
     return isinstance(exc, httpx.TransportError)
 
 

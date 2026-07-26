@@ -92,6 +92,9 @@ COMMAND_PAYLOADS = [
 RLS_PAYLOADS = [
     "SET LOCAL app.current_user_id = '00000000-0000-0000-0000-000000000000'",
     "SELECT set_config('app.current_user_id', 'x', true)",
+    # A double-quoted identifier calls the same function; the guard must not
+    # be fooled by the quoting into treating it as an unrecognised name.
+    "SELECT \"set_config\"('app.current_user_id', 'x', true)",
     "ALTER ROLE agent_ro BYPASSRLS",
     # The dangerous shape: read-only in form, context-rewriting in effect, and
     # invisible to a node-type check because it parses as an ordinary Select.

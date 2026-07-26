@@ -58,8 +58,11 @@ jobs:
           url=$(aws apprunner list-services \
             --query "ServiceSummaryList[?ServiceName=='data-qa-backend-api'].ServiceUrl | [0]" \
             --output text)
-          token=$(aws secretsmanager get-secret-value \
-            --secret-id data-qa/ops-ingest-token --query SecretString --output text 2>/dev/null || echo "")
+          if ! token=$(aws secretsmanager get-secret-value \
+            --secret-id data-qa/ops-ingest-token --query SecretString --output text 2>/tmp/ops_token_err); then
+            echo "::warning::Failed to read data-qa/ops-ingest-token from Secrets Manager — deploy telemetry will not be recorded this run: $(cat /tmp/ops_token_err)"
+            token=""
+          fi
           echo "::add-mask::$token"
           echo "OPS_API_URL=https://$url" >> "$GITHUB_ENV"
           echo "OPS_INGEST_TOKEN=$token" >> "$GITHUB_ENV"

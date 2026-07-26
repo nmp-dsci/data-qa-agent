@@ -147,7 +147,10 @@ def _function_name(node: object) -> str:
     ``exp.Anonymous`` with the name in ``this``.
     """
     if isinstance(node, exp.Anonymous):
-        return str(node.this or "").lower()
+        this = node.this
+        if isinstance(this, exp.Identifier):
+            return str(this.this or "").lower()
+        return str(this or "").lower()
     if isinstance(node, exp.Func):
         try:
             return str(node.sql_name()).lower()

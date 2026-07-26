@@ -104,9 +104,162 @@ resource "aws_iam_role" "github_deploy" {
   assume_role_policy = data.aws_iam_policy_document.github_assume.json
 }
 
-# v1: broad access so CI can manage the whole stack via Terraform.
-# TODO (Phase F harden): replace AdministratorAccess with a scoped policy.
+# --------------------------------------------------------------------------
+# The CI deploy role's permissions (s32 W4, decision Q6) — closing the Phase-F
+# TODO that read "replace AdministratorAccess with a scoped policy".
+#
+# WHY IT WAS BROAD. The role has to manage the entire stack through Terraform:
+# VPC, Aurora, App Runner, ECS, ECR, S3, CloudFront, Secrets Manager, CloudWatch,
+# SNS, and the IAM roles those services assume. AdministratorAccess was the
+# expedient way to make that work on day one, at the cost of a CI credential that
+# could do literally anything in the account.
+#
+# WHAT SCOPING BUYS. Not much against a determined attacker who controls the
+# workflow — a role that can write App Runner config can already run arbitrary
+# code in the account's services. What it does buy is real: a blast-radius cap on
+# *mistakes* (a bad `terraform apply` cannot delete the state bucket or detach the
+# billing alarms), and removal of the two capabilities that turn a CI compromise
+# into a durable one — creating IAM users/access keys, and granting itself more.
+# That is the honest value, so those are the boundaries drawn below.
+#
+# HOW TO ROLL BACK. Set `deploy_role_scoped = false` and apply: the role reverts
+# to AdministratorAccess. Kept as a flag rather than a delete because the failure
+# mode of getting this wrong is a broken deploy pipeline, and the fix has to be
+# one variable rather than an archaeology exercise.
+# --------------------------------------------------------------------------
+
 resource "aws_iam_role_policy_attachment" "github_deploy_admin" {
+  count      = var.deploy_role_scoped ? 0 : 1
   role       = aws_iam_role.github_deploy.name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+data "aws_iam_policy_document" "github_deploy_scoped" {
+  # 1 · The services Terraform manages. Service-level rather than per-resource:
+  #     Terraform legitimately creates and destroys these, and an ARN allowlist
+  #     would break on every new resource while adding no real protection (any of
+  #     these services can reach the others' data anyway).
+  statement {
+    sid    = "ManageProjectInfrastructure"
+    effect = "Allow"
+    actions = [
+      "apprunner:*",
+      "ecs:*",
+      "ecr:*",
+      "rds:*",
+      "ec2:*", # VPC, subnets, security groups, ip-ranges
+      "s3:*",
+      "cloudfront:*",
+      "secretsmanager:*",
+      "logs:*",
+      "cloudwatch:*",
+      "sns:*",
+      "application-autoscaling:*",
+      "elasticloadbalancing:Describe*", # read-only; an ALB is a possible later step
+    ]
+    resources = ["*"]
+  }
+
+  # 2 · Identity reads + the roles this stack's services assume. Terraform has to
+  #     create and attach them (App Runner instance/access roles, the ECS
+  #     execution and task roles), so the write actions are allowed — but only on
+  #     paths this project owns, and never on IAM *users*.
+  statement {
+    sid    = "ReadIdentity"
+    effect = "Allow"
+    actions = [
+      "iam:Get*",
+      "iam:List*",
+      "sts:GetCallerIdentity",
+      "sts:AssumeRole",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "ManageProjectServiceRoles"
+    effect = "Allow"
+    actions = [
+      "iam:CreateRole",
+      "iam:DeleteRole",
+      "iam:UpdateRole",
+      "iam:UpdateAssumeRolePolicy",
+      "iam:TagRole",
+      "iam:UntagRole",
+      "iam:PutRolePolicy",
+      "iam:DeleteRolePolicy",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:PassRole",
+      "iam:CreateServiceLinkedRole",
+    ]
+    resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project}-*",
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/*",
+    ]
+  }
+
+  # 3 · The two lines that actually matter. An explicit Deny cannot be overridden
+  #     by any Allow, including a future one added by mistake:
+  #     · no IAM users or access keys — the usual route from "CI can deploy" to
+  #       "someone has a permanent key in this account";
+  #     · no touching its own role or the OIDC trust — a compromised workflow must
+  #       not be able to widen its own permissions or add a trusted repo.
+  statement {
+    sid    = "DenyIdentityEscalation"
+    effect = "Deny"
+    actions = [
+      "iam:CreateUser",
+      "iam:CreateAccessKey",
+      "iam:CreateLoginProfile",
+      "iam:UpdateLoginProfile",
+      "iam:AttachUserPolicy",
+      "iam:PutUserPolicy",
+      "iam:CreateOpenIDConnectProvider",
+      "iam:UpdateOpenIDConnectProviderThumbprint",
+      "iam:AddClientIDToOpenIDConnectProvider",
+      "iam:CreatePolicyVersion",
+      "iam:SetDefaultPolicyVersion",
+      "organizations:*",
+      "account:*",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "DenySelfModification"
+    effect = "Deny"
+    actions = [
+      "iam:PutRolePolicy",
+      "iam:DeleteRolePolicy",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:UpdateAssumeRolePolicy",
+      "iam:DeleteRole",
+    ]
+    resources = [aws_iam_role.github_deploy.arn]
+  }
+
+  # 4 · The Terraform state bucket is the one thing whose loss is unrecoverable
+  #     — it already has prevent_destroy + versioning, and this makes a
+  #     mis-targeted delete impossible rather than merely blocked by Terraform.
+  statement {
+    sid       = "DenyStateBucketDestruction"
+    effect    = "Deny"
+    actions   = ["s3:DeleteBucket", "s3:PutBucketVersioning"]
+    resources = [aws_s3_bucket.tfstate.arn]
+  }
+}
+
+resource "aws_iam_policy" "github_deploy_scoped" {
+  count       = var.deploy_role_scoped ? 1 : 0
+  name        = "${var.project}-github-deploy"
+  description = "Least-privilege deploy permissions for the ${var.project} CI role (s32 W4)."
+  policy      = data.aws_iam_policy_document.github_deploy_scoped.json
+}
+
+resource "aws_iam_role_policy_attachment" "github_deploy_scoped" {
+  count      = var.deploy_role_scoped ? 1 : 0
+  role       = aws_iam_role.github_deploy.name
+  policy_arn = aws_iam_policy.github_deploy_scoped[0].arn
 }

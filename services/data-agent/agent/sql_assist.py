@@ -21,6 +21,7 @@ import re
 from typing import Any
 
 from .config import settings
+from .model_factory import FAST_POLICY, build_model, model_settings, run_with_policy
 from .nl2sql import build_sql
 from .provider import choose_provider
 from .schema import get_schema
@@ -112,11 +113,19 @@ async def _assist_with_llm(
         os.environ.setdefault(_ENV_VAR[provider], api_key)
         model_name = settings.deepseek_model if provider == "deepseek" else settings.model
         agent: Agent[None, _Draft] = Agent(
-            f"{provider}:{model_name}",
+            build_model(provider, model_name),
             output_type=_Draft,
             system_prompt=_system_prompt(),
+            # FAST_POLICY (s32 W1): the editor's assist is one interactive round
+            # trip behind a spinner, so it retries briefly and then falls back to
+            # the deterministic stub rather than making the user wait.
+            model_settings=model_settings(FAST_POLICY),
         )
-        run = await agent.run(_instruction(action, prompt, sql))
+        run, _attempts = await run_with_policy(
+            lambda: agent.run(_instruction(action, prompt, sql)),
+            policy=FAST_POLICY,
+            label=f"sql assist ({action})",
+        )
         draft = run.output
         cleaned = _clean_sql(draft.sql) if draft.sql else (sql or "")
         return {

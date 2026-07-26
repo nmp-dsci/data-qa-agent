@@ -45,6 +45,12 @@ async def rls_connection(user_id: str | None) -> AsyncIterator[AsyncConnection]:
 
     Every query on this connection is scoped to `user_id` by Postgres RLS.
     Using SET LOCAL (via set_config(..., true)) keeps pooled connections clean.
+
+    Passing None sets an EMPTY context, which means ``app.current_user_id()``
+    returns NULL and every RLS-protected table returns **zero rows**. That is the
+    right default for a writer touching only un-RLS'd tables (the ops ingest
+    endpoints), and completely wrong for anything that needs to read across
+    users — see admin_ro_connection below.
     """
     async with engine.connect() as conn:
         async with conn.begin():
@@ -53,6 +59,39 @@ async def rls_connection(user_id: str | None) -> AsyncIterator[AsyncConnection]:
                 {"uid": user_id or ""},
             )
             yield conn
+
+
+# The elevated read-only role from migration 0012: NOSUPERUSER, **BYPASSRLS**,
+# SELECT on every schema. Created for the admin SQL editor; reused here by the ops
+# rollup, which is an aggregate over ALL users by definition.
+#
+# This exists because the alternative is worse. The rollup used to run on
+# rls_connection(None) — an empty RLS context — which silently returned zero rows
+# for query_runs/messages/events/answer_feedback, so a background refresh would
+# overwrite a good rollup with an all-zero one and blank the deck. Depending on
+# "whichever admin happened to trigger it" would be just as fragile, and the
+# machine-token refresh (a scheduler, the deploy workflow) has no user at all.
+# A role whose whole purpose is "read everything, write nothing" is the honest
+# tool for a cross-user aggregate.
+admin_ro_engine = create_async_engine(
+    settings.admin_ro_database_url,
+    poolclass=NullPool,
+    future=True,
+    connect_args=_connect_args,
+)
+
+
+@asynccontextmanager
+async def admin_ro_connection() -> AsyncIterator[AsyncConnection]:
+    """Yield a read-only, RLS-bypassing connection for cross-user aggregates.
+
+    SELECT-only by role grant, so nothing reached through here can write —
+    including by accident. Deliberately NOT exposed to request handlers: the only
+    caller is the ops rollup refresh, and every user-facing read stays on
+    rls_connection so isolation is enforced by the database as usual.
+    """
+    async with admin_ro_engine.connect() as conn:
+        yield conn
 
 
 def jsonable(value: Any) -> Any:

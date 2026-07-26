@@ -63,6 +63,18 @@ export const IconAdmin = () => (
   </I>
 );
 
+// Ops (s32) — an annunciator panel: three lamps in a frame. Deliberately not
+// another gauge, so it reads as distinct from Admin at 22px in the rail.
+export const IconOps = () => (
+  <I>
+    <rect x="3.5" y="5" width="17" height="14" rx="2" />
+    <circle cx="8" cy="10" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="10" r="1.4" />
+    <circle cx="16" cy="10" r="1.4" />
+    <path d="M7 14.5h10" />
+  </I>
+);
+
 export const IconSettings = () => (
   <I>
     <path d="M4 7.5h9M17.5 7.5H20" />

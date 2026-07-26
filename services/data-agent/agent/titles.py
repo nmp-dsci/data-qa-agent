@@ -16,6 +16,7 @@ import os
 import re
 
 from .config import settings
+from .model_factory import FAST_POLICY, build_model, model_settings, run_with_policy
 from .provider import choose_provider
 
 # pydantic-ai is only needed for the LLM path; guard the import so the offline
@@ -105,11 +106,19 @@ async def _title_with_llm(question: str) -> str | None:
         os.environ.setdefault(_ENV_VAR[provider], api_key)
         model_name = settings.deepseek_model if provider == "deepseek" else settings.model
         agent: Agent[None, _TitleOut] = Agent(
-            f"{provider}:{model_name}",
+            build_model(provider, model_name),
             output_type=_TitleOut,
             system_prompt=_TITLE_SYSTEM,
+            # FAST_POLICY (s32 W1): titling is cosmetic and off the answer path,
+            # so it gets a tight timeout and one fewer retry than the answer —
+            # a flaky provider must never make a sidebar label expensive.
+            model_settings=model_settings(FAST_POLICY),
         )
-        run = await agent.run(f"Question: {question}")
+        run, _attempts = await run_with_policy(
+            lambda: agent.run(f"Question: {question}"),
+            policy=FAST_POLICY,
+            label="title",
+        )
         return _clean_title(run.output.title) or None
     except Exception as exc:  # noqa: BLE001 — never let titling break anything
         print(f"[data-agent] title generation unavailable, using heuristic: {exc}")

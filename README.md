@@ -121,7 +121,11 @@ scripts/                make_samples.py, smoke_test.py, build_poa_paths.py (Expl
                         see scripts/build_topojson.md), explore_parity.py + AWS deploy scripts
                         (aws_build_push, run_job, deploy_frontend, cloud_smoke); eval_pack.py, eval_run.py,
                         eval_compare.py, eval_diagnose.py — the eval loop's DB<->pack, runner, gate, and
-                        read-only diagnosis tools (`make eval*`)
+                        read-only diagnosis tools (`make eval*`); ops_ingest.py (records load/red-team/
+                        deploy/pipeline outcomes for the Ops deck), ops_judge_sample.py, rollback_apprunner.sh
+load/k6/                k6 load scripts (`make loadtest`) — the app's only load harness
+security/promptfoo/     red-team config for the governed boundary (`make redteam`)
+docs/runbook.md         production runbook, keyed off the Ops deck's lamps
 docs/evals/             cycle-NNN.md write-ups of real improvement attempts scored through the eval loop
 docs/chronicle/         vendored legacy NSW profiling tool, kept as the Explore reference (see its README)
 infra/terraform/        AWS deployment (live) — see infra/terraform/README.md; infra/ Bicep = Azure reference
@@ -170,6 +174,30 @@ Explore's UI is a modern port of a legacy static NSW profiling tool, vendored fo
 Sign in as `admin` and use the **Admin** button to inspect the live events feed, users, datasets, and audited
 agent query runs. Each answered question writes a `query_runs` row with the user, dataset, SQL, row count,
 latency, and engine.
+
+## Ops (the flight deck)
+
+Admins also get an **Ops** tab — one screen answering "is it healthy, safe, fast and affordable?" so you
+don't have to grep CloudWatch. Latency and time-to-first-page percentiles, error and degraded rates,
+cost per answer (cache-adjusted — most input tokens are prompt-cache hits, so naive token counting
+overstates spend several-fold), traffic and thumbs-up rate, two SLOs with error-budget burn, marts
+freshness, red-team pass rates by attack class, the deploy timeline, and infra saturation.
+
+Every reading comes from Postgres, so the deck stays up when Logfire or the AWS APIs don't. It reads one
+pre-aggregated `app.ops_rollup` row per window rather than scanning the audit trail on each poll; a cold or
+stale rollup fills in behind you (or press **refresh** to wait for it). Panels with no rows yet read
+"no data" — they light up as you run things:
+
+```bash
+make loadtest          # k6 -> app.load_tests            (needs k6 installed)
+make redteam           # promptfoo -> app.security_runs   (costs model tokens)
+make injection-suite   # the deterministic guard tests    (free; also runs in CI)
+make ops-rollup        # recompute the deck's windows now
+make rollback          # revert App Runner to the previous image (prod)
+```
+
+See [`docs/runbook.md`](./docs/runbook.md) for what to do when a lamp goes red, and
+[`SECURITY.md`](./SECURITY.md) for the threat model the red-team exercises.
 
 ## Golden Examples (the eval loop)
 

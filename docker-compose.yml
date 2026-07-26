@@ -40,6 +40,13 @@ services:
     environment:
       ADMIN_DATABASE_URL: postgresql://postgres:postgres@db:5432/dataqa
       PIPELINE_SOURCE: ${PIPELINE_SOURCE:-sample}
+      # s32 W2: the pipeline records its own freshness (marts age + dbt pass) to
+      # app.pipeline_runs through the backend, so the deck's freshness lamp is fed
+      # by the job that changes the data. Best-effort: the pipeline runs BEFORE
+      # backend-api starts on a cold `make up`, so the first record is skipped
+      # with a log line and the next run fills it in.
+      OPS_API_URL: http://backend-api:8000
+      OPS_INGEST_TOKEN: ${OPS_INGEST_TOKEN:-dev-ops-token}
     volumes:
       - ./data:/data:ro
       - dbt_target:/app/dbt/target
@@ -76,6 +83,11 @@ services:
       # GOOGLE_CLIENT_ID + ADMIN_EMAILS (in .env) to switch to real Google Sign-in.
       AUTH_MODE: ${AUTH_MODE:-dev}
       DATABASE_URL: postgresql+asyncpg://app_user:app_pw@db:5432/dataqa
+      # Elevated read-only role (BYPASSRLS, SELECT-only; migration 0012). Used by
+      # exactly one thing here: the /ops rollup, which aggregates across ALL users
+      # and so cannot run under any single user's RLS context (an empty context
+      # sees zero rows and would write a rollup of zeros).
+      ADMIN_RO_DATABASE_URL: postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa
       AGENT_URL: http://data-agent:8100
       JWT_SECRET: dev-secret-change-me
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -85,6 +97,13 @@ services:
       # never 429. Cloud deployments keep the config.py defaults (free 5, paid 10).
       ASK_DAILY_LIMIT_FREE: "0"
       ASK_DAILY_LIMIT_PAID: "0"
+      # s32: machine token for POST /ops/ingest/* — the k6, red-team, deploy and
+      # pipeline writers. A fixed dev value so `make loadtest` / `make redteam` /
+      # the pipeline's freshness record just work locally; in AWS it is generated
+      # by Terraform. Empty would CLOSE the endpoint (404), which is the default.
+      OPS_INGEST_TOKEN: ${OPS_INGEST_TOKEN:-dev-ops-token}
+      # Optional — ships backend traces to Logfire Cloud; local-only otherwise.
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
     ports:
       - "8000:8000"
     depends_on:

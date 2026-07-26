@@ -47,6 +47,30 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Deploy telemetry (s32 W4). The runner cannot reach Aurora — its security
+      # group admits the ECS jobs, App Runner's egress ranges and operator CIDRs,
+      # not GitHub — so the record goes through backend-api's token-gated ops
+      # ingest endpoint. The token is read with the role we already assumed, so
+      # nothing has to be stored as a GitHub secret.
+      - name: Read the ops ingest token
+        id: ops
+        run: |
+          url=$(aws apprunner list-services \
+            --query "ServiceSummaryList[?ServiceName=='data-qa-backend-api'].ServiceUrl | [0]" \
+            --output text)
+          token=$(aws secretsmanager get-secret-value \
+            --secret-id data-qa/ops-ingest-token --query SecretString --output text 2>/dev/null || echo "")
+          echo "::add-mask::$token"
+          echo "OPS_API_URL=https://$url" >> "$GITHUB_ENV"
+          echo "OPS_INGEST_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # Records status=running. ops_ingest.py exits 0 even when the token is
+      # missing or the API is unreachable: deploy telemetry must never be the
+      # thing that fails a deploy.
+      - name: Record deploy start
+        run: python3 scripts/ops_ingest.py deploy --sha "$GITHUB_SHA" --actor "$GITHUB_ACTOR"
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Build & push service images (linux/amd64)
@@ -101,4 +125,29 @@ jobs:
           ./scripts/deploy_frontend.sh
 
       - name: Cloud smoke test (live URL)
+        id: smoke
         run: ./scripts/cloud_smoke.sh
+
+      # Close the deploy record either way. `if: always()` is the point: a deploy
+      # that failed is exactly the one the timeline needs to show, and a run that
+      # only records successes makes the deploy-success rate meaningless.
+      - name: Record deploy outcome
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then status=deployed; else status=failed; fi
+          smoke_args=""
+          if [ -n "${{ steps.smoke.outputs.total }}" ]; then
+            smoke_args="--smoke-passed ${{ steps.smoke.outputs.passed }} --smoke-total ${{ steps.smoke.outputs.total }}"
+          fi
+          # shellcheck disable=SC2086  # word splitting is intended for smoke_args
+          python3 scripts/ops_ingest.py deploy \
+            --sha "$GITHUB_SHA" --actor "$GITHUB_ACTOR" --status "$status" \
+            --duration-s "$(( $(date +%s) - ${{ steps.ops.outputs.started }} ))" \
+            $smoke_args \
+            --notes "${{ github.event_name }} · run ${{ github.run_number }}"
+
+      # Fold the deploy into the deck's windows now, so /ops reflects it on the
+      # next look rather than after the read-path staleness timer.
+      - name: Refresh the ops rollup
+        if: always()
+        run: python3 scripts/ops_ingest.py rollup

@@ -23,7 +23,7 @@ from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
 from ..db import jsonable, rls_connection
 from ..explore import engine, nl_setup, service
-from ..explore.manifest import Dataset, get_dataset
+from ..explore.manifest import GEO_TABLE, Dataset, get_dataset
 from ..explore.pages_builder import build_profile_pages
 
 router = APIRouter(prefix="/explore", tags=["explore"])
@@ -210,7 +210,9 @@ async def typeahead(
             raise HTTPException(status_code=400, detail=f"Unknown dimension {dimension!r}")
         limit = max(1, min(limit, 50))
         needs_geo = dim.needs_geo_join
-        join = f" left join {service.GEO_TABLE} g on g.postcode = m.postcode" if needs_geo else ""
+        # GEO_TABLE is re-exported through service only as a convenience import;
+        # read it from its owner (manifest) so a strict type check can see it.
+        join = f" left join {GEO_TABLE} g on g.postcode = m.postcode" if needs_geo else ""
         where = f"where {dim.expr} ilike :q" if q else ""
         sql = (
             f"select distinct {dim.expr} as v from {ds.table} m{join} "

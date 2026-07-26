@@ -10,10 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from .config import settings
-from .db import engine, rls_connection
-from .explore.manifest import ManifestError, validate_manifest
-from .routers import (
+from .tracing import RequestIdMiddleware, instrument_app
+from .tracing import configure as configure_tracing
+
+# Tracing is configured before anything else in this package is imported (s32
+# W2), the same ordering rule the data-agent follows for its pydantic-ai
+# instrumentation: logfire.configure() has to run before any instrument_* call,
+# and doing it at the very top means no module can accidentally get imported
+# ahead of it. instrument_fastapi comes later, once the routes exist.
+configure_tracing()
+
+from .config import settings  # noqa: E402 — after configure_tracing, by design
+from .db import engine, rls_connection  # noqa: E402
+from .explore.manifest import ManifestError, validate_manifest  # noqa: E402
+from .routers import (  # noqa: E402
     admin_config,
     ask,
     auth,
@@ -22,10 +32,11 @@ from .routers import (
     explore,
     feedback,
     goldens,
+    ops,
     profile,
     sql,
 )
-from .waking import is_db_waking
+from .waking import is_db_waking  # noqa: E402
 
 log = logging.getLogger("uvicorn.error")
 
@@ -56,6 +67,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# s32 W2: every response carries an id a user can quote, whether or not tracing
+# is on. Added last, so it is the outermost layer and the header is set on every
+# response including CORS preflights and error responses.
+app.add_middleware(RequestIdMiddleware)
 
 
 @app.exception_handler(Exception)
@@ -106,6 +121,12 @@ app.include_router(admin_config.router)
 app.include_router(profile.router)
 app.include_router(explore.router)
 app.include_router(evals.router)
+app.include_router(ops.router)
+
+# Instrumented once every route is registered, so spans carry route templates
+# (/conversations/{conversation_id}) rather than raw paths — otherwise
+# per-endpoint latency can't be aggregated (s32 W2).
+instrument_app(app)
 
 
 @app.get("/health")

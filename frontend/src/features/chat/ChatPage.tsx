@@ -18,7 +18,7 @@ import {
 import { useStickToBottom } from "../../lib/useStickToBottom";
 import { PageLayout } from "../../report-engine/PageLayout";
 import { Composer } from "../../ui/Composer";
-import { FlightPath, InstrumentLabel } from "../../ui/flightdeck";
+import { Annunciator, FlightPath, InstrumentLabel } from "../../ui/flightdeck";
 import { BrandMark } from "../../ui/icons";
 import { ResultView } from "./ResultView";
 
@@ -218,6 +218,51 @@ function GhostPage({ kind }: { kind: string }) {
   );
 }
 
+/** The user question immediately preceding assistant message `index`.
+ *
+ *  Used by the degraded-answer Retry: the failure is attached to the answer, but
+ *  what has to be re-sent is the question above it. Returns "" when the thread
+ *  was reopened from history without the paired user turn, and the button is
+ *  only rendered when this is non-empty. */
+function previousQuestion(messages: ChatMsg[], index: number): string {
+  for (let i = index - 1; i >= 0; i--) {
+    if (messages[i].role === "user") return messages[i].content;
+  }
+  return "";
+}
+
+/** A degraded answer says so, and offers the retry (s32 W1).
+ *
+ *  An unreachable agent now returns a real degraded answer rather than a 502, so
+ *  without this the user would read an apology with no way forward — the failure
+ *  would be honest but useless. The lamp is `warn`, not `bad`: something came
+ *  back. */
+function DegradedNote({
+  messages,
+  index,
+  loading,
+  onSend,
+}: {
+  messages: ChatMsg[];
+  index: number;
+  loading: boolean;
+  onSend: (question: string) => void;
+}) {
+  const question = previousQuestion(messages, index);
+  return (
+    <div className="degraded-note">
+      <Annunciator state="warn" title="This answer degraded — the Ops tab records why">
+        degraded
+      </Annunciator>
+      {question && !loading && (
+        <button type="button" className="chip" onClick={() => onSend(question)}>
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Identity row every assistant turn (streamed or final) opens with. */
 function AnswerHead({ note }: { note?: string | null }) {
   return (
@@ -340,6 +385,7 @@ export function ChatPage({
   pagePlan,
   streamedPages,
   error,
+  retryQuestion,
   input,
   setInput,
   onSend,
@@ -359,6 +405,9 @@ export function ChatPage({
   pagePlan: PagePlanSlot[];
   streamedPages: Record<number, PageFrame>;
   error: string | null;
+  /** s32 W1: the question behind the last failure, so the error line can offer
+   *  a Retry. Null when there is nothing to retry. */
+  retryQuestion?: string | null;
   input: string;
   setInput: (v: string) => void;
   onSend: (question: string) => void;
@@ -445,6 +494,14 @@ export function ChatPage({
                   >
                     <AnswerHead />
                     <div className="content">{m.content}</div>
+                    {m.result?.degraded && (
+                      <DegradedNote
+                        messages={messages}
+                        index={i}
+                        loading={loading}
+                        onSend={onSend}
+                      />
+                    )}
                     {m.result && (
                       <ResultView
                         result={m.result}
@@ -465,7 +522,20 @@ export function ChatPage({
                   streamedPages={streamedPages}
                 />
               )}
-              {error && <p className="error">{error}</p>}
+              {error && (
+                <p className="error">
+                  {error}
+                  {retryQuestion && !loading && (
+                    <button
+                      type="button"
+                      className="chip retry-ask"
+                      onClick={() => onSend(retryQuestion)}
+                    >
+                      Retry
+                    </button>
+                  )}
+                </p>
+              )}
             </main>
 
             {!pinned && (

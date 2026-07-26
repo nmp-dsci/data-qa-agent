@@ -42,6 +42,37 @@ try:
 except ImportError:  # pragma: no cover - sqlglot is a declared dependency
     _SQLGLOT_AVAILABLE = False
 
+# Functions that are read-only in *form* but not in effect, so no node-type check
+# catches them: `SELECT set_config(...)` parses as a perfectly ordinary Select.
+# set_config is the important one — ``app.current_user_id`` is the session
+# variable every RLS policy reads, so a query able to rewrite it is a query able
+# to choose whose rows it sees (s32 W3 found this; the read-only role does not
+# stop it, because set_config needs no write privilege). The rest are the usual
+# filesystem/network/sleep escapes. `current_setting` is deliberately absent —
+# reading the context is fine, writing it is not.
+_FORBIDDEN_FUNCTIONS = frozenset(
+    {
+        "set_config",
+        "pg_reload_conf",
+        "pg_read_file",
+        "pg_read_binary_file",
+        "pg_stat_file",
+        "pg_ls_dir",
+        "pg_sleep",
+        "pg_sleep_for",
+        "pg_sleep_until",
+        "pg_terminate_backend",
+        "pg_cancel_backend",
+        "lo_import",
+        "lo_export",
+        "dblink",
+        "dblink_exec",
+        "dblink_connect",
+        "query_to_xml",
+        "xmltable",
+    }
+)
+
 
 class UnsafeSQLError(ValueError):
     """Raised when generated SQL is not a single read-only SELECT."""
@@ -108,8 +139,70 @@ def _strip_sql_comments(sql: str) -> str:
     return "".join(out)
 
 
+def _function_name(node: object) -> str:
+    """The lowercase called-function name for a node, or "" if it isn't a call.
+
+    Covers both shapes sqlglot produces: a modelled function (``exp.Func``
+    subclasses expose ``sql_name()``) and an unrecognised one, which lands as
+    ``exp.Anonymous`` with the name in ``this``.
+    """
+    if isinstance(node, exp.Anonymous):
+        return str(node.this or "").lower()
+    if isinstance(node, exp.Func):
+        try:
+            return str(node.sql_name()).lower()
+        except Exception:  # noqa: BLE001 — an unnameable node is not a match
+            return ""
+    return ""
+
+
+def _blank_quoted(sql: str) -> str:
+    """Replace the *contents* of string literals and quoted identifiers with spaces.
+
+    The keyword denylist below scans text, and text includes the data. A NSW
+    address of ``'GRANT ST'`` (which is in the committed sample) made
+    ``\\bgrant\\b`` match and the guard refuse an ordinary WHERE clause — the
+    guard reading a value as a command. Blanking quoted spans first fixes that
+    without weakening anything: a keyword inside a literal is data by definition
+    and can never execute, so nothing dangerous can hide there.
+
+    Structure is preserved — the quotes themselves stay, and so does every
+    semicolon and paren outside them — so the single-statement check still sees
+    the real shape of the query. ``''`` and ``""`` escapes are handled, so a
+    literal containing a quote can't terminate the span early and expose its tail
+    to the scanner.
+    """
+    out: list[str] = []
+    i = 0
+    quote = ""
+    while i < len(sql):
+        ch = sql[i]
+        nxt = sql[i + 1] if i + 1 < len(sql) else ""
+        if quote:
+            if ch == quote and nxt == quote:  # an escaped quote inside the literal
+                out.append("  ")
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+                out.append(ch)
+            else:
+                # Keep newlines so line/column positions stay recognisable.
+                out.append("\n" if ch == "\n" else " ")
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            out.append(ch)
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _validate_ast(cleaned: str) -> None:
-    """AST check: exactly one top-level read query, no CTE-hidden DML/DDL."""
+    """AST check: one top-level read query, no CTE-hidden DML/DDL, no escapes."""
     if not _SQLGLOT_AVAILABLE:
         return
     try:
@@ -127,16 +220,27 @@ def _validate_ast(cleaned: str) -> None:
     for node in root.walk():
         if isinstance(node, _FORBIDDEN_NODES):
             raise UnsafeSQLError("Query contains a disallowed statement")
+        name = _function_name(node)
+        if name and name in _FORBIDDEN_FUNCTIONS:
+            raise UnsafeSQLError(f"Query calls a disallowed function: {name}")
 
 
 def validate_select(sql: str) -> str:
-    """Allow exactly one read-only SELECT/CTE statement."""
+    """Allow exactly one read-only SELECT/CTE statement.
+
+    Three layers, cheapest first: a shape check (starts with SELECT/WITH, one
+    statement), a keyword denylist over the *code* only, then the AST walk. The
+    denylist runs against ``_blank_quoted`` output so a value is never mistaken
+    for a command, while the returned SQL is the comment-stripped original —
+    blanking is for inspection, never for execution.
+    """
     cleaned = _strip_sql_comments(sql).strip().rstrip(";").strip()
-    if ";" in cleaned:
+    code_only = _blank_quoted(cleaned)
+    if ";" in code_only:
         raise UnsafeSQLError("Only a single statement is allowed")
     if not re.match(r"^\s*(select|with)\b", cleaned, re.IGNORECASE):
         raise UnsafeSQLError("Only SELECT queries are allowed")
-    if _FORBIDDEN.search(cleaned):
+    if _FORBIDDEN.search(code_only):
         raise UnsafeSQLError("Query contains a disallowed keyword")
     _validate_ast(cleaned)
     return cleaned

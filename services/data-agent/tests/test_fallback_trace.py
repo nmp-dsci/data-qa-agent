@@ -19,11 +19,18 @@ from agent.sandbox_agent import _salvage_fallback
 
 class _FakeDeps:
     steps: list[dict[str, Any]] = []
+    # s32 W1: the salvage carries how many whole-run attempts the model policy
+    # spent, so the deck can show "the provider was flaky" as a number.
+    attempts: int = 2
 
 
 def test_salvage_fallback_shape() -> None:
     salvage = _salvage_fallback([], _FakeDeps(), "budget spent")
     assert salvage["fallback"] is True
+    # A salvage IS a degradation: the user gets the stub answer, not the one the
+    # agent was asked for, and the ops deck grades that separately from success.
+    assert salvage["degraded"] is True
+    assert salvage["attempts"] == 2
     fb = salvage["steps"][-1]
     assert fb["kind"] == "fallback"
     assert fb["error"] == "budget spent"
@@ -68,6 +75,9 @@ def test_answer_keeps_salvaged_trace_on_stub_fallback(monkeypatch) -> None:
     # Token consumption from the failed LLM run is carried onto the answer.
     assert out.input_tokens == 12000
     assert out.output_tokens == 340
+    # …and the answer is flagged degraded, so the audit trail stops recording a
+    # stubbed-after-failure run as a plain success (s32 W1).
+    assert out.degraded is True
     # The salvaged trace leads the steps, then the stub's own sql step.
     kinds = [s["kind"] for s in out.steps]
     assert kinds[:4] == ["system", "user", "model", "fallback"]

@@ -274,7 +274,10 @@ def driver_analysis(
         overall = float(value.sum()) / total_den if total_den else None
     else:
         overall = float(value.mean()) if len(value) else None
-    if overall in (None, 0):
+    # Spelled out rather than `overall in (None, 0)` so the None is narrowed away
+    # for everything below — the divisions at the heart of this function are only
+    # safe because of this guard, and a type checker should be able to see that.
+    if overall is None or overall == 0:
         return {"top_dimension": None, "overall": overall, "ranked": []}
 
     ranked: list[dict[str, Any]] = []

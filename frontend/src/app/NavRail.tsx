@@ -12,12 +12,14 @@ import {
   IconExplore,
   IconGolden,
   IconMoon,
+  IconOps,
   IconSettings,
   IconSql,
   IconSun,
 } from "../ui/icons";
 
-export type View = "chat" | "explore" | "sql" | "goldens" | "evals" | "admin" | "settings";
+export type View =
+  | "chat" | "explore" | "sql" | "goldens" | "evals" | "ops" | "admin" | "settings";
 
 const ITEMS: { view: View; label: string; icon: () => ReactElement; adminOnly?: boolean }[] = [
   { view: "chat", label: "Chat", icon: IconChat },
@@ -27,6 +29,9 @@ const ITEMS: { view: View; label: string; icon: () => ReactElement; adminOnly?: 
   // Sits next to Golden Examples: goldens are the specification, Evaluations is
   // the score against it (s24 M4).
   { view: "evals", label: "Evaluations", icon: IconGolden, adminOnly: true },
+  // Sits beside Evaluations for the same reason: Evaluations is "is the answer
+  // right?", Ops is "is the service healthy, safe, fast and affordable?" (s32).
+  { view: "ops", label: "Ops", icon: IconOps, adminOnly: true },
   { view: "admin", label: "Admin", icon: IconAdmin, adminOnly: true },
   { view: "settings", label: "Settings", icon: IconSettings },
 ];

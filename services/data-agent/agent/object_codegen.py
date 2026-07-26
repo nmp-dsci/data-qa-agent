@@ -30,6 +30,7 @@ from typing import Any
 import pandas as pd
 
 from .config import settings
+from .model_factory import build_model, model_settings, run_with_policy
 from .provider import choose_provider
 from .sandbox import explain_sandbox_error, run_code
 from .sandbox.extract import extract
@@ -268,22 +269,28 @@ async def _call_model(
 ) -> dict[str, Any]:
     """One structured generation (or correction) call → {code, sql, reasoning}."""
     agent: Agent[None, _ObjectScaffold] = Agent(
-        f"{provider}:{model_name}",
+        build_model(provider, model_name),
         output_type=_ObjectScaffold,
         system_prompt=_system_prompt(),
+        model_settings=model_settings(),
     )
-    run = await agent.run(
-        _instruction(
-            instruction=instruction,
-            object_type=object_type,
-            columns=columns,
-            code=code,
-            sql=sql,
-            objects=objects,
-            schema=schema,
-            prior_code=prior_code,
-            error=error,
-        )
+    # One structured call, safely retryable: it has no side effects, so the
+    # shared policy applies without a should_retry veto (s32 W1).
+    run, _attempts = await run_with_policy(
+        lambda: agent.run(
+            _instruction(
+                instruction=instruction,
+                object_type=object_type,
+                columns=columns,
+                code=code,
+                sql=sql,
+                objects=objects,
+                schema=schema,
+                prior_code=prior_code,
+                error=error,
+            )
+        ),
+        label="object codegen",
     )
     out = run.output
     return {

@@ -11,6 +11,10 @@ RUN uv sync --no-dev
 
 COPY services/data-pipeline/ingest.py services/data-pipeline/run.py ./
 COPY services/data-pipeline/dbt ./dbt
+# The ops ingest writer (s32 W2): the pipeline records its own freshness so the
+# /ops deck can show marts age without an AWS call. Dependency-free (urllib), and
+# a no-op when OPS_INGEST_TOKEN is unset — which is the local default.
+COPY scripts/ops_ingest.py ./scripts/ops_ingest.py
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV DATA_DIR=/data

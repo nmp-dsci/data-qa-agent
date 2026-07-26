@@ -25,7 +25,9 @@ router = APIRouter(tags=["feedback"])
 STALE_ARCHIVE_CYCLES = 3
 
 
-def _element_still_present(report: dict[str, Any] | None, target_kind: str, snapshot: dict) -> bool:
+def _element_still_present(
+    report: dict[str, Any] | None, target_kind: str, snapshot: dict[str, Any]
+) -> bool:
     """Best-effort staleness check: is the element the feedback judged still there?
 
     Materially-changed means the element (identified by its heading/label) no

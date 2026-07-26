@@ -88,6 +88,28 @@ class AgentAnswer(BaseModel):
     engine: str = "stub"
     input_tokens: int | None = None
     output_tokens: int | None = None
+    # Prompt-cache split + priced cost (s32 W2). The agent computes the cost
+    # because only it knows which provider/model actually answered; the backend
+    # persists what it is given. Nominal input_tokens is ~6x real spend on this
+    # workload, so the split is what makes the deck's cost tile correct.
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    cost_usd: float | None = None
+    # Reliability (s32 W1): the answer came back, but not the one that was asked
+    # for — a retried-then-stubbed run, or a provider outage the user rode out.
+    # Persisted as query_runs.status = 'degraded', which is the deck's
+    # degraded-rate tile and half of SLO-A.
+    degraded: bool = False
+    attempts: int = 1
+    # Why the answer isn't a real answer, when it isn't (s32 W3). Until now a
+    # guard-rejected question came back as a polite sentence and the backend
+    # stamped the run 'success' — so the one signal that matters most for a
+    # security review was the one the audit trail could not show. Set here,
+    # persisted as query_runs.status/error.
+    error: str | None = None
+    # A guard or policy REFUSED this request (as opposed to it failing). Counted
+    # as the deck's denial signal, separately from errors.
+    denied: bool = False
     # Ordered step-by-step trace (each SQL attempt/chart/memory) for admin inspection.
     steps: list[dict[str, Any]] = []
     # Structured InsightReport (K2) — present on the LLM path; None for the stub.
@@ -109,6 +131,10 @@ class SqlResult(BaseModel):
     truncated: bool = False
     sql: str | None = None
     error: str | None = None
+    # s32 W3: the guard REFUSED this SQL, as opposed to the database failing to
+    # run it. Flagged here rather than inferred from the error text downstream,
+    # so the deck's denial counter can't drift with a reworded message.
+    denied: bool = False
 
 
 class ConfigItem(BaseModel):
@@ -383,6 +409,32 @@ async def eval_grade(req: GradeRequest) -> dict[str, Any]:
     return {"g1": g1, "g3_format": g3_format, "g3_insight": g3_insight}
 
 
+class JudgeRequest(BaseModel):
+    """One live answer to score for insight quality, with no golden (s32 W4)."""
+
+    question: str
+    answer: str
+    evidence: str = ""
+
+
+@app.post("/agent/eval/judge")
+async def eval_judge_only(req: JudgeRequest) -> dict[str, Any]:
+    """Score insight quality alone — the online sampler's entry point.
+
+    Separate from ``/agent/eval/grade`` because the inputs genuinely differ: that
+    endpoint compares an answer to a golden and returns G1/G2/G3; this one has no
+    golden at all, so it can only score whether the answer is *worth reading* —
+    grounded, direct, explains why, so-what, clear. It cannot tell you the numbers
+    are right. Folding it into the grade endpoint would let a caller ask for G1
+    with no ground truth and get a confident-looking null.
+
+    Same frozen, hashed rubric as the eval judge, and the same refusal to grade a
+    model of its own family — so a run with no cross-family key records a
+    ``skipped`` verdict rather than a fabricated score.
+    """
+    return await judge_insight(question=req.question, answer=req.answer, evidence=req.evidence)
+
+
 @app.get("/agent/version")
 async def agent_version() -> dict[str, str]:
     """The composed build fingerprint of this agent (s24 M1).
@@ -456,6 +508,26 @@ async def agent_config() -> ConfigSection:
     return ConfigSection(title="Data agent", service="data-agent", items=items)
 
 
+def _salvage_usage(salvage: dict[str, Any] | None) -> dict[str, Any]:
+    """Carry a failed LLM run's spend onto the stub answer that replaces it.
+
+    Tokens burned before a failure are still billed, so dropping them here would
+    make the deck's cost tile understate spend exactly when things go wrong —
+    the moment you most want the number to be honest.
+    """
+    keys = (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "cost_usd",
+        "attempts",
+    )
+    if salvage is None:
+        return {}
+    return {k: salvage[k] for k in keys if salvage.get(k) is not None}
+
+
 async def _answer(
     body: AskRequest, progress: asyncio.Queue[dict[str, Any]] | None = None
 ) -> AgentAnswer:
@@ -519,11 +591,15 @@ async def _answer(
         result = await run_select(sql, user_id=user_id)
     except UnsafeSQLError as exc:
         _emit_stub_pages([])
+        # s32 W3: a refusal is recorded AS a refusal. The user still gets the
+        # plain-English sentence, but the run carries error + denied so the audit
+        # trail and the deck's denial counter both see it.
         return AgentAnswer(
             answer=f"I couldn't run that safely: {exc}",
             sql=sql,
-            input_tokens=salvage.get("input_tokens") if salvage else None,
-            output_tokens=salvage.get("output_tokens") if salvage else None,
+            error=f"guard rejected generated SQL: {exc}",
+            denied=True,
+            **_salvage_usage(salvage),
             steps=[
                 *salvaged_steps,
                 {"kind": "sql", "attempt": 1, "sql": sql, "status": "error", "error": str(exc)},
@@ -564,11 +640,14 @@ async def _answer(
         row_count=result["row_count"],
         chart=fallback_report["chart"] if fallback_report else None,
         engine="stub",
-        input_tokens=salvage.get("input_tokens") if salvage else None,
-        output_tokens=salvage.get("output_tokens") if salvage else None,
         report=report,
         pages=pages or None,
         steps=steps,
+        # A salvage means the LLM path ran and failed, so this answer is the
+        # stub standing in for it — degraded (s32 W1). A stub answer with no
+        # salvage is the configured offline behaviour, not a degradation.
+        degraded=salvage is not None,
+        **_salvage_usage(salvage),
     )
 
 
@@ -632,7 +711,7 @@ async def agent_sql(body: SqlRequest) -> SqlResult:
             body.sql, user_id=body.user.id, as_admin=(body.user.role == "admin")
         )
     except UnsafeSQLError as exc:
-        return SqlResult(sql=body.sql, error=str(exc))
+        return SqlResult(sql=body.sql, error=str(exc), denied=True)
     except Exception as exc:  # noqa: BLE001 — surface DB errors (syntax, timeout) to the editor
         return SqlResult(sql=body.sql, error=str(exc))
     return SqlResult(

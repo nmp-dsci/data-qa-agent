@@ -153,10 +153,20 @@ async def judge_insight(*, question: str, answer: str, evidence: str = "") -> di
 
         from pydantic_ai import Agent
 
+        from .model_factory import build_model, model_settings, run_with_policy
+
         assert settings.anthropic_api_key  # guaranteed by judge_model() returning non-empty
         os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
-        judge: Agent[None, str] = Agent(f"anthropic:{model}", system_prompt=INSIGHT_RUBRIC)
-        result = await judge.run(prompt)
+        judge: Agent[None, str] = Agent(
+            build_model("anthropic", model),
+            system_prompt=INSIGHT_RUBRIC,
+            model_settings=model_settings(),
+        )
+        # s32 W1: the judge retries too. A 429 mid-pack used to record a
+        # "judge call failed" verdict for that case, which silently lowered the
+        # measured insight score of a run for a reason that had nothing to do
+        # with the answer.
+        result, _attempts = await run_with_policy(lambda: judge.run(prompt), label="eval judge")
         verdict = _normalise(_extract_json(str(result.output)))
     except Exception as exc:  # noqa: BLE001 - a judge failure is data, not a crash
         return {

@@ -31,6 +31,7 @@ from .agent_common import (
 from .config import settings
 from .knowledge import knowledge_version, read_knowledge, search_knowledge_result
 from .memory import recall_memories, remember_memory
+from .model_factory import DEFAULT_POLICY, build_model, model_settings, run_with_policy
 from .pages import (
     compose_insights_page,
     compose_pages,
@@ -38,6 +39,7 @@ from .pages import (
     page_plan,
     planned_kinds,
 )
+from .pricing import cost_usd
 from .provider import choose_provider
 from .report import select_primary_query
 from .sandbox import run_code
@@ -255,6 +257,10 @@ class _SbDeps:
     user_plan: str = "free"
     page_indexes: dict[str, int] = field(default_factory=dict)
     pages_emitted: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # s32 W1: how many whole-run attempts the model policy needed. 1 is the
+    # healthy case; >1 means the provider was flaky and the user never knew,
+    # which is the number the ops deck's retry tile reports.
+    attempts: int = 1
 
     def next_id(self, prefix: str, store: dict[str, Any]) -> str:
         return f"{prefix}{len(store) + 1}"
@@ -328,6 +334,9 @@ async def answer_with_sandbox(
     provider, api_key = selected
     deps: _SbDeps | None = None
     captured: list[Any] = []
+    # Resolved before the try so the salvage path can still price whatever the
+    # model spent, even when the failure happened during setup.
+    model_name = settings.deepseek_model if provider == "deepseek" else settings.model
     try:
         os.environ.setdefault(_ENV_VAR[provider], api_key)
         # The page plan is deterministic policy per user (s10): declare it first
@@ -338,11 +347,10 @@ async def answer_with_sandbox(
         deps.emit_frame("plan", {"pages": plan_slots})
 
         recalled = await recall_memories(user_id, question)
-        model_name = settings.deepseek_model if provider == "deepseek" else settings.model
         max_extracts = settings.max_sql_attempts
         max_runs = settings.sandbox_run_attempts
         agent: Agent[_SbDeps, str] = Agent(
-            f"{provider}:{model_name}",
+            build_model(provider, model_name),
             deps_type=_SbDeps,
             output_type=str,
             system_prompt=_sandbox_system_prompt(
@@ -352,6 +360,9 @@ async def answer_with_sandbox(
                 include_insights="insights" in deps.page_indexes,
             ),
             retries=3,
+            # s32 W1: a per-request timeout, so a stalled provider connection
+            # fails and gets retried instead of holding the answer open forever.
+            model_settings=model_settings(DEFAULT_POLICY),
         )
         _register_sandbox_tools(agent, max_extracts, max_runs)
         usage_limits = UsageLimits(
@@ -361,7 +372,17 @@ async def answer_with_sandbox(
         with capture_run_messages() as messages:
             captured = messages
             try:
-                await agent.run(question, deps=deps, usage_limits=usage_limits)
+                # Retried as a whole run under the shared policy, but only while
+                # nothing has been produced: a 429 on the first request is worth
+                # starting over, while one after ten tool calls is not — that
+                # failure falls through to the salvage path below with its
+                # partial work intact.
+                _value, attempts = await run_with_policy(
+                    lambda: agent.run(question, deps=deps, usage_limits=usage_limits),
+                    label="sandbox agent",
+                    should_retry=lambda: deps.report is None and not deps.queries,
+                )
+                deps.attempts = attempts
             except Exception as exc:  # noqa: BLE001 — salvage any report already built
                 if deps.report is None and deps.no_answer is None:
                     raise
@@ -371,10 +392,10 @@ async def answer_with_sandbox(
             if deps.no_answer:
                 # The agent judged the marts can't answer this — return an honest
                 # "no answer" report instead of falling through to a domain stub.
-                return _no_answer_result(deps, messages, provider)
+                return _no_answer_result(deps, messages, provider, model_name)
             # Model never produced a report — fall back to the stub, but keep
             # the LLM turns + token spend visible in the trace.
-            return _salvage_fallback(captured, deps, "model never produced a report")
+            return _salvage_fallback(captured, deps, "model never produced a report", model_name)
 
         report = {
             **deps.report,
@@ -415,9 +436,7 @@ async def answer_with_sandbox(
                 "used_inline_math": deps.used_inline_math,
             }
         )
-        model_steps = [s for s in trace if s["kind"] == "model"]
-        input_tokens = sum(s.get("input_tokens") or 0 for s in model_steps) or None
-        output_tokens = sum(s.get("output_tokens") or 0 for s in model_steps) or None
+        usage = _usage_totals(trace, model_name)
 
         primary = select_primary_query(deps.queries)
         return {
@@ -430,38 +449,80 @@ async def answer_with_sandbox(
             "row_count": primary.get("row_count", 0) if primary else 0,
             "chart": report.get("main_chart"),
             "engine": provider,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
             "steps": trace,
+            "attempts": deps.attempts,
+            **usage,
         }
     except Exception as exc:  # noqa: BLE001 — never let this path break the app
         print(f"[data-agent] sandbox path unavailable, using stub: {exc}")
         if deps is not None and captured:
             # The LLM ran before failing — surface its trace with the stub answer.
-            return _salvage_fallback(captured, deps, str(exc))
+            return _salvage_fallback(captured, deps, str(exc), model_name)
         return None
 
 
-def _salvage_fallback(messages: list[Any], deps: _SbDeps, why: str) -> dict[str, Any]:
+def _usage_totals(trace: list[dict[str, Any]], model_name: str) -> dict[str, Any]:
+    """Token totals plus the priced cost for one run (s32 W2).
+
+    The cache split is summed here rather than left in the trace jsonb, because
+    the cost tile is a ``sum(cost_usd)`` over ``query_runs`` and must not have to
+    walk a jsonb blob per row. Nominal ``input_tokens`` on this workload is ~6x
+    the real spend (most of it is cache hits), so pricing without the split
+    would be wrong by that factor — see agent/pricing.py.
+    """
+    model_steps = [s for s in trace if s.get("kind") == "model"]
+
+    def total(key: str) -> int | None:
+        return sum(s.get(key) or 0 for s in model_steps) or None
+
+    input_tokens = total("input_tokens")
+    output_tokens = total("output_tokens")
+    cache_read = total("cache_read_tokens")
+    cache_write = total("cache_write_tokens")
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
+        "cost_usd": cost_usd(
+            model_id=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+        ),
+    }
+
+
+def _salvage_fallback(
+    messages: list[Any], deps: _SbDeps, why: str, model_name: str = ""
+) -> dict[str, Any]:
     """Package a failed sandbox run's trace so the stub fallback can keep it.
 
     The caller (main._answer) still answers with the deterministic stub; this
     preserves what the model actually did — its turns (input/output), tool
     calls and token consumption — plus a ``fallback`` step naming the reason,
     so admins can diagnose why the run fell back.
+
+    The run is also marked ``degraded`` (s32 W1): the user got a real answer, but
+    not the one the agent was asked for, and that distinction is the whole point
+    of the deck's degraded-rate tile. Cost is still priced — a failed run that
+    burned tokens costs money, and hiding that would understate spend.
     """
     trace = _merge_decision_log(_build_trace(messages), deps.steps)
     trace.append({"kind": "fallback", "status": "error", "error": why, "to": "stub"})
-    model_steps = [s for s in trace if s["kind"] == "model"]
     return {
         "fallback": True,
+        "degraded": True,
         "steps": trace,
-        "input_tokens": sum(s.get("input_tokens") or 0 for s in model_steps) or None,
-        "output_tokens": sum(s.get("output_tokens") or 0 for s in model_steps) or None,
+        "attempts": deps.attempts,
+        **_usage_totals(trace, model_name),
     }
 
 
-def _no_answer_result(deps: _SbDeps, messages: list[Any], provider: str) -> dict[str, Any]:
+def _no_answer_result(
+    deps: _SbDeps, messages: list[Any], provider: str, model_name: str = ""
+) -> dict[str, Any]:
     """Shape an honest 'this data can't answer that' response (report-compatible).
 
     Keeps the same envelope the frontend expects (a report with an empty body and
@@ -491,9 +552,12 @@ def _no_answer_result(deps: _SbDeps, messages: list[Any], provider: str) -> dict
         "row_count": 0,
         "chart": None,
         "engine": provider,
-        "input_tokens": None,
-        "output_tokens": None,
         "steps": trace,
+        "attempts": deps.attempts,
+        # An honest "the data can't answer that" still spent tokens getting
+        # there, and dropping them would understate spend on exactly the runs
+        # that cost the most reasoning per unit of output (s32 W2).
+        **_usage_totals(trace, model_name),
     }
 
 

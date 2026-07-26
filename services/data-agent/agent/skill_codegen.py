@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from .config import settings
+from .model_factory import build_model, model_settings, run_with_policy
 from .provider import choose_provider
 
 try:
@@ -116,11 +117,18 @@ async def scaffold_from_skills(
         os.environ.setdefault(_ENV_VAR[provider], api_key)
         model_name = settings.deepseek_model if provider == "deepseek" else settings.model
         agent: Agent[None, _Scaffold] = Agent(
-            f"{provider}:{model_name}",
+            build_model(provider, model_name),
             output_type=_Scaffold,
             system_prompt=_system_prompt(),
+            model_settings=model_settings(),
         )
-        run = await agent.run(_instruction(question, columns, skills))
+        # s32 W1: retried under the shared policy; on exhaustion the except
+        # below still returns the deterministic scaffold, so the builder degrades
+        # rather than failing.
+        run, _attempts = await run_with_policy(
+            lambda: agent.run(_instruction(question, columns, skills)),
+            label="skill codegen",
+        )
         out = run.output
         return {
             "code": _clean_code(out.code),

@@ -11,7 +11,18 @@ dependencies = [
     "pydantic-settings>=2.5",
     "pyjwt[crypto]>=2.9",
     "httpx>=0.27",
+    # Tracing (s32 W2): the same instrumentation the data-agent already uses,
+    # extended to this service so a chat request is one linked trace across both.
+    # Local/no-token runs configure to a no-op, so this is safe by default.
+    "logfire[fastapi,httpx]>=4.37.0",
 ]
+
+[project.optional-dependencies]
+# Tier-2 ops saturation (s32 W2): the single CloudWatch GetMetricData pull in
+# app/ops_cloudwatch.py. An extra rather than a core dep so `uv sync` stays lean
+# for local development and tests; the image installs it (see Dockerfile) so a
+# deployment can flip OPS_CLOUDWATCH_ENABLED without a code change.
+ops = ["boto3>=1.35"]
 
 [dependency-groups]
 dev = ["mypy>=1.11", "pytest>=8.3.3", "ruff>=0.14.2"]
@@ -26,3 +37,15 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["B008"]  # FastAPI dependency-injection uses Depends()/Header() in defaults
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+# boto3 lives in the optional `ops` extra and is absent from the dev env, so a
+# strict run would fail on an import that is deliberately conditional. The call
+# site already treats every boto3 failure — including "not installed" — as
+# "Tier-2 unavailable".
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*"]
+ignore_missing_imports = true

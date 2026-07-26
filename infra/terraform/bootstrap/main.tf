@@ -231,7 +231,21 @@ data "aws_iam_policy_document" "github_deploy_scoped" {
   # policy, forcing an out-of-band admin credential for routine permission
   # changes. NotResource keeps the deny in force on every OTHER policy while
   # carving out only this role's own scoped policy (name-derived, not a
-  # reference to the resource below, to avoid a cycle).
+  # reference to the resource below, to avoid a cycle). IAM is default-deny,
+  # so the carve-out alone grants nothing — the explicit Allow below is what
+  # actually lets terraform apply publish a new version of that one policy.
+  statement {
+    sid    = "AllowSelfPolicyVersionUpdate"
+    effect = "Allow"
+    actions = [
+      "iam:CreatePolicyVersion",
+      "iam:SetDefaultPolicyVersion",
+    ]
+    resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.project}-github-deploy",
+    ]
+  }
+
   statement {
     sid    = "DenyPolicyVersionEscalation"
     effect = "Deny"

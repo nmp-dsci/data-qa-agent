@@ -125,8 +125,12 @@ def _record_run(*, status: str, started: float, dbt_dir: Path) -> None:
     passed, total = _dbt_test_counts(dbt_dir)
     # In the image the writer sits at ./scripts/ops_ingest.py (see Dockerfile);
     # running from a checkout it is at the repo root. Try both rather than
-    # assuming, so `make pipeline` and the ECS job behave the same.
-    candidates = (HERE / "scripts" / "ops_ingest.py", HERE.parents[1] / "scripts" / "ops_ingest.py")
+    # assuming, so `make pipeline` and the ECS job behave the same. HERE has
+    # only one parent inside the image (/app), so only add the checkout
+    # candidate when it actually exists.
+    candidates = [HERE / "scripts" / "ops_ingest.py"]
+    if len(HERE.parents) > 1:
+        candidates.append(HERE.parents[1] / "scripts" / "ops_ingest.py")
     ingest_script = next((p for p in candidates if p.exists()), None)
     if ingest_script is None:
         print("==> ops_ingest.py not found; pipeline run not recorded")

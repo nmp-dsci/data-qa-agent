@@ -54,13 +54,35 @@ jobs:
       # nothing has to be stored as a GitHub secret.
       - name: Read the ops ingest token
         id: ops
+        # Defense in depth beyond the internal guards below: deploy telemetry
+        # must never be the thing that fails a real deploy (the same principle
+        # scripts/ops_ingest.py itself follows by always exiting 0).
+        continue-on-error: true
         run: |
-          url=$(aws apprunner list-services \
+          # The job-level env sets AWS_PROFILE="" (empty, not unset) so the AWS
+          # CLI uses the OIDC-supplied credentials instead of a local SSO
+          # profile. The AWS CLI treats a SET-BUT-EMPTY AWS_PROFILE as a real
+          # profile name to look up ("The config profile () could not be
+          # found") rather than "no profile" — every other script this workflow
+          # calls (run_job.sh, wait_apprunner.sh, aws_build_push.sh,
+          # deploy_frontend.sh, cloud_smoke.sh) already guards against this;
+          # this inline step is the one place that ran a raw `aws` command
+          # without it, which broke every aws call below and skipped the
+          # entire deploy.
+          if [ -n "${AWS_PROFILE:-}" ]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
+          if ! url=$(aws apprunner list-services \
             --query "ServiceSummaryList[?ServiceName=='data-qa-backend-api'].ServiceUrl | [0]" \
-            --output text)
-          if ! token=$(aws secretsmanager get-secret-value \
-            --secret-id data-qa/ops-ingest-token --query SecretString --output text 2>/tmp/ops_token_err); then
-            echo "::warning::Failed to read data-qa/ops-ingest-token from Secrets Manager — deploy telemetry will not be recorded this run: $(cat /tmp/ops_token_err)"
+            --output text 2>/tmp/ops_url_err); then
+            echo "::warning::Failed to look up backend-api's URL — deploy telemetry will not be recorded this run: $(cat /tmp/ops_url_err)"
+            url=""
+          fi
+          if [ -n "$url" ] && [ "$url" != "None" ]; then
+            if ! token=$(aws secretsmanager get-secret-value \
+              --secret-id data-qa/ops-ingest-token --query SecretString --output text 2>/tmp/ops_token_err); then
+              echo "::warning::Failed to read data-qa/ops-ingest-token from Secrets Manager — deploy telemetry will not be recorded this run: $(cat /tmp/ops_token_err)"
+              token=""
+            fi
+          else
             token=""
           fi
           echo "::add-mask::$token"
@@ -136,16 +158,25 @@ jobs:
       # only records successes makes the deploy-success rate meaningless.
       - name: Record deploy outcome
         if: always()
+        # Same reasoning as the step above: this must degrade, never fail the job.
+        continue-on-error: true
         run: |
-          if [ "${{ job.status }}" = "success" ]; then status=deployed; else status=failed; fi
+          if [ "${{ job.status }}" = "success" ]; then deploy_status=deployed; else deploy_status=failed; fi
           smoke_args=""
           if [ -n "${{ steps.smoke.outputs.total }}" ]; then
             smoke_args="--smoke-passed ${{ steps.smoke.outputs.passed }} --smoke-total ${{ steps.smoke.outputs.total }}"
           fi
+          # "Read the ops ingest token" can fail or be skipped (continue-on-error
+          # above, or the job failing before it ran), leaving `started` empty —
+          # the duration arithmetic below must not crash the way it did the
+          # first time this ran (a bash syntax error on `N -  `). Falling back
+          # to "now" reports a harmless 0s duration instead.
+          started="${{ steps.ops.outputs.started }}"
+          if [ -z "$started" ]; then started="$(date +%s)"; fi
           # shellcheck disable=SC2086  # word splitting is intended for smoke_args
           python3 scripts/ops_ingest.py deploy \
-            --sha "$GITHUB_SHA" --actor "$GITHUB_ACTOR" --status "$status" \
-            --duration-s "$(( $(date +%s) - ${{ steps.ops.outputs.started }} ))" \
+            --sha "$GITHUB_SHA" --actor "$GITHUB_ACTOR" --status "$deploy_status" \
+            --duration-s "$(( $(date +%s) - started ))" \
             $smoke_args \
             --notes "${{ github.event_name }} · run ${{ github.run_number }}"
 

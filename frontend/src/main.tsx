@@ -7,6 +7,9 @@ import "@fontsource/jetbrains-mono";
 import "@fontsource/jetbrains-mono/500.css";
 import App from "./app/App.tsx";
 import { initTheme } from "./lib/theme";
+// Tailwind first (all layered), legacy styles.css second (unlayered, wins
+// over preflight for unmigrated surfaces) — s33 Option B coexistence.
+import "./tailwind.css";
 import "./styles.css";
 
 initTheme();

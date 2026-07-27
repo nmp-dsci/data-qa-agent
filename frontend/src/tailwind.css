@@ -1,0 +1,63 @@
+@import "tailwindcss";
+/* shadcn's own companion (what `shadcn init` installs): supplies the
+ * animate-in / fade-in-0 / zoom-in-95 / slide-in-from-* utilities the vendored
+ * components in components/ui already carry, so those Radix surfaces open and
+ * close as upstream intends instead of hard-cutting. Utilities only — nothing
+ * outside components/ui gains motion from this, and P4's "no animation
+ * library" call still stands for the app's own surfaces. */
+@import "tw-animate-css";
+
+/*
+ * Tailwind v4 + shadcn/ui token bridge (s33 · Option B migration).
+ *
+ * One palette, two naming systems: every shadcn/Tailwind token below is an
+ * alias of the Flight Deck tokens in styles.css:9-147 — never a second value.
+ * Theme switching stays on <html data-theme>, so utilities follow the existing
+ * dark/light flip automatically; no .dark class is introduced.
+ *
+ * Coexistence: everything Tailwind emits lives in cascade layers, while
+ * styles.css stays unlayered — unlayered author CSS wins, so preflight cannot
+ * disturb unmigrated surfaces. Legacy CSS blocks are deleted per surface as
+ * they convert (P3), not globally.
+ *
+ * Collision guard: Flight Deck already owns --muted / --accent / --border /
+ * --radius-* as raw vars. We therefore only mint tokens in Tailwind's
+ * namespaced form (--color-*, --font-*, --radius-* inside @theme) and never
+ * redefine the legacy names. Radii are restated literally because
+ * `--radius-sm: var(--radius-sm)` inside @theme would self-reference.
+ */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--panel-2);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-ink);
+  --color-secondary: var(--panel-3);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--panel-2);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--panel-3);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--bad);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--border);
+  --color-input: var(--border-2);
+  --color-ring: var(--accent);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+
+  /* mirrors styles.css --radius tokens (6/8/10/14) */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+}

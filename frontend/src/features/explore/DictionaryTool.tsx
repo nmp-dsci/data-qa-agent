@@ -2,6 +2,7 @@
 // extract builder: pick group-by dimensions and metrics, preview, download CSV.
 // Both tables render as typed `table` page objects through the report engine's
 // ObjectBody (s20) — the same path chat answers and goldens use.
+import { Download } from "lucide-react";
 import { useState } from "react";
 import { AggregateResult, ExploreDataset, exploreAggregate, PageObject } from "../../lib/api";
 import { downloadCsv } from "../../lib/csv";
@@ -127,7 +128,7 @@ export function DictionaryTool({ dataset }: { dataset: ExploreDataset }) {
             {loading ? "Running…" : "Preview"}
           </button>
           <button className="ex-secondary" onClick={download} disabled={!result}>
-            ⬇ Download CSV
+            <Download size={13} /> Download CSV
           </button>
           {result && (
             <span className="muted">

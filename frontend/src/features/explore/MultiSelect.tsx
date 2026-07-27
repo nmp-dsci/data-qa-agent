@@ -5,6 +5,7 @@
 // by how much data it holds, so you see whether toggling a value moves a lot.
 // Typeahead mode (postcode) can't enumerate everything, so there it's the plain
 // "tick to include" model.
+import { Square, SquareCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DomainValue } from "../../lib/api";
 
@@ -143,7 +144,7 @@ export function MultiSelect({
                     onClick={() => toggle(o.value)}
                   >
                     {options && <span className="ex-multi-bar" style={{ width: `${pct}%` }} />}
-                    <span className="ex-multi-check">{on ? "☑" : "☐"}</span>
+                    <span className="ex-multi-check">{on ? <SquareCheck size={13} /> : <Square size={13} />}</span>
                     <span className="ex-multi-val">{String(o.value)}</span>
                     {options && <span className="ex-multi-count">{o.count.toLocaleString()}</span>}
                   </button>

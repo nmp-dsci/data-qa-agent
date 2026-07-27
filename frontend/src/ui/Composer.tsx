@@ -2,7 +2,8 @@
 // icon send button, stop button while the agent streams. One component serves
 // both the hero (empty state) and the docked thread footer.
 import { FormEvent, KeyboardEvent, useEffect, useRef } from "react";
-import { IconSend, IconStop, PlaneGlyph } from "./icons";
+import { ArrowUp, Square } from "lucide-react";
+import { PlaneGlyph } from "./icons";
 
 const MAX_HEIGHT = 152; // ~6 lines, then the textarea scrolls internally
 
@@ -72,7 +73,7 @@ export function Composer({
             title="Stop generating"
             onClick={onStop}
           >
-            <IconStop />
+            <Square size={20} strokeWidth={1.8} fill="currentColor" />
           </button>
         ) : (
           <button
@@ -82,7 +83,7 @@ export function Composer({
             title="Ask"
             disabled={busy || !value.trim()}
           >
-            <IconSend />
+            <ArrowUp size={20} strokeWidth={1.8} />
           </button>
         )}
       </div>

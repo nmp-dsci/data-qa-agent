@@ -11,6 +11,7 @@
 // the template width), the editor renders EXACTLY the template's columns —
 // including empty ones — as stable drop targets, so "move object to column 1/3"
 // behaves predictably and nothing silently vanishes.
+import { KitSelect } from "@/components/kit/KitSelect";
 import { ReactNode, useEffect, useRef, useState } from "react";
 
 import { Page, PageObject, PageObjectType, TemplateId } from "../../lib/api";
@@ -567,19 +568,13 @@ export function ReportEditor({
     const enc = (key: string, lbl: string, testid: string) => (
       <label style={label}>
         {lbl}{" "}
-        <select
-          data-testid={testid}
+        <KitSelect
+          testId={testid}
+          ariaLabel={lbl}
           value={String(o.data[key] ?? "")}
-          onChange={(e) => patchData(o.element_id, key, e.target.value || null)}
-          style={{ fontSize: 12 }}
-        >
-          <option value="">—</option>
-          {cols.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+          onValueChange={(v) => patchData(o.element_id, key, v || null)}
+          options={[{ value: "", label: "—" }, ...cols.map((c) => ({ value: c, label: c }))]}
+        />
       </label>
     );
     return (
@@ -611,19 +606,20 @@ export function ReportEditor({
         )}
         <label style={label} title="reorder the x-axis categories (known ordinals are auto-ordered by the agent; this overrides for custom / non-ordinal columns)">
           sort x{" "}
-          <select
-            data-testid="sort-xaxis"
+          <KitSelect
+            testId="sort-xaxis"
+            ariaLabel="Sort x-axis"
             value=""
-            onChange={(e) => {
-              if (e.target.value) sortXAxis(o, e.target.value);
+            onValueChange={(v) => {
+              if (v) sortXAxis(o, v);
             }}
-            style={{ fontSize: 12 }}
-          >
-            <option value="">— reorder —</option>
-            <option value="numeric">by number (400 → 5000)</option>
-            <option value="az">A → Z</option>
-            <option value="za">Z → A</option>
-          </select>
+            options={[
+              { value: "", label: "— reorder —" },
+              { value: "numeric", label: "by number (400 → 5000)" },
+              { value: "az", label: "A → Z" },
+              { value: "za", label: "Z → A" },
+            ]}
+          />
         </label>
       </div>
     );
@@ -668,26 +664,26 @@ export function ReportEditor({
             }
             return (
               <>
-                <select
-                  data-testid="linked-object-select"
+                <KitSelect
+                  testId="linked-object-select"
+                  ariaLabel="Linked sandbox object"
+                  className="max-w-[340px]"
                   value={linked ? o.element_id : ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  onValueChange={(v) => {
                     if (!v) unlink(o.element_id);
                     else {
                       const src = sandboxObjects.find((s) => s.element_id === v);
                       if (src) bindLinked(o.element_id, src);
                     }
                   }}
-                  style={{ fontSize: 12, maxWidth: 340 }}
-                >
-                  <option value="">— unlinked / custom —</option>
-                  {options.map((s) => (
-                    <option key={s.element_id} value={s.element_id}>
-                      {s.type} · {objTitle(s)} ({s.element_id})
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "— unlinked / custom —" },
+                    ...options.map((s) => ({
+                      value: s.element_id,
+                      label: `${s.type} · ${objTitle(s)} (${s.element_id})`,
+                    })),
+                  ]}
+                />
                 <span style={{ ...label, opacity: 0.5, textTransform: "none", letterSpacing: 0 }}>
                   {linked
                     ? "✓ data from this sandbox object"
@@ -731,62 +727,49 @@ export function ReportEditor({
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <label style={{ ...label }}>
             type{" "}
-            <select
+            <KitSelect
+              ariaLabel="Object type"
               value={o.type}
-              onChange={(e) => retype(o.element_id, e.target.value as PageObjectType)}
-            >
-              {OBJECT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {OBJECT_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </select>
+              onValueChange={(v) => retype(o.element_id, v as PageObjectType)}
+              options={OBJECT_TYPES.map((t) => ({ value: t, label: OBJECT_TYPE_LABELS[t] }))}
+            />
           </label>
           {pages.length > 1 && loc && (
             <label style={{ ...label }}>
               page{" "}
-              <select
-                data-testid="move-page"
-                value={loc.pi}
-                onChange={(e) => moveTo(o.element_id, Number(e.target.value), loc.ci)}
-              >
-                {pages.map((_, i) => (
-                  <option key={i} value={i}>
-                    {i + 1}
-                  </option>
-                ))}
-              </select>
+              <KitSelect
+                testId="move-page"
+                ariaLabel="Move to page"
+                value={String(loc.pi)}
+                onValueChange={(v) => moveTo(o.element_id, Number(v), loc.ci)}
+                options={pages.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
+              />
             </label>
           )}
           {cols > 1 && loc && (
             <label style={{ ...label }}>
               column{" "}
-              <select
-                data-testid="move-column"
-                value={loc.ci}
-                onChange={(e) => moveTo(o.element_id, loc.pi, Number(e.target.value))}
-              >
-                {Array.from({ length: cols }, (_, i) => (
-                  <option key={i} value={i}>
-                    {i + 1}
-                  </option>
-                ))}
-              </select>
+              <KitSelect
+                testId="move-column"
+                ariaLabel="Move to column"
+                value={String(loc.ci)}
+                onValueChange={(v) => moveTo(o.element_id, loc.pi, Number(v))}
+                options={Array.from({ length: cols }, (_, i) => ({
+                  value: String(i),
+                  label: String(i + 1),
+                }))}
+              />
             </label>
           )}
           {isChart && (
             <label style={{ ...label }}>
               height{" "}
-              <select
+              <KitSelect
+                ariaLabel="Chart height"
                 value={String(o.data["height"] ?? "md")}
-                onChange={(e) => patchData(o.element_id, "height", e.target.value)}
-              >
-                {HEIGHTS.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(v) => patchData(o.element_id, "height", v)}
+                options={HEIGHTS.map((h) => ({ value: h, label: h }))}
+              />
             </label>
           )}
           <label style={{ ...label }}>
@@ -928,17 +911,13 @@ export function ReportEditor({
           >
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, opacity: 0.7 }}>page {pi + 1}</span>
-              <select
-                data-testid={`page-template-${pi}`}
+              <KitSelect
+                testId={`page-template-${pi}`}
+                ariaLabel={`Page ${pi + 1} template`}
                 value={page.template}
-                onChange={(e) => setTemplate(pi, e.target.value as TemplateId)}
-              >
-                {TEMPLATE_IDS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(v) => setTemplate(pi, v as TemplateId)}
+                options={TEMPLATE_IDS.map((t) => ({ value: t, label: t }))}
+              />
               {cols > 1 && (
                 <span
                   style={{ display: "inline-flex", gap: 4, alignItems: "center" }}

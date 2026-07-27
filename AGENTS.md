@@ -280,22 +280,78 @@ product micro-mocks (a full-width diagonal sweep was mocked but dropped — it f
 cards); the chat hero's flight-plan strip is a single column rather than the mocked four-across row, since
 four columns at the hero's 620px cap leave no room for the question text. The rebrand shipped as one PR
 across all eight app surfaces (chat, SQL editor, Explore, Goldens, Evaluations, Admin, Settings, login) plus
-the day theme and an a11y/contrast pass, so `main` was never left half-branded.
+the day theme and an a11y/contrast pass, so `main` was never left half-branded. (The walkthrough itself was
+dropped in s33 — see below.)
 
 The login's Playwright visual baselines force `reducedMotion: "reduce"`: `animations: "disabled"` stops
-CSS/SMIL but not JS timers, and the walkthrough's auto-advance (each waypoint renders a different product
-micro-mock) would otherwise make the screenshot nondeterministic.
+CSS/SMIL but not JS timers, which mattered while the s25 walkthrough's auto-advance was still driving the
+screenshot; the night-flight canopy (s33) has its own motion gate instead (see below).
 
-**Card/airway legibility (s26).** E2e testing on the s25 PR flagged that "traffic behind a windshield"
-only read in the left panel and the gutters — the story column's `.walk-prop` cards were too opaque for
-the airways to show through it. Fixed two ways: inactive cards go more glass (`--panel` 58%→34%) while the
-active card (`.walk-prop.lit`, which carries the step's dense micro-mock) stays solid so it doesn't lose
-contrast, and the `.air-2`/`.air-3` aircraft + route opacities are raised, since card opacity alone
-couldn't fix visibility once the aircraft crossed behind the column — both stay subordinate to the hero
-Sortie. Verified by measurement rather than by eye: a probe hides card content to sample the true
+**Card/airway legibility (s26, superseded by s33).** E2e testing on the s25 PR flagged that "traffic behind
+a windshield" only read in the left panel and the gutters — the story column's `.walk-prop` cards were too
+opaque for the airways to show through it. Fixed two ways: inactive cards go more glass (`--panel` 58%→34%)
+while the active card (`.walk-prop.lit`, which carries the step's dense micro-mock) stays solid so it
+doesn't lose contrast, and the `.air-2`/`.air-3` aircraft + route opacities are raised, since card opacity
+alone couldn't fix visibility once the aircraft crossed behind the column — both stay subordinate to the
+hero Sortie. Verified by measurement rather than by eye: a probe hides card content to sample the true
 composited backdrop and checks it against the live `--text`/`--muted` tokens across viewports and themes,
 and a second probe checks row-luminance variation over the busiest card to confirm the airway is
-perceptible, not merely present.
+perceptible, not merely present. The `.walk-prop` cards and airway aircraft themselves are gone with the
+s25 walkthrough (s33) — this note is kept for the measurement technique, not the current markup.
+
+### The night-flight canopy (s33)
+
+The brand's scene is now **one canvas component**, `frontend/src/ui/Canopy.tsx`: a seeded starfield, a gold
+horizon curved with the planet, and a neon grid terrain flowing toward the viewer. It runs at two
+intensities from the same renderer — `variant="login"` (full strength, full DPR) and `variant="ambient"`
+(~40% opacity, half speed, capped at 1× resolution and ~30fps) — and the ambient layer is rendered **behind
+every app screen**, replacing the old static `body::before`/`::after` gradient wash. Signing in no longer
+changes sky. Three rules the code depends on:
+
+- The ambient `<Canopy>` is a **sibling of `.app`, never a child** — `.app`'s `view-in` keyframe animates a
+  transform, which would make it the containing block for a `position: fixed` descendant for the length of
+  the animation and jolt the whole sky. `.app` carries `position: relative; z-index: 1` to sit above it.
+- Motion stops under `prefers-reduced-motion` **or** the Settings *Ambient motion* switch
+  (`lib/motion.ts`, a `useSyncExternalStore` pref mirroring `theme.ts`); a single frame is painted instead,
+  so the still is designed rather than blank. The loop also stops while the tab is hidden.
+- Report pages are excluded by construction: `downloadSvgAsPng` serialises the `<svg>` alone onto a solid
+  `--panel` fill, so nothing outside a chart can reach an exported PNG.
+
+The mark moved with it — `BrandMark` (and its hand-synced twin `public/favicon.svg`) is the scene reduced to
+a 64-unit tile: stars over a curved horizon over a vanishing-point grid, replacing the s17 airliner, which
+said "aviation" but not "data". Strokes are deliberately heavy because the mark ships at 24px in the mobile
+bar. Tagline: **"Cleared for insight."**
+
+The login itself dropped the s25 walkthrough carousel: a first-time visitor was shown a quarter of the value
+proposition at a time on a 4s timer. Everything is visible at once now — a 2×2 benefit grid with micro-sketches
+of the real surfaces, a strip of real example questions, and an instrument cluster of *outcome* metrics
+(≈2 min / 0 lines of SQL / 100% row-level scoped / every chart opens its query). Those are properties of the
+product that hold on any warehouse, deliberately **not** deployment counters, which would be a lie on a fresh
+install. Preserved contracts: the dev profile buttons' exact text (`e2e/helpers.ts` clicks them by name) and
+the "Data Pilot" heading the visual/a11y specs wait on.
+
+### The shell kit (s33)
+
+`frontend/src/components/kit/` is the shared layer the app was missing — thin, opinionated wrappers over the
+shadcn primitives, so a control looks and behaves the same everywhere:
+
+- **`KitSelect`** — every native `<select>` in the app is gone. Radix forbids `value=""`, so an `EMPTY`
+  sentinel maps the "all" filters through without changing caller state.
+- **`KitMultiSelect`** — Popover + Command with a tick per row; replaces `<select multiple>`, whose
+  cmd-click model nobody discovers. Selection order is preserved (composite keys depend on it).
+- **`KitEmpty`** — one designed empty state: what would live here, how to fill it, and the control that does.
+
+**E2E contract:** a Radix select has no `.value` and its options are labelled, not valued, so both kit
+selects stamp `data-value` on the trigger and on every option. `expect(x).toHaveAttribute("data-value", …)`
+replaces `toHaveValue()`, and `e2e/helpers.ts::pickOption` replaces `selectOption()` — specs keep addressing
+the same values, and human labels stay free to change. (`KitMultiSelect` options use `data-option-value`:
+cmdk owns `data-value` on its items.)
+
+The desktop rail expands 56→196px on hover/`focus-within` as an **overlay** (`.rail` keeps its 56px
+footprint; `.rail-inner` grows over the content) so a pointer passing through can never reflow the view.
+Items stay `role="tab"` with an `aria-label`, which wins over the now-visible text, so `getByRole("tab", …)`
+is unaffected. Glyphs are `lucide-react` at 20/1.8 (Evaluations finally has its own — it reused the Goldens
+reticle for a year), and "Ops" was renamed **"Operations"** across the rail, command palette and e2e.
 
 **Aurora cold-start login (s29).** Aurora Serverless v2 at min 0 ACU auto-pauses after an idle hour; a
 resume took ~30s in an observed prod session, and every request that landed in that window used to hang
@@ -733,10 +789,18 @@ bare runner, and it exits 0 on failure because telemetry must never fail a deplo
 
 - ESM modules, TypeScript throughout.
 - Keep auth/token logic in a dedicated module; components stay presentational.
-- Styling is hand-rolled CSS with design tokens in `frontend/src/styles.css` — **no CSS framework or component
-  library** (no Tailwind). Fonts are self-hosted via `@fontsource`. Cockpit-brand markup (see "The Flight
-  Deck brand (s25)" above) goes through the `frontend/src/ui/flightdeck.tsx` kit rather than bespoke
-  per-surface CSS.
+- Styling (s33 decision, supersedes the earlier no-framework doctrine): **Tailwind v4 + shadcn/ui**, migrating
+  surface-by-surface. New/converted UI uses shadcn components from `frontend/src/components/ui/` styled by the
+  token bridge in `frontend/src/tailwind.css`; that bridge only *aliases* the Flight Deck design tokens in
+  `frontend/src/styles.css:9-147`, which remain the single source of truth for color/type (theme still flips
+  via `<html data-theme>`, no `.dark` class). Never re-declare legacy token names (`--muted`, `--accent`,
+  `--border`, `--radius-*`) — mint only Tailwind-namespaced tokens. `styles.css` stays **unlayered** so it
+  wins over Tailwind's layered preflight on unmigrated surfaces; delete a surface's legacy CSS block in the
+  same PR that converts it. Icons: `lucide-react` for generic glyphs; brand marks (plane, reticle) stay
+  hand-drawn in `frontend/src/ui/icons.tsx`. Fonts are self-hosted via `@fontsource`. Cockpit-brand markup
+  (see "The Flight Deck brand (s25)" above) still goes through the `frontend/src/ui/flightdeck.tsx` kit.
+  Report-engine cards (`.h-tile` / `.insight-card` / `.chart-card`) stay plain CSS — PNG export must render
+  identically outside the app.
 
 ### Secrets & config
 

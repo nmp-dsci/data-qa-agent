@@ -4,7 +4,9 @@
 // keeps a bubble; assistant answers get an identity row and the report pages
 // directly on a ~768px reading column (960px when a report is present).
 // Conversation state lives in the app shell so it survives tab switches.
+import { KitEmpty } from "@/components/kit/KitEmpty";
 import { useEffect, useMemo, useState } from "react";
+import { ArrowDown, Lock, MessageSquare } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AskProgress,
@@ -155,7 +157,11 @@ export function ConversationList({
         </div>
       ))}
       {!q.isLoading && conversations.length === 0 && (
-        <div className="muted sqled-hint">No conversations yet.</div>
+        <KitEmpty
+          icon={MessageSquare}
+          title="No conversations yet"
+          hint="Ask a question and it lands here, with the report it produced."
+        />
       )}
     </aside>
   );
@@ -338,7 +344,7 @@ function WorkingAnswer({
             <div className="stream-page" key={slot.index}>
               <div className="stream-page-head">
                 Page {slot.index} · {label}
-                <span className="page-status locked">🔒 upgrade</span>
+                <span className="page-status locked"><Lock size={11} aria-hidden="true" /> upgrade</span>
               </div>
               <div className="locked-teaser">{label} pages are available on a higher plan.</div>
             </div>
@@ -544,7 +550,7 @@ export function ChatPage({
                 className="jump-latest"
                 onClick={() => scrollToBottom("smooth")}
               >
-                ↓ Jump to latest
+                <ArrowDown size={14} /> Jump to latest
               </button>
             )}
 

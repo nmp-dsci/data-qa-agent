@@ -5,7 +5,7 @@
 // the matrix automatically.
 import { Page as PWPage, expect, test } from "@playwright/test";
 import { CHART_OPTIONS, TEMPLATES } from "../src/report-engine/registry";
-import { login, openTemplateStudio } from "./helpers";
+import { login, openTemplateStudio, pickOption } from "./helpers";
 
 const LAYOUTS = ["one-col", "two-col", "three-col"] as const;
 const CHART_SVG_TYPES = new Set(["trend", "breakdown", "compare", "kpi"]);
@@ -32,7 +32,7 @@ for (const layout of LAYOUTS) {
 
     for (let col = 0; col < colCount; col++) {
       for (const option of CHART_OPTIONS) {
-        await page.getByTestId(`playground-col-${col}-type`).selectOption(option.type);
+        await pickOption(page, page.getByTestId(`playground-col-${col}-type`), option.type);
         const cell = canvas.locator(`.page-col[data-col="${col}"]`);
         await expect(cell.locator(`[data-object-type="${option.type}"]`)).toBeVisible();
         if (CHART_SVG_TYPES.has(option.type)) {
@@ -63,9 +63,9 @@ test("switching layouts re-flows the page and the contract follows", async ({ pa
 
 test("height: fill stretches a lone chart to match the other column", async ({ page }) => {
   await page.getByTestId("playground-layout-two-col").click();
-  await page.getByTestId("playground-col-0-type").selectOption("kpi");
-  await page.getByTestId("playground-col-1-type").selectOption("trend");
-  await page.getByTestId("playground-col-1-height").selectOption("fill");
+  await pickOption(page, page.getByTestId("playground-col-0-type"), "kpi");
+  await pickOption(page, page.getByTestId("playground-col-1-type"), "trend");
+  await pickOption(page, page.getByTestId("playground-col-1-height"), "fill");
 
   const canvas = page.getByTestId("playground-canvas");
   const fillCard = canvas.locator('.page-col[data-col="1"] .page-obj.fill');
@@ -75,9 +75,9 @@ test("height: fill stretches a lone chart to match the other column", async ({ p
   expect(contract.columns[1][0].data.height).toBe("fill");
 
   // A fixed height renders shorter than lg.
-  await page.getByTestId("playground-col-1-height").selectOption("sm");
+  await pickOption(page, page.getByTestId("playground-col-1-height"), "sm");
   const smBox = await canvas.locator('.page-col[data-col="1"] .page-obj').boundingBox();
-  await page.getByTestId("playground-col-1-height").selectOption("lg");
+  await pickOption(page, page.getByTestId("playground-col-1-height"), "lg");
   const lgBox = await canvas.locator('.page-col[data-col="1"] .page-obj').boundingBox();
   expect((lgBox?.height ?? 0)).toBeGreaterThan((smBox?.height ?? 0) + 100);
 });

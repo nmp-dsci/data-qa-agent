@@ -1,6 +1,7 @@
 // Shared Explore controls — dataset/metric/dimension selects and the filter-chip
 // editor the Profile and Trends tools compose. Kept dumb: they read the dataset
 // manifest and emit plain selections; the tools own the fetching.
+import { KitSelect } from "@/components/kit/KitSelect";
 import {
   ExploreDataset,
   ExploreDimension,
@@ -37,17 +38,12 @@ export function Select({
   return (
     <label className="ex-ctrl">
       {label && <span className="ex-ctrl-label">{label}</span>}
-      <select
+      <KitSelect
         value={value}
-        aria-label={ariaLabel ?? label}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+        ariaLabel={ariaLabel ?? label}
+        onValueChange={onChange}
+        options={options}
+      />
     </label>
   );
 }
@@ -213,19 +209,14 @@ export function FilterEditor({
         );
       })}
       {available.length > 0 && (
-        <select
+        <KitSelect
           className="ex-add-filter"
           value=""
-          aria-label="Add filter"
-          onChange={(e) => add(e.target.value)}
-        >
-          <option value="">+ filter</option>
-          {available.map((d) => (
-            <option key={d.name} value={d.name}>
-              {d.label}
-            </option>
-          ))}
-        </select>
+          ariaLabel="Add filter"
+          placeholder="+ filter"
+          onValueChange={add}
+          options={available.map((d) => ({ value: d.name, label: d.label }))}
+        />
       )}
     </div>
   );

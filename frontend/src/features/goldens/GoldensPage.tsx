@@ -7,6 +7,9 @@
 // Save persists through /admin/eval-goldens; a `ready` golden is the 100/100
 // benchmark the eval runner (E2) scores the agent against. A run of any upstream
 // stage refreshes the extract that feeds the next — the A→B→C cascade from the plan.
+import { ChartColumn, Star } from "lucide-react";
+import { KitEmpty } from "@/components/kit/KitEmpty";
+import { KitSelect } from "@/components/kit/KitSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -1720,28 +1723,21 @@ export function GoldensPage({
     additiveMetricOpts.length > 0 && !additiveMetricOpts.some((m) => m.value === source)
       ? additiveMetricOpts[0].value
       : source;
-  // A <select> whose current value is always present (even before the vocab
-  // loads, or for a legacy free-text column not in the manifest), plus optional
-  // extra options and a blank choice.
+  // Options for a picker whose current value is always present (even before the
+  // vocab loads, or for a legacy free-text column not in the manifest), plus
+  // optional extra options and a blank choice.
   const selOptions = (
     current: string,
     opts: { value: string; label: string }[],
     blank?: string,
   ) => {
     const seen = new Set(opts.map((o) => o.value));
-    return (
-      <>
-        {blank !== undefined && <option value="">{blank}</option>}
-        {current && !seen.has(current) && <option value={current}>{current}</option>}
-        {opts.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </>
-    );
+    return [
+      ...(blank !== undefined ? [{ value: "", label: blank }] : []),
+      ...(current && !seen.has(current) ? [{ value: current, label: current }] : []),
+      ...opts,
+    ];
   };
-  const sel: React.CSSProperties = { fontSize: 12, padding: "2px 4px" };
   // A checkbox list for a multi-select field: every option is visible and toggled
   // with one click (no native multi-select / cmd-click). Toggling ON appends, so
   // the selection order is the click order — which the composite x-axis concat
@@ -1888,21 +1884,28 @@ export function GoldensPage({
             + New
           </button>
         </div>
-        <select
-          data-testid="golden-dataset"
-          value={dataset}
-          onChange={(e) => setDataset(e.target.value)}
-          style={{ width: "100%", margin: "10px 0", padding: 5 }}
-        >
-          {datasets.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+        <div style={{ margin: "10px 0" }}>
+          <KitSelect
+            testId="golden-dataset"
+            ariaLabel="Dataset"
+            className="w-full"
+            value={dataset}
+            onValueChange={setDataset}
+            options={datasets.map((d) => ({ value: d, label: d }))}
+          />
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {list.length === 0 && (
-            <span style={{ opacity: 0.6, fontSize: 13 }}>No goldens yet — author the first.</span>
+            <KitEmpty
+              icon={Star}
+              title="No goldens for this dataset"
+              hint="A golden is a question with the answer you want back. Author the first one to start teaching the agent."
+              action={
+                <button style={btn()} onClick={newGolden}>
+                  + New golden
+                </button>
+              }
+            />
           )}
           {list.map((g) => (
             <button
@@ -1945,30 +1948,33 @@ export function GoldensPage({
               onChange={(e) => patch("question", e.target.value)}
               style={{ flex: 1, minWidth: 260, padding: 6, fontSize: 14 }}
             />
-            <select value={draft.tier} onChange={(e) => patch("tier", e.target.value)}>
-              {TIERS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <select
-              data-testid="golden-status"
+            <KitSelect
+              ariaLabel="Tier"
+              value={draft.tier}
+              onValueChange={(v) => patch("tier", v)}
+              options={TIERS.map((t) => ({ value: t, label: t }))}
+            />
+            <KitSelect
+              testId="golden-status"
+              ariaLabel="Authoring status"
               value={draft.authoring_status}
-              onChange={(e) => patch("authoring_status", e.target.value)}
+              onValueChange={(v) => patch("authoring_status", v)}
               title={
                 graderBlocker
                   ? `ready needs a valid grader — ${graderBlocker} (see the ◆ GRADER panel)`
                   : "draft = excluded from scored evals; ready = scoreable"
               }
-            >
-              <option value="draft">draft</option>
-              {/* ready requires a dispatchable grader (same gate as the promote
-                  button) so a golden is never marked scoreable without one. */}
-              <option value="ready" disabled={draft.authoring_status !== "ready" && !!graderBlocker}>
-                ready
-              </option>
-            </select>
+              options={[
+                { value: "draft", label: "draft" },
+                // ready requires a dispatchable grader (same gate as the promote
+                // button) so a golden is never marked scoreable without one.
+                {
+                  value: "ready",
+                  label: "ready",
+                  disabled: draft.authoring_status !== "ready" && !!graderBlocker,
+                },
+              ]}
+            />
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
             <input
@@ -2170,11 +2176,12 @@ export function GoldensPage({
                   onChange={(e) => setBuilder((b) => ({ ...b, name: e.target.value }))}
                   style={{ padding: 5, minWidth: 240, fontSize: 13 }}
                 />
-                <select
-                  data-testid="builder-type"
+                <KitSelect
+                  testId="builder-type"
+                  ariaLabel="Object type"
                   value={builder.object_type}
-                  onChange={(e) => {
-                    const type = e.target.value as PageObjectType;
+                  onValueChange={(v) => {
+                    const type = v as PageObjectType;
                     setBuilder((b) =>
                       HOW_OBJECT_TYPES.has(type)
                         ? {
@@ -2189,13 +2196,8 @@ export function GoldensPage({
                         : { ...b, object_type: type },
                     );
                   }}
-                >
-                  {BUILDER_TYPES.map((t) => (
-                    <option key={t.type} value={t.type}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
+                  options={BUILDER_TYPES.map((t) => ({ value: t.type, label: t.label }))}
+                />
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <div
@@ -2231,14 +2233,13 @@ export function GoldensPage({
                 </div>
                 <label style={label}>
                   group (from grain){" "}
-                  <select
-                    data-testid="builder-group"
+                  <KitSelect
+                    testId="builder-group"
+                    ariaLabel="Group"
                     value={builder.group}
-                    onChange={(e) => setBuilder((b) => ({ ...b, group: e.target.value }))}
-                    style={sel}
-                  >
-                    {selOptions(builder.group, grainOpts, "— none —")}
-                  </select>
+                    onValueChange={(v) => setBuilder((b) => ({ ...b, group: v }))}
+                    options={selOptions(builder.group, grainOpts, "— none —")}
+                  />
                 </label>
                 <label style={label}>
                   latest N months{" "}
@@ -2293,35 +2294,29 @@ export function GoldensPage({
                   style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
                 />
                 <span style={label}>=</span>
-                <select
-                  data-testid="builder-bar-agg"
+                <KitSelect
+                  testId="builder-bar-agg"
                   title="aggregation"
+                  ariaLabel="Bar aggregation"
                   value={builder.bar_agg}
-                  onChange={(e) =>
+                  onValueChange={(v) =>
                     setBuilder((b) => ({
                       ...b,
-                      bar_agg: e.target.value as MeasureAgg,
+                      bar_agg: v as MeasureAgg,
                       bar_source: ensureAdditive(b.bar_source),
                     }))
                   }
-                  style={sel}
-                >
-                  {MEASURE_AGGS.map((a) => (
-                    <option key={a.value} value={a.value}>
-                      {a.label}
-                    </option>
-                  ))}
-                </select>
+                  options={MEASURE_AGGS.map((a) => ({ value: a.value, label: a.label }))}
+                />
                 <span style={label}>of</span>
-                <select
-                  data-testid="builder-bar-source"
+                <KitSelect
+                  testId="builder-bar-source"
                   title="column"
+                  ariaLabel="Bar column"
                   value={builder.bar_source}
-                  onChange={(e) => setBuilder((b) => ({ ...b, bar_source: e.target.value }))}
-                  style={sel}
-                >
-                  {selOptions(builder.bar_source, additiveMetricOpts)}
-                </select>
+                  onValueChange={(v) => setBuilder((b) => ({ ...b, bar_source: v }))}
+                  options={selOptions(builder.bar_source, additiveMetricOpts)}
+                />
                 <label style={label}>
                   window{" "}
                   <input
@@ -2336,20 +2331,15 @@ export function GoldensPage({
                 {howApplies && (
                   <label style={label}>
                     derive{" "}
-                    <select
-                      data-testid="builder-bar-derive"
+                    <KitSelect
+                      testId="builder-bar-derive"
+                      ariaLabel="Bar derive"
                       value={builder.bar_derive}
-                      onChange={(e) =>
-                        setBuilder((b) => ({ ...b, bar_derive: e.target.value as MeasureDerive }))
+                      onValueChange={(v) =>
+                        setBuilder((b) => ({ ...b, bar_derive: v as MeasureDerive }))
                       }
-                      style={sel}
-                    >
-                      {MEASURE_DERIVES.map((dv) => (
-                        <option key={dv.value} value={dv.value}>
-                          {dv.label}
-                        </option>
-                      ))}
-                    </select>
+                      options={MEASURE_DERIVES.map((dv) => ({ value: dv.value, label: dv.label }))}
+                    />
                   </label>
                 )}
               </div>
@@ -2362,11 +2352,12 @@ export function GoldensPage({
                   onChange={(e) => setBuilder((b) => ({ ...b, line_label: e.target.value }))}
                   style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
                 />
-                <select
-                  data-testid="builder-line-mode"
+                <KitSelect
+                  testId="builder-line-mode"
+                  ariaLabel="Line mode"
                   value={builder.line_mode}
-                  onChange={(e) => {
-                    const mode = e.target.value as "wavg" | "column";
+                  onValueChange={(v) => {
+                    const mode = v as "wavg" | "column";
                     setBuilder((b) => ({
                       ...b,
                       line_mode: mode,
@@ -2374,63 +2365,56 @@ export function GoldensPage({
                         mode === "column" ? ensureAdditive(b.line_source) : b.line_source,
                     }));
                   }}
-                >
-                  <option value="wavg">wtd-avg</option>
-                  <option value="column">column</option>
-                </select>
+                  options={[
+                    { value: "wavg", label: "wtd-avg" },
+                    { value: "column", label: "column" },
+                  ]}
+                />
                 {builder.line_mode === "wavg" ? (
                   <>
-                    <select
-                      data-testid="builder-line-num"
+                    <KitSelect
+                      testId="builder-line-num"
                       title="numerator"
+                      ariaLabel="Line numerator"
                       value={builder.line_num}
-                      onChange={(e) => setBuilder((b) => ({ ...b, line_num: e.target.value }))}
-                      style={sel}
-                    >
-                      {selOptions(builder.line_num, additiveMetricOpts)}
-                    </select>
+                      onValueChange={(v) => setBuilder((b) => ({ ...b, line_num: v }))}
+                      options={selOptions(builder.line_num, additiveMetricOpts)}
+                    />
                     <span style={label}>/</span>
-                    <select
-                      data-testid="builder-line-den"
+                    <KitSelect
+                      testId="builder-line-den"
                       title="denominator"
+                      ariaLabel="Line denominator"
                       value={builder.line_den}
-                      onChange={(e) => setBuilder((b) => ({ ...b, line_den: e.target.value }))}
-                      style={sel}
-                    >
-                      {selOptions(builder.line_den, additiveMetricOpts)}
-                    </select>
+                      onValueChange={(v) => setBuilder((b) => ({ ...b, line_den: v }))}
+                      options={selOptions(builder.line_den, additiveMetricOpts)}
+                    />
                   </>
                 ) : (
                   <>
-                    <select
-                      data-testid="builder-line-agg"
+                    <KitSelect
+                      testId="builder-line-agg"
                       title="aggregation"
+                      ariaLabel="Line aggregation"
                       value={builder.line_agg}
-                      onChange={(e) =>
+                      onValueChange={(v) =>
                         setBuilder((b) => ({
                           ...b,
-                          line_agg: e.target.value as MeasureAgg,
+                          line_agg: v as MeasureAgg,
                           line_source: ensureAdditive(b.line_source),
                         }))
                       }
-                      style={sel}
-                    >
-                      {MEASURE_AGGS.map((a) => (
-                        <option key={a.value} value={a.value}>
-                          {a.label}
-                        </option>
-                      ))}
-                    </select>
+                      options={MEASURE_AGGS.map((a) => ({ value: a.value, label: a.label }))}
+                    />
                     <span style={label}>of</span>
-                    <select
-                      data-testid="builder-line-source"
+                    <KitSelect
+                      testId="builder-line-source"
                       title="column"
+                      ariaLabel="Line column"
                       value={builder.line_source}
-                      onChange={(e) => setBuilder((b) => ({ ...b, line_source: e.target.value }))}
-                      style={sel}
-                    >
-                      {selOptions(builder.line_source, additiveMetricOpts)}
-                    </select>
+                      onValueChange={(v) => setBuilder((b) => ({ ...b, line_source: v }))}
+                      options={selOptions(builder.line_source, additiveMetricOpts)}
+                    />
                   </>
                 )}
                 <label style={label}>
@@ -2447,20 +2431,15 @@ export function GoldensPage({
                 {howApplies && (
                   <label style={label}>
                     derive{" "}
-                    <select
-                      data-testid="builder-line-derive"
+                    <KitSelect
+                      testId="builder-line-derive"
+                      ariaLabel="Line derive"
                       value={builder.line_derive}
-                      onChange={(e) =>
-                        setBuilder((b) => ({ ...b, line_derive: e.target.value as MeasureDerive }))
+                      onValueChange={(v) =>
+                        setBuilder((b) => ({ ...b, line_derive: v as MeasureDerive }))
                       }
-                      style={sel}
-                    >
-                      {MEASURE_DERIVES.map((dv) => (
-                        <option key={dv.value} value={dv.value}>
-                          {dv.label}
-                        </option>
-                      ))}
-                    </select>
+                      options={MEASURE_DERIVES.map((dv) => ({ value: dv.value, label: dv.label }))}
+                    />
                   </label>
                 )}
               </div>
@@ -2502,41 +2481,34 @@ export function GoldensPage({
                       style={{ ...label, display: "inline-flex", gap: 6, alignItems: "center" }}
                     >
                       place at page
-                      <select
-                        data-testid="builder-place-page"
-                        value={Math.min(placePage, pendingPages.length - 1)}
-                        onChange={(e) => {
-                          setPlacePage(Number(e.target.value));
+                      <KitSelect
+                        testId="builder-place-page"
+                        ariaLabel="Place on page"
+                        value={String(Math.min(placePage, pendingPages.length - 1))}
+                        onValueChange={(v) => {
+                          setPlacePage(Number(v));
                           setPlaceCol(0);
                         }}
-                        style={sel}
-                      >
-                        {pendingPages.map((_, i) => (
-                          <option key={i} value={i}>
-                            {i + 1}
-                          </option>
-                        ))}
-                      </select>
+                        options={pendingPages.map((_, i) => ({
+                          value: String(i),
+                          label: String(i + 1),
+                        }))}
+                      />
                       column
-                      <select
-                        data-testid="builder-place-col"
-                        value={placeCol}
-                        onChange={(e) => setPlaceCol(Number(e.target.value))}
-                        style={sel}
-                      >
-                        {Array.from(
+                      <KitSelect
+                        testId="builder-place-col"
+                        ariaLabel="Place in column"
+                        value={String(placeCol)}
+                        onValueChange={(v) => setPlaceCol(Number(v))}
+                        options={Array.from(
                           {
                             length:
                               pendingPages[Math.min(placePage, pendingPages.length - 1)]?.columns
                                 ?.length ?? 1,
                           },
-                          (_, i) => (
-                            <option key={i} value={i}>
-                              {i + 1}
-                            </option>
-                          ),
+                          (_, i) => ({ value: String(i), label: String(i + 1) }),
                         )}
-                      </select>
+                      />
                     </span>
                   )
                 )}
@@ -2638,9 +2610,11 @@ export function GoldensPage({
                 .filter((o) => !builtIds.has(o.element_id))
                 .map((o) => renderObjectCard(o))}
               {draft.golden_objects.length === 0 && composedObjects.length === 0 && (
-                <div style={{ ...label, opacity: 0.6 }}>
-                  No presentation objects yet — build one above, or “Draft with agent”.
-                </div>
+                <KitEmpty
+                  icon={ChartColumn}
+                  title="No presentation objects yet"
+                  hint="Objects are the charts, tables and tiles the report renders. Build one with the structured builder above, or let “Draft with agent” propose a first pass."
+                />
               )}
             </div>
           </div>

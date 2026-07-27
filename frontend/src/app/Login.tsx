@@ -1,30 +1,32 @@
-// Login gate (s25 "Flight Deck") — the split front door, rebuilt around one
-// composed scene instead of scattered props. A single full-bleed canopy layer
-// sits behind BOTH panels: dawn horizon, perspective ground grid, canopy
-// vignette, and three aircraft on crossing airways. The hero — "the Sortie",
-// the brand mark's airliner inverted out of its gold tile — flies the product
-// story's route left-to-right, lighting each waypoint as it lands on it.
+// Login gate (s33 "night flight") — the front door, rebuilt as one composed
+// scene with one job: a first-time visitor should understand what Data Pilot
+// does and be signed in without scrolling.
 //
-// Motion rules (s25): planes always travel ALONG a path — the Sortie hops
-// waypoint-to-waypoint with CSS offset-path/offset-distance (this is the fix
-// for the s17 corner-cutting bug, where a point-to-point translate visibly
-// left the curve), and ambient traffic flies its airways on CSS loops. HUD
-// readouts drift inside realistic bounds on tabular numerals, so the cockpit
-// feels airborne while the layout never wobbles. Everything decorative
-// freezes under prefers-reduced-motion into a designed still: the Sortie
-// parks on the current waypoint with its contrail burned in behind it, and
-// the traffic holds position on its airways.
+// The scene is the Canopy canvas (ui/Canopy.tsx) — starfield, a gold horizon
+// curved with the planet, and a neon grid terrain flowing toward the viewer.
+// The same component runs behind every app screen at ambient strength, so
+// signing in doesn't change sky.
 //
-// Pure CSS/SVG, ~0 asset weight. Google Sign-in in production, demo profiles
-// on the dev-auth stub — same card. E2E contracts kept: the profile buttons'
-// accessible names, the dot `role=tablist`, and the login_walkthrough_view
-// track() events are unchanged from s17.
+// What replaced the s25 walkthrough, and why: the old front door told the
+// product story as a 4-slide carousel on a 4s timer, which meant a new user
+// saw one quarter of the value proposition at a time and had to wait for the
+// rest. Everything is visible at once now — a 2×2 benefit grid, a strip of
+// real questions you can ask, and an instrument cluster of outcome metrics.
+// The card sits directly beside the grid rather than a column away, because
+// the gap was doing nothing but making the page feel empty.
+//
+// Motion: the scene and the heading tape are decorative and freeze under
+// prefers-reduced-motion or the Settings "Ambient motion" switch.
+// E2E contracts kept: the dev profile buttons' accessible names ("Admin",
+// "User One", "User Two" — e2e/helpers.ts clicks them by exact text) and the
+// "Data Pilot" heading the visual/a11y specs wait on.
 import { useEffect, useRef, useState } from "react";
 import { track, User, wakeDb } from "../lib/api";
 import { LoginStatus, renderGoogleButton } from "../lib/auth";
+import { useAmbientMotion } from "../lib/motion";
 import { useMediaQuery } from "../lib/useMediaQuery";
-import { useRouteFractions } from "../ui/flightdeck";
-import { BrandMark, PLANE_PATH_D } from "../ui/icons";
+import { Canopy } from "../ui/Canopy";
+import { BrandMark } from "../ui/icons";
 
 const TEST_USERS = [
   { username: "admin", label: "Admin", hint: "sees all data · full trace", initials: "AD", tint: "#f2ca79" },
@@ -33,466 +35,196 @@ const TEST_USERS = [
 ];
 
 // ---------------------------------------------------------------------------
-// The scene. One 1200×800 viewBox sliced to fill the viewport, so every airway
-// scales with the window and the composition crops rather than distorts.
+// HUD chrome — a heading tape across the top of the canopy. The two readouts
+// beside it are the only "telemetry" on the page and they are the truth about
+// the session you are about to start: every query is row-level scoped and
+// audited. No invented airspeeds.
 // ---------------------------------------------------------------------------
-const SCENE_W = 1200;
-const SCENE_H = 800;
-const HORIZON_Y = 500;
+const HEADINGS = ["N", "03", "06", "E", "12", "15", "S", "21", "24", "W", "30", "33"];
 
-/** The hero airway — the route the product story is told along. Waypoints sit
- *  on the cubic segment joins so the Sortie lands exactly on each dot.
- *
- *  Shaped as a departure profile — a low run-in, then a climb-out — for one
- *  hard reason: every waypoint has to stay in the visible corridor. The card
- *  covers roughly x 60–420 / y 185–615 and the story panel is glass but not
- *  transparent, so a route that swept diagonally across the full width would
- *  fly its last two waypoints behind the story cards and the Sortie would
- *  simply vanish for half the loop. Climbing up the gutter between the card
- *  and the story column keeps all four lit waypoints — and the plane — on
- *  screen from 1000px up. */
-const ROUTE_D =
-  "M-60 840 C 60 832 150 800 240 770 C 320 744 390 712 450 680 " +
-  "C 510 648 538 570 545 470 C 551 400 558 350 575 300 C 596 240 625 130 650 40";
-
-/** Crossing traffic — other aircraft, other directions, other speeds. The
- *  cap is three aircraft total (hero + these two); hierarchy is held by size
- *  and brightness, so the scene reads composed rather than busy. */
-const TRAFFIC = [
-  {
-    key: "eastbound",
-    // High and blue, left → right, well above the horizon.
-    d: "M-60 168 C 240 128 620 196 1260 96",
-    cls: "air-2",
-    size: 15,
-    dur: 34,
-    park: 0.36,
-  },
-  {
-    key: "westbound",
-    // Low and gold, right → left, skimming the ground grid.
-    d: "M1260 636 C 900 692 400 616 -60 664",
-    cls: "air-3",
-    size: 13,
-    dur: 47,
-    park: 0.58,
-  },
-] as const;
-
-type Waypoint = {
-  key: string;
-  label: string;
-  x: number;
-  y: number;
-  title: string;
-  story: string;
-};
-
-/** Four outcome waypoints (s25 copy rewrite): the product story leads with what
- *  the user gets, not how the plumbing works. Governance moved out of the slide
- *  deck and into the card's preflight lamps + the capstone, where trust is
- *  actually read. */
-const WAYPOINTS: Waypoint[] = [
-  {
-    key: "ask",
-    label: "ASK",
-    x: 240,
-    y: 770,
-    title: "Ask in plain English",
-    story:
-      "The agent plans governed SQL over your warehouse and lands a rich insight report — KPIs, charts, and the queries behind them. Share it the moment it arrives.",
-  },
-  {
-    key: "tune",
-    label: "TUNE",
-    x: 450,
-    y: 680,
-    title: "Answers tuned to your business",
-    story:
-      "Admins coach the agent with golden examples and data knowledge, so every answer reads the way your organisation reads data.",
-  },
-  {
-    key: "explore",
-    label: "EXPLORE",
-    x: 545,
-    y: 470,
-    title: "Know your data before you ask",
-    story:
-      "Profile any dataset, compare cohorts, and track trends in the Explore tool — no SQL required.",
-  },
-  {
-    key: "dig",
-    label: "DIG",
-    x: 575,
-    y: 300,
-    title: "Go hands-on when it matters",
-    story:
-      "A governed SQL editor for ad-hoc investigation. Every chart links back to its query, so an answer is never a black box.",
-  },
-];
-
-/** The Sortie and its traffic, plus the sky they fly in. Entirely decorative:
- *  one aria-hidden layer, never focusable, never announced. */
-function Canopy({ active, reduced }: { active: number; reduced: boolean }) {
-  const routeRef = useRef<SVGPathElement>(null);
-  const fracs = useRouteFractions(routeRef, WAYPOINTS);
-  // The contrail ends where the Sortie is, always. Under reduced motion this
-  // composition simply stops moving — the plane parks on whichever waypoint
-  // the reader has navigated to, contrail burned in behind it, traffic holding
-  // position. A designed still, and one that still agrees with the story on
-  // screen (a fixed park at the last waypoint would contradict it).
-  const lit = fracs[active] ?? 0;
-  const planeAt = lit;
-
-  return (
-    <div className="canopy" aria-hidden="true">
-      <div className="canopy-sky" />
-      {/* yMax, not yMid: the scene is anchored to the ground. On a short, wide
-          laptop (1440×700) a centred crop pushes the run-in — waypoint 1 and
-          the Sortie parked on it — off the bottom edge, so the story's first
-          slide has no visible aircraft. Cropping the empty upper sky instead
-          costs nothing and keeps the whole route on screen. */}
-      <svg
-        className="canopy-svg"
-        viewBox={`0 0 ${SCENE_W} ${SCENE_H}`}
-        preserveAspectRatio="xMidYMax slice"
-        aria-hidden="true"
-      >
-        <defs>
-          {/* The ground grid fades out as it approaches the horizon, so the
-              perspective reads as distance rather than as a flat pattern. */}
-          <linearGradient id="dp-ground-fade" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#fff" stopOpacity="0" />
-            <stop offset="0.45" stopColor="#fff" stopOpacity="0.55" />
-            <stop offset="1" stopColor="#fff" stopOpacity="1" />
-          </linearGradient>
-          <mask id="dp-ground-mask">
-            <rect
-              x="0"
-              y={HORIZON_Y}
-              width={SCENE_W}
-              height={SCENE_H - HORIZON_Y}
-              fill="url(#dp-ground-fade)"
-            />
-          </mask>
-        </defs>
-
-        {/* -- dawn horizon: the 1px line every scene hangs on -- */}
-        <line
-          className="canopy-horizon"
-          x1="0"
-          y1={HORIZON_Y}
-          x2={SCENE_W}
-          y2={HORIZON_Y}
-        />
-
-        {/* -- perspective ground grid: rails converging on the vanishing
-               point, with recede lines spaced by a squared ramp -- */}
-        <g className="canopy-ground" mask="url(#dp-ground-mask)">
-          {Array.from({ length: 19 }, (_, i) => {
-            const spread = (i - 9) / 9; // -1 … 1
-            return (
-              <line
-                key={`r${i}`}
-                x1={SCENE_W / 2 + spread * 90}
-                y1={HORIZON_Y}
-                x2={SCENE_W / 2 + spread * 2100}
-                y2={SCENE_H}
-              />
-            );
-          })}
-          {Array.from({ length: 9 }, (_, i) => {
-            const t = (i + 1) / 9;
-            const y = HORIZON_Y + (SCENE_H - HORIZON_Y) * t * t;
-            return <line key={`c${i}`} x1="0" y1={y} x2={SCENE_W} y2={y} />;
-          })}
-        </g>
-
-        {/* -- crossing traffic: dim airways, ambient loops -- */}
-        {TRAFFIC.map((t) => (
-          <g key={t.key} className={`airway ${t.cls}`}>
-            <path className="airway-route" d={t.d} />
-            <g
-              className="airway-plane"
-              style={{
-                offsetPath: `path("${t.d}")`,
-                offsetRotate: "auto",
-                ...(reduced
-                  ? { offsetDistance: `${t.park * 100}%` }
-                  : { animation: `dp-fly ${t.dur}s linear infinite` }),
-              }}
-            >
-              <g transform={`rotate(90) scale(${t.size / 100}) translate(-50,-50)`}>
-                <path d={PLANE_PATH_D} />
-              </g>
-            </g>
-          </g>
-        ))}
-
-        {/* -- the hero airway: the product story's route -- */}
-        <g className="airway air-1">
-          <path className="airway-route hero-route" ref={routeRef} d={ROUTE_D} />
-          <path
-            className="hero-lit"
-            d={ROUTE_D}
-            pathLength={100}
-            strokeDasharray="100"
-            strokeDashoffset={100 - lit * 100}
-          />
-          {WAYPOINTS.map((w, i) => (
-            <g key={w.key} className={i <= active ? "hero-wp lit" : "hero-wp"}>
-              <circle className="hero-wp-halo" cx={w.x} cy={w.y} r="14" />
-              <circle className="hero-wp-dot" cx={w.x} cy={w.y} r="4" />
-            </g>
-          ))}
-          {/* The Sortie. offset-path keeps it ON the curve through every hop —
-              the s17 build translated point-to-point and cut the corners. */}
-          <g
-            className="sortie"
-            style={{
-              offsetPath: `path("${ROUTE_D}")`,
-              offsetRotate: "auto",
-              offsetDistance: `${planeAt * 100}%`,
-            }}
-          >
-            <g transform="rotate(90) scale(0.30) translate(-50,-50)">
-              <path d={PLANE_PATH_D} />
-            </g>
-          </g>
-        </g>
-      </svg>
-
-      {/* -- canopy vignette + pillars: pulls the eye to card and story -- */}
-      <div className="canopy-vignette" />
-      <span className="canopy-pillar left" />
-      <span className="canopy-pillar right" />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Live HUD readouts — instruments, not decoration: the numbers drift inside
-// realistic bounds on tabular numerals, so nothing shifts as they tick.
-// ---------------------------------------------------------------------------
-function useDrift(base: number, swing: number, reduced: boolean): number {
-  const [v, setV] = useState(base);
-  useEffect(() => {
-    if (reduced) {
-      setV(base);
-      return;
-    }
-    const id = window.setInterval(() => {
-      setV(base + Math.round((Math.random() * 2 - 1) * swing));
-    }, 1500);
-    return () => window.clearInterval(id);
-  }, [base, swing, reduced]);
-  return v;
-}
-
-function HudStrip({ reduced }: { reduced: boolean }) {
-  const gs = useDrift(240, 12, reduced);
-  const fl = useDrift(360, 4, reduced);
+function HeadingTape({ moving }: { moving: boolean }) {
+  const ticks = Array.from({ length: 32 }, (_, i) => ({ x: i * 25 + 10, major: i % 2 === 0 }));
   return (
     <div className="hud-strip" aria-hidden="true">
       <span className="hud-readout">
-        <span className="instrument-label dim">GS</span>
-        <b className="hud-readout-value">{gs}</b>
+        <span className="instrument-label dim">RLS</span>
+        <b className="hud-readout-value">ACTIVE</b>
       </span>
-      <span className="hud-tape">&#8249; 020 &middot; 030 &middot; 040 &#8250;</span>
+      <div className="hud-tape-wrap">
+        <svg
+          className={moving ? "hud-tape-svg drift" : "hud-tape-svg"}
+          viewBox="0 0 800 26"
+          preserveAspectRatio="none"
+        >
+          <g stroke="currentColor" strokeOpacity=".5" fill="none">
+            {ticks.map((t) => (
+              <line key={t.x} x1={t.x} y1="18" x2={t.x} y2={t.major ? 26 : 23} />
+            ))}
+          </g>
+          <g fontFamily="var(--mono)" fontSize="9" fill="currentColor" fillOpacity=".8" textAnchor="middle">
+            {ticks
+              .filter((t) => t.major)
+              .map((t, i) => (
+                <text key={t.x} x={t.x} y="12">
+                  {HEADINGS[i % 12]}
+                </text>
+              ))}
+          </g>
+        </svg>
+        <span className="hud-caret" />
+      </div>
       <span className="hud-readout">
-        <span className="instrument-label dim">FL</span>
-        <b className="hud-readout-value">{fl}</b>
+        <span className="instrument-label dim">AUDIT</span>
+        <b className="hud-readout-value">ON</b>
       </span>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Waypoint micro-mocks — show, then tell. Each is a small, faithful sketch of
-// the real surface the waypoint is describing, built from the same tokens.
+// What Data Pilot does — four benefits, all visible at once. Each carries a
+// small faithful sketch of the surface it names, built from the same tokens as
+// the real thing, so the claim is shown before it is told.
 // ---------------------------------------------------------------------------
-
-/** ASK — a mini insight report page: the payoff, in one glance. */
-function MockAsk() {
+function BenefitAsk() {
   return (
-    <div className="wp-mock mock-ask">
-      <div className="mock-head">
-        <span className="instrument-label dim">Page 1 · Report</span>
-        <span className="mock-star">★ save as golden</span>
-      </div>
-      <div className="mock-title">Hornsby average sale price — house vs unit, 2010 → 2026</div>
-      <div className="mock-legend">
-        <span className="mock-key k1">house</span>
-        <span className="mock-key k2">unit</span>
-      </div>
-      <div className="mock-kpis">
-        <div className="hud-box">
-          <span className="hud-box-label">House avg price</span>
-          <span className="hud-box-value">$1,182,406</span>
-          <span className="mock-delta">▲ 33.1% · 5 yr</span>
-        </div>
-        <div className="hud-box">
-          <span className="hud-box-label">Unit avg price</span>
-          <span className="hud-box-value">$742,180</span>
-          <span className="mock-delta">▲ 41.6% · 5 yr</span>
-        </div>
-      </div>
-      <svg className="mock-chart" viewBox="0 0 220 56" preserveAspectRatio="none" aria-hidden="true">
-        <path className="mock-line l1" d="M2 48 C 40 44 70 32 104 26 C 140 20 180 12 218 6" />
-        <path className="mock-line l2" d="M2 52 C 40 50 70 45 104 40 C 140 35 180 30 218 24" />
-      </svg>
-    </div>
-  );
-}
-
-/** TUNE — a golden example, the admin's coaching signal. */
-function MockTune() {
-  return (
-    <div className="wp-mock mock-tune">
-      <div className="mock-head">
-        <span className="instrument-label dim">Golden example</span>
-        <span className="mock-star">★ curated by admin</span>
-      </div>
-      <div className="mock-quote">&ldquo;rent trends 2077 vs 2076&rdquo;</div>
-      <div className="mock-note">
-        → answers now open with the <b>bedroom-band breakdown</b> — the way your team reads rent.
-      </div>
-    </div>
-  );
-}
-
-/** EXPLORE — the two cohorts, in the Explore tool's own gold/blue pairing. */
-function MockExplore() {
-  return (
-    <div className="wp-mock mock-explore">
-      <div className="mock-cohorts">
-        <div className="mock-cohort target">
-          <span className="instrument-label dim">Target</span>
-          <b>$740</b>
-          <svg viewBox="0 0 90 26" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M1 22 C 18 20 34 14 52 11 C 68 8 78 6 89 3" />
-          </svg>
-        </div>
-        <div className="mock-cohort compare">
-          <span className="instrument-label dim">Compare</span>
-          <b>$525</b>
-          <svg viewBox="0 0 90 26" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M1 23 C 18 22 34 19 52 17 C 68 15 78 13 89 11" />
-          </svg>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** DIG — the governed SQL editor, with the guarantees that make it safe. */
-function MockDig() {
-  return (
-    <div className="wp-mock mock-dig">
-      <code className="mock-sql">
-        <b>select</b> suburb, avg_rent <b>from</b> marts.property_rent …
-      </code>
-      <div className="annunciators">
-        <span className="annunciator on">Read-only</span>
-        <span className="annunciator on">RLS-scoped</span>
-        <span className="annunciator on">Audited</span>
-      </div>
-    </div>
-  );
-}
-
-const MOCKS: Record<string, () => React.JSX.Element> = {
-  ask: MockAsk,
-  tune: MockTune,
-  explore: MockExplore,
-  dig: MockDig,
-};
-
-// ---------------------------------------------------------------------------
-// The story panel — glass over the scene, so airways pass behind it like
-// traffic behind a windshield.
-// ---------------------------------------------------------------------------
-function Walkthrough({
-  active,
-  setActive,
-  setPaused,
-}: {
-  active: number;
-  setActive: (fn: (a: number) => number) => void;
-  setPaused: (v: boolean) => void;
-}) {
-  const n = WAYPOINTS.length;
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") setActive((a) => (a + 1) % n);
-    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") setActive((a) => (a - 1 + n) % n);
-    else if (e.key === "Home") setActive(() => 0);
-    else if (e.key === "End") setActive(() => n - 1);
-    else return;
-    e.preventDefault();
-  }
-
-  return (
-    <div
-      className="walk"
-      role="group"
-      aria-label="Data Pilot product walkthrough"
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
-      onTouchStart={() => setPaused(true)}
-    >
-      <div className="walk-inner">
-        <p className="walk-lede">
-          <span className="instrument-label accent">From plain question to shareable insight.</span>
+    <>
+      <div className="bene-bubble">Which suburbs had the fastest rent growth last year?</div>
+      <div className="bene-mini">
+        <div className="bene-tiles">
           <span>
-            No analyst queue, no dashboard hunt — ask, and land a boardroom-ready report in about a
-            minute.
+            $612<small>avg weekly rent</small>
           </span>
-        </p>
-
-        <ol className="walk-props">
-          {WAYPOINTS.map((w, i) => {
-            const Mock = MOCKS[w.key];
-            const on = i === active;
-            return (
-              <li key={w.key} className={on ? "walk-prop lit" : "walk-prop"}>
-                <div className="walk-prop-head">
-                  <span className="walk-prop-i">{String(i + 1).padStart(2, "0")}</span>
-                  <span className="instrument-label walk-prop-wp">{w.label}</span>
-                </div>
-                <b>{w.title}</b>
-                <span className="walk-prop-story">{w.story}</span>
-                {on && Mock && <Mock />}
-              </li>
-            );
-          })}
-        </ol>
-
-        <div className="walk-capstone">
-          <p>&ldquo;A data team&rsquo;s power, without the back office.&rdquo;</p>
-          <span>Row-level security scopes every query to what each user may see.</span>
+          <span>
+            +8.4%<small>year on year</small>
+          </span>
         </div>
-
-        <div className="walk-dots" role="tablist" aria-label="Walkthrough slides">
-          {WAYPOINTS.map((w, i) => (
-            <button
-              key={w.key}
-              role="tab"
-              aria-selected={i === active}
-              aria-label={w.title}
-              className={i === active ? "walk-dot on" : "walk-dot"}
-              onClick={() => setActive(() => i)}
-            />
-          ))}
-        </div>
+        <svg className="bene-spark" viewBox="0 0 240 34" preserveAspectRatio="none" aria-hidden="true">
+          <path className="fill" d="M3 28 46 22 89 24 132 14 175 11 237 3V34H3Z" />
+          <polyline points="3,28 46,22 89,24 132,14 175,11 237,3" />
+          <circle cx="237" cy="3" r="3" />
+        </svg>
       </div>
+    </>
+  );
+}
+
+function BenefitTune() {
+  return (
+    <div className="bene-rows">
+      <span className="bene-row">
+        ★ Median rent by suburb <i>ready</i>
+      </span>
+      <span className="bene-row">
+        ★ Sale price trend, houses <i>graded</i>
+      </span>
+      <span className="bene-row">
+        ★ Yield by postcode <i>ready</i>
+      </span>
     </div>
   );
 }
+
+function BenefitExplore() {
+  return (
+    <>
+      <div className="bene-chips">
+        <span className="t">target · Hornsby houses</span>
+        <span className="c">vs · Newcastle houses</span>
+      </div>
+      {/* Five paired bars on a baseline — the shape the Explore tool actually
+          draws, so the sketch is a small true picture rather than blocks. */}
+      <svg className="bene-bars" viewBox="0 0 240 34" preserveAspectRatio="none" aria-hidden="true">
+        {[
+          [17, 26],
+          [24, 15],
+          [12, 19],
+          [28, 21],
+          [21, 11],
+        ].map(([a, b], i) => (
+          <g key={i} transform={`translate(${14 + i * 45} 0)`}>
+            <rect className="b1" x="0" y={31 - a} width="10" height={a} rx="2" />
+            <rect className="b2" x="13" y={31 - b} width="10" height={b} rx="2" />
+          </g>
+        ))}
+        <line className="base" x1="0" y1="32" x2="240" y2="32" />
+      </svg>
+    </>
+  );
+}
+
+function BenefitDig() {
+  return (
+    <>
+      <code className="bene-code">
+        <b>select</b> suburb, avg(weekly_rent)…
+        <br />
+        <b>where</b> dwelling_type = 'house'…
+      </code>
+      <div className="bene-result">
+        <span>hornsby · 748 · n=1.2k</span>
+        <span className="bene-run">▶ run</span>
+      </div>
+    </>
+  );
+}
+
+const BENEFITS = [
+  {
+    key: "ask",
+    step: "01",
+    label: "Ask",
+    title: "Ask in plain English",
+    body: "The agent plans governed SQL over your warehouse and lands a full report — KPIs, charts, and the queries behind them. Share it the moment it arrives.",
+    Visual: BenefitAsk,
+  },
+  {
+    key: "tune",
+    step: "02",
+    label: "Tune",
+    title: "Tuned to how your team reads data",
+    body: "Admins coach the agent with golden answers and data knowledge, so replies use your organisation's own definitions — not a generic guess.",
+    Visual: BenefitTune,
+  },
+  {
+    key: "explore",
+    step: "03",
+    label: "Explore",
+    title: "Know the data before you ask",
+    body: "Profile any dataset, compare two cohorts side by side, and track trends — all without writing a line of SQL.",
+    Visual: BenefitExplore,
+  },
+  {
+    key: "dig",
+    step: "04",
+    label: "Dig",
+    title: "Go hands-on when it matters",
+    body: "A read-only, row-level-scoped SQL editor for the ad-hoc moment. Every chart links back to its query, so an answer is never a black box.",
+    Visual: BenefitDig,
+  },
+] as const;
+
+/** Real questions, in the shape people actually type them. These are the first
+ *  thing a new visitor can picture themselves doing, so they lead with the
+ *  question and never with the feature. */
+const EXAMPLE_QUESTIONS = [
+  "Which suburbs had the fastest rent growth last year?",
+  "House vs unit sale prices in Hornsby since 2010",
+  "Where are rental yields above 4%?",
+  "Compare 2023 and 2022 weekly rent for 3-bedroom houses",
+  "Top 10 postcodes by sales volume this quarter",
+  "Has the median sale price in Newcastle recovered yet?",
+];
+
+/** Outcome metrics, not deployment telemetry: every one of these is a property
+ *  of the product that holds on any warehouse it is pointed at, which is why
+ *  none of them is a counter that would be a lie on a fresh install. */
+const IMPACT = [
+  { value: "≈2 min", label: "question → shareable report" },
+  { value: "0", label: "lines of SQL to write" },
+  { value: "100%", label: "results row-level scoped" },
+  { value: "every chart", label: "opens the query behind it" },
+];
 
 export function Login({
   authMode,
@@ -509,14 +241,12 @@ export function Login({
 }) {
   const btnRef = useRef<HTMLDivElement>(null);
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
-  const [active, setActive] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const motionOn = useAmbientMotion();
   // s29: sign-in progress. Set the moment Google hands back a credential —
   // before this, a login waiting on the /me exchange (worst case: an Aurora
   // resume, ~30s) was pixel-identical to a dead button, and users answered
   // the silence by signing in 4-5 times. Cleared on any terminal outcome.
   const [signing, setSigning] = useState<LoginStatus | null>(null);
-  const n = WAYPOINTS.length;
 
   useEffect(() => {
     if (authMode !== "google" || !btnRef.current) return;
@@ -539,24 +269,16 @@ export function Login({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authMode]);
 
-  // 4s auto-advance; the timer resets on every change (manual or auto) and is
-  // suspended while paused (hover/focus/touch) or under reduced motion.
   useEffect(() => {
-    if (paused || reduced) return;
-    const id = window.setTimeout(() => setActive((a) => (a + 1) % n), 4000);
-    return () => window.clearTimeout(id);
-  }, [active, paused, reduced, n]);
-
-  useEffect(() => {
-    track("login_walkthrough_view", { slide: WAYPOINTS[active].key, index: active });
-  }, [active]);
+    track("login_benefits_view", { benefits: BENEFITS.length });
+  }, []);
 
   return (
     <div className="login">
-      <Canopy active={active} reduced={reduced} />
-      <HudStrip reduced={reduced} />
+      <Canopy variant="login" />
+      <HeadingTape moving={!reduced && motionOn} />
 
-      <div className="login-left">
+      <div className="login-stage">
         <div className="login-card">
           {/* The mark in a HUD reticle: the card is the boresight of the page. */}
           <div className="login-mark">
@@ -566,7 +288,8 @@ export function Login({
           <h1 className="login-title">
             Data <em>Pilot</em>
           </h1>
-          <p className="login-tagline">Your data, flown right.</p>
+          <p className="login-tagline">Cleared for insight.</p>
+
           {authMode === "google" ? (
             <>
               <div className="login-div">sign in</div>
@@ -579,9 +302,7 @@ export function Login({
                   <span className="login-signing-title">Signing you in…</span>
                   {signing.phase === "warming" && (
                     <>
-                      <span className="annunciator warn">
-                        Waking warehouse · {signing.waitedS}s
-                      </span>
+                      <span className="annunciator warn">Waking warehouse · {signing.waitedS}s</span>
                       <span className="login-signing-note">
                         First visit after an idle hour spins the database up — no action needed.
                       </span>
@@ -589,10 +310,13 @@ export function Login({
                   )}
                 </div>
               )}
-              {error && !signing && <p className="error">{error}</p>}
+              {error && !signing && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
               {/* Preflight lamps carry the guarantees in the cockpit's own
-                  clipped voice; the capstone on the story panel spells
-                  row-level security out in full for a first-time reader. */}
+                  clipped voice; the impact cluster spells them out in full. */}
               <div className="annunciators login-preflight">
                 <span className="annunciator on">Google SSO</span>
                 <span className="annunciator on">RLS</span>
@@ -615,7 +339,11 @@ export function Login({
                   </button>
                 ))}
               </div>
-              {error && <p className="error">{error}</p>}
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
               <div className="annunciators login-preflight">
                 <span className="annunciator warn">Dev auth</span>
                 <span className="annunciator on">RLS</span>
@@ -624,9 +352,50 @@ export function Login({
             </>
           )}
         </div>
+
+        <section className="login-story" aria-label="What Data Pilot does">
+          <p className="login-lede">
+            <span className="instrument-label accent">What Data Pilot does</span>
+            <span>
+              Ask a question, get a boardroom-ready report — no analyst queue, no dashboard hunt.
+            </span>
+          </p>
+
+          <ul className="bene-grid">
+            {BENEFITS.map((b) => (
+              <li key={b.key} className="bene-cell">
+                <div className="bene-head">
+                  <span className="bene-step">{b.step}</span>
+                  <span className="instrument-label">{b.label}</span>
+                </div>
+                <b className="bene-title">{b.title}</b>
+                <div className="bene-visual">
+                  <b.Visual />
+                </div>
+                <p className="bene-body">{b.body}</p>
+              </li>
+            ))}
+          </ul>
+
+          <div className="login-asks">
+            <span className="instrument-label dim">Questions people ask it</span>
+            <ul>
+              {EXAMPLE_QUESTIONS.map((q) => (
+                <li key={q}>{q}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
       </div>
 
-      <Walkthrough active={active} setActive={setActive} setPaused={setPaused} />
+      <div className="login-impact">
+        {IMPACT.map((m) => (
+          <div key={m.label} className="login-imp">
+            <b>{m.value}</b>
+            <small>{m.label}</small>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

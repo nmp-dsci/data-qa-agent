@@ -26,7 +26,7 @@ import { SettingsPage } from "../features/settings/SettingsPage";
 import { NavRail, View } from "./NavRail";
 import { BottomNav, MobileTopBar } from "./MobileNav";
 import { Sheet } from "../ui/Sheet";
-import { IconHistory } from "../ui/icons";
+import { History } from "lucide-react";
 
 // Code-split the SQL editor: CodeMirror only loads when the tab is opened.
 const SqlEditor = lazy(() =>
@@ -41,6 +41,7 @@ const ExplorePage = lazy(() =>
 const OpsPage = lazy(() => import("../features/ops/OpsPage").then((m) => ({ default: m.OpsPage })));
 import { Command, CommandPalette } from "../ui/CommandPalette";
 import { ChartSqlContext } from "../ui/charts/sqlLink";
+import { Canopy } from "../ui/Canopy";
 import { Login } from "./Login";
 
 /** Rebuild a renderable result from a stored assistant message (history reopen).
@@ -333,7 +334,7 @@ export default function App() {
     { id: "sql", label: "Go to SQL Editor", hint: "navigate", run: () => setView("sql") },
     ...(user?.role === "admin"
       ? [
-          { id: "ops", label: "Go to Ops", hint: "navigate", run: () => setView("ops") },
+          { id: "ops", label: "Go to Operations", hint: "navigate", run: () => setView("ops") },
           { id: "admin", label: "Go to Admin", hint: "navigate", run: () => setView("admin") },
         ]
       : []),
@@ -376,6 +377,11 @@ export default function App() {
 
   return (
     <ChartSqlContext.Provider value={openInSqlEditor}>
+    {/* The same night-flight scene the login flies over, at ambient strength.
+        A sibling of .app, never a child: .app's view-in keyframe uses a
+        transform, which would make it the containing block for a fixed
+        descendant for the length of the animation and jolt the sky. */}
+    <Canopy variant="ambient" />
     <div className="app">
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
       {!isMobile && (
@@ -394,7 +400,7 @@ export default function App() {
                   title="Conversation history"
                   onClick={() => setConvSheetOpen(true)}
                 >
-                  <IconHistory />
+                  <History size={20} strokeWidth={1.8} />
                 </button>
               ) : undefined
             }

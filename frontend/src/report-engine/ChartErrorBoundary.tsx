@@ -6,6 +6,7 @@
 // the blast radius to one card: the failed object shows a fallback, the rest of
 // the report renders normally. `resetKey` lets a re-authored object recover
 // without a full remount (a boundary otherwise stays failed until unmounted).
+import { TriangleAlert } from "lucide-react";
 import { Component, ErrorInfo, ReactNode } from "react";
 
 interface Props {
@@ -45,6 +46,9 @@ export class ChartErrorBoundary extends Component<Props, State> {
         <div
           role="note"
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
             padding: "14px 16px",
             fontSize: 13,
             color: "var(--muted, #9aa4bb)",
@@ -53,7 +57,8 @@ export class ChartErrorBoundary extends Component<Props, State> {
             background: "var(--panel-2, #171c2b)",
           }}
         >
-          ⚠ This {this.props.label ?? "object"} couldn't render.
+          <TriangleAlert size={13} style={{ flexShrink: 0 }} />
+          This {this.props.label ?? "object"} couldn't render.
         </div>
       );
     }

@@ -17,6 +17,8 @@ import {
   type SqlRunResult,
   type User,
 } from "../../lib/api";
+import { Sparkles } from "lucide-react";
+import { KitSelect } from "@/components/kit/KitSelect";
 import { SpecChart } from "../../ui/SpecChart";
 import { Annunciator, Annunciators } from "../../ui/flightdeck";
 import { useTheme, type Theme } from "../../lib/theme";
@@ -779,7 +781,7 @@ export function SqlEditor({
 
         {/* AI assist bar */}
         <div className="ai-bar">
-          <span className="ai-spark">✨</span>
+          <span className="ai-spark" aria-hidden="true"><Sparkles size={14} /></span>
           <input
             className="ai-input"
             value={aiPrompt}
@@ -834,7 +836,7 @@ export function SqlEditor({
 
         {aiNote && (
           <div className="ai-note">
-            <span className="ai-spark">✨</span> {aiNote}
+            <span className="ai-spark" aria-hidden="true"><Sparkles size={13} /></span> {aiNote}
           </div>
         )}
 
@@ -1029,52 +1031,48 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
           <div className="chart-controls">
             <label>
               <span>Mark</span>
-              <select
+              <KitSelect
                 value={chartConfig.mark}
-                onChange={(e) => updateChartConfig({ mark: e.target.value as ChartMark })}
-              >
-                {CHART_MARKS.map((mark) => (
-                  <option key={mark} value={mark}>
-                    {mark}
-                  </option>
-                ))}
-              </select>
+                ariaLabel="Chart mark"
+                onValueChange={(v) => updateChartConfig({ mark: v as ChartMark })}
+                options={CHART_MARKS.map((mark) => ({ value: mark, label: mark }))}
+              />
             </label>
             <label>
               <span>X</span>
-              <select value={chartConfig.x} onChange={(e) => updateChartConfig({ x: e.target.value })}>
-                {result.columns.map((col) => (
-                  <option key={col} value={col}>
-                    {col}
-                  </option>
-                ))}
-              </select>
+              <KitSelect
+                value={chartConfig.x}
+                ariaLabel="X column"
+                onValueChange={(v) => updateChartConfig({ x: v })}
+                options={result.columns.map((col) => ({ value: col, label: col }))}
+              />
             </label>
             <label>
               <span>Y</span>
-              <select value={chartConfig.y} onChange={(e) => updateChartConfig({ y: e.target.value })}>
-                {result.columns.map((col, idx) => (
-                  <option key={col} value={col} disabled={!numeric[idx]}>
-                    {col}
-                  </option>
-                ))}
-              </select>
+              <KitSelect
+                value={chartConfig.y}
+                ariaLabel="Y column"
+                onValueChange={(v) => updateChartConfig({ y: v })}
+                options={result.columns.map((col, idx) => ({
+                  value: col,
+                  label: col,
+                  disabled: !numeric[idx],
+                }))}
+              />
             </label>
             <label>
               <span>Series</span>
-              <select
+              <KitSelect
                 value={chartConfig.series ?? ""}
-                onChange={(e) => updateChartConfig({ series: e.target.value || null })}
-              >
-                <option value="">None</option>
-                {result.columns
-                  .filter((col) => col !== chartConfig.x && col !== chartConfig.y)
-                  .map((col) => (
-                    <option key={col} value={col}>
-                      {col}
-                    </option>
-                  ))}
-              </select>
+                ariaLabel="Series column"
+                onValueChange={(v) => updateChartConfig({ series: v || null })}
+                options={[
+                  { value: "", label: "None" },
+                  ...result.columns
+                    .filter((col) => col !== chartConfig.x && col !== chartConfig.y)
+                    .map((col) => ({ value: col, label: col })),
+                ]}
+              />
             </label>
           </div>
           {chartSpec ? (

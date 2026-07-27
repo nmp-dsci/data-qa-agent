@@ -7,9 +7,39 @@ import { login } from "./helpers";
 
 // Scan the brand-default dark theme; light gets the same tokens re-audited
 // through the visual suite when its baselines change.
+//
+// reducedMotion is load-bearing, not a preference: axe computes contrast from
+// composited colour, so an element caught mid-fade is measured at partial
+// opacity and reports a violation the user never sees. The s33 login opens
+// with a staggered entrance, which made this flake — the gold avatar blended
+// to #a58b58 against the card. Reduced motion collapses every duration to ~0,
+// so all three scans assess the resting state, which is what an audit should
+// judge (and is itself the accessibility-relevant configuration).
+//
+// It has to be emulateMedia: under Playwright 1.61 `reducedMotion` passed to
+// test.use is silently ignored (colorScheme from the same call does apply), so
+// declaring it there leaves the entrance running and the flake live. settle()
+// below covers finite animations either way, but only this reaches the CSS.
 test.use({ colorScheme: "dark" });
 
+test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+});
+
+/** Wait for every finite animation to finish before scanning. Infinite ones
+ *  (the login's HUD heading tape) are skipped — they never finish, and their
+ *  elements carry no contrast-critical text. */
+async function settle(page: import("@playwright/test").Page) {
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => {
+      const timing = a.effect?.getComputedTiming();
+      return timing?.iterations === Infinity || a.playState === "finished";
+    }),
+  );
+}
+
 async function expectNoSeriousViolations(page: import("@playwright/test").Page) {
+  await settle(page);
   const results = await new AxeBuilder({ page }).analyze();
   const gating = results.violations.filter((v) =>
     ["serious", "critical"].includes(v.impact ?? ""),

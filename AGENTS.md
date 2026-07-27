@@ -280,22 +280,24 @@ product micro-mocks (a full-width diagonal sweep was mocked but dropped — it f
 cards); the chat hero's flight-plan strip is a single column rather than the mocked four-across row, since
 four columns at the hero's 620px cap leave no room for the question text. The rebrand shipped as one PR
 across all eight app surfaces (chat, SQL editor, Explore, Goldens, Evaluations, Admin, Settings, login) plus
-the day theme and an a11y/contrast pass, so `main` was never left half-branded.
+the day theme and an a11y/contrast pass, so `main` was never left half-branded. (The walkthrough itself was
+dropped in s33 — see below.)
 
 The login's Playwright visual baselines force `reducedMotion: "reduce"`: `animations: "disabled"` stops
-CSS/SMIL but not JS timers, and the walkthrough's auto-advance (each waypoint renders a different product
-micro-mock) would otherwise make the screenshot nondeterministic.
+CSS/SMIL but not JS timers, which mattered while the s25 walkthrough's auto-advance was still driving the
+screenshot; the night-flight canopy (s33) has its own motion gate instead (see below).
 
-**Card/airway legibility (s26).** E2e testing on the s25 PR flagged that "traffic behind a windshield"
-only read in the left panel and the gutters — the story column's `.walk-prop` cards were too opaque for
-the airways to show through it. Fixed two ways: inactive cards go more glass (`--panel` 58%→34%) while the
-active card (`.walk-prop.lit`, which carries the step's dense micro-mock) stays solid so it doesn't lose
-contrast, and the `.air-2`/`.air-3` aircraft + route opacities are raised, since card opacity alone
-couldn't fix visibility once the aircraft crossed behind the column — both stay subordinate to the hero
-Sortie. Verified by measurement rather than by eye: a probe hides card content to sample the true
+**Card/airway legibility (s26, superseded by s33).** E2e testing on the s25 PR flagged that "traffic behind
+a windshield" only read in the left panel and the gutters — the story column's `.walk-prop` cards were too
+opaque for the airways to show through it. Fixed two ways: inactive cards go more glass (`--panel` 58%→34%)
+while the active card (`.walk-prop.lit`, which carries the step's dense micro-mock) stays solid so it
+doesn't lose contrast, and the `.air-2`/`.air-3` aircraft + route opacities are raised, since card opacity
+alone couldn't fix visibility once the aircraft crossed behind the column — both stay subordinate to the
+hero Sortie. Verified by measurement rather than by eye: a probe hides card content to sample the true
 composited backdrop and checks it against the live `--text`/`--muted` tokens across viewports and themes,
 and a second probe checks row-luminance variation over the busiest card to confirm the airway is
-perceptible, not merely present.
+perceptible, not merely present. The `.walk-prop` cards and airway aircraft themselves are gone with the
+s25 walkthrough (s33) — this note is kept for the measurement technique, not the current markup.
 
 ### The night-flight canopy (s33)
 

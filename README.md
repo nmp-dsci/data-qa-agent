@@ -175,9 +175,9 @@ Sign in as `admin` and use the **Admin** button to inspect the live events feed,
 agent query runs. Each answered question writes a `query_runs` row with the user, dataset, SQL, row count,
 latency, and engine.
 
-## Ops (the flight deck)
+## Operations (the flight deck)
 
-Admins also get an **Ops** tab — one screen answering "is it healthy, safe, fast and affordable?" so you
+Admins also get an **Operations** tab — one screen answering "is it healthy, safe, fast and affordable?" so you
 don't have to grep CloudWatch. Latency and time-to-first-page percentiles, error and degraded rates,
 cost per answer (cache-adjusted — most input tokens are prompt-cache hits, so naive token counting
 overstates spend several-fold), traffic and thumbs-up rate, two SLOs with error-budget burn, marts

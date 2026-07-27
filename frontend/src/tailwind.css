@@ -1,4 +1,11 @@
 @import "tailwindcss";
+/* shadcn's own companion (what `shadcn init` installs): supplies the
+ * animate-in / fade-in-0 / zoom-in-95 / slide-in-from-* utilities the vendored
+ * components in components/ui already carry, so those Radix surfaces open and
+ * close as upstream intends instead of hard-cutting. Utilities only — nothing
+ * outside components/ui gains motion from this, and P4's "no animation
+ * library" call still stands for the app's own surfaces. */
+@import "tw-animate-css";
 
 /*
  * Tailwind v4 + shadcn/ui token bridge (s33 · Option B migration).

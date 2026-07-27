@@ -63,10 +63,10 @@ export function BottomNav({
           key={item.view}
           role="tab"
           aria-selected={view === item.view}
-          // The visible text is abbreviated to fit a thumb bar; the accessible
-          // name stays the full label, so a selector written against the
-          // desktop rail matches the mobile bar too.
-          aria-label={item.label}
+          // No aria-label: the accessible name has to stay the visible text, or
+          // speech input cannot activate a tab it can read (WCAG 2.5.3). Tests
+          // that need a stable hook use data-testid.
+          data-testid={`bnav-${item.view}`}
           className={view === item.view ? "bnav-item active" : "bnav-item"}
           onClick={() => setView(item.view)}
         >

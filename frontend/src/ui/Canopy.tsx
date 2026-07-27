@@ -73,12 +73,17 @@ function ridge(v: number): number {
 export function Canopy({ variant = "ambient" }: { variant?: CanopyVariant }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Phase lives outside the effect so re-running it (a theme flip re-samples
+  // the palette, a motion toggle restarts the loop) recolours the scene in
+  // place instead of snapping the terrain back to the vanishing point.
+  const offRef = useRef(0);
+  const clockRef = useRef(0);
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
   const motionOn = useAmbientMotion();
-  // Not read directly — it re-runs the effect so the palette is re-sampled
-  // when the theme flips (light "chart-paper" turns the starfield into a
-  // dot-field, which is the right answer on paper).
-  useTheme();
+  // Only used as an effect dependency: re-sampling the palette when the theme
+  // flips is what turns the starfield into a dot-field on light "chart-paper",
+  // which is the right answer on paper.
+  const theme = useTheme();
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -114,9 +119,6 @@ export function Canopy({ variant = "ambient" }: { variant?: CanopyVariant }) {
       canvas!.height = Math.max(1, Math.round(r.height * dpr));
     }
 
-    let off = 0;
-    let clock = 0;
-
     function paint(): void {
       const w = canvas!.width;
       const h = canvas!.height;
@@ -126,7 +128,7 @@ export function Canopy({ variant = "ambient" }: { variant?: CanopyVariant }) {
 
       // --- night sky ------------------------------------------------------
       for (const s of STARS) {
-        const twinkle = 0.7 + 0.3 * Math.sin(clock * 1.6 + s.phase);
+        const twinkle = 0.7 + 0.3 * Math.sin(clockRef.current * 1.6 + s.phase);
         ctx!.fillStyle = rgba(star, +(s.a * twinkle * starGain).toFixed(3));
         ctx!.beginPath();
         ctx!.arc(s.x * w, s.y * h, s.r * dpr, 0, 7);
@@ -182,7 +184,7 @@ export function Canopy({ variant = "ambient" }: { variant?: CanopyVariant }) {
         ctx!.stroke();
       }
       for (let k = 0; k < 15; k++) {
-        const d = (k / 15 + off) % 1;
+        const d = (k / 15 + offRef.current) % 1;
         if (d < 0.03) continue; // swallow the seam at the vanishing point
         const line: [number, number][] = [];
         for (let v = -1.6; v <= 1.601; v += 0.05) {
@@ -212,8 +214,8 @@ export function Canopy({ variant = "ambient" }: { variant?: CanopyVariant }) {
     function frame(ts: number): void {
       const dt = last ? ts - last : 16;
       last = ts;
-      off = (off + dt * SPEED) % 1;
-      clock += dt * 0.001;
+      offRef.current = (offRef.current + dt * SPEED) % 1;
+      clockRef.current += dt * 0.001;
       if (ts - painted >= minFrameMs) {
         painted = ts;
         paint();
@@ -249,7 +251,7 @@ export function Canopy({ variant = "ambient" }: { variant?: CanopyVariant }) {
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [variant, reduced, motionOn]);
+  }, [variant, reduced, motionOn, theme]);
 
   return (
     <div ref={wrapRef} className={`canopy canopy-${variant}`} aria-hidden="true">

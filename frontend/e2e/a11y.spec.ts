@@ -15,7 +15,16 @@ import { login } from "./helpers";
 // to #a58b58 against the card. Reduced motion collapses every duration to ~0,
 // so all three scans assess the resting state, which is what an audit should
 // judge (and is itself the accessibility-relevant configuration).
-test.use({ colorScheme: "dark", reducedMotion: "reduce" });
+//
+// It has to be emulateMedia: under Playwright 1.61 `reducedMotion` passed to
+// test.use is silently ignored (colorScheme from the same call does apply), so
+// declaring it there leaves the entrance running and the flake live. settle()
+// below covers finite animations either way, but only this reaches the CSS.
+test.use({ colorScheme: "dark" });
+
+test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+});
 
 /** Wait for every finite animation to finish before scanning. Infinite ones
  *  (the login's HUD heading tape) are skipped — they never finish, and their

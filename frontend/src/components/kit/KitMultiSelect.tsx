@@ -75,7 +75,7 @@ export function KitMultiSelect({
           <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] min-w-52 p-0" align="start">
+      <PopoverContent className="w-(--radix-popover-trigger-width) min-w-52 p-0" align="start">
         <Command>
           <CommandInput placeholder={searchPlaceholder} className="h-9" />
           <CommandList>

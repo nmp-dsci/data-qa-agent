@@ -46,6 +46,9 @@ export class ChartErrorBoundary extends Component<Props, State> {
         <div
           role="note"
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
             padding: "14px 16px",
             fontSize: 13,
             color: "var(--muted, #9aa4bb)",
@@ -54,7 +57,7 @@ export class ChartErrorBoundary extends Component<Props, State> {
             background: "var(--panel-2, #171c2b)",
           }}
         >
-          <TriangleAlert size={13} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+          <TriangleAlert size={13} style={{ flexShrink: 0 }} />
           This {this.props.label ?? "object"} couldn't render.
         </div>
       );

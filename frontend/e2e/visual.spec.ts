@@ -8,6 +8,27 @@
 import { expect, test } from "@playwright/test";
 import { login } from "./helpers";
 
+// Every shot in this file is taken under reduced motion, and that is
+// load-bearing for determinism rather than a preference: `animations:
+// "disabled"` stops CSS and SMIL but not a requestAnimationFrame loop, and
+// since s33 the whole backdrop is one (ui/Canopy.tsx — a starfield over a
+// scrolling grid terrain). The ambient variant of that canopy is fixed behind
+// every app screen and .app/.app-body/.view-host are transparent, so it reads
+// through the content area on the hero, settings and SQL shots exactly as it
+// does on the login. Reduced motion makes the canopy paint exactly one frame
+// at offset 0; without it the grid phase advances ~1.4%/s against a line
+// spacing of 1/15 of a cycle, so a shot taken a second later than the last run
+// lands a fifth of a grid gap off. These baselines therefore double as the
+// reduced-motion still's regression test.
+//
+// It has to be emulateMedia and not `test.use({ reducedMotion: "reduce" })`:
+// under Playwright 1.61 that fixture option is silently ignored (colorScheme
+// and viewport from the same test.use do apply), so the option reads as if the
+// scene were frozen while the rAF loop keeps running.
+test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+});
+
 const TIERS = [
   { name: "desktop", viewport: { width: 1440, height: 900 } },
   { name: "mobile", viewport: { width: 390, height: 844 } },
@@ -17,16 +38,7 @@ for (const tier of TIERS) {
   test.describe(`visual · ${tier.name}`, () => {
     test.use({ viewport: tier.viewport, colorScheme: "dark" });
 
-    // The login runs under reduced motion, and that is load-bearing for
-    // determinism rather than a preference: `animations: "disabled"` stops CSS
-    // and SMIL but not a requestAnimationFrame loop, and since s33 the whole
-    // backdrop is one (ui/Canopy.tsx — a starfield over a scrolling grid
-    // terrain), so an unfrozen shot differs on every run. Reduced motion makes
-    // the canopy paint exactly one frame at offset 0, which is deterministic.
-    // It also means this baseline doubles as the reduced-motion still's
-    // regression test.
     test.describe("login", () => {
-      test.use({ reducedMotion: "reduce" });
       test(`login (${tier.name})`, async ({ page }) => {
         await page.goto("/");
         await page.getByText("Data Pilot").first().waitFor();

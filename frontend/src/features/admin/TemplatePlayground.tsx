@@ -4,6 +4,7 @@
 // through the production PageLayout. This is the admin's (and the Playwright
 // suite's) proof that any layout × any chart-per-column renders — the same
 // interface a human uses to check it.
+import { KitSelect } from "@/components/kit/KitSelect";
 import { useMemo, useState } from "react";
 import type { Page, PageObjectType, TemplateId } from "../../lib/api";
 import { PageLayout } from "../../report-engine/PageLayout";
@@ -72,29 +73,21 @@ export function TemplatePlayground() {
         {Array.from({ length: colCount }, (_, i) => (
           <div className="playground-row" key={i}>
             <span className="playground-label">Column {i + 1}</span>
-            <select
-              data-testid={`playground-col-${i}-type`}
+            <KitSelect
+              testId={`playground-col-${i}-type`}
+              ariaLabel={`Column ${i + 1} object type`}
               value={cols[i].type}
-              onChange={(e) => setCol(i, { type: e.target.value as PageObjectType })}
-            >
-              {CHART_OPTIONS.map((o) => (
-                <option key={o.type} value={o.type}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <select
-              data-testid={`playground-col-${i}-height`}
-              value={cols[i].height}
-              onChange={(e) => setCol(i, { height: e.target.value as HeightChoice })}
+              onValueChange={(v) => setCol(i, { type: v as PageObjectType })}
+              options={CHART_OPTIONS.map((o) => ({ value: o.type, label: o.label }))}
+            />
+            <KitSelect
+              testId={`playground-col-${i}-height`}
+              ariaLabel={`Column ${i + 1} height`}
               title="chart height (fill stretches to the column)"
-            >
-              {HEIGHT_CHOICES.map((h) => (
-                <option key={h} value={h}>
-                  height: {h}
-                </option>
-              ))}
-            </select>
+              value={cols[i].height}
+              onValueChange={(v) => setCol(i, { height: v as HeightChoice })}
+              options={HEIGHT_CHOICES.map((h) => ({ value: h, label: `height: ${h}` }))}
+            />
           </div>
         ))}
       </div>

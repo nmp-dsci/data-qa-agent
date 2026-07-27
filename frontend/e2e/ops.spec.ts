@@ -11,7 +11,7 @@ import { login } from "./helpers";
 test("admin sees the Ops tab and the deck renders on a cold rollup", async ({ page }) => {
   await login(page, "Admin");
 
-  await page.getByRole("tab", { name: "Ops" }).click();
+  await page.getByRole("tab", { name: "Operations" }).click();
 
   // The frame, not the numbers: a cold rollup has no data yet, and that is the
   // state this assertion is protecting.
@@ -39,7 +39,7 @@ test("admin sees the Ops tab and the deck renders on a cold rollup", async ({ pa
 test("a non-admin has no Ops tab and cannot deep-link to it", async ({ page }) => {
   await login(page, "User One");
 
-  await expect(page.getByRole("tab", { name: "Ops" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Operations" })).toHaveCount(0);
 
   // The route guard bounces a hand-typed /ops back to chat rather than
   // rendering an empty deck that then 403s on every fetch.
@@ -50,7 +50,7 @@ test("a non-admin has no Ops tab and cannot deep-link to it", async ({ page }) =
 
 test("refresh builds the rollup and stamps it", async ({ page }) => {
   await login(page, "Admin");
-  await page.getByRole("tab", { name: "Ops" }).click();
+  await page.getByRole("tab", { name: "Operations" }).click();
 
   const deck = page.getByRole("main", { name: "Operations" });
   await deck.getByRole("button", { name: "refresh" }).click();

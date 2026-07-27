@@ -1,6 +1,9 @@
 // Feedback triage + eval-case management: promote feedback to evals, triage
 // to user memory / dismiss, and run the staleness pass over eval cases.
+import { KitEmpty } from "@/components/kit/KitEmpty";
+import { Gauge, MessageSquare, ThumbsDown, ThumbsUp } from "lucide-react";
 import { Fragment, useState } from "react";
+import { KitSelect } from "@/components/kit/KitSelect";
 import {
   AdminFeedback,
   EvalCase,
@@ -71,19 +74,25 @@ export function FeedbackAdmin({
       <section>
         <h3>Feedback ({newCount} new)</h3>
         <div className="fb-admin-actions">
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">All statuses</option>
-            {[...new Set(feedback.map((f) => f.status))].sort().map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <select value={ratingFilter} onChange={(e) => setRatingFilter(e.target.value)}>
-            <option value="">All ratings</option>
-            <option value="1">Thumbs up</option>
-            <option value="-1">Thumbs down</option>
-          </select>
+          <KitSelect
+            value={statusFilter}
+            ariaLabel="Filter by status"
+            onValueChange={setStatusFilter}
+            options={[
+              { value: "", label: "All statuses" },
+              ...[...new Set(feedback.map((f) => f.status))].sort().map((s) => ({ value: s, label: s })),
+            ]}
+          />
+          <KitSelect
+            value={ratingFilter}
+            ariaLabel="Filter by rating"
+            onValueChange={setRatingFilter}
+            options={[
+              { value: "", label: "All ratings" },
+              { value: "1", label: "Thumbs up" },
+              { value: "-1", label: "Thumbs down" },
+            ]}
+          />
           <button
             className="chip"
             disabled={busy || selected.size === 0}
@@ -124,7 +133,7 @@ export function FeedbackAdmin({
                       <div className="fb-user">
                         <span>{f.username}</span>
                         <span className="fb-user-meta">
-                          <span>{f.rating === 1 ? "👍" : "👎"}</span>
+                          <span>{f.rating === 1 ? <ThumbsUp size={12} /> : <ThumbsDown size={12} />}</span>
                           {f.issue_flag && <span className="issue-icon">!</span>}
                           {f.accurate != null && (
                             <span>{f.accurate ? "accurate" : "questioned"}</span>
@@ -197,8 +206,12 @@ export function FeedbackAdmin({
               ))}
               {filteredFeedback.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted">
-                    No feedback yet.
+                  <td colSpan={7}>
+                    <KitEmpty
+                      icon={MessageSquare}
+                      title="No feedback yet"
+                      hint="Users leave feedback by clicking any element of an answer. It arrives here for triage."
+                    />
                   </td>
                 </tr>
               )}
@@ -258,8 +271,12 @@ export function FeedbackAdmin({
               ))}
               {evalCases.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted">
-                    No eval cases yet — promote feedback above to create some.
+                  <td colSpan={6}>
+                    <KitEmpty
+                      icon={Gauge}
+                      title="No eval cases yet"
+                      hint="Select feedback above and promote it — each case becomes a scored regression for the agent."
+                    />
                   </td>
                 </tr>
               )}

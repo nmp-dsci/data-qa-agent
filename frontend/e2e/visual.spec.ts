@@ -19,13 +19,12 @@ for (const tier of TIERS) {
 
     // The login runs under reduced motion, and that is load-bearing for
     // determinism rather than a preference: `animations: "disabled"` stops CSS
-    // and SMIL but not JS timers, so the 4s walkthrough auto-advance would
-    // land on a different waypoint run to run — and since s25 the active
-    // waypoint renders a different product micro-mock, that's a large diff,
-    // not a small one. Reduced motion suspends the auto-advance (pinning the
-    // slide to 01) and freezes the drifting HUD readouts at their nominal
-    // values, so the shot is stable. It also means this baseline doubles as
-    // the reduced-motion still's regression test.
+    // and SMIL but not a requestAnimationFrame loop, and since s33 the whole
+    // backdrop is one (ui/Canopy.tsx — a starfield over a scrolling grid
+    // terrain), so an unfrozen shot differs on every run. Reduced motion makes
+    // the canopy paint exactly one frame at offset 0, which is deterministic.
+    // It also means this baseline doubles as the reduced-motion still's
+    // regression test.
     test.describe("login", () => {
       test.use({ reducedMotion: "reduce" });
       test(`login (${tier.name})`, async ({ page }) => {

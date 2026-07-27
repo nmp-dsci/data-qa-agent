@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s33 · Data Pilot UI Redesign Investigation</title>
+<style>
+  :root{
+    --bg:#0a0d15; --panel:#111624; --panel-2:#161c2e; --panel-3:#1b2236;
+    --border:#232b40; --border-2:#2e3852;
+    --text:#e8ebf2; --muted:#98a2b8; --faint:#6b7691;
+    --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204;
+    --blue:#6ea8fe; --good:#5dd39e; --warn:#e8c268; --bad:#e5747a; --purple:#b8a1f0;
+    --radius:8px; --radius-lg:10px; --radius-xl:14px;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --ease:cubic-bezier(.2,.8,.2,1);
+  }
+  *{box-sizing:border-box;min-width:0}
+  body{margin:0;background:var(--bg);color:var(--text);font:14.5px/1.55 var(--sans);
+    background-image:radial-gradient(rgba(110,168,254,.05) 1px,transparent 1px);background-size:26px 26px}
+  .wrap{max-width:1100px;margin:0 auto;padding:34px 26px 90px}
+  h1,h2,h3{line-height:1.25;margin:0 0 10px}
+  h1{font-size:27px;letter-spacing:-.4px}
+  h1 em{font-style:normal;color:var(--accent-soft)}
+  h2{font-size:19px;margin-top:0}
+  h3{font-size:15px}
+  p{margin:8px 0}
+  a{color:var(--blue)}
+  section{margin:44px 0}
+  .ilabel{font:600 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  .ilabel.blue{color:var(--blue)} .ilabel.dim{color:var(--faint)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px 20px}
+  .hud{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+  .hud::before,.hud::after{content:"";position:absolute;width:10px;height:10px;border:1.5px solid var(--accent);opacity:.55}
+  .hud::before{top:-1px;left:-1px;border-right:none;border-bottom:none;border-radius:3px 0 0 0}
+  .hud::after{bottom:-1px;right:-1px;border-left:none;border-top:none;border-radius:0 0 3px 0}
+  .grid{display:grid;gap:12px}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+  .big{font:600 20px/1.2 var(--sans)}
+  .mut{color:var(--muted)} .fnt{color:var(--faint);font-size:12.5px}
+  code,.mono{font-family:var(--mono);font-size:.92em}
+  code{background:var(--panel-2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;white-space:nowrap}
+  .tblwrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th{font:600 10.5px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);text-align:left;
+     padding:10px 12px;border-bottom:1px solid var(--border-2);background:var(--panel-2);white-space:nowrap}
+  td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .pill{display:inline-block;font:600 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+    border:1px solid var(--border-2);border-radius:999px;padding:4px 8px;color:var(--muted);white-space:nowrap}
+  .pill.gold{color:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+  .pill.good{color:var(--good);border-color:color-mix(in srgb,var(--good) 40%,transparent)}
+  .pill.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+  .pill.blue{color:var(--blue);border-color:color-mix(in srgb,var(--blue) 40%,transparent)}
+  .pill.purple{color:var(--purple);border-color:color-mix(in srgb,var(--purple) 40%,transparent)}
+  img.shot{width:100%;border-radius:var(--radius);border:1px solid var(--border-2);display:block}
+  .shotcap{font:600 10px/1.4 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-top:6px}
+  /* option cards */
+  .opt{border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--panel);padding:16px 18px;position:relative}
+  .opt.rec{border-color:color-mix(in srgb,var(--accent) 55%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 25%,transparent)}
+  .opt .tag{position:absolute;top:-9px;right:14px;background:var(--accent);color:var(--accent-ink);
+    font:700 9.5px/1 var(--mono);letter-spacing:.1em;padding:4px 8px;border-radius:999px;text-transform:uppercase}
+  ul{margin:6px 0;padding-left:20px} li{margin:4px 0}
+  .kv{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  /* ---------- LOGIN CONCEPT MOCK ---------- */
+  .mockframe{position:relative;border:1px solid var(--border-2);border-radius:var(--radius-xl);overflow:hidden;
+    aspect-ratio:16/9.5;background:#070a12;isolation:isolate}
+  .mock-sky{position:absolute;inset:0;background:
+    radial-gradient(120% 90% at 50% 118%, rgba(217,168,78,.14), transparent 55%),
+    radial-gradient(90% 60% at 20% -10%, rgba(110,168,254,.08), transparent 60%),
+    linear-gradient(#02040a 0%, #070b16 58%, #0b101f 100%)}
+  .mock-globe{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .mock-vig{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 100% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%)}
+  .hudlayer{position:absolute;inset:0;pointer-events:none;color:#8fd4a8}
+  .hudlayer .htape{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:min(46%,420px);overflow:hidden}
+  .htape svg{display:block;width:200%;animation:tape 26s linear infinite}
+  @keyframes tape{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .hud-readout{position:absolute;top:34px;font:600 11px/1.5 var(--mono);letter-spacing:.1em;
+    border:1px solid rgba(143,212,168,.4);border-radius:4px;padding:5px 9px;background:rgba(7,12,18,.55)}
+  .hud-readout b{font-size:15px;color:#c4f0d4;font-weight:700}
+  .hud-readout.l{left:9%} .hud-readout.r{right:9%;color:#8fd4a8}
+  .mock-scrim{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(95% 130% at 16% 55%, rgba(3,5,10,.82), rgba(3,5,10,.30) 46%, transparent 66%)}
+  .mock-card{position:absolute;left:6.5%;top:50%;transform:translateY(-50%);width:min(272px,32%);
+    background:rgba(15,19,32,.78);border:1px solid var(--border-2);border-radius:14px;padding:18px;
+    backdrop-filter:blur(7px);text-align:center}
+  .mock-card .bm{width:40px;height:40px;border-radius:11px;margin:0 auto 8px;
+    background:linear-gradient(135deg,var(--accent-soft),var(--accent));display:grid;place-items:center}
+  .mock-card h4{margin:0;font-size:17px} .mock-card h4 em{font-style:normal;color:var(--accent-soft)}
+  .mock-card p{font-size:11.5px;color:var(--muted);margin:3px 0 12px}
+  .mc-cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+    background:linear-gradient(135deg,var(--accent-soft),var(--accent));color:var(--accent-ink);
+    font:700 12px var(--sans);border:none;border-radius:9px;padding:10px 12px;cursor:pointer}
+  .mc-cta:hover{filter:brightness(1.06)}
+  .mc-cta .g{width:15px;height:15px;border-radius:50%;background:#fff;display:grid;place-items:center;
+    font:800 9.5px var(--sans);color:#1a1204}
+  .mc-div{display:flex;align-items:center;gap:8px;margin:11px 0 9px;color:var(--faint);
+    font:600 8.5px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+  .mc-div::before,.mc-div::after{content:"";flex:1;height:1px;background:var(--border-2)}
+  .mock-card .btnrow{display:grid;gap:6px}
+  .mock-card .b{border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:11px;color:var(--muted);
+    background:var(--panel-2);text-align:left}
+  .mock-card .b b{color:var(--text);font-weight:600}
+  .mc-trust{display:flex;gap:5px;justify-content:center;margin-top:12px}
+  .mc-trust span{font:600 8px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--good);
+    border:1px solid color-mix(in srgb,var(--good) 35%,transparent);border-radius:999px;padding:3px 8px}
+  /* app highlight reel (right panel of the login mock) */
+  .mock-reel{position:absolute;left:37.5%;right:4.5%;top:47%;transform:translateY(-50%);
+    background:rgba(17,22,36,.72);border:1px solid var(--border-2);border-radius:14px;padding:15px 17px;
+    backdrop-filter:blur(6px)}
+  .reel-cap{font:600 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+  .bene-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .bene-cell{background:rgba(11,15,26,.55);border:1px solid var(--border);border-radius:10px;padding:10px 11px;min-width:0}
+  .bene-cell>b{display:block;font:600 10px var(--mono);letter-spacing:.1em;color:var(--accent-soft);text-transform:uppercase;margin-bottom:7px}
+  .rs-mini{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 9px}
+  .rs-mini h5{margin:0 0 6px;font:600 10.5px var(--sans);color:var(--text)}
+  .rs-cap{font-size:10.5px;color:var(--muted);margin-top:7px;line-height:1.45}
+  .rs-result{display:flex;justify-content:space-between;font:500 9.5px var(--mono);color:var(--muted);
+    background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;margin-top:6px}
+  .rs-insight{border-left:2px solid var(--accent);padding-left:8px;font-size:10.5px;color:var(--text);margin-top:7px}
+  .rs-bubble{background:var(--panel-3);border:1px solid var(--border-2);border-radius:8px 8px 8px 2px;padding:6px 9px;font-size:11px;margin-bottom:8px}
+  .rs-tiles{display:flex;gap:6px;margin-bottom:8px}
+  .rs-tiles span{flex:1;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:5px 7px;font:700 13px var(--sans);color:var(--accent-soft)}
+  .rs-tiles small{display:block;font:600 7.5px var(--mono);letter-spacing:.1em;color:var(--faint)}
+  .rs-line{width:100%;height:30px}
+  .rs-row{background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:10.5px;margin-bottom:6px;color:var(--text)}
+  .rs-row i{float:right;font-style:normal;font:600 8px var(--mono);color:var(--good);letter-spacing:.08em;text-transform:uppercase}
+  .rs-chips{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+  .rs-chips span{font:600 9px var(--mono);letter-spacing:.08em;border:1px solid;border-radius:999px;padding:4px 9px;width:max-content}
+  .rs-chips .t{color:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+  .rs-chips .c{color:var(--blue);border-color:color-mix(in srgb,var(--blue) 45%,transparent)}
+  .rs-code{font:500 10px/1.6 var(--mono);background:var(--panel-3);border:1px solid var(--border-2);border-radius:6px;padding:8px 9px;color:var(--muted);margin-bottom:8px}
+  .rs-run{font:700 9px var(--mono);letter-spacing:.1em;background:linear-gradient(135deg,var(--accent-soft),var(--accent));color:var(--accent-ink);border-radius:6px;padding:4px 9px}
+  /* product-impact instrument cluster (fills the center) */
+  .impact{position:absolute;left:50%;bottom:5.5%;transform:translateX(-50%);display:flex;gap:10px;flex-wrap:nowrap}
+  .imp{position:relative;background:rgba(15,19,32,.68);border:1px solid var(--border-2);border-radius:8px;
+    padding:8px 13px;backdrop-filter:blur(4px);white-space:nowrap}
+  .imp::before,.imp::after{content:"";position:absolute;width:9px;height:9px;border:1.5px solid var(--accent);opacity:.5}
+  .imp::before{top:-1px;left:-1px;border-right:none;border-bottom:none;border-radius:3px 0 0 0}
+  .imp::after{bottom:-1px;right:-1px;border-left:none;border-top:none;border-radius:0 0 3px 0}
+  .imp b{display:block;font:700 15px/1.2 var(--sans);color:var(--accent-soft)}
+  .imp small{font:600 7.5px var(--mono);letter-spacing:.11em;color:var(--muted);text-transform:uppercase}
+  @media (prefers-reduced-motion: reduce){ .htape svg{animation:none} }
+  /* ---------- SIDEBAR MOCK ---------- */
+  .railmock{display:flex;height:330px;border:1px solid var(--border-2);border-radius:var(--radius-lg);overflow:hidden;background:var(--bg)}
+  .mrail{width:56px;flex:none;display:flex;flex-direction:column;gap:4px;padding:10px 8px 12px;
+    background:var(--panel);border-right:1px solid var(--border);transition:width .18s var(--ease);overflow:hidden}
+  .mrail:hover,.mrail:focus-within{width:196px}
+  .mitem{display:flex;align-items:center;gap:11px;height:40px;flex:none;border:none;background:transparent;color:var(--muted);
+    border-radius:var(--radius-lg);padding:0 10px;cursor:pointer;font:500 13px var(--sans);white-space:nowrap;width:100%;text-align:left}
+  .mitem svg{flex:none}
+  .mitem span{opacity:0;transform:translateX(-6px);transition:opacity .14s var(--ease) .05s,transform .14s var(--ease) .05s}
+  .mrail:hover .mitem span,.mrail:focus-within .mitem span{opacity:1;transform:none}
+  .mitem:hover{color:var(--text);background:var(--panel-2)}
+  .mitem.on{color:var(--accent-soft);background:var(--panel-3);box-shadow:inset 2px 0 0 var(--accent),inset 0 0 0 1px var(--border-2)}
+  .mbrand{margin:0 0 8px;padding:0 3px}
+  .mfoot{margin-top:auto}
+  .railmock .stage{flex:1;display:grid;place-items:center;color:var(--faint);font:600 11px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+  /* forms / decision panel */
+  form.q{margin:0}
+  .q label{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius);
+    margin:6px 0;cursor:pointer;background:var(--panel-2)}
+  .q label:hover{border-color:var(--border-2)}
+  .q input{margin-top:3px;accent-color:var(--accent)}
+  .q .lt b{display:block;font-size:13.5px}
+  .q .lt small{color:var(--muted);font-size:12px;line-height:1.45;display:block}
+  .qbtn{margin-top:10px;background:linear-gradient(135deg,var(--accent-soft),var(--accent));color:var(--accent-ink);
+    font:700 12px var(--sans);border:none;border-radius:8px;padding:9px 16px;cursor:pointer}
+  .qbtn:hover{filter:brightness(1.06)}
+  .note{border-left:2px solid var(--accent);padding:2px 0 2px 12px;color:var(--muted);font-size:13px;margin:12px 0}
+  .flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .ph{border:1px solid var(--border-2);border-radius:var(--radius);padding:8px 12px;background:var(--panel);font-size:12.5px}
+  .ph b{display:block;font:600 10px var(--mono);letter-spacing:.1em;color:var(--accent);text-transform:uppercase}
+  .arrow{color:var(--faint)}
+  hr{border:none;border-top:1px solid var(--border);margin:30px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="ilabel">s33 · investigation · branch <span style="color:var(--text)">ui-changes</span> · 2026-07-27</p>
+  <h1>De-AI-ing the <em>Data Pilot</em> UI</h1>
+  <p class="mut" style="max-width:760px">Full review of every surface, a reuse-first library strategy so the agent stops hand-building
+  chrome, and concepts for the login scene, tagline, sidebar, and in-app background. Live mocks below are working
+  spec — annotate anything, and answer the four decision questions at the end.</p>
+  <div class="grid g4" style="margin-top:18px">
+    <div class="hud"><p class="ilabel dim">root cause</p><div class="big">Inconsistency, not brand</div><p class="fnt">8 button styles · no spacing/type scale · native selects · 229 inline-style islands</p></div>
+    <div class="hud"><p class="ilabel dim">reuse strategy</p><div class="big">Decided: Option B</div><p class="fnt">Full shadcn/ui + Tailwind v4 + tweakcn migration — maximum library reuse, future-proof over token cost</p></div>
+    <div class="hud"><p class="ilabel dim">login concept</p><div class="big">Decided: V1 ✓</div><p class="fnt">Night flight: starfield + HUD · curved horizon · neon terrain · app highlight reel right — live mock below</p></div>
+    <div class="hud" style="border-color:color-mix(in srgb,var(--good) 45%,transparent)"><p class="ilabel dim">decisions</p><div class="big" style="color:var(--good)">Shipped ✓ P0–P4</div><p class="fnt">Strategy B · Tagline · Login V1 · Scope P0+P1+P2 · Operations rename · Background everywhere · Logo L6</p></div>
+  </div>
+</header>
+
+<!-- ============ 1 · WHY IT READS AS AI-MADE ============ -->
+<section>
+  <p class="ilabel">01 · diagnosis</p>
+  <h2>Why it reads as “AI-made” — and what doesn’t</h2>
+  <p style="max-width:780px">The brand itself is <b>not</b> the problem. s25 “Flight Deck” is a real, documented system
+  (five-primitive kit, type-voice rule, chart-paper light theme, reduced-motion stills, Playwright baselines —
+  <code>AGENTS.md:262-300</code>). The AI tell is that <b>nothing below the brand layer is shared</b>: every surface
+  re-invents its controls, so the app feels like ten generated pages wearing the same hat.</p>
+  <div class="tblwrap" style="margin-top:14px">
+  <table>
+    <tr><th>Tell</th><th>Evidence</th><th>Fix direction</th></tr>
+    <tr><td><b>No shared components at all</b></td><td>Zero <code>&lt;Button&gt;</code>/<code>&lt;Card&gt;</code>/<code>&lt;Select&gt;</code>/<code>&lt;Tabs&gt;</code> components exist — only CSS class conventions, and they forked: 8+ button flavours with radii 5–999px, 5+ card variants, inputs re-declared per surface</td><td>Build the missing shared kit once (§3), delete the forks</td></tr>
+    <tr><td><b>Native form controls</b></td><td>Raw <code>&lt;select&gt;</code> dropdowns visible on Explore, SQL chart builder, Admin events filters — the single loudest “default/unfinished” signal in the screenshots</td><td>Headless Select/Popover primitives styled with your tokens</td></tr>
+    <tr><td><b>No spacing or type scale</b></td><td>21 distinct padding/gap px literals; 19 font sizes from 8.5→24px; ~60% of radii bypass the radius tokens</td><td>Add <code>--space-1..8</code> + a 6-step type scale to <code>styles.css</code> tokens</td></tr>
+    <tr><td><b>Inline-style islands</b></td><td>229 <code>style={{}}</code> sites — GoldensPage (150), ReportEditor (43), EvalsPage (36). Evals uses <i>no</i> shared class at all</td><td>Migrate these three files onto the shared kit (they fight any restyle otherwise)</td></tr>
+    <tr><td><b>Emoji as iconography</b></td><td>✨ (SQL AI bar), 🔒 (chat), ★ (login) amid an otherwise hand-drawn 20px SVG icon set</td><td>Replace with icons from the existing <code>icons.tsx</code> language</td></tr>
+    <tr><td><b>One 1,561-line stylesheet</b></td><td>No <code>@layer</code>, no file split; specificity managed by ordering + comments; Goldens needed a “scope rescue” block</td><td>Split by layer (tokens / kit / surfaces) during P0 — mechanical</td></tr>
+  </table>
+  </div>
+  <p class="note">Keep: the token system (two-layer, chart-bridge to visx), the report engine (one renderer feeds chat + Explore + Ops + Goldens preview), the icon set, the light “chart-paper” theme, a11y + visual test rigs. These are assets most redesigns wish they had.</p>
+</section>
+
+<!-- ============ 2 · SURFACE REVIEW ============ -->
+<section>
+  <p class="ilabel">02 · surface-by-surface review</p>
+  <h2>Every interface, current state → change</h2>
+
+  <div class="grid g2" style="margin:14px 0">
+    <figure style="margin:0"><img class="shot" src="s25_shot_login_dark.png" alt="Login"><figcaption class="shotcap">Login — strong concept, static feel; hero plane hops rather than flies; right panel is generic cards</figcaption></figure>
+    <figure style="margin:0"><img class="shot" src="s25_shot_chat_hero_dark.png" alt="Chat hero"><figcaption class="shotcap">Chat hero — good bones; icon-only rail unlabeled; suggestion rows read as default list items</figcaption></figure>
+    <figure style="margin:0"><img class="shot" src="s25_shot_explore_dark.png" alt="Explore"><figcaption class="shotcap">Explore — native selects + big empty void; the cohort “contrail tree” idea deserves better dressing</figcaption></figure>
+    <figure style="margin:0"><img class="shot" src="s25_shot_sql_dark.png" alt="SQL editor"><figcaption class="shotcap">SQL — best-dressed workbench; annunciator bar works; results/history chrome is generic</figcaption></figure>
+  </div>
+
+  <div class="tblwrap">
+  <table>
+    <tr><th>Surface</th><th>File · lines</th><th>Current read</th><th>Proposed change</th><th>Effort</th></tr>
+    <tr><td><b>Login</b></td><td class="mono">Login.tsx · 634</td><td>Left/right split over SVG canopy; ground grid is static geometry; hero plane <i>hops</i> waypoints (only the 2 ambient planes loop); HUD strip is one thin line</td><td>Full concept rebuild — §4 live mock: moving world map, continuously-flying plane, real HUD canopy, new tagline</td><td><span class="pill gold">L</span></td></tr>
+    <tr><td><b>Nav rail</b></td><td class="mono">NavRail.tsx · 110</td><td>Fixed 56px, icon-only, no labels beyond tooltips; Goldens & Evals <i>share the same icon</i></td><td>Hover-expand 56→196px (§5 live mock); distinct Evals icon; keep <code>role="tab"</code> contract</td><td><span class="pill good">S</span></td></tr>
+    <tr><td><b>Chat</b></td><td class="mono">ChatPage.tsx · 566</td><td>Hero + thread both solid; conversation list is unstyled rows; composer + suggestion cards near-default</td><td>Kit pass (cards, list rows, composer polish); flight-plan rows get waypoint styling tied to the login language</td><td><span class="pill good">S</span></td></tr>
+    <tr><td><b>Explore</b></td><td class="mono">explore/* · ~900</td><td>Native dataset select; tab underline bar fine; giant empty state; controls row feels like a form, not an instrument</td><td>Replace all selects/multiselects with kit primitives; “flight-planning console” dressing for the cohort tree; richer empty state</td><td><span class="pill blue">M</span></td></tr>
+    <tr><td><b>SQL editor</b></td><td class="mono">SqlEditor.tsx · 1093</td><td>Strongest surface today (annunciator lamps, ⌘⏎ HUD key, token-themed CodeMirror)</td><td>Kit pass only: query tabs, history panel, results toolbar; drop ✨ emoji</td><td><span class="pill good">S</span></td></tr>
+    <tr><td><b>Goldens</b></td><td class="mono">GoldensPage.tsx · 2974</td><td>150 inline-style sites, its own <code>btn()</code> factory, native controls — the least on-brand surface and the hardest to restyle</td><td>Migrate onto shared kit (mechanical but large); no layout redesign needed first pass</td><td><span class="pill bad">L</span></td></tr>
+    <tr><td><b>Evals</b></td><td class="mono">EvalsPage.tsx · 301</td><td>Entirely inline-styled; uses zero shared classes; visually adrift from the rest</td><td>Rebuild on kit + <code>HudBox</code>/<code>Annunciator</code> (it’s an instrument panel by nature — lean in)</td><td><span class="pill blue">M</span></td></tr>
+    <tr><td><b>Ops deck</b></td><td class="mono">OpsPage.tsx · 599</td><td>Cleanest, most “designed” surface — lamp band + HudBox grids + report-engine charts</td><td>Reference standard. Extract its patterns into the kit rather than restyling it</td><td><span class="pill good">S</span></td></tr>
+    <tr><td><b>Admin</b></td><td class="mono">AdminPage.tsx · 358</td><td>Solid metrics band + sparklines; tables and event filters generic</td><td>Kit pass: tables, filter selects, chip subtabs</td><td><span class="pill good">S</span></td></tr>
+    <tr><td><b>Settings</b></td><td class="mono">SettingsPage.tsx · 188</td><td>Reuses admin column; segmented control decent</td><td>Kit pass; fold in new background/motion preferences if §6 ships</td><td><span class="pill good">S</span></td></tr>
+    <tr><td><b>Report engine</b></td><td class="mono">report-engine/* · 548</td><td>The crown jewel — one renderer feeds chat, Explore, Ops, Goldens preview, Template Studio</td><td><b>Don’t redesign.</b> Restyle its 3 card classes once (<code>.h-tile .insight-card .chart-card</code>) and all four consumers update; keep boardroom-neutral for PNG export</td><td><span class="pill good">S</span></td></tr>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 3 · REUSE STRATEGY ============ -->
+<section>
+  <p class="ilabel">03 · the decision</p>
+  <h2>Reuse strategy — <span style="color:var(--accent-soft)">decided: Option B, full shadcn/ui migration</span></h2>
+  <p style="max-width:780px"><b>Your call (annotated in review):</b> “move to as many libraries as possible and future-proof
+  the app” — maximum reuse wins over migration cost. This rewrites the doctrine at <code>AGENTS.md:736-741</code>
+  (hand-rolled CSS, no Tailwind) — that edit is now an explicit P0 deliverable, not a side effect. Options A
+  (headless + tokens) and C (cosmetic pass) were considered and rejected: both keep the agent hand-building more of
+  the stack than B does.</p>
+
+  <div class="opt rec" style="margin-top:16px">
+    <span class="tag">Chosen</span>
+    <p class="ilabel">Option B · Tailwind v4 + shadcn/ui + tweakcn</p>
+    <p class="mut" style="font-size:13px">shadcn components are copy-in owned code on Radix primitives; every coding agent is
+    deeply fluent in this stack, and the animated-component ecosystem (Magic UI, Aceternity, React Bits, 21st.dev registry)
+    plugs straight in. The default-look risk is handled by encoding the Flight Deck palette as a custom tweakcn theme —
+    navy/amber/JetBrains-Mono instrument voice, not zinc-and-white.</p>
+    <div class="kv"><span class="pill blue">max reuse</span><span class="pill blue">agent-fluent stack</span><span class="pill gold">doctrine rewrite in P0</span><span class="pill gold">migrate surface-by-surface</span></div>
+  </div>
+
+  <h3 style="margin-top:26px">Migration architecture (how B lands without breaking the app)</h3>
+  <div class="grid g2" style="margin-top:10px">
+    <div class="card">
+      <p class="ilabel">coexistence — old CSS and Tailwind side by side</p>
+      <ul style="font-size:13px">
+        <li><b>Tailwind v4 via Vite plugin</b>; import order puts existing <code>styles.css</code> in a cascade <code>@layer</code> above preflight so the reset can’t wreck unmigrated surfaces — preflight stays off/scoped until P3 completes.</li>
+        <li><b>Token bridge:</b> tweakcn theme variables (<code>--background --primary --radius…</code>) are <i>aliased from</i> the existing Flight Deck tokens, not duplicated — one palette, two naming systems during migration; <code>charts/tokens.ts</code> and visx keep working untouched.</li>
+        <li><b>Surface-by-surface flips:</b> each PR converts one surface to shadcn components and deletes its legacy CSS block; the 1,561-line stylesheet shrinks to tokens + login scene + report-engine cards.</li>
+        <li><b>Report engine fenced:</b> its three card classes get restyled once with the new tokens but stay plain CSS — PNG export must render identically outside the app.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <p class="ilabel">what shadcn gives us per pain point</p>
+      <ul style="font-size:13px">
+        <li><b>Native selects</b> → shadcn <code>Select</code>/<code>Combobox</code> everywhere (Explore, SQL chart builder, Admin filters).</li>
+        <li><b>Button/card/input zoo</b> → one <code>Button</code> with variants, <code>Card</code>, <code>Input</code>, <code>Tabs</code>, <code>Table</code>, <code>Dialog</code>, <code>Tooltip</code>, <code>DropdownMenu</code>, <code>Command</code> (replaces the hand-rolled ⌘K palette).</li>
+        <li><b>Sidebar:</b> shadcn ships a first-class <code>Sidebar</code> block with an icon-collapsible mode — the hover-expand rail in §6 becomes configuration, not custom code.</li>
+        <li><b>Icons:</b> <code>lucide-react</code> (shadcn default) replaces emoji glyphs; the hand-drawn brand icons (plane, reticle) stay.</li>
+        <li><b>Login flair:</b> Magic UI <code>Globe</code> (cobe) and <code>Dotted Map</code> are literally pre-built shadcn-registry components — V1/V2 below become install-and-style.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="margin-top:26px">Library shortlist under Option B</h3>
+  <div class="tblwrap">
+  <table>
+    <tr><th>Library</th><th>What it gives us</th><th>Fits</th><th>Verdict</th></tr>
+    <tr><td><b>shadcn/ui + Tailwind v4</b></td><td>Full owned-code component system on Radix primitives; the ecosystem standard agents know best; ships the Sidebar block and Command palette we need</td><td>core</td><td><span class="pill good">adopt</span></td></tr>
+    <tr><td><b>tweakcn</b></td><td>Visual theme editor whose whole purpose is escaping the default shadcn look — we encode navy/amber Flight Deck into it as the app theme</td><td>core</td><td><span class="pill good">adopt</span></td></tr>
+    <tr><td><b>lucide-react</b></td><td>shadcn’s default icon set — replaces emoji glyphs; brand icons (plane, reticle) stay hand-drawn</td><td>core</td><td><span class="pill good">adopt</span></td></tr>
+    <tr><td><b>Magic UI</b></td><td>150+ animated shadcn-registry components incl. ready-made <b>Globe</b> (cobe wrapper) and <b>Dotted Map</b> — the login scene’s building blocks</td><td>flair</td><td><span class="pill good">adopt</span></td></tr>
+    <tr><td><b>React Bits</b></td><td>Animated components in CSS/GSAP, ships <code>prefers-reduced-motion</code> support — #2 in JS Rising Stars 2025</td><td>flair</td><td><span class="pill gold">selective</span></td></tr>
+    <tr><td><b>Aceternity UI</b></td><td>Copy-paste hero showpieces (spotlights, 3D cards); heavy Motion — login/empty-state moments only</td><td>flair</td><td><span class="pill gold">selective</span></td></tr>
+    <tr><td><b>cobe</b></td><td>5 kB zero-dep WebGL dotted globe (what Magic UI’s Globe wraps) — login V2</td><td>flair</td><td><span class="pill good">via Magic UI</span></td></tr>
+    <tr><td><b>dotted-map</b></td><td>Build-time dotted-world SVG (what Magic UI’s Dotted Map uses) — login V1 map source</td><td>flair</td><td><span class="pill good">via Magic UI</span></td></tr>
+    <tr><td><b>Base UI</b> <span class="fnt">@base-ui-components/react</span></td><td>Headless primitives — was the Option A core</td><td>—</td><td><span class="pill">superseded by shadcn</span></td></tr>
+    <tr><td><b>react-flight-indicators</b> family</td><td>SVG attitude/heading/airspeed instruments — old & niche</td><td>—</td><td><span class="pill">visual reference only</span></td></tr>
+    <tr><td><b>Arwes</b></td><td>Sci-fi HUD framework — explicitly unmaintained</td><td>—</td><td><span class="pill">inspiration only</span></td></tr>
+  </table>
+  </div>
+  <p class="note"><b>Skills leverage (process, not packages):</b> Anthropic’s <b>frontend-design</b> skill and the <b>dataviz</b> skill are already installed in this environment — every implementation PR should run under them; they exist precisely to stop “generic AI frontend” output. Your mood board at <code>docs/cockpit/</code> (headsup1/2.png, flightpaths.png) feeds the login rebuild.</p>
+</section>
+
+<!-- ============ 4 · LOGIN CONCEPT ============ -->
+<section>
+  <p class="ilabel">04 · login concept — <span style="color:var(--good)">decided ✓ V1</span></p>
+  <h2>“Night flight over the neon grid”</h2>
+  <p style="max-width:790px">Locked per your annotations, with the final composition: <b>cockpit POV</b> — twinkling
+  starfield and the in-helmet HUD above (drifting heading tape, pitch ladder, flight-path marker, GS/FL); the <b>gold
+  horizon curved like a planet’s edge</b>; and the <b>neon grid terrain</b> flowing continuously toward the viewer,
+  following that curvature, with ridges framing a flat central corridor. The globe is gone (its edge fought the horizon
+  curve — you flagged it), and the right side is again a <b>quick highlight reel of the app</b>: Ask → Tune → Explore →
+  Dig micro-mocks auto-cycling like today’s walkthrough, re-dressed for the night-flight scene. The background is one
+  dependency-free ~150-line canvas. Reminder: today’s login is a <i>left/right</i> split — card left, reel right, scene
+  behind everything.</p>
+
+  <div class="mockframe" id="mock">
+    <div class="mock-sky"></div>
+    <canvas class="mock-globe" id="worldmap"></canvas>
+    <div class="mock-scrim"></div>
+    <div class="hudlayer">
+      <div class="htape">
+        <svg viewBox="0 0 800 26" preserveAspectRatio="none">
+          <g fill="none" stroke="currentColor" stroke-opacity=".5">
+            <g id="ticks"></g>
+          </g>
+          <g id="tlabels" font-family="JetBrains Mono,monospace" font-size="9" fill="currentColor" fill-opacity=".8" text-anchor="middle"></g>
+        </svg>
+      </div>
+      <div style="position:absolute;top:6px;left:50%;transform:translateX(-50%);color:#c4f0d4;font:700 10px var(--mono)">▽</div>
+      <div class="hud-readout l">RLS <b>ACTIVE</b></div>
+      <div class="hud-readout r">AUDIT <b>ON</b></div>
+    </div>
+    <div class="mock-card">
+      <div class="bm"><svg width="22" height="22" viewBox="0 0 100 100" fill="#1a1204" transform="rotate(45)"><path d="M47 8c2-4 4-4 6 0l6 26 30 20c3 2 3 5-1 5l-28-6-4 24 9 8c2 2 1 4-2 4H37c-3 0-4-2-2-4l9-8-4-24-28 6c-4 0-4-3-1-5l30-20z"/></svg></div>
+      <h4>Data <em>Pilot</em></h4>
+      <p id="tagline-preview">Cleared for insight.</p>
+      <button class="mc-cta" type="button"><span class="g">G</span> Continue with Google</button>
+      <div class="mc-div">or a demo profile</div>
+      <div class="btnrow"><div class="b"><b>Continue as Admin</b> — sees all data</div><div class="b"><b>Continue as User One</b> — property data</div><div class="b"><b>Continue as User Two</b> — isolated</div></div>
+      <div class="mc-trust"><span>read-only</span><span>rls</span><span>audited</span></div>
+    </div>
+    <div class="mock-reel" id="reel">
+      <p class="reel-cap">What Data Pilot does</p>
+      <div class="bene-grid">
+        <div class="bene-cell">
+          <b>01 · Ask</b>
+          <div class="rs-bubble">Top rent growth suburbs?</div>
+          <div class="rs-mini">
+            <div class="rs-tiles"><span>$612<small>avg rent</small></span><span>+8.4%<small>yoy</small></span></div>
+            <svg class="rs-line" viewBox="0 0 120 20" preserveAspectRatio="none"><polyline points="2,17 28,14 54,15 80,9 118,2" fill="none" stroke="#6ea8fe" stroke-width="2"/></svg>
+          </div>
+          <p class="rs-cap">Plain English in — a boardroom-ready report in ≈1 min.</p>
+        </div>
+        <div class="bene-cell">
+          <b>02 · Tune</b>
+          <div class="rs-row">★ Median rent by suburb <i>ready</i></div>
+          <div class="rs-row">★ Sale price trend, houses <i>graded</i></div>
+          <p class="rs-cap">Admins coach it with golden answers — replies read the way your org reads data.</p>
+        </div>
+        <div class="bene-cell">
+          <b>03 · Explore</b>
+          <div class="rs-chips"><span class="t">target · Hornsby houses</span><span class="c">vs · Newcastle houses</span></div>
+          <svg class="rs-line" viewBox="0 0 120 26" preserveAspectRatio="none"><g fill="#d9a84e"><rect x="4" y="8" width="12" height="16" rx="1.5"/><rect x="34" y="4" width="12" height="20" rx="1.5"/><rect x="64" y="12" width="12" height="12" rx="1.5"/></g><g fill="#6ea8fe" opacity=".8"><rect x="18" y="14" width="12" height="10" rx="1.5"/><rect x="48" y="10" width="12" height="14" rx="1.5"/><rect x="78" y="17" width="12" height="7" rx="1.5"/></g></svg>
+          <p class="rs-cap">Profile and compare any cohort — no SQL required.</p>
+        </div>
+        <div class="bene-cell">
+          <b>04 · Dig</b>
+          <div class="rs-code">SELECT suburb, avg(rent)…<br>WHERE type = 'house'…</div>
+          <div class="rs-result"><span>hornsby · 748 · n=1.2k</span><span class="rs-run" style="padding:2px 7px">▶ run</span></div>
+          <p class="rs-cap">Governed SQL — every chart links to its query.</p>
+        </div>
+      </div>
+    </div>
+    <div class="impact" aria-hidden="true">
+      <div class="imp"><b id="qn">214</b><small>queries today</small></div>
+      <div class="imp"><b>3.1M</b><small>rows governed</small></div>
+      <div class="imp"><b>≈1 min</b><small>question → report</small></div>
+      <div class="imp"><b>30</b><small>golden answers</small></div>
+    </div>
+  </div>
+  <p class="fnt" style="margin-top:8px">Live: stars twinkle; the curved gold horizon glows; the terrain flows; the queries-today instrument ticks up. This is <b>V1.4</b> — per your landing-page notes, the carousel is gone: <b>all four benefits now show at once</b> in a wide 2×2 grid (“What Data Pilot does”) that closes the gap to the sign-in card, so a new user scans the entire value story without waiting. The <b>impact instrument cluster</b> (queries today · 3.1M rows governed · ≈1 min question→report · 30 golden answers) anchors the bottom. Honors <code>prefers-reduced-motion</code>.</p>
+
+  <div class="opt rec" style="margin-top:16px"><span class="tag">Chosen ✓</span><p class="ilabel">V1 · Night flight over the neon grid — refined to V1.2 below</p>
+    <p class="mut" style="font-size:13px">Starfield + HUD sky, curved horizon, flowing neon terrain, app highlight reel on the right. Alternatives considered and passed: V2 flat scrolling dotted map (nav-display style) and V3 minimal upgrade of today’s scene (continuous plane + thicker HUD strip). The earlier globe/moving-map iteration was dropped on review — its edge clashed with the horizon curve.</p></div>
+
+  <h3 style="margin-top:26px">04·b · Design-guide critique → V1.2 (what changed in the mock above, and why)</h3>
+  <p class="mut" style="max-width:780px;font-size:13.5px">You asked for a skill or guide to critique the mock. Three were used:
+  Anthropic’s <b>frontend-design skill</b> (installed here — its principles: one signature element, structural devices must
+  encode something <i>true</i>, copy in active voice, “remove one accessory”);
+  <a href="https://github.com/vercel-labs/web-interface-guidelines">Vercel’s Web Interface Guidelines</a> (an agent skill of
+  100+ MUST/NEVER rules for interfaces — installable via <code>vercel.com/design/guidelines/install</code>, worth adding to
+  this repo for P1);
+  and login-specific UX guidance from <a href="https://baymard.com/blog/simplifying-sign-up">Baymard</a> /
+  <a href="https://www.learnui.design/blog/tips-signup-login-ux.html">Learn UI Design</a> /
+  <a href="https://www.authgear.com/post/login-signup-ux-guide/">Authgear’s 2025 guide</a> (single primary action, SSO
+  prominent, trust signals near the form, value proposition on the page). <b>Other skills available:</b> the
+  <b>dataviz</b> skill is also installed here (governs every chart we build in P1–P4); Anthropic publishes
+  <b>web-artifacts-builder</b> (React/Tailwind/shadcn build patterns — directly useful once Option B lands); and community
+  directories (<a href="https://www.skills.sh/vercel-labs/agent-skills/web-design-guidelines">skills.sh</a>,
+  <a href="https://mcpservers.org/agent-skills/vercel/web-design-guidelines">agent-skills library</a>) list ~46 design/UI
+  skills — frontend-design + WIG + dataviz cover critique, rules, and charts; more would overlap. The mock above is now
+  <b>V1.3</b> — the critique applied:</p>
+  <div class="tblwrap" style="margin-top:10px">
+  <table>
+    <tr><th>Guide · rule</th><th>Issue found in V1</th><th>Fix in V1.2</th></tr>
+    <tr><td>frontend-design · “structural devices must encode something true”</td><td>GS 253 / FL 378 were fake telemetry dressed as instruments</td><td>Readouts now state product truths: <b>RLS ACTIVE</b> and a live <b>queries-today</b> counter — the instrument voice survives, the fiction doesn’t</td></tr>
+    <tr><td>frontend-design · “remove one accessory”</td><td>Two pitch ladders + flight-path marker cluttered the center, overlapping the reel</td><td>Cut. The HUD is now one heading tape + two truthful readouts</td></tr>
+    <tr><td>Baymard/Authgear · one primary action, SSO prominent</td><td>No visible CTA — three equal demo rows, and the real Google path wasn’t represented</td><td>Gold <b>Continue with Google</b> primary button; demo profiles demoted below an “or” divider as secondary rows</td></tr>
+    <tr><td>Learn UI · active voice, say what happens</td><td>“◉ Admin — sees all data” named a role, not an action</td><td>Rows now read <b>Continue as Admin</b> etc.</td></tr>
+    <tr><td>Login guides · trust signals near the form</td><td>The real login’s DEV AUTH · RLS · AUDITED chips were missing from the concept</td><td><b>read-only · rls · audited</b> chips anchored under the card</td></tr>
+    <tr><td>WIG · contrast (“MUST: Meet contrast — prefer APCA”)</td><td>Card text sat directly on moving stars/terrain — contrast varied frame to frame</td><td>A radial <b>scrim</b> behind the left column steadies the card’s backdrop; card opacity raised</td></tr>
+    <tr><td>Login guides · hierarchy: form first, value prop second</td><td>Card and reel were equal-weight twin panels</td><td>Reel narrowed, dimmed, retitled “What you can do” — clearly the supporting act</td></tr>
+    <tr><td>WIG · motion (“animate only to clarify or delight; honor reduced-motion”)</td><td>Already compliant — kept</td><td>Canvas freezes to a designed still; reel stops auto-advancing under <code>prefers-reduced-motion</code></td></tr>
+  </table>
+  </div>
+  <p class="note" style="font-size:12.5px"><b>P1 build checklist from the same guides</b> (applies to the real <code>Login.tsx</code>, not representable in a static mock): visible <code>:focus-visible</code> rings on every control · hit targets ≥44px on mobile · <code>autocomplete</code>/<code>name</code>/<code>type</code> on any credential fields · never block paste · submit stays enabled until the request starts, then disables with a spinner · errors inline and focused on submit · mobile input font-size ≥16px. Consider installing the WIG agent skill into this repo so every P1–P4 PR gets audited against it.</p>
+</section>
+
+<!-- ============ 5 · TAGLINE ============ -->
+<section>
+  <p class="ilabel">05 · tagline — <span style="color:var(--good)">decided ✓</span></p>
+  <h2>Tagline: <span style="color:var(--accent-soft)">“Cleared for insight.”</span></h2>
+  <p class="mut" style="max-width:740px">Your pick (annotated ①). Replaces “Your data, flown right.” at
+  <code>Login.tsx:569</code> + <code>index.html:7</code> (meta description) in P1. The mock card above already wears it.
+  Full candidate list kept for the record — click any row to preview it in the mock:</p>
+  <div class="tblwrap" style="margin-top:10px">
+  <table id="tagtable">
+    <tr><th></th><th>Tagline</th><th>Why it works</th></tr>
+    <tr data-tag="Cleared for insight." style="background:color-mix(in srgb, var(--good) 7%, transparent)"><td>①</td><td><b>Cleared for insight.</b> <span class="pill good">decided</span></td><td>Real ATC phraseology; short, confident; “cleared” doubles as governance/permission — which is literally the product (RLS)</td></tr>
+    <tr data-tag="Every question gets a flight plan."><td>②</td><td><b>Every question gets a flight plan.</b></td><td>Ties directly to the existing “Flight plan” UI on the chat hero; describes what the agent actually does (plans governed SQL)</td></tr>
+    <tr data-tag="Fly the data, not the dashboard."><td>③</td><td><b>Fly the data, not the dashboard.</b></td><td>Sharpest positioning — names the enemy (dashboard hunting); best as a marketing line, maybe too spiky for a login card</td></tr>
+    <tr data-tag="Answers at altitude."><td>④</td><td><b>Answers at altitude.</b></td><td>Shortest; alliterative; “altitude” = overview/perspective. Vaguer about what the product does</td></tr>
+    <tr data-tag="Data, cleared for takeoff."><td>⑤</td><td><b>Data, cleared for takeoff.</b></td><td>Energetic, familiar phrase; slightly generic-startup compared with ① and ②</td></tr>
+    <tr data-tag="From question to touchdown."><td>⑥</td><td><b>From question to touchdown.</b></td><td>Mirrors the product journey (ask → landed report); “touchdown” echoes “landing an answer”</td></tr>
+    <tr data-tag="Your data, flown right."><td>—</td><td><b>Your data, flown right.</b> <span class="pill">current</span></td><td>Keep — it’s serviceable; “flown right” carries the governance wink already</td></tr>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 5B · LOGO OPTIONS ============ -->
+<section>
+  <p class="ilabel">05·b · logo — <span style="color:var(--good)">decided ✓ L6</span></p>
+  <h2>Logo: L6 · Night-flight horizon</h2>
+  <p class="mut" style="max-width:760px">Today’s mark is a 45°-rotated airliner on a gold gradient tile
+  (<code>icons.tsx:179-195</code>). Seven directions below — pick one to develop, or annotate a mashup. Whichever wins,
+  the change lands in two synced places: <code>BrandMark</code> and the hand-maintained <code>public/favicon.svg</code>
+  (hardcoded hexes, <code>rx 22</code> vs the component’s <code>25</code>).</p>
+  <form class="q" data-lavish-question="logo" onsubmit="event.preventDefault();var v=new FormData(this).get('logo');if(v&&window.lavish)window.lavish.queuePrompt('Logo decision: develop option '+v,{tag:'choice',text:'Logo: '+v,element:this,data:{question:'logo',answer:v}})">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin:14px 0 4px">
+      <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);cursor:pointer;text-align:center">
+        <svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="lg0" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ca79"/><stop offset="1" stop-color="#d9a84e"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lg0)"/><g transform="translate(32,33) rotate(45)"><g transform="scale(0.36) translate(-50,-50)"><path fill="#1a1204" d="M47 8c2-4 4-4 6 0l6 26 30 20c3 2 3 5-1 5l-28-6-4 24 9 8c2 2 1 4-2 4H37c-3 0-4-2-2-4l9-8-4-24-28 6c-4 0-4-3-1-5l30-20z"/></g></g></svg>
+        <span><input type="radio" name="logo" value="L0 current airliner (keep)"> <b>L0 · Current</b></span>
+        <small class="fnt">The airliner tile as-is. Literal, enterprise-safe.</small>
+      </label>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);cursor:pointer;text-align:center">
+        <svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ca79"/><stop offset="1" stop-color="#d9a84e"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lg1)"/><circle cx="32" cy="32" r="16.5" fill="none" stroke="#1a1204" stroke-width="2.6"/><path d="M32 9.5v6M32 48.5v6M9.5 32h6M48.5 32h6" stroke="#1a1204" stroke-width="2.6" stroke-linecap="round"/><g transform="translate(32,32.5) rotate(45)"><g transform="scale(0.20) translate(-50,-50)"><path fill="#1a1204" d="M47 8c2-4 4-4 6 0l6 26 30 20c3 2 3 5-1 5l-28-6-4 24 9 8c2 2 1 4-2 4H37c-3 0-4-2-2-4l9-8-4-24-28 6c-4 0-4-3-1-5l30-20z"/></g></g></svg>
+        <span><input type="radio" name="logo" value="L1 HUD reticle + plane"> <b>L1 · Reticle</b></span>
+        <small class="fnt">Plane inside the HUD flight-path marker — pure instrument language, scales tiny.</small>
+      </label>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);cursor:pointer;text-align:center">
+        <svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="lg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ca79"/><stop offset="1" stop-color="#d9a84e"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lg2)"/><circle cx="13.5" cy="45.5" r="2.6" fill="#1a1204"/><path d="M13.5 45.5 L23.5 36.5 L30.5 40.5 L41 28.5" fill="none" stroke="#1a1204" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M40 29.5 L54 18.5 L48.5 32.5 Z" fill="#1a1204"/></svg>
+        <span><input type="radio" name="logo" value="L2 ascending sparkline becoming a plane"> <b>L2 · Ascent</b></span>
+        <small class="fnt">A rising sparkline that takes off as a delta wing — the most “data” of the set.</small>
+      </label>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);cursor:pointer;text-align:center">
+        <svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="lg3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ca79"/><stop offset="1" stop-color="#d9a84e"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lg3)"/><circle cx="30" cy="33" r="12.5" fill="none" stroke="#1a1204" stroke-width="2.4"/><ellipse cx="30" cy="33" rx="5" ry="12.5" fill="none" stroke="#1a1204" stroke-width="1.3" opacity=".7"/><path d="M18.3 29h23.4M18.3 37h23.4" stroke="#1a1204" stroke-width="1.3" opacity=".7"/><ellipse cx="32" cy="32" rx="24" ry="8.5" fill="none" stroke="#1a1204" stroke-width="1.8" stroke-dasharray="3 3" transform="rotate(-16 32 32)"/><circle cx="50" cy="22" r="3.2" fill="#1a1204"/></svg>
+        <span><input type="radio" name="logo" value="L3 globe + orbit route + ownship dot"> <b>L3 · Orbit</b></span>
+        <small class="fnt">World + route + ownship — the login scene as a mark.</small>
+      </label>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);cursor:pointer;text-align:center">
+        <svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="lg4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ca79"/><stop offset="1" stop-color="#d9a84e"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lg4)"/><path d="M8 16 H33" stroke="#1a1204" stroke-width="2" stroke-dasharray="4 3" opacity=".65"/><path d="M33 12.5 L42 16 L33 19.5 Z" fill="#1a1204"/><text x="32" y="46" text-anchor="middle" font-family="'JetBrains Mono',ui-monospace,monospace" font-size="24" font-weight="800" fill="#1a1204" letter-spacing="-1">DP</text></svg>
+        <span><input type="radio" name="logo" value="L4 DP monogram + contrail"> <b>L4 · Monogram</b></span>
+        <small class="fnt">Instrument-stencil “DP” under a contrail — typographic, distinctive at any size.</small>
+      </label>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);cursor:pointer;text-align:center">
+        <svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="lg5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ca79"/><stop offset="1" stop-color="#d9a84e"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lg5)"/><path d="M11 50 L53 15 L38 51 L30.5 39.5 Z" fill="#1a1204"/><path d="M30.5 39.5 L53 15" stroke="#eec277" stroke-width="1.6"/></svg>
+        <span><input type="radio" name="logo" value="L5 paper plane"> <b>L5 · Paper plane</b></span>
+        <small class="fnt">Ask → send → fly. Friendly, iconic, matches the composer’s send action.</small>
+      </label>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);cursor:pointer;text-align:center">
+        <svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="lg6" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ca79"/><stop offset="1" stop-color="#d9a84e"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lg6)"/><g fill="#1a1204"><circle cx="16" cy="15" r="1.7"/><circle cx="30" cy="10.5" r="1.3"/><circle cx="44" cy="16" r="1.5"/><circle cx="24" cy="22" r="1.1"/><circle cx="50" cy="24" r="1.1"/></g><path d="M6 34 Q32 27.5 58 34" fill="none" stroke="#1a1204" stroke-width="2.4"/><path d="M32 34.5 L8 56M32 34.5 L20 56M32 34.5 L32 56M32 34.5 L44 56M32 34.5 L56 56" stroke="#1a1204" stroke-width="1.5" opacity=".8"/><path d="M12 44 Q32 39.5 52 44M8 51 Q32 46 56 51" fill="none" stroke="#1a1204" stroke-width="1.3" opacity=".7"/></svg>
+        <span><input type="radio" name="logo" value="L6 night-flight horizon: stars + curved horizon + neon grid (the login scene, no sphere)"> <b>L6 · Night-flight horizon</b></span>
+        <small class="fnt">The login scene exactly — stars above a curved horizon over the neon grid. Ties the mark to the background now on every screen.</small>
+      </label>
+    </div>
+    <button class="qbtn" type="submit">Queue logo answer</button>
+  </form>
+</section>
+
+<!-- ============ 6 · SIDEBAR + IN-APP BACKGROUND ============ -->
+<section>
+  <p class="ilabel">06 · in-app shell</p>
+  <h2>Sidebar hover-expand & carrying the scene inside</h2>
+  <div class="grid g2">
+    <div>
+      <h3>Hover-expand rail — live mock (hover it)</h3>
+      <div class="railmock">
+        <nav class="mrail" aria-label="mock rail">
+          <div class="mbrand"><div style="width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent-soft),var(--accent));display:grid;place-items:center"><svg width="16" height="16" viewBox="0 0 100 100" fill="#1a1204" transform="rotate(45)"><path d="M47 8c2-4 4-4 6 0l6 26 30 20c3 2 3 5-1 5l-28-6-4 24 9 8c2 2 1 4-2 4H37c-3 0-4-2-2-4l9-8-4-24-28 6c-4 0-4-3-1-5l30-20z"/></svg></div></div>
+          <button class="mitem on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg><span>Chat</span></button>
+          <button class="mitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="m15 9-2 5-4 1 2-5z"/></svg><span>Explore</span></button>
+          <button class="mitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg><span>SQL editor</span></button>
+          <button class="mitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/></svg><span>Goldens</span></button>
+          <button class="mitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19h16M6 19a6 6 0 1 1 12 0M12 13l3-4"/></svg><span>Evaluations</span></button>
+          <button class="mitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/><path d="M6 15h4M14 15h4"/></svg><span>Operations</span></button>
+          <div class="mfoot"><button class="mitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span>Theme</span></button></div>
+        </nav>
+        <div class="stage" style="position:relative;overflow:hidden">
+          <svg style="position:absolute;inset:0;width:100%;height:100%;opacity:.45" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <g fill="#d6e4ff"><circle cx="60" cy="40" r="1.6" opacity=".7"/><circle cx="150" cy="24" r="1.2" opacity=".5"/><circle cx="240" cy="52" r="1.5" opacity=".65"/><circle cx="320" cy="30" r="1.2" opacity=".5"/><circle cx="105" cy="80" r="1" opacity=".4"/><circle cx="360" cy="90" r="1.1" opacity=".45"/></g>
+            <path d="M0 168 Q200 150 400 168" fill="none" stroke="rgba(242,202,121,.75)" stroke-width="1.6"/>
+            <g stroke="rgba(110,168,254,.3)" stroke-width="1"><path d="M200 170 L-60 300M200 170 L60 300M200 170 L200 300M200 170 L340 300M200 170 L460 300"/></g>
+            <path d="M55 215 Q200 200 345 215M10 262 Q200 242 390 262" fill="none" stroke="rgba(110,168,254,.25)" stroke-width="1"/>
+          </svg>
+          <span style="position:relative">view host — night-flight ambient bg (decided ✓)</span>
+        </div>
+      </div>
+      <ul class="fnt" style="margin-top:10px">
+        <li>Spec: <code>width 56→196px</code>, <code>180ms var(--ease)</code>; labels fade/slide with a 50ms delay; collapse on leave.</li>
+        <li><b>Implementation under Option B:</b> shadcn’s <code>Sidebar</code> block (icon-collapsible mode) — this behavior is configuration, not custom code; we add the hover trigger and Flight Deck skin.</li>
+        <li>Same buttons, same <code>role="tab"</code> — e2e selectors survive; mobile bottom-nav untouched.</li>
+        <li>Expand as <b>overlay</b> (absolute over content) so views never reflow — <code>.view-host</code>’s <code>min-width:0</code> is load-bearing (<code>styles.css:573</code>).</li>
+        <li>Also fixes: give Evals its own icon (today it reuses the Goldens reticle — <code>NavRail.tsx:28,31</code>; lucide has distinct candidates).</li>
+        <li><b>Rename (your call ✓):</b> “Ops deck” → <b>“Operations”</b> — rail label, Ops page header, and the matching <code>getByRole("tab", {name})</code> e2e assertions update together in P2.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Login scene inside the app — <span style="color:var(--good)">decided ✓</span></h3>
+      <p class="mut" style="font-size:13.5px">Your call from review: <b>the night-flight background runs on every screen of
+      the app, moving, at a slower pace.</b> One shared <b>“canopy” component</b> replaces today’s static
+      <code>body::before/::after</code> canvas (<code>styles.css:161-186</code>), with two intensities:</p>
+      <ul style="font-size:13.5px">
+        <li><b>Login:</b> the full V1.4 scene — starfield, curved horizon, flowing terrain, HUD chrome.</li>
+        <li><b>Every app screen:</b> the same scene as an ambient layer — ~40% opacity, half-speed motion (as now slowed in the mock), no HUD tape/readouts — behind all panels so content stays legible.</li>
+        <li><b>Report pages:</b> still excluded — they must stay boardroom-neutral for PNG export (<code>styles.css:1086-1090</code>).</li>
+        <li><b>Performance:</b> one shared canvas fixed behind <code>.app</code>, its rAF paused when the tab is hidden; honours reduced-motion; an “Ambient motion” toggle lands in <code>SettingsPage</code>.</li>
+      </ul>
+      <p class="note" style="font-size:12.5px">Gotcha for any bg-color change: it’s duplicated in <b>three places</b> — <code>index.html:29</code> (pre-paint JS), <code>index.html:33-34</code> (CSS fallback), <code>theme.ts:14</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 · PLAN ============ -->
+<section>
+  <p class="ilabel">07 · phased plan & risks</p>
+  <h2>Sequencing (each phase = one PR, independently shippable)</h2>
+  <div class="flow" style="margin:12px 0">
+    <div class="ph" style="border-color:color-mix(in srgb,var(--good) 45%,transparent)"><b>P0 · foundation — BUILT ✓</b>Tailwind v4 + shadcn wired (11 components) · Flight Deck token bridge (aliases only, no collisions) · unlayered-CSS coexistence · AGENTS.md doctrine rewritten · 11 native selects replaced on Explore/SQL/Admin via KitSelect · emoji → lucide · explore e2e updated · build green (Goldens-family selects ride the P3 PR as planned)</div>
+    <span class="arrow">→</span>
+    <div class="ph" style="border-color:color-mix(in srgb,var(--good) 45%,transparent)"><b>P1 · login — BUILT ✓</b>The night-flight scene is a real component now (<code>ui/Canopy.tsx</code>) · “Cleared for insight.” · 2×2 benefit grid + example-question strip + outcome instruments · L6 mark across <code>BrandMark</code> + <code>favicon.svg</code> · a contrast bug caught and fixed by <code>a11y.spec.ts</code> · baselines re-shot</div>
+    <span class="arrow">→</span>
+    <div class="ph" style="border-color:color-mix(in srgb,var(--good) 45%,transparent)"><b>P2 · shell — BUILT ✓</b>Rail hover-expands 56→196px as an <b>overlay</b> (views never reflow) · “Ops”→<b>“Operations”</b> across rail, palette and e2e · ambient canopy on <b>every</b> screen (40% opacity, half speed, pauses on a hidden tab) · full lucide rail incl. a distinct Evaluations gauge · Settings <b>Ambient motion</b> (Flying / Parked), verified frozen-vs-moving in the live app</div>
+    <span class="arrow">→</span>
+    <div class="ph" style="border-color:color-mix(in srgb,var(--good) 45%,transparent)"><b>P3 · sweeps — BUILT ✓</b><b>Zero native <code>&lt;select&gt;</code> left in the app</b> — the remaining 34 converted (Goldens 17 · ReportEditor 8 · Grader 7 · Playground 2) via <code>KitSelect</code> plus a new <code>KitMultiSelect</code> (Popover + Command) · 23 e2e calls rewritten onto a <code>data-value</code> contract + a <code>pickOption()</code> helper · emoji → lucide everywhere · dead select CSS deleted</div>
+    <span class="arrow">→</span>
+    <div class="ph" style="border-color:color-mix(in srgb,var(--good) 45%,transparent)"><b>P4 · flourish — BUILT ✓</b><code>KitEmpty</code> across every bare empty state (goldens, objects, feedback, eval cases, conversations) · one orchestrated login entrance (card → story → benefits → instruments) · <b>no animation library added</b>: scattered effects are exactly what makes a UI read as AI-made, and PNG export neutrality holds by construction</div>
+  </div>
+  <div class="grid g2">
+    <div class="card"><p class="ilabel bad" style="color:var(--bad)">risks</p>
+      <ul style="font-size:13.5px">
+        <li><b>Visual baselines:</b> every phase invalidates some of <code>e2e/visual.spec.ts</code> — re-shoot deliberately per phase (<code>--update-snapshots</code>), never blindly.</li>
+        <li><b>E2E contracts:</b> <code>getByRole("tab")</code> on rail + login dots, <code>login_walkthrough_view</code> events — preserve roles/names.</li>
+        <li><b>Report neutrality:</b> report cards export to PNG for boardrooms; flair stays outside <code>.answer-page</code>.</li>
+        <li><b>Goldens size:</b> 2,974 lines with 150 inline styles — schedule as its own PR; highest regression surface (it drives curation).</li>
+        <li><b>Preflight clash:</b> Tailwind’s reset vs 1,561 lines of legacy CSS — the @layer coexistence setup in P0 is the single most load-bearing migration step; get it wrong and every unmigrated surface breaks at once.</li>
+        <li><b>Doctrine:</b> <code>AGENTS.md:736-741</code> rewrite ships in P0 so agent guidance and codebase never disagree.</li>
+      </ul>
+    </div>
+    <div class="card"><p class="ilabel good" style="color:var(--good)">what stays untouched</p>
+      <ul style="font-size:13.5px">
+        <li>Report engine contracts (<code>registry.ts</code> ↔ <code>agent/pages.py</code> sync + CI gate)</li>
+        <li>visx charts + token bridge (<code>charts/tokens.ts</code>)</li>
+        <li>Theme machinery (<code>theme.ts</code>, pre-paint script), light “chart-paper” palette</li>
+        <li>Icon language (extended, not replaced) · a11y focus-ring rules</li>
+        <li>All backend/API — this is a frontend-only branch</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 · DECISIONS ============ -->
+<section>
+  <p class="ilabel">08 · decisions</p>
+  <h2 style="color:var(--good)">All decisions locked ✓ — P0 → P4 built and verified on <code>ui-changes</code></h2>
+  <div class="grid g2">
+    <div class="card" style="border-color:color-mix(in srgb,var(--good) 40%,transparent)">
+      <p class="ilabel" style="color:var(--good)">Q1 · reuse strategy — decided ✓</p>
+      <p style="font-size:13.5px;margin:6px 0"><b>Option B · full shadcn/ui + Tailwind v4 + tweakcn migration.</b></p>
+      <p class="fnt">“Move to as many libraries as possible and future proof the app.” §03 carries the migration architecture; P0 includes the AGENTS.md doctrine rewrite.</p>
+    </div>
+    <div class="card" style="border-color:color-mix(in srgb,var(--good) 40%,transparent)">
+      <p class="ilabel" style="color:var(--good)">Q2 · login scene — decided ✓</p>
+      <p style="font-size:13.5px;margin:6px 0"><b>V1 · Night flight over the neon grid</b> (as mocked: starfield + HUD, curved horizon, neon terrain, app highlight reel — no globe).</p>
+    </div>
+    <div class="card" style="border-color:color-mix(in srgb,var(--good) 40%,transparent)">
+      <p class="ilabel" style="color:var(--good)">Q3 · tagline — decided ✓</p>
+      <p style="font-size:13.5px;margin:6px 0"><b>“Cleared for insight.”</b></p>
+      <p class="fnt">Lands in P1 at <code>Login.tsx:569</code> + <code>index.html:7</code>.</p>
+    </div>
+    <div class="card" style="border-color:color-mix(in srgb,var(--good) 40%,transparent)">
+      <p class="ilabel" style="color:var(--good)">Q4 · first wave — decided ✓</p>
+      <p style="font-size:13.5px;margin:6px 0"><b>P0 + P1 + P2</b>, sequenced as three stacked PRs (foundation → login → shell, incl. the “Operations” rename).</p>
+    </div>
+    <div class="card">
+      <p class="ilabel" style="color:var(--good)">Q5 · logo — decided ✓</p>
+      <p style="font-size:13.5px;margin:6px 0"><b>L6 · Night-flight horizon</b> — stars + curved horizon + neon grid (the login scene, no sphere). Lands in P1 across <code>BrandMark</code> + <code>favicon.svg</code>.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="fnt" style="margin-top:50px;border-top:1px solid var(--border);padding-top:14px">
+  Design source: matched the app’s own Flight Deck system (tokens from <code>frontend/src/styles.css:9-147</code>).
+  Screenshots are the s25 dark-theme baselines. Sources consulted: Base UI / Radix maintenance status, shadcn/tweakcn,
+  Magic UI · Aceternity · React Bits comparisons, cobe, dotted-map, react-flight-indicators, Arwes (unmaintained), and
+  Anthropic’s frontend-design skill.
+</footer>
+</div>
+
+<script>
+(function(){
+  var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---- heading tape ticks ---- */
+  var ticks = document.getElementById("ticks"), tl = document.getElementById("tlabels");
+  var H = ["N","03","06","E","12","15","S","21","24","W","30","33"];
+  for (var i=0;i<32;i++){
+    var x = i*25+10, major = i%2===0;
+    ticks.innerHTML += '<line x1="'+x+'" y1="18" x2="'+x+'" y2="'+(major?26:23)+'"/>';
+    if (major) tl.innerHTML += '<text x="'+x+'" y="12">'+H[(i/2)%12|0]+'</text>';
+  }
+
+  /* ---- live-ish queries counter (truthful instrument, not fake telemetry) ---- */
+  var qn=214;
+  if(!reduced) setInterval(function(){
+    if(Math.random()<0.6){ qn+=1; document.getElementById("qn").textContent=qn; }
+  },4000);
+
+  /* ---- night-flight scene: starfield · curved gold horizon · flowing neon terrain ---- */
+  var cv = document.getElementById("worldmap"), ctx = cv.getContext("2d");
+  function sizeCanvas(){
+    var r = cv.getBoundingClientRect();
+    cv.width = r.width*devicePixelRatio; cv.height = r.height*devicePixelRatio;
+  }
+  sizeCanvas(); addEventListener("resize",function(){sizeCanvas()});
+  // deterministic starfield (seeded LCG so the sky is stable across reloads)
+  var STARS=[]; (function(){ var s=987654321; function rnd(){ s=(s*16807)%2147483647; return s/2147483647; }
+    for(var i=0;i<150;i++) STARS.push([rnd(), rnd()*0.54, 0.5+rnd()*1.1, 0.15+rnd()*0.6, rnd()*6.28]); })();
+  var HR=0.58;                                   // horizon at 58% height
+  function hills(v){                             // terrain ridges rise outside the flat flight corridor
+    var a=Math.abs(v); if(a<0.34) return 0;
+    var t=(a-0.34)/1.1;
+    return (0.55+0.45*Math.sin(v*5.3+2.1))*t*t;
+  }
+  var off=0, tglob=0, last=0;
+  function frame(ts){
+    var w=cv.width, h=cv.height, dpr=devicePixelRatio, cx=w/2;
+    var dt=(ts&&last)?(ts-last):0; last=ts||0;
+    off=(off+dt*0.000028)%1; tglob+=dt*0.001;   // slowed per review note
+    ctx.clearRect(0,0,w,h);
+    var yh=h*HR;
+    // --- night sky: twinkling stars ---
+    for(var si=0;si<STARS.length;si++){
+      var st=STARS[si], tw=0.7+0.3*Math.sin(tglob*1.6+st[4]);
+      ctx.fillStyle="rgba(214,228,255,"+(st[3]*tw).toFixed(3)+")";
+      ctx.beginPath(); ctx.arc(st[0]*w, st[1]*h, st[2]*dpr, 0, 7); ctx.fill();
+    }
+    // --- gold horizon, curved with the planet ---
+    var BigR=6*h;
+    function horY(x){ var dx=x-cx; return yh + (BigR - Math.sqrt(Math.max(0,BigR*BigR-dx*dx))); }
+    function horStroke(wd,alpha,blur){
+      ctx.save();
+      ctx.strokeStyle="rgba(242,202,121,"+alpha+")"; ctx.lineWidth=wd*dpr;
+      ctx.shadowColor="rgba(217,168,78,.9)"; ctx.shadowBlur=blur*dpr;
+      ctx.beginPath();
+      for(var hx=0;hx<=w+1;hx+=w/48){ if(hx) ctx.lineTo(hx,horY(hx)); else ctx.moveTo(hx,horY(hx)); }
+      ctx.stroke(); ctx.restore();
+    }
+    horStroke(5,0.10,18); horStroke(1.1,0.75,9);
+    // --- neon grid terrain scrolling toward the viewer ---
+    var halfW=w*0.62, amp=h*0.16;
+    function terrPt(v,dd){
+      var x=cx+v*halfW*dd;
+      var curve=(horY(x)-yh)*(1-dd)*(1-dd);      // planetary curvature, flattening toward the viewer
+      return [x, yh + (h-yh)*dd*dd - hills(v)*amp*dd*dd + curve];
+    }
+    function gridLine(pts,wd,alpha){
+      ctx.lineWidth=wd*dpr; ctx.strokeStyle="rgba(110,168,254,"+alpha.toFixed(3)+")";
+      ctx.beginPath();
+      for(var i=0;i<pts.length;i++){ if(i) ctx.lineTo(pts[i][0],pts[i][1]); else ctx.moveTo(pts[i][0],pts[i][1]); }
+      ctx.stroke();
+    }
+    for(var k=0;k<15;k++){                       // horizontals flow forward
+      var dd=((k/15)+off)%1; if(dd<0.03) continue;
+      var hp=[];
+      for(var v=-1.6;v<=1.601;v+=0.05){
+        var tp=terrPt(v,dd); if(tp[0]<-40*dpr||tp[0]>w+40*dpr) continue;
+        hp.push(tp);
+      }
+      if(hp.length>1){ gridLine(hp,2.4,0.04+0.06*dd); gridLine(hp,1,0.09+0.16*dd); }
+    }
+    for(var vv=-1.6;vv<=1.601;vv+=0.16){         // verticals converge to the vanishing point
+      var vp=[];
+      for(var d2=0.03;d2<=1.001;d2+=0.05) vp.push(terrPt(vv,d2));
+      gridLine(vp,2.4,0.05); gridLine(vp,1,0.12);
+    }
+    if(!reduced) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* ---- tagline preview ---- */
+  document.querySelectorAll("#tagtable tr[data-tag]").forEach(function(tr){
+    tr.style.cursor="pointer";
+    tr.addEventListener("click",function(){
+      document.getElementById("tagline-preview").textContent = tr.dataset.tag;
+      document.querySelectorAll("#tagtable tr").forEach(function(r){r.style.background=""});
+      tr.style.background="color-mix(in srgb, var(--accent) 8%, transparent)";
+    });
+  });
+})();
+</script>
+</body>
+</html>

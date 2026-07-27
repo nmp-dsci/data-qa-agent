@@ -2,6 +2,7 @@
 // Trends tools. Sends the text to /explore/ask; the LLM (offline stub in dev)
 // returns manifest-valid tool state, which the parent applies to its controls.
 // Profile waits for the user to hit Run; Trends may autorun.
+import { Sparkles } from "lucide-react";
 import { useState } from "react";
 import { exploreAsk } from "../../lib/api";
 
@@ -38,7 +39,7 @@ export function AskBox({
   return (
     <div className="ex-askbox">
       <span className="ex-ask-icon" aria-hidden="true">
-        ✨
+        <Sparkles size={14} />
       </span>
       <input
         type="text"

@@ -2,6 +2,7 @@
 // the three tools (Profile · Trends · Data Dictionary). Loads the manifest once
 // and hands the active dataset to whichever tool is open.
 import { useEffect, useMemo, useState } from "react";
+import { KitSelect } from "@/components/kit/KitSelect";
 import { ExploreDataset, getExploreDatasets, track } from "../../lib/api";
 import { DictionaryTool } from "./DictionaryTool";
 import { ProfileTool } from "./ProfileTool";
@@ -67,20 +68,15 @@ export function ExplorePage({ isAdmin = false }: { isAdmin?: boolean }) {
         <h2 className="ex-title">Explore</h2>
         <label className="ex-ctrl">
           <span className="ex-ctrl-label">Dataset</span>
-          <select
+          <KitSelect
             value={slug ?? ""}
-            aria-label="Dataset"
-            onChange={(e) => {
-              setSlug(e.target.value);
-              track("explore_dataset_changed", { dataset: e.target.value });
+            ariaLabel="Dataset"
+            onValueChange={(v) => {
+              setSlug(v);
+              track("explore_dataset_changed", { dataset: v });
             }}
-          >
-            {datasets.map((d) => (
-              <option key={d.slug} value={d.slug}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+            options={datasets.map((d) => ({ value: d.slug, label: d.name }))}
+          />
         </label>
         <span className="ex-top-note muted">datasets you're granted</span>
       </div>

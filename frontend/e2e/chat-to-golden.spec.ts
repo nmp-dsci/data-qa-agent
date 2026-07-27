@@ -14,7 +14,7 @@
 // (query_runs + messages), so nothing re-runs on the click. Only step 2's live
 // agent answer uses the LLM (generous timeout), same as chat.spec.ts.
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { login, pickOption } from "./helpers";
 
 const QUESTION = "Give me rent trends for postcode 2077 vs 2076";
 
@@ -48,7 +48,14 @@ test("Chat → Golden: promote a chat answer, edit it, and save a golden", async
   // --- 4. Curator edits the question and promotes draft → ready -----------
   const edited = `${QUESTION} — curated ${Date.now()}`;
   await question.fill(edited);
-  await page.getByTestId("golden-status").selectOption("ready");
+  // `ready` is gated on a dispatchable grader — a promoted chat answer has none
+  // yet, so the curator picks a kind first. (`scalar` needs no key or value; see
+  // grader.spec.ts.) The native <select> this used to drive let the spec select
+  // the disabled option anyway — Playwright's selectOption() ignores `disabled`
+  // — so the journey was quietly asserting a state the product forbids. Radix
+  // refuses the click, which is what surfaced it.
+  await pickOption(page, page.getByTestId("grader-kind"), "scalar");
+  await pickOption(page, page.getByTestId("golden-status"), "ready");
   await page.getByTestId("golden-save").click();
   await expect(page.getByText("Saved.")).toBeVisible({ timeout: 30_000 });
 
@@ -60,7 +67,7 @@ test("Chat → Golden: promote a chat answer, edit it, and save a golden", async
   await expect(question).toHaveValue("");
   await page.getByRole("button", { name: new RegExp(escapeRegExp(edited)) }).first().click();
   await expect(question).toHaveValue(edited, { timeout: 30_000 });
-  await expect(page.getByTestId("golden-status")).toHaveValue("ready");
+  await expect(page.getByTestId("golden-status")).toHaveAttribute("data-value", "ready");
   await expect(page.getByTestId("golden-sql")).toHaveValue(/select/i);
 });
 

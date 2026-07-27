@@ -12,7 +12,7 @@
 // The object build is deterministic (no LLM), so this is a stable regression;
 // only the first-pass agent draft uses the live LLM (generous timeout). No mocks.
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { login, pickOption } from "./helpers";
 
 const QUESTION = "show house price growth for hornsby / normanhurst";
 const OBJECT = "line-bar-sale-volume";
@@ -46,21 +46,25 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
   // section — grain/x are grain-driven checkbox lists from the dataset's typed
   // vocabulary (s28), group is a dropdown of the grain. Not free text.
   await page.getByTestId("builder-name").fill(OBJECT);
-  await page.getByTestId("builder-type").selectOption({ label: "Line + bar chart" });
+  await pickOption(page, page.getByTestId("builder-type"), "compare");
   const grain = page.getByTestId("builder-grain");
-  for (const c of ["month", "suburb", "area_band"]) {
+  // The checkbox LABELS are the dataset vocabulary's display names ("Month",
+  // "Land size band"), not the raw column names — the builder has labelled them
+  // since s28. Values below (builder-group, bar/line sources, enc-*) are still
+  // addressed by raw column name, because those are picked by data-value.
+  for (const c of ["Month", "Suburb", "Land size band"]) {
     await grain.getByLabel(c, { exact: true }).check();
   }
   // x / dimension (checkboxes from grain) and group (dropdown of grain).
-  await page.getByTestId("builder-dimension").getByLabel("area_band", { exact: true }).check();
-  await page.getByTestId("builder-group").selectOption("suburb");
+  await page.getByTestId("builder-dimension").getByLabel("Land size band", { exact: true }).check();
+  await pickOption(page, page.getByTestId("builder-group"), "suburb");
   await page.getByTestId("builder-filter").fill(FILTER);
   // bars = sum(n_sold) as sales_volume; line = wtd-avg total_sale_value / n_sold.
   await page.getByTestId("builder-bar-label").fill("sales_volume");
-  await page.getByTestId("builder-bar-source").selectOption("n_sold");
+  await pickOption(page, page.getByTestId("builder-bar-source"), "n_sold");
   await page.getByTestId("builder-line-label").fill("avg_sale_price");
-  await page.getByTestId("builder-line-num").selectOption("total_sale_value");
-  await page.getByTestId("builder-line-den").selectOption("n_sold");
+  await pickOption(page, page.getByTestId("builder-line-num"), "total_sale_value");
+  await pickOption(page, page.getByTestId("builder-line-den"), "n_sold");
   await page.getByTestId("builder-build").click();
 
   // The built object appears with real, sandbox-computed rows + its skills.
@@ -79,7 +83,7 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
   if ((await page.getByTestId("page-1").count()) === 0) {
     await page.getByRole("button", { name: /Add blank page/ }).last().click();
   }
-  await page.getByTestId("page-template-1").selectOption("two-col");
+  await pickOption(page, page.getByTestId("page-template-1"), "two-col");
   const col = page.getByTestId("col-1-1"); // page 2 (index 1), column 2 (index 1)
   await expect(col).toBeVisible();
 
@@ -89,15 +93,15 @@ test("Golden Sandbox: build line-bar-sale-volume and wire it into the report", a
 
   // Open the new card's edit panel (the last ✎ in this column) and link it.
   await col.getByTitle("edit fields").last().click();
-  await col.getByTestId("linked-object-select").selectOption(OBJECT_ID);
+  await pickOption(page, col.getByTestId("linked-object-select"), OBJECT_ID);
 
   // Configure the chart: x = area_band, bars = sales_volume, line = avg_sale_price,
   // grouped by suburb — the columns come from the linked object's rows.
   const linked = page.locator(`[id="${OBJECT_ID}"]`);
-  await linked.getByTestId("enc-dimension").selectOption("area_band");
-  await linked.getByTestId("enc-measure").selectOption("sales_volume");
-  await linked.getByTestId("enc-line_measure").selectOption("avg_sale_price");
-  await linked.getByTestId("enc-group").selectOption("suburb");
+  await pickOption(page, linked.getByTestId("enc-dimension"), "area_band");
+  await pickOption(page, linked.getByTestId("enc-measure"), "sales_volume");
+  await pickOption(page, linked.getByTestId("enc-line_measure"), "avg_sale_price");
+  await pickOption(page, linked.getByTestId("enc-group"), "suburb");
 
   // --- 4. The combo renders with real rows (not the empty-state message) ----
   await expect(linked.locator('svg[role="img"]')).toBeVisible();

@@ -2,9 +2,19 @@
 // out) and a thumb-reach bottom tab bar. Rendered instead of NavRail, never
 // alongside it, so role=tab stays unambiguous.
 import { ReactNode } from "react";
+import { LogOut } from "lucide-react";
 import { User } from "../lib/api";
-import { BrandMark, IconExit } from "../ui/icons";
+import { BrandMark } from "../ui/icons";
 import { navItems, View } from "./NavRail";
+
+/** Thumb-bar labels: eight admin tabs have to share the width, so the long
+ *  ones are clipped to the word people actually say. */
+const SHORT: Record<string, string> = {
+  "SQL Editor": "SQL",
+  "Golden Examples": "Goldens",
+  Evaluations: "Evals",
+  Operations: "Ops",
+};
 
 export function MobileTopBar({
   user,
@@ -30,7 +40,7 @@ export function MobileTopBar({
           title={`Sign out (${user.display_name})`}
           onClick={onSignOut}
         >
-          <IconExit />
+          <LogOut size={20} strokeWidth={1.8} />
         </button>
       </div>
     </header>
@@ -53,11 +63,15 @@ export function BottomNav({
           key={item.view}
           role="tab"
           aria-selected={view === item.view}
+          // The visible text is abbreviated to fit a thumb bar; the accessible
+          // name stays the full label, so a selector written against the
+          // desktop rail matches the mobile bar too.
+          aria-label={item.label}
           className={view === item.view ? "bnav-item active" : "bnav-item"}
           onClick={() => setView(item.view)}
         >
           <item.icon />
-          <span>{item.label === "SQL Editor" ? "SQL" : item.label}</span>
+          <span>{SHORT[item.label] ?? item.label}</span>
         </button>
       ))}
     </nav>

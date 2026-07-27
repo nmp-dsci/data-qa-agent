@@ -1,126 +1,8 @@
-// Inline stroke icons — no icon dependency; sized/colored by the parent.
-// All are 20px 24-viewBox stroke-current so rail/nav state colors them.
-import { ReactNode, useId } from "react";
-
-function I({ children, title }: { children: ReactNode; title?: string }) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden={title ? undefined : true}
-      role={title ? "img" : undefined}
-    >
-      {title && <title>{title}</title>}
-      {children}
-    </svg>
-  );
-}
-
-// Chat — a rounded speech bubble (s17 locked nav set).
-export const IconChat = () => (
-  <I>
-    <path d="M20.5 11.5a7.5 7.5 0 0 1-10.7 6.8L4 20l1.7-4.3A7.5 7.5 0 1 1 20.5 11.5Z" />
-  </I>
-);
-
-export const IconGolden = () => (
-  <I>
-    <circle cx="12" cy="12" r="8" />
-    <circle cx="12" cy="12" r="3.2" />
-    <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22" />
-  </I>
-);
-
-export const IconSql = () => (
-  <I>
-    <rect x="3" y="4.5" width="18" height="15" rx="2" />
-    <path d="M7 10l3 2.5L7 15" />
-    <path d="M12.5 15H17" />
-  </I>
-);
-
-// Explore — a compass (dataset exploration).
-export const IconExplore = () => (
-  <I>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M15.5 8.5l-2 5-5 2 2-5 5-2z" />
-  </I>
-);
-
-// Admin — a cockpit gauge with a needle (s17 locked nav set).
-export const IconAdmin = () => (
-  <I>
-    <path d="M4 16a8 8 0 1 1 16 0" />
-    <path d="M12 16l4.5-3.5" />
-    <circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none" />
-    <path d="M4.5 16h1.2M18.3 16h1.2M12 8v1.2" />
-  </I>
-);
-
-// Ops (s32) — an annunciator panel: three lamps in a frame. Deliberately not
-// another gauge, so it reads as distinct from Admin at 22px in the rail.
-export const IconOps = () => (
-  <I>
-    <rect x="3.5" y="5" width="17" height="14" rx="2" />
-    <circle cx="8" cy="10" r="1.4" fill="currentColor" stroke="none" />
-    <circle cx="12" cy="10" r="1.4" />
-    <circle cx="16" cy="10" r="1.4" />
-    <path d="M7 14.5h10" />
-  </I>
-);
-
-export const IconSettings = () => (
-  <I>
-    <path d="M4 7.5h9M17.5 7.5H20" />
-    <circle cx="15" cy="7.5" r="2.2" />
-    <path d="M4 16.5h2.5M11 16.5h9" />
-    <circle cx="8.5" cy="16.5" r="2.2" />
-  </I>
-);
-
-export const IconSun = () => (
-  <I>
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" />
-  </I>
-);
-
-export const IconMoon = () => (
-  <I>
-    <path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z" />
-  </I>
-);
-
-export const IconExit = () => (
-  <I>
-    <path d="M9.5 4H5v16h4.5" />
-    <path d="M13 12h8m-3.2-3.2L21 12l-3.2 3.2" />
-  </I>
-);
-
-export const IconHistory = () => (
-  <I>
-    <path d="M4 6h16M4 12h16M4 18h10" />
-  </I>
-);
-
-export const IconStop = () => (
-  <I>
-    <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />
-  </I>
-);
-
-export const IconSend = () => (
-  <I>
-    <path d="M12 19V6m-5.5 5.5L12 6l5.5 5.5" />
-  </I>
-);
+// Brand marks only. Every generic glyph in this app is a lucide-react icon
+// (s33 doctrine) — what stays here is the artwork that IS the brand and has no
+// library equivalent: the airliner path, the Sortie that flies it, and the
+// Data Pilot mark itself.
+import { useId } from "react";
 
 /** The airliner path from the Data Pilot mark, in the mark's own 100×100 space.
  *  Drawn nose-up (fuselage runs y=15 → y=86); the tile rotates it 45°, the
@@ -170,19 +52,46 @@ export function PlaneGlyph({
   );
 }
 
-/** The Data Pilot mark (s17): a flat filled airliner — swept wings, wing
- *  engines, tail stabilisers — angled 45° (nose upper-right), cut from the
- *  accent-ink over the accent gradient tile. Theme-aware: the tile + plane read
- *  the live --accent-soft / --accent / --accent-ink tokens, so it never floats
- *  as a hardcoded dark square on a light card (issue #11). Favicon twin lives
- *  in public/favicon.svg (standalone, hardcoded Night Flight hexes). */
+/** The Data Pilot mark (s33 · "night-flight horizon"): the login scene reduced
+ *  to a mark — stars above a curved horizon over a grid running to the
+ *  vanishing point, cut from accent-ink on the accent gradient tile. It
+ *  replaces the s17 airliner, which said "aviation" but not "data"; this one
+ *  is literally the product's own background, so the mark and every screen
+ *  behind it are the same picture.
+ *
+ *  Drawn at 64 units with deliberately heavy strokes: the mark ships at 24px
+ *  in the mobile bar, where a hairline grid would turn to mud. Theme-aware —
+ *  the tile and the ink read live --accent-soft / --accent / --accent-ink, so
+ *  it never floats as a hardcoded dark square on a light card (issue #11).
+ *  Favicon twin lives in public/favicon.svg (standalone, hardcoded Night
+ *  Flight hexes) and is hand-synced with this geometry. */
 export function BrandMark({ size = 30 }: { size?: number }) {
   const gid = `dp-mark-g-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
-      <rect width="100" height="100" rx="25" fill={`url(#${gid})`} />
-      <g transform="rotate(45 50 50)" fill="var(--accent-ink, #1a1204)">
-        <path d={PLANE_PATH_D} />
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="16" fill={`url(#${gid})`} />
+      <g fill="var(--accent-ink, #1a1204)">
+        <circle cx="15" cy="15" r="2" />
+        <circle cx="30" cy="10" r="1.5" />
+        <circle cx="45" cy="16" r="1.8" />
+        <circle cx="51" cy="25" r="1.3" />
+      </g>
+      <g
+        stroke="var(--accent-ink, #1a1204)"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {/* the horizon — the one line the whole scene hangs on */}
+        <path d="M5 34.5 Q32 27.5 59 34.5" strokeWidth="3" />
+        {/* rails converging on the vanishing point */}
+        <g strokeWidth="1.7" opacity=".85">
+          <path d="M32 34 6 59M32 34 19 59M32 34v25M32 34l13 25M32 34l26 25" />
+        </g>
+        {/* two recede lines, spaced by the same squared ramp as the scene */}
+        <g strokeWidth="1.6" opacity=".7">
+          <path d="M12 44.5Q32 39.5 52 44.5M6.5 53Q32 47 57.5 53" />
+        </g>
       </g>
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">

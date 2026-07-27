@@ -6,6 +6,8 @@
 // fields are set — exactly what graderIssue() enforces here and CI enforces in
 // tests/test_eval_pack.py.
 import type React from "react";
+import { KitMultiSelect } from "@/components/kit/KitMultiSelect";
+import { KitSelect } from "@/components/kit/KitSelect";
 import type { GraderSpec } from "../../lib/api";
 import {
   GRADER_KIND_INFO,
@@ -31,8 +33,6 @@ const label: React.CSSProperties = {
   letterSpacing: 0.5,
   opacity: 0.7,
 };
-const sel: React.CSSProperties = { fontSize: 12, padding: "2px 4px" };
-const multiSel: React.CSSProperties = { fontSize: 12, padding: "2px 4px", minWidth: 150 };
 const num: React.CSSProperties = { fontSize: 12, padding: "2px 4px", width: 70 };
 const field: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3 };
 
@@ -49,18 +49,11 @@ function btn(active = true): React.CSSProperties {
   };
 }
 
-const multiVals = (e: React.ChangeEvent<HTMLSelectElement>) =>
-  Array.from(e.target.selectedOptions, (o) => o.value);
-
-/** <option> list that always keeps any current value present even if it's not in
+/** Option list that always keeps any current value present even if it's not in
  *  the offered set (so a saved grader never loses a column the extract dropped). */
 function options(current: string[], opts: string[]) {
   const extra = current.filter((c) => c && !opts.includes(c));
-  return [...extra, ...opts].map((c) => (
-    <option key={c} value={c}>
-      {c}
-    </option>
-  ));
+  return [...extra, ...opts].map((c) => ({ value: c, label: c }));
 }
 
 interface GraderEditorProps {
@@ -108,35 +101,30 @@ export function GraderEditor({
         {/* kind */}
         <div style={field}>
           <span style={label}>kind {kind ? "" : suggested ? `(${tier} → ${suggested})` : ""}</span>
-          <select
-            data-testid="grader-kind"
-            style={sel}
+          <KitSelect
+            testId="grader-kind"
+            ariaLabel="Grader kind"
             value={kind}
-            onChange={(e) => set({ kind: (e.target.value || "") as GraderKind | "" })}
-          >
-            <option value="">— pick —</option>
-            {GRADER_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {GRADER_KIND_INFO[k].label}
-              </option>
-            ))}
-          </select>
+            onValueChange={(v) => set({ kind: (v || "") as GraderKind | "" })}
+            options={[
+              { value: "", label: "— pick —" },
+              ...GRADER_KINDS.map((k) => ({ value: k, label: GRADER_KIND_INFO[k].label })),
+            ]}
+          />
         </div>
 
         {/* key column(s) — one → key, many → composite _key */}
         {needsKey && (
           <div style={field}>
             <span style={label}>key column(s){keys.length > 1 ? " — composite" : ""}</span>
-            <select
-              data-testid="grader-key"
-              multiple
-              size={Math.min(4, Math.max(2, columns.length || 2))}
-              style={multiSel}
-              value={keys}
-              onChange={(e) => onChange(withKeyColumns(g, multiVals(e)))}
-            >
-              {options(keys, columns)}
-            </select>
+            <KitMultiSelect
+              testId="grader-key"
+              ariaLabel="Grader key columns"
+              values={keys}
+              onValuesChange={(vals) => onChange(withKeyColumns(g, vals))}
+              options={options(keys, columns)}
+              className="min-w-40"
+            />
           </div>
         )}
 
@@ -144,15 +132,13 @@ export function GraderEditor({
         {(kind === "series" || g.aggregate === "sum") && (
           <div style={field}>
             <span style={label}>value column</span>
-            <select
-              data-testid="grader-value"
-              style={sel}
+            <KitSelect
+              testId="grader-value"
+              ariaLabel="Grader value column"
               value={g.value ?? ""}
-              onChange={(e) => set({ value: e.target.value })}
-            >
-              <option value="">— pick —</option>
-              {options(g.value ? [g.value] : [], columns)}
-            </select>
+              onValueChange={(v) => set({ value: v })}
+              options={[{ value: "", label: "— pick —" }, ...options(g.value ? [g.value] : [], columns)]}
+            />
           </div>
         )}
 
@@ -193,16 +179,17 @@ export function GraderEditor({
         {needsKey && (
           <div style={field}>
             <span style={label}>aggregate</span>
-            <select
-              data-testid="grader-aggregate"
-              style={sel}
+            <KitSelect
+              testId="grader-aggregate"
+              ariaLabel="Grader aggregate"
               value={g.aggregate ?? ""}
-              onChange={(e) => set({ aggregate: (e.target.value || "") as "sum" | "ratio" | "" })}
-            >
-              <option value="">— none —</option>
-              <option value="sum">sum</option>
-              <option value="ratio">ratio (num / den)</option>
-            </select>
+              onValueChange={(v) => set({ aggregate: (v || "") as "sum" | "ratio" | "" })}
+              options={[
+                { value: "", label: "— none —" },
+                { value: "sum", label: "sum" },
+                { value: "ratio", label: "ratio (num / den)" },
+              ]}
+            />
           </div>
         )}
 
@@ -210,27 +197,23 @@ export function GraderEditor({
           <>
             <div style={field}>
               <span style={label}>numerator</span>
-              <select
-                data-testid="grader-numerator"
-                style={sel}
+              <KitSelect
+                testId="grader-numerator"
+                ariaLabel="Grader numerator column"
                 value={g.numerator ?? ""}
-                onChange={(e) => set({ numerator: e.target.value })}
-              >
-                <option value="">— pick —</option>
-                {options(g.numerator ? [g.numerator] : [], columns)}
-              </select>
+                onValueChange={(v) => set({ numerator: v })}
+                options={[{ value: "", label: "— pick —" }, ...options(g.numerator ? [g.numerator] : [], columns)]}
+              />
             </div>
             <div style={field}>
               <span style={label}>denominator</span>
-              <select
-                data-testid="grader-denominator"
-                style={sel}
+              <KitSelect
+                testId="grader-denominator"
+                ariaLabel="Grader denominator column"
                 value={g.denominator ?? ""}
-                onChange={(e) => set({ denominator: e.target.value })}
-              >
-                <option value="">— pick —</option>
-                {options(g.denominator ? [g.denominator] : [], columns)}
-              </select>
+                onValueChange={(v) => set({ denominator: v })}
+                options={[{ value: "", label: "— pick —" }, ...options(g.denominator ? [g.denominator] : [], columns)]}
+              />
             </div>
           </>
         )}
@@ -240,20 +223,14 @@ export function GraderEditor({
           <span style={label}>
             expected objects{reportObjectTypes.length ? ` · report has: ${reportObjectTypes.join(", ")}` : ""}
           </span>
-          <select
-            data-testid="grader-expected-objects"
-            multiple
-            size={Math.min(3, Math.max(2, objTypeOpts.length))}
-            style={multiSel}
-            value={g.expected_objects ?? []}
-            onChange={(e) => set({ expected_objects: multiVals(e) })}
-          >
-            {objTypeOpts.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          <KitMultiSelect
+            testId="grader-expected-objects"
+            ariaLabel="Expected report objects"
+            values={g.expected_objects ?? []}
+            onValuesChange={(vals) => set({ expected_objects: vals })}
+            options={objTypeOpts.map((o) => ({ value: o, label: o }))}
+            className="min-w-40"
+          />
         </div>
       </div>
 

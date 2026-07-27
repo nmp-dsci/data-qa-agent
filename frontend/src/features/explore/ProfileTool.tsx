@@ -3,6 +3,7 @@
 // arrives from the backend already assembled as report-engine pages (s20:
 // choropleth, KPI tiles, comparison/filter/uplift tables, per-predictor charts)
 // and renders through the same PageLayout as chat answers and goldens.
+import { ArrowDownToLine } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import {
   createGolden,
@@ -127,7 +128,7 @@ export function ProfileTool({
               title="Copy target filters to comparison, stepping the year back one (FY-on-FY / CY-on-CY)"
               onClick={copyToComparison}
             >
-              ⇩ copy to comparison
+              <ArrowDownToLine size={13} /> copy to comparison
             </button>
           </div>
           <div className="ex-cohort-row">

@@ -10,6 +10,7 @@ import {
   User,
 } from "../../lib/api";
 import { formatTime } from "../../lib/format";
+import { setAmbientMotion, useAmbientMotion } from "../../lib/motion";
 import { setThemePref, ThemePref, useThemePref } from "../../lib/theme";
 
 /** s25: the appearance control speaks the cockpit's language. Labels only —
@@ -23,6 +24,7 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
 
 function ThemeSection() {
   const pref = useThemePref();
+  const motion = useAmbientMotion();
   return (
     <section>
       <h3>Appearance</h3>
@@ -40,6 +42,27 @@ function ThemeSection() {
           ))}
         </span>
         <span className="muted">Charts and every panel follow the design tokens · Auto matches your OS.</span>
+      </div>
+      <div className="settings-row">
+        <span className="seg" role="group" aria-label="Ambient motion">
+          {[
+            { on: true, label: "Flying" },
+            { on: false, label: "Parked" },
+          ].map((o) => (
+            <button
+              key={o.label}
+              className={motion === o.on ? "on" : ""}
+              aria-pressed={motion === o.on}
+              onClick={() => setAmbientMotion(o.on)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </span>
+        <span className="muted">
+          The night-flight scene behind every screen · Parked freezes it on one frame. Your OS
+          reduced-motion setting always wins.
+        </span>
       </div>
     </section>
   );

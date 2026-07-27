@@ -2,6 +2,7 @@
 // feedback triage + eval cases, event stream. Data comes through react-query
 // so mutations refresh by invalidation instead of hand-rolled reload loops.
 import { Fragment, useCallback, useMemo, useState } from "react";
+import { KitSelect } from "@/components/kit/KitSelect";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getAdminConfig,
@@ -321,22 +322,24 @@ export function AdminPage() {
           <section>
             <h3>Events</h3>
             <div className="event-filters">
-              <select value={eventTypeFilter} onChange={(e) => setEventTypeFilter(e.target.value)}>
-                <option value="">All event types</option>
-                {[...new Set(events.map((e) => e.event_type))].sort().map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <select value={eventUserFilter} onChange={(e) => setEventUserFilter(e.target.value)}>
-                <option value="">All users</option>
-                {[...new Set(events.map((e) => e.username ?? "anonymous"))].sort().map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </select>
+              <KitSelect
+                value={eventTypeFilter}
+                ariaLabel="Filter by event type"
+                onValueChange={setEventTypeFilter}
+                options={[
+                  { value: "", label: "All event types" },
+                  ...[...new Set(events.map((e) => e.event_type))].sort().map((t) => ({ value: t, label: t })),
+                ]}
+              />
+              <KitSelect
+                value={eventUserFilter}
+                ariaLabel="Filter by user"
+                onValueChange={setEventUserFilter}
+                options={[
+                  { value: "", label: "All users" },
+                  ...[...new Set(events.map((e) => e.username ?? "anonymous"))].sort().map((u) => ({ value: u, label: u })),
+                ]}
+              />
             </div>
             <div className="event-list">
               {events

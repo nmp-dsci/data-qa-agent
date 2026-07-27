@@ -1,6 +1,7 @@
 // Element-pinned feedback: click any headline/insight/chart/query in a report
 // to open this popover, rate it, and flag questionable numbers. Feeds the
 // admin triage queue and the eval-case loop — element_ids must stay stable.
+import { MessageSquare, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useEffect, useState } from "react";
 import { InsightReport, submitFeedback } from "../../lib/api";
 
@@ -32,7 +33,7 @@ export function FeedbackMarkerIcon({ marker }: { marker: FeedbackMarker }) {
           : "Feedback left"
       }
     >
-      {marker.issueFlag || marker.accurate === false ? "!" : "💬"}
+      {marker.issueFlag || marker.accurate === false ? "!" : <MessageSquare size={11} />}
     </span>
   );
 }
@@ -115,10 +116,10 @@ export function FeedbackBox({
           <span className="fb-label">Sentiment</span>
           <span className="fb-sent">
             <button className={rating === 1 ? "sel" : ""} onClick={() => setRating(1)}>
-              👍 Useful
+              <ThumbsUp size={13} /> Useful
             </button>
             <button className={rating === -1 ? "sel" : ""} onClick={() => setRating(-1)}>
-              👎 Off
+              <ThumbsDown size={13} /> Off
             </button>
           </span>
         </div>

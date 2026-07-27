@@ -15,9 +15,11 @@ test("Explore: profile, trends and dictionary over the granted datasets", async 
   const datasetPicker = page.getByLabel("Dataset");
   await expect(datasetPicker).toBeVisible({ timeout: 30_000 });
 
-  // Granted datasets are listed (sales / rent / yield).
-  await expect(datasetPicker.locator("option")).toHaveCount(3);
-  await datasetPicker.selectOption({ label: "NSW rental bonds" });
+  // Granted datasets are listed (sales / rent / yield). Radix select since s33:
+  // options portal to the body while open, exposed as role=option.
+  await datasetPicker.click();
+  await expect(page.getByRole("option")).toHaveCount(3);
+  await page.getByRole("option", { name: "NSW rental bonds" }).click();
 
   // --- Profile tool: FY cohort comparison --------------------------------
   // Use the Ask-AI box to populate the cohorts (deterministic offline stub),
@@ -81,14 +83,16 @@ test("Explore Profile: multi-select filters render and the cohorts differ", asyn
   await page.getByRole("tab", { name: "Explore" }).click();
   const datasetPicker = page.getByLabel("Dataset");
   await expect(datasetPicker).toBeVisible({ timeout: 30_000 });
-  await datasetPicker.selectOption({ label: "NSW property sales" });
+  await datasetPicker.click();
+  await page.getByRole("option", { name: "NSW property sales" }).click();
 
   // Add a Postcode filter to one cohort via the typeahead popover — this stores an
   // ARRAY value (["2077"]), the exact shape that used to render blank. Comparison
   // first so its edit marks it "touched" (no prior-period auto-mirror onto target).
   async function setPostcode(tone: "target" | "comparison", code: string) {
     const row = page.locator(`.ex-filters.tone-${tone}`);
-    await row.getByLabel("Add filter").selectOption("postcode");
+    await row.getByLabel("Add filter").click();
+    await page.getByRole("option", { name: "Postcode" }).click();
     const trigger = row.getByRole("button", { name: "Postcode values" });
     await trigger.click();
     await row.locator(".ex-multi-search").fill(code);

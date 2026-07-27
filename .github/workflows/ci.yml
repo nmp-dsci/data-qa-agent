@@ -16,6 +16,30 @@ jobs:
       - name: Ruff format check
         run: uvx ruff@0.14.2 format --check services scripts
 
+  # Type checking (s32 W4). mypy has been configured in strict mode since Phase 0
+  # and never actually run in CI, which is how two type errors sat on main. Its
+  # own job so a type failure reads as a type failure, not a mystery test failure.
+  #
+  # SCOPE: the two services' source. The repo-root `tests/` tree is deliberately
+  # NOT checked yet — it carries ~78 strict-mode findings (untyped dict generics,
+  # Any returns) that predate this workstream, and fixing them is a separate piece
+  # of work, not something to smuggle into an infrastructure change. Stated here
+  # rather than left as a silent omission; the gate on the code that ships is the
+  # part that was missing.
+  python-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: mypy (backend-api)
+        working-directory: services/backend-api
+        run: uv run mypy app
+      - name: mypy (data-agent)
+        working-directory: services/data-agent
+        # --extra llm: pandas/pydantic-ai supply the types the agent annotates
+        # against; without them mypy sees Any everywhere and proves nothing.
+        run: uv run --extra llm mypy agent
+
   python-tests:
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +52,13 @@ jobs:
       # here and does the full check locally where the stack is up.
       - name: Golden pack gate
         run: uv run pytest tests/test_eval_pack.py -q
+      # The security gate (s32 W3), beside the golden-pack gate for the same
+      # reason: deterministic, zero-LLM, zero-network, so it can block every
+      # merge. It asserts the SQL guard holds against injection, jailbreak-to-DML,
+      # statement stacking and RLS-context rewriting — and that it still lets
+      # ordinary analytical SQL through, because over-blocking is a defect too.
+      - name: Security gate (guard regression)
+        run: uv run pytest tests/security -q
       - name: Pytest (repo root)
         run: uv run pytest -q
       - name: Pytest (data-agent service)
@@ -53,6 +84,108 @@ jobs:
           node-version: "22"
       - run: npm install
       - run: npm run build
+
+  # Infrastructure gate (s32 W4). Deploys used to run `terraform apply
+  # -auto-approve` with nothing having looked at a plan first, so an infrastructure
+  # change was reviewed as HCL and applied unseen.
+  #
+  # Split by what needs credentials: fmt + validate need none, so they always run
+  # and always block. `plan` needs to read remote state, so it runs only when the
+  # OIDC role is assumable — on a fork PR it is skipped with a note rather than
+  # failing a contributor's build for lacking secrets they cannot have.
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC, for the plan step
+      contents: read
+      pull-requests: write # to comment the plan
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive -diff infra/terraform
+
+      # -backend=false: validate the configuration without touching remote state,
+      # so this step is credential-free and runs on every PR including forks.
+      - name: Terraform validate
+        run: |
+          for dir in infra/terraform/foundations infra/terraform/bootstrap; do
+            echo "== $dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+          done
+
+      - name: Can we reach AWS?
+        id: creds
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Fork PR — skipping the plan (no OIDC trust for forks)."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.creds.outputs.available == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::089783391188:role/data-qa-github-deploy
+          aws-region: ap-southeast-2
+
+      - name: Terraform plan
+        if: steps.creds.outputs.available == 'true'
+        id: plan
+        working-directory: infra/terraform/foundations
+        env:
+          AWS_PROFILE: ""
+          TF_VAR_aws_profile: ""
+        run: |
+          terraform init -input=false
+          # -detailed-exitcode: 0 = no changes, 2 = changes, 1 = error. A plan
+          # with changes is information, not a failure, so only 1 fails the job.
+          set +e
+          terraform plan -input=false -no-color -detailed-exitcode -out=tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          tail -c 60000 plan.txt
+          [ "$code" = "1" ] && exit 1
+          {
+            echo "exitcode=$code"
+            echo "summary<<PLAN_EOF"
+            # Just the change lines and the totals — a full plan overflows a
+            # PR comment and buries the part a reviewer needs.
+            grep -E '^(  [#~+-]|Plan:|No changes)' plan.txt | tail -n 200 || true
+            echo "PLAN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment the plan on the PR
+        if: steps.creds.outputs.available == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          PLAN_SUMMARY: ${{ steps.plan.outputs.summary }}
+          PLAN_EXIT: ${{ steps.plan.outputs.exitcode }}
+        with:
+          script: |
+            const changed = process.env.PLAN_EXIT === '2';
+            const body = [
+              `### Terraform plan — ${changed ? '**changes to apply**' : 'no changes'}`,
+              '',
+              '```diff',
+              (process.env.PLAN_SUMMARY || '(empty)').slice(0, 60000),
+              '```',
+              '',
+              '_Merging to `main` applies this. `aws_ip_ranges` churn in the Aurora',
+              'security groups is expected and benign — AWS republishes the list._',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
 
   smoke:
     runs-on: ubuntu-latest

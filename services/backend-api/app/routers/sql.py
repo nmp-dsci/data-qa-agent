@@ -106,6 +106,18 @@ async def run_sql(
             "sql_query_failed" if error else "sql_query_succeeded",
             {"latency_ms": latency_ms, "row_count": row_count},
         )
+        # s32 W3: the editor's guard refusing user-typed SQL is a denial, not a
+        # generic failure — counted on the ops deck's denial tile alongside the
+        # chat path's. A timeout or a bad column name is still just an error.
+        # The agent flags it explicitly (SqlResult.denied), so this counter can't
+        # drift with a reworded guard message.
+        if error and result.get("denied"):
+            await _log_event(
+                conn,
+                user.id,
+                "security_denied",
+                {"surface": "sql_editor", "reason": error[:200]},
+            )
 
     return SqlResponse(
         columns=columns,

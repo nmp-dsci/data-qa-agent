@@ -92,9 +92,7 @@ def test_profile_single_postcode_applies_to_both_cohorts() -> None:
 
 
 def test_profile_postcode_and_year_both_extracted() -> None:
-    state = nl_setup.interpret_profile(
-        "postcode 2077 vs 2076 weekly rent in 2022", GRANTED
-    )
+    state = nl_setup.interpret_profile("postcode 2077 vs 2076 weekly rent in 2022", GRANTED)
     assert state["target"]["filters"]["postcode"] == "2077"
     assert state["comparison"]["filters"]["postcode"] == "2076"
     assert state["target"]["filters"]["year"] == 2022

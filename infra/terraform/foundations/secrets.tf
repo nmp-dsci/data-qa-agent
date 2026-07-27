@@ -41,6 +41,17 @@ resource "random_password" "agent_shared_token" {
   special = false
 }
 
+# Machine token for POST /ops/ingest/* (s32). The writers — the deploy workflow,
+# a k6 run, a promptfoo pack, the pipeline job — cannot reach Aurora directly
+# (its SG admits the ECS jobs, App Runner's egress ranges and operator CIDRs, not
+# a GitHub runner), so they post to backend-api, which can. Generated here so no
+# human ever handles it; CI reads it from Secrets Manager with the role it
+# already assumes via OIDC.
+resource "random_password" "ops_ingest_token" {
+  length  = 48
+  special = false
+}
+
 locals {
   db_host = aws_rds_cluster.main.endpoint
   db_tail = "${local.db_host}:5432/${var.db_name}"
@@ -139,6 +150,17 @@ resource "aws_secretsmanager_secret_version" "jwt" {
   secret_string = random_password.jwt.result
 }
 
+# ---- Ops ingest token (s32) -----------------------------------------------
+resource "aws_secretsmanager_secret" "ops_ingest_token" {
+  name        = "${local.name}/ops-ingest-token"
+  description = "X-Ops-Token for POST /ops/ingest/* (deploy, load-test, red-team, pipeline)."
+}
+
+resource "aws_secretsmanager_secret_version" "ops_ingest_token" {
+  secret_id     = aws_secretsmanager_secret.ops_ingest_token.id
+  secret_string = random_password.ops_ingest_token.result
+}
+
 # ---- LLM API key (YOU set this, Phase D) ---------------------------------
 resource "aws_secretsmanager_secret" "llm_api_key" {
   name        = "${local.name}/llm-api-key"
@@ -151,6 +173,29 @@ resource "aws_secretsmanager_secret_version" "llm_api_key" {
 
   # Your `aws secretsmanager put-secret-value` write is the source of truth —
   # Terraform must not overwrite it on subsequent applies.
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
+# ---- Logfire token (s32 W2; YOU set this, same pattern as the LLM key) -----
+# Prod ran with no traces at all because this was never wired: the data-agent
+# read LOGFIRE_TOKEN from the environment and nothing ever put it there. The
+# container is created here so both services can reference it; the value is set
+# once by hand:
+#   aws secretsmanager put-secret-value --secret-id data-qa/logfire-token \
+#     --secret-string '<write token from the Logfire project>'
+# Until then the services see the placeholder and configure to local-only
+# tracing, which is exactly the previous behaviour — no failure, just no export.
+resource "aws_secretsmanager_secret" "logfire_token" {
+  name        = "${local.name}/logfire-token"
+  description = "LOGFIRE_TOKEN — ships spans to the Logfire project. Set via CLI, not Terraform."
+}
+
+resource "aws_secretsmanager_secret_version" "logfire_token" {
+  secret_id     = aws_secretsmanager_secret.logfire_token.id
+  secret_string = "REPLACE_ME_VIA_CLI"
+
   lifecycle {
     ignore_changes = [secret_string]
   }

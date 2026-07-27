@@ -36,6 +36,9 @@ const SqlEditor = lazy(() =>
 const ExplorePage = lazy(() =>
   import("../features/explore/ExplorePage").then((m) => ({ default: m.ExplorePage })),
 );
+// The Ops deck (s32) is admin-only and rarely the landing tab, so it code-splits
+// as well — its chart wrappers only load when an admin opens it.
+const OpsPage = lazy(() => import("../features/ops/OpsPage").then((m) => ({ default: m.OpsPage })));
 import { Command, CommandPalette } from "../ui/CommandPalette";
 import { ChartSqlContext } from "../ui/charts/sqlLink";
 import { Login } from "./Login";
@@ -71,6 +74,12 @@ function messageToChat(m: ConversationMessage): ChatMsg {
   return { role: "assistant", content: m.content, result };
 }
 
+/** Every deep-linkable tab route, in match order (no prefix collides with
+ *  another, so first-match is exact enough). "chat" is the fallback, not a
+ *  member — an unknown path normalises to it. */
+const ROUTES: View[] = ["chat", "explore", "sql", "goldens", "evals", "ops", "admin", "settings"];
+const ADMIN_ROUTES: View[] = ["goldens", "evals", "ops", "admin"];
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   // True until the initial resumeSession() call resolves, so a valid session
@@ -83,6 +92,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // s32 W1: the question a failed answer can be retried with. Held separately
+  // from `input` so retrying doesn't fight whatever the user has since typed.
+  const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
   const [sqlSeed, setSqlSeed] = useState<{ sql: string; nonce: number } | null>(null);
   // Deep-link a promoted golden into the Goldens tab (mirrors sqlSeed): the
   // nonce forces the effect to re-fire even when the same id is promoted twice.
@@ -114,35 +126,20 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Tabs are real routes: /chat, /sql, /admin, /settings (deep-linkable).
+  // Tabs are real routes: /chat, /sql, /ops, /admin, … (deep-linkable). One
+  // ordered list drives path→view resolution, the unknown-path fallback and the
+  // role gate, so adding a tab can't light it up in one place and not another.
   const location = useLocation();
   const navigate = useNavigate();
-  const view: View = location.pathname.startsWith("/explore")
-    ? "explore"
-    : location.pathname.startsWith("/sql")
-      ? "sql"
-      : location.pathname.startsWith("/goldens")
-        ? "goldens"
-        : location.pathname.startsWith("/evals")
-          ? "evals"
-          : location.pathname.startsWith("/admin")
-          ? "admin"
-          : location.pathname.startsWith("/settings")
-            ? "settings"
-            : "chat";
+  const view: View = ROUTES.find((r) => location.pathname.startsWith(`/${r}`)) ?? "chat";
   const setView = useCallback((v: View) => navigate(`/${v}`), [navigate]);
 
-  // Normalize unknown paths and guard the admin route by role.
+  // Normalize unknown paths and guard the admin-only routes by role.
   useEffect(() => {
-    const known = ["/chat", "/explore", "/sql", "/goldens", "/evals", "/admin", "/settings"];
-    const adminOnly = ["/goldens", "/evals", "/admin"];
-    if (!known.some((p) => location.pathname.startsWith(p))) {
+    const matched = ROUTES.find((r) => location.pathname.startsWith(`/${r}`));
+    if (!matched) {
       navigate("/chat", { replace: true });
-    } else if (
-      user &&
-      adminOnly.some((p) => location.pathname.startsWith(p)) &&
-      user.role !== "admin"
-    ) {
+    } else if (user && ADMIN_ROUTES.includes(matched) && user.role !== "admin") {
       navigate("/chat", { replace: true });
     }
   }, [location.pathname, user, navigate]);
@@ -238,6 +235,7 @@ export default function App() {
     if (!q || loading) return;
     setInput("");
     setError(null);
+    setRetryQuestion(null);
     setMessages((m) => [...m, { role: "user", content: q }]);
     setLoading(true);
     track("question_submitted", { question: q });
@@ -285,7 +283,11 @@ export default function App() {
           { role: "assistant", content: "Stopped — ask again whenever you're ready." },
         ]);
       } else {
+        // s32 W1: a failed answer offers a Retry rather than leaving the user to
+        // guess whether re-asking is safe (it always is — /ask is idempotent
+        // apart from model spend). retryQuestion drives the button in ChatPage.
         setError((e as Error).message);
+        setRetryQuestion(q);
         setMessages((m) => [
           ...m,
           { role: "assistant", content: "Sorry — something went wrong answering that." },
@@ -330,7 +332,10 @@ export default function App() {
     { id: "explore", label: "Go to Explore", hint: "navigate", run: () => setView("explore") },
     { id: "sql", label: "Go to SQL Editor", hint: "navigate", run: () => setView("sql") },
     ...(user?.role === "admin"
-      ? [{ id: "admin", label: "Go to Admin", hint: "navigate", run: () => setView("admin") }]
+      ? [
+          { id: "ops", label: "Go to Ops", hint: "navigate", run: () => setView("ops") },
+          { id: "admin", label: "Go to Admin", hint: "navigate", run: () => setView("admin") },
+        ]
       : []),
     { id: "settings", label: "Go to Settings", hint: "navigate", run: () => setView("settings") },
     {
@@ -399,6 +404,19 @@ export default function App() {
           {view === "admin" && <AdminPage />}
           {view === "goldens" && <GoldensPage seed={goldenSeed} />}
           {view === "evals" && <EvalsPage />}
+          {view === "ops" && (
+            <Suspense
+              fallback={
+                <main aria-busy="true">
+                  <div className="skel" style={{ height: 28, width: "30%" }} />
+                  <div className="skel" style={{ height: 88, marginTop: 12 }} />
+                  <div className="skel" style={{ height: 220, marginTop: 12 }} />
+                </main>
+              }
+            >
+              <OpsPage />
+            </Suspense>
+          )}
           {view === "settings" && <SettingsPage user={user} />}
           {view === "explore" && (
             <Suspense
@@ -443,6 +461,7 @@ export default function App() {
               pagePlan={pagePlan}
               streamedPages={streamedPages}
               error={error}
+              retryQuestion={retryQuestion}
               input={input}
               setInput={setInput}
               onSend={send}

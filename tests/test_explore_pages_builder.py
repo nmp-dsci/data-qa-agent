@@ -64,7 +64,9 @@ def _breakdown_charts(pages: list[dict]) -> list[dict]:
 
 
 def test_predictor_chart_carries_sql_when_provided() -> None:
-    sql = "select property_type as segment, 'target' as cohort, avg_weekly_rent as value from (...) t"
+    sql = (
+        "select property_type as segment, 'target' as cohort, avg_weekly_rent as value from (...) t"
+    )
     payload = _payload(predictor_sql={"property_type": sql})
     pages = build_profile_pages(payload, DIM_LABELS)
     charts = _breakdown_charts(pages)

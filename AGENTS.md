@@ -328,12 +328,18 @@ All capabilities live in one Postgres, all under RLS.
 | `dataset_ordinals` | Datasets | Curator-editable ordinal band order per `(dataset, column)` (e.g. `area_band`) so ordinal chart axes sort naturally, not alphabetically | admin/CI-curated; no RLS |
 | `conversations` | Q&A | A user's chat sessions | owner; admin sees all |
 | `messages` | Q&A | Turns: question, answer, generated SQL, tokens, latency | via conversation owner |
-| `query_runs` | Q&A | Audit of every SQL executed (`source` = `agent` / `sql_editor` / `explore`) | via owner; admin audits |
+| `query_runs` | Q&A | Audit of every SQL executed (`source` = `agent` / `sql_editor` / `explore`); s32 adds the cache-token split, priced `cost_usd`, `degraded`, `attempts`, `ttfp_ms` and the `otel_trace_id` Logfire deep-link | via owner; admin audits |
 | `user_memories` | Memory | Learned per-user preferences + `pgvector` embedding | owner only |
 | `events` | Analytics | Frontend + backend event stream for the admin dashboard | insert own; admin reads all |
 | `eval_cases` | Evals | Golden answers — feedback-promoted or hand-authored stages (`golden_sql`, `golden_sandbox`, `golden_objects`, `golden_report`) | admin/CI-curated; no RLS |
 | `agent_versions` | Evals | Fingerprint of the agent build (provider, model, prompt/skills hashes); stamps every `query_runs` row | admin/CI-curated; no RLS |
 | `eval_runs` / `eval_results` | Evals | Batch grading: one row per pack run + per-case pillar scores (G1–G4), linked back to `query_runs` | admin/CI-curated; no RLS |
+| `ops_rollup` | Ops | Pre-aggregated deck metrics, one row per window (24h/7d/28d) — the only thing `/admin/ops/summary` reads (decision Q3) | admin/CI-curated; no RLS |
+| `load_tests` | Ops | k6 results: scenario, VUs, rps, p50/p95/p99, error rate | admin/CI-curated; no RLS |
+| `security_runs` | Ops | Red-team / injection pack results with per-category pass rates | admin/CI-curated; no RLS |
+| `deploy_events` | Ops | Every deploy: sha, actor, duration, smoke result, `deployed`/`rolled_back`/`failed` | admin/CI-curated; no RLS |
+| `pipeline_runs` | Ops | Marts freshness + dbt pass/total per pipeline run — the data-staleness signal | admin/CI-curated; no RLS |
+| `judge_samples` | Ops | Advisory insight scores over sampled live asks (FK `query_runs`) | admin/CI-curated; no RLS |
 | `marts.*` (e.g. `housing`) | Domain | dbt-built, documented tables questions run against | via `dataset_access` |
 
 ## Datasets, config & the CSV drop-folder
@@ -564,6 +570,151 @@ the frontend `buildabilityIssue` so the green check gates them. Old goldens stor
 (share/growth/latest, sum base); `_measure`/`aggOf`/`deriveOf` map it forward so they keep working, and the
 `none`/`sum`/`mean`/`wavg` paths are byte-identical to before so existing objects don't shift. The derive
 dropdown only shows for the bar family (compare/breakdown/table).
+
+---
+
+## Operations — the /ops flight deck (s32 Track A)
+
+The app was built and deployed before it was *operated*: LLM calls had no retry or
+timeout, tokens were counted but never priced, prod ran with no traces, there was
+no security testing, and deploys were a blind `apply -auto-approve`. Track A closes
+those gaps and routes every result into one place.
+
+**The organising principle: every hardening outcome becomes a row in Postgres, and
+the deck reads Postgres.** So the dashboard stays up when Logfire or the AWS APIs
+don't, and "is it healthy, safe, fast and affordable?" is one screen rather than a
+grep through CloudWatch.
+
+**`/ops`** (`frontend/src/features/ops/OpsPage.tsx`) is an admin-only tab beside
+`/evals` — Evaluations answers "is the answer right?", Ops answers "is the service
+healthy?". It renders entirely through primitives the app already owns: the Flight
+Deck kit (`HudBox`/`Annunciator`/`InstrumentLabel`) for readouts and lamps, and
+`report-engine/PageLayout` + `ui/charts/*` for panels, so it inherits theming, the
+chart error boundaries and the SQL-link affordance and adds no new object types.
+
+**One read per window (decision Q3).** `GET /admin/ops/summary` serves a
+pre-aggregated `app.ops_rollup` row; the heavy `percentile_cont` scan over 3M+
+`query_runs` happens in a refresh, never on a request. A cold or stale rollup is
+answered immediately with `stale: true` while a background task recomputes, so the
+first ever load renders the frame instead of hanging. `POST /admin/ops/refresh`
+(admin) and `POST /ops/ingest/rollup` (machine token) force it; `make ops-rollup`
+is the scheduler's hook.
+
+**Two metric tiers**, so "complete" stayed shippable. *Tier 1* is everything
+computable from Postgres — latency, errors, traffic, product, cost, denials, SLO
+burn, data freshness, and Aurora cold-starts counted from the `db_warming` 503s the
+frontend reports (the backend can't log those: the database it would log to is the
+thing that was asleep). *Tier 2* is one `boto3 GetMetricData` pull for App Runner
+CPU/memory, Aurora ACU/connections and CloudFront cache-hit, off by default and
+behind `ops_cloudwatch_enabled` — the Terraform flag and the IAM read grant move
+together, so the pull can never be enabled without permission. Any Tier-2 failure
+renders `saturation: unavailable` and leaves Tier 1 untouched.
+
+**Writes come in through one token-gated endpoint.** `POST /ops/ingest/*`
+(`X-Ops-Token`, empty by default = the path is closed) records load tests,
+red-team packs, deploys and pipeline runs. The reason is concrete: none of those
+writers can reach Aurora — its security group admits the ECS jobs, App Runner's
+egress ranges and operator CIDRs, not GitHub Actions runners — and `backend-api`
+can. `scripts/ops_ingest.py` is the one client, dependency-free so it runs on a
+bare runner, and it exits 0 on failure because telemetry must never fail a deploy.
+
+### The five workstreams
+
+- **W0 · the deck** — migration `0031` (`query_runs` += cache tokens, `cost_usd`,
+  `degraded`, `attempts`, `otel_trace_id`, `ttfp_ms`, `status` += `'degraded'`;
+  new `load_tests`, `security_runs`, `deploy_events`, `judge_samples`,
+  `pipeline_runs`, `ops_rollup`), `app/ops_rollup.py`, `routers/ops.py`, the tab,
+  and `frontend/e2e/ops.spec.ts` (admin gating + renders on a cold rollup).
+
+- **W1 · reliability** — `agent/model_factory.py` is now the single retry/timeout
+  policy for all **six** LLM call sites (`sandbox_agent`, `object_codegen`,
+  `sql_assist`, `skill_codegen`, `titles`, `eval_judge`), which previously had
+  none. It retries transport failures and upstream 5xx/429 with full jitter,
+  **never a 4xx** (identical failure, real money) and never `UsageLimitExceeded`
+  (that guard exists to stop runaway spend; retrying it inverts it) — classified
+  by exception *name* down the `__cause__` chain so the module needs no
+  provider SDK and is unit-testable in the dependency-light root venv. The
+  multi-turn sandbox site passes a `should_retry` veto so a failure *after* work
+  was done is salvaged, not replayed at double cost. The backend→agent hop
+  retries the same way for connect failures and upstream 5xx/429, but
+  deliberately *excludes* read/write/pool timeouts — a timeout means the
+  request already reached the agent, whose own retry policy may be mid-flight,
+  so retrying at the hop too would stack a second retry cycle on top; on
+  exhaustion `/ask` returns a **degraded answer** (`status='degraded'`, a
+  plain sentence, a Retry button) instead of a raw 502. `load/k6/chat.js` +
+  `make loadtest` produce the first load numbers.
+
+- **W2 · observability & cost** — `agent/pricing.py` prices a run **cache-aware**:
+  most input tokens on this workload are prompt-cache hits billed ~10x cheaper, so
+  a flat rate overstates spend several-fold, and `cost_usd` is pinned by
+  `tests/test_pricing.py` against a known run so a rate change fails CI rather
+  than mis-billing quietly. Logfire now instruments `backend-api` too, with W3C
+  `traceparent` injected on the agent hop (`agent_client._headers`) so one chat is
+  one linked trace, and `query_runs.otel_trace_id` deep-links a slow row on the
+  deck to its span waterfall. `LOGFIRE_TOKEN` is finally wired into Terraform
+  (prod shipped no traces because nothing ever set it). Two SLOs: availability
+  ≥99% of asks served, and p95 **time-to-first-page** ≤3s — the felt latency,
+  measured at the first complete `page` frame, deliberately decoupled from
+  extract-bound full-answer time (~96s p95 in prod, an eval lever not an infra
+  one). Error-budget burn is always computed over 28 days regardless of the
+  window shown. The pipeline writes its own freshness to `pipeline_runs` —
+  the metric whose absence let prod marts freeze 12 days and take Explore down.
+  `docs/runbook.md` is keyed off the deck's lamps.
+
+- **W3 · security** — `security/promptfoo/redteam.yaml` attacks the **product**
+  (through `/ask`, as a real user), not a bare model, in four classes that match
+  the deck's bars: `rls-bypass`, `jailbreak-to-dml`, `prompt-injection`,
+  `pii-exfil`. `tests/security/test_injection.py` is the deterministic,
+  zero-LLM, zero-network subset that blocks every merge (43 cases). Writing it
+  found two **real** defects in the SQL guard: `SELECT set_config('app.current_
+  user_id', …)` was accepted — read-only in form, RLS-context-rewriting in effect,
+  and invisible to a node-type check because it parses as an ordinary `Select`
+  (the read-only role does *not* stop it; `set_config` needs no write privilege);
+  and the keyword denylist scanned string literals, so a query filtering on the
+  address `'GRANT ST'` — present in the committed sample — was refused.
+  Over-blocking is a defect too: a guard that rejects real queries gets removed.
+  Both fixed (`_FORBIDDEN_FUNCTIONS`, `_blank_quoted`) — including a follow-up
+  variant where a double-quoted call (`SELECT "set_config"(...)`) slipped the
+  same denylist because sqlglot represents its name as an `exp.Identifier`
+  rather than a bare string; `_function_name` now unwraps that before
+  matching. Chat-path guard
+  rejections no longer log as `status='success'`; refusals record `error` +
+  `denied` and emit a `security_denied` event, which is the deck's denial counter.
+  Questions are length-bounded and PII-scrubbed **on persistence only** (masking
+  earlier would change the question the agent answers), with checksum-gated card
+  and TFN patterns so prices and postcodes are never mangled. `SECURITY.md` is
+  the one-page threat model.
+
+- **W4 · delivery** — `ci.yml` gains a **mypy** job (configured strict since
+  Phase 0, never run) and a **Terraform** job: `fmt` + `validate` always, and a
+  `plan` commented on the PR when OIDC is reachable, so infrastructure stops being
+  applied unseen. `deploy-aws.yml` records every deploy to `deploy_events` at
+  start and finish (`if: always()` — a failed deploy is the one the timeline needs)
+  with the smoke pass/total. Per **decision Q1** deploys are *recorded, not gated*:
+  App Runner has no traffic split and there is no ECS service, so a weighted canary
+  would mean ALB+ECS, weeks of work fighting the scale-to-zero cost design —
+  instead `make rollback` repoints App Runner at the previous image **digest** (not
+  `:latest`, which would redeploy the thing being rolled back). Per **decision Q6**
+  the CI deploy role drops `AdministratorAccess` for a scoped policy whose real
+  value is the two explicit denies: no IAM users or access keys, and no modifying
+  its own role or the OIDC trust. Updating that scoped policy's *own version* is a
+  narrow, explicit exception (`AllowSelfPolicyVersionUpdate`, paired with a
+  matching `NotResource` carve-out on the deny) so a routine `terraform apply`
+  permission change doesn't deadlock behind an out-of-band admin credential —
+  every other policy in the account stays denied. `scripts/ops_judge_sample.py`
+  scores a slice of live traffic for quality drift — advisory only, since
+  without a golden it can judge whether an answer reads well but never whether
+  the numbers are right.
+
+### Honest constraints (corrections to the parent plan)
+
+- **App Runner has no traffic split**, and there is no `aws_ecs_service` — hence
+  rollback-only (Q1), not canary.
+- **The three CloudWatch alarms notify nobody**: their SNS email subscriptions were
+  never confirmed. `/ops` is the working substitute — a pull surface, not a page.
+- **Cost is cache-dominated**, so pricing had to be too (~⅙ of nominal).
+- **The marts are public NSW property records**, so the PII surface is only the
+  typed question — which is why Q4 chose regex + Logfire's scrubber.
 
 ---
 

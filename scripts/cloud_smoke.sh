@@ -80,4 +80,12 @@ check "frontend SPA fallback 200" \
   "200" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$FRONTEND_URL/chat")"
 
 echo "==> smoke: $PASS passed, $FAIL failed"
+# s32 W4: hand the counts to the caller so the deploy record carries "smoke 8/8"
+# rather than a bare pass/fail — the deck's timeline shows how much was checked.
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  {
+    echo "passed=$PASS"
+    echo "total=$((PASS + FAIL))"
+  } >> "$GITHUB_OUTPUT"
+fi
 [ "$FAIL" -eq 0 ]

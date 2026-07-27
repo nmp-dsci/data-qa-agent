@@ -18,12 +18,20 @@ from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
 from ..db import jsonable, rls_connection
 from ..limits import check_daily_llm_cap
+from ..scrub import scrub_text
+from ..tracing import current_trace_id
 
 router = APIRouter(tags=["ask"])
 
 # Conversations/audit are attributed to the sales dataset; the agent's SQL may
 # span both marts and RLS still scopes rows per the user's grants on each.
 DATASET_SLUG = "nsw_sales"
+
+# s32 W3: bound the one free-text field a user controls. Long enough for any
+# real analytical question (the longest golden is ~200 chars), short enough that
+# the question can't be used to stuff a prompt or a jsonb column. Enforced here
+# rather than in the model so the rejection is a clean 400 with a reason.
+MAX_QUESTION_CHARS = 2_000
 
 
 class AskRequest(BaseModel):
@@ -47,6 +55,10 @@ class AskResponse(BaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     latency_ms: int | None = None
+    # s32 W1: this answer is not the one that was asked for — a retried-then-
+    # stubbed run or an unreachable agent. The chat surface reads it to offer a
+    # Retry affordance instead of leaving the user to guess whether to re-ask.
+    degraded: bool = False
     # Step-by-step agent trace — only populated for admins (gated below).
     steps: list[dict[str, Any]] = []
     # Structured InsightReport (K2) — present on the LLM path; None for the stub.
@@ -163,6 +175,9 @@ async def _open_conversation(
     next answer without a re-login. The data-agent's page_plan(plan) gates how
     many answer pages this user gets (s10).
     """
+    # s32 W3 (decision Q4): what gets STORED is scrubbed; what the agent answers
+    # is the question as asked. Masking upstream would change the question.
+    stored = scrub_text(question) or question
     async with rls_connection(user.id) as conn:
         plan = (
             await conn.execute(text("SELECT plan FROM app.users WHERE id = :uid"), {"uid": user.id})
@@ -176,7 +191,7 @@ async def _open_conversation(
                             "VALUES (:uid, (SELECT id FROM app.datasets WHERE slug = :slug), "
                             ":title) RETURNING id"
                         ),
-                        {"uid": user.id, "slug": DATASET_SLUG, "title": question[:60]},
+                        {"uid": user.id, "slug": DATASET_SLUG, "title": stored[:60]},
                     )
                 ).scalar_one()
             )
@@ -185,10 +200,26 @@ async def _open_conversation(
                 "INSERT INTO app.messages (conversation_id, user_id, role, content) "
                 "VALUES (:cid, :uid, 'user', :content)"
             ),
-            {"cid": conversation_id, "uid": user.id, "content": question},
+            {"cid": conversation_id, "uid": user.id, "content": stored},
         )
-        await _log_event(conn, user.id, "agent_started", {"question": question})
+        await _log_event(conn, user.id, "agent_started", {"question": stored})
     return conversation_id, str(plan)
+
+
+def _run_status(result: dict[str, Any]) -> str:
+    """The audit status this answer actually deserves (s32 W1/W3).
+
+    Until now this was the literal ``'success'`` for every run, so a
+    guard-rejected question and a retried-then-stubbed answer were both recorded
+    as clean successes — the two states an operator most needs to see were the
+    two the audit trail hid. Order matters: an error is an error even if the run
+    also degraded on the way there.
+    """
+    if result.get("error"):
+        return "error"
+    if result.get("degraded"):
+        return "degraded"
+    return "success"
 
 
 async def _persist_answer(
@@ -198,10 +229,12 @@ async def _persist_answer(
     question: str,
     result: dict[str, Any],
     latency_ms: int,
+    ttfp_ms: int | None = None,
 ) -> tuple[str, str]:
     """tx2: record the assistant's answer + audit run; return (message_id, run_id)."""
     engine = result.get("engine", "stub")
     report = result.get("report")
+    status = _run_status(result)
     async with rls_connection(user.id) as conn:
         message_id = str(
             (
@@ -230,25 +263,47 @@ async def _persist_answer(
                     text(
                         "INSERT INTO app.query_runs "
                         "(conversation_id, message_id, user_id, dataset_id, question, "
-                        "sql_text, engine, row_count, latency_ms, status, input_tokens, "
-                        "output_tokens, trace, channel, agent_version_id) "
+                        "sql_text, engine, row_count, latency_ms, status, error, input_tokens, "
+                        "output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, "
+                        "degraded, attempts, ttfp_ms, otel_trace_id, trace, channel, "
+                        "agent_version_id) "
                         "VALUES (:cid, :mid, :uid, "
                         "(SELECT id FROM app.datasets WHERE slug = :slug), :question, :sql, "
-                        ":engine, :row_count, :lat, 'success', :in_tok, :out_tok, "
-                        "CAST(:trace AS jsonb), :channel, :agent_version_id) RETURNING id"
+                        ":engine, :row_count, :lat, :status, :err, :in_tok, :out_tok, "
+                        ":cache_read, :cache_write, :cost_usd, :degraded, :attempts, :ttfp, "
+                        ":trace_id, CAST(:trace AS jsonb), :channel, :agent_version_id) "
+                        "RETURNING id"
                     ),
                     {
                         "cid": conversation_id,
                         "mid": message_id,
                         "uid": user.id,
                         "slug": DATASET_SLUG,
-                        "question": question,
+                        # Scrubbed on the way into the audit trail, same as the
+                        # message above — the two must not disagree.
+                        "question": scrub_text(question) or question,
                         "sql": result.get("sql"),
                         "engine": engine,
                         "row_count": int(result.get("row_count", 0)),
                         "lat": latency_ms,
+                        "status": status,
+                        "err": result.get("error"),
                         "in_tok": result.get("input_tokens"),
                         "out_tok": result.get("output_tokens"),
+                        # s32 W2: the cache split and the priced cost the agent
+                        # computed, promoted out of the trace jsonb into columns
+                        # so the deck's cost rollup is a sum, not a jsonb walk.
+                        "cache_read": result.get("cache_read_tokens"),
+                        "cache_write": result.get("cache_write_tokens"),
+                        "cost_usd": result.get("cost_usd"),
+                        "degraded": bool(result.get("degraded")),
+                        "attempts": int(result.get("attempts") or 1),
+                        # s32 W2: the felt latency, measured separately from the
+                        # extract-bound full-answer time — SLO-B grades this.
+                        "ttfp": ttfp_ms,
+                        # The Logfire deep-link for this run (s32 W2): the deck's
+                        # slow-ask table hands this id straight to the microscope.
+                        "trace_id": current_trace_id(),
                         "trace": _json(result.get("steps") or []),
                         "channel": channel,
                         # Which build answered this (s24 M1). None when the agent
@@ -259,8 +314,21 @@ async def _persist_answer(
             ).scalar_one()
         )
         await _log_event(
-            conn, user.id, "agent_answered", {"latency_ms": latency_ms, "engine": engine}
+            conn,
+            user.id,
+            "agent_answered",
+            {"latency_ms": latency_ms, "engine": engine, "status": status},
         )
+        # s32 W3: a refusal is its own signal, counted on the deck separately
+        # from failures. Emitted as an event rather than a query_runs column so
+        # every surface that can deny (chat, editor) feeds one counter.
+        if result.get("denied"):
+            await _log_event(
+                conn,
+                user.id,
+                "security_denied",
+                {"surface": "chat", "reason": str(result.get("error"))[:200]},
+            )
     return message_id, run_id
 
 
@@ -307,11 +375,52 @@ def _build_response(
         input_tokens=result.get("input_tokens"),
         output_tokens=result.get("output_tokens"),
         latency_ms=latency_ms,
+        degraded=bool(result.get("degraded")),
         # Only admins get the step-by-step trace in chat; it's still persisted for all runs.
         steps=(result.get("steps") or []) if is_admin else [],
         report=result.get("report"),
         pages=result.get("pages"),
     )
+
+
+def _clean_question(raw: str) -> str:
+    """Validate the one free-text field a user controls (s32 W3).
+
+    Length only — the PII scrub happens at *persistence*, not here, so the agent
+    still answers the question the user actually asked. Masking before the agent
+    sees it would turn "what about 0412 345 678" into a different question; the
+    point is that the masked version is what gets stored and traced.
+    """
+    question = raw.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question must not be empty")
+    if len(question) > MAX_QUESTION_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Question is too long ({len(question)} chars, max {MAX_QUESTION_CHARS})",
+        )
+    return question
+
+
+def _degraded_result(reason: str) -> dict[str, Any]:
+    """The answer a user gets when the agent could not be reached (s32 W1).
+
+    Before this, an unreachable agent was a raw 502 and a red bubble. The hop is
+    already retried (agent_client), so arriving here means the agent is genuinely
+    down — and the honest response is a plain sentence plus a recorded degraded
+    run, not a status code the UI has to guess at. Deterministic and instant, so
+    an outage fails fast rather than slowly.
+    """
+    return {
+        "answer": (
+            "I couldn't reach the analysis service just now, so there's no answer to give "
+            "yet. It's usually brief — try the same question again in a moment."
+        ),
+        "engine": "unavailable",
+        "degraded": True,
+        "error": reason,
+        "steps": [{"kind": "fallback", "status": "error", "error": reason, "to": "degraded"}],
+    }
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -321,9 +430,7 @@ async def ask(
     user: CurrentUser = Depends(get_current_user),
     channel: str = Depends(get_channel),
 ) -> AskResponse:
-    question = body.question.strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="Question must not be empty")
+    question = _clean_question(body.question)
     await check_daily_llm_cap(user)
 
     is_new = body.conversation_id is None
@@ -341,7 +448,7 @@ async def ask(
     except httpx.HTTPError as exc:  # noqa: BLE001
         async with rls_connection(user.id) as conn:
             await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
-        raise HTTPException(status_code=502, detail=f"Agent unavailable: {exc}") from exc
+        result = _degraded_result(f"agent unavailable: {exc}")
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     message_id, run_id = await _persist_answer(
@@ -380,15 +487,21 @@ async def ask_stream(
     retitle: dict[str, str] = {}
 
     async def gen() -> AsyncIterator[str]:
-        question = body.question.strip()
-        if not question:
-            yield _sse("error", {"detail": "Question must not be empty", "status": 400})
+        try:
+            question = _clean_question(body.question)
+        except HTTPException as exc:
+            yield _sse("error", {"detail": exc.detail, "status": exc.status_code})
             return
         conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
         started = time.perf_counter()
         yield _sse("status", {"state": "started"})
 
         result: dict[str, Any] | None = None
+        # Time to first page: the moment the user stops looking at a spinner and
+        # starts reading an answer. Measured here, at the frame the client
+        # actually renders, rather than inferred from the agent's own timings —
+        # it is what SLO-B grades (s32 W2).
+        ttfp_ms: int | None = None
         try:
             async for ev in ask_agent_stream(
                 question=question,
@@ -403,6 +516,14 @@ async def ask_stream(
                 elif name in ("plan", "page"):
                     # s10 streaming pages: relay the page plan + each finished
                     # page (Template Studio Page JSON) verbatim to the client.
+                    # The plan frame is deliberately NOT the TTFP mark — it is
+                    # ghost placeholders, not content; the first COMPLETE page is.
+                    if (
+                        name == "page"
+                        and ttfp_ms is None
+                        and ev["data"].get("status") == "complete"
+                    ):
+                        ttfp_ms = int((time.perf_counter() - started) * 1000)
                     yield _sse(name, ev["data"])
                 elif name == "status":
                     yield _sse(
@@ -419,16 +540,17 @@ async def ask_stream(
         except httpx.HTTPError as exc:  # noqa: BLE001
             async with rls_connection(user.id) as conn:
                 await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
-            yield _sse("error", {"detail": f"Agent unavailable: {exc}"})
-            return
+            # s32 W1: a degraded RESULT frame, not a bare error. The client has a
+            # sentence to render and the run is recorded as degraded, so the
+            # outage shows up on the deck instead of only in a browser console.
+            result = _degraded_result(f"agent unavailable: {exc}")
 
         if result is None:
-            yield _sse("error", {"detail": "Agent stream ended without a result"})
-            return
+            result = _degraded_result("agent stream ended without a result")
 
         latency_ms = int((time.perf_counter() - started) * 1000)
         message_id, run_id = await _persist_answer(
-            user, channel, conversation_id, question, result, latency_ms
+            user, channel, conversation_id, question, result, latency_ms, ttfp_ms
         )
         if body.conversation_id is None:
             retitle["cid"] = conversation_id

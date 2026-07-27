@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     auth_mode: str = "dev"  # dev = local stub login; google = real Google OIDC sign-in
 
     database_url: str = "postgresql+asyncpg://app_user:app_pw@db:5432/dataqa"
+    # Elevated read-only role (BYPASSRLS, SELECT-only; migration 0012). Used by
+    # exactly one thing in this service: the ops rollup, which aggregates across
+    # ALL users and therefore cannot run under any single user's RLS context.
+    # Never reachable from a request handler.
+    admin_ro_database_url: str = "postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa"
     db_ssl: str = ""  # set to e.g. "require" in Azure (managed Postgres needs TLS)
     agent_url: str = "http://data-agent:8100"
     # Shared token sent as X-Agent-Token on every agent call. Required by the
@@ -40,6 +45,31 @@ class Settings(BaseSettings):
     # 0 disables that tier's cap.
     ask_daily_limit_free: int = 5
     ask_daily_limit_paid: int = 10
+
+    # ---- Observability (s32 W2) --------------------------------------------
+    # Optional — ships backend traces to Logfire Cloud when set; local-only
+    # (console/no-op) otherwise, exactly like the data-agent's LOGFIRE_TOKEN.
+    logfire_token: str | None = None
+
+    # ---- Ops deck (s32 W0/W2/W4) ------------------------------------------
+    # Machine token for POST /ops/ingest/* — the k6, promptfoo and deploy
+    # writers, none of which have a user session or DB reachability. Empty (the
+    # default) closes the path entirely; it is never open by accident.
+    ops_ingest_token: str = ""
+    # Tier-2 saturation: one CloudWatch GetMetricData pull per rollup refresh,
+    # off the request path. Off by default — it needs boto3 plus an IAM read
+    # grant on the App Runner instance role, and the deck renders Tier-1
+    # telemetry alone without it.
+    ops_cloudwatch_enabled: bool = False
+    ops_cloudwatch_region: str = ""
+    ops_cloudwatch_timeout_s: float = 8.0
+    ops_apprunner_backend_service: str = ""
+    ops_apprunner_agent_service: str = ""
+    ops_apprunner_max_concurrency: int = 100
+    ops_aurora_cluster_id: str = ""
+    ops_cloudfront_distribution_id: str = ""
+    # Shown beside 7d spend on the deck so cost has a scale, not just a number.
+    ops_monthly_budget_usd: float = 50.0
 
     cors_origins: list[str] = ["http://localhost:5230", "http://127.0.0.1:5230"]
     # Comma-separated extra origins injected per-deployment (e.g. the cloud frontend URL).

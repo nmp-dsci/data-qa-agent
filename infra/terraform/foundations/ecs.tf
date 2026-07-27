@@ -53,6 +53,9 @@ data "aws_iam_policy_document" "ecs_execution_secrets" {
     resources = [
       aws_secretsmanager_secret.admin_db_url.arn,
       aws_secretsmanager_secret.db.arn,
+      # s32 W2: the pipeline records its own freshness through the backend's ops
+      # ingest endpoint, so it needs the machine token.
+      aws_secretsmanager_secret.ops_ingest_token.arn,
     ]
   }
 }
@@ -142,9 +145,13 @@ resource "aws_ecs_task_definition" "pipeline" {
       { name = "PIPELINE_SOURCE", value = "full" },
       { name = "DATA_S3_BUCKET", value = aws_s3_bucket.source_data.id },
       { name = "PGSSLMODE", value = "require" }, # dbt: never fall back to plaintext
+      # s32 W2: where to post the pipeline-run record (marts age + dbt pass), so
+      # the deck's data-freshness lamp is fed by the job that changes the data.
+      { name = "OPS_API_URL", value = "https://${aws_apprunner_service.backend_api.service_url}" },
     ]
     secrets = [
       { name = "ADMIN_DATABASE_URL", valueFrom = aws_secretsmanager_secret.admin_db_url.arn },
+      { name = "OPS_INGEST_TOKEN", valueFrom = aws_secretsmanager_secret.ops_ingest_token.arn },
     ]
     logConfiguration = {
       logDriver = "awslogs"

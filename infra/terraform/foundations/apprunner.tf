@@ -55,6 +55,9 @@ data "aws_iam_policy_document" "apprunner_secrets" {
       aws_secretsmanager_secret.jwt.arn,
       aws_secretsmanager_secret.llm_api_key.arn,
       aws_secretsmanager_secret.agent_shared_token.arn,
+      # s32: tracing export + the ops ingest token.
+      aws_secretsmanager_secret.logfire_token.arn,
+      aws_secretsmanager_secret.ops_ingest_token.arn,
     ]
   }
 }
@@ -63,6 +66,30 @@ resource "aws_iam_role_policy" "apprunner_secrets" {
   name   = "read-app-secrets"
   role   = aws_iam_role.apprunner_instance.id
   policy = data.aws_iam_policy_document.apprunner_secrets.json
+}
+
+# ---- Tier-2 ops saturation: read-only CloudWatch (s32 W2) ------------------
+# The one AWS API the app itself calls, once per rollup refresh and never on a
+# request path. GetMetricData takes no resource ARNs (the API is account-wide), so
+# the grant is scoped by ACTION instead: read metrics, nothing else. Attached only
+# when var.ops_cloudwatch_enabled is on, so the default deployment grants nothing
+# extra and the deck renders Tier-1 telemetry alone.
+data "aws_iam_policy_document" "apprunner_cloudwatch_read" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "cloudwatch:GetMetricData",
+      "cloudwatch:ListMetrics",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "apprunner_cloudwatch_read" {
+  count  = var.ops_cloudwatch_enabled ? 1 : 0
+  name   = "read-cloudwatch-metrics"
+  role   = aws_iam_role.apprunner_instance.id
+  policy = data.aws_iam_policy_document.apprunner_cloudwatch_read.json
 }
 
 # Cost control: exactly one instance per service (scale-out is a later knob).
@@ -91,6 +118,7 @@ resource "aws_apprunner_service" "data_agent" {
     aws_secretsmanager_secret_version.admin_ro_db_url,
     aws_secretsmanager_secret_version.agent_shared_token,
     aws_secretsmanager_secret_version.llm_api_key,
+    aws_secretsmanager_secret_version.logfire_token,
   ]
 
   source_configuration {
@@ -115,6 +143,9 @@ resource "aws_apprunner_service" "data_agent" {
             AGENT_DATABASE_URL    = aws_secretsmanager_secret.agent_db_url.arn
             ADMIN_RO_DATABASE_URL = aws_secretsmanager_secret.admin_ro_db_url.arn
             AGENT_SHARED_TOKEN    = aws_secretsmanager_secret.agent_shared_token.arn
+            # s32 W2: prod stopped running blind. Until the value is set by hand
+            # the placeholder just means local-only tracing, not a failure.
+            LOGFIRE_TOKEN = aws_secretsmanager_secret.logfire_token.arn
           },
           var.llm_provider == "deepseek" ? { DEEPSEEK_API_KEY = aws_secretsmanager_secret.llm_api_key.arn } : {},
           var.llm_provider == "anthropic" ? { ANTHROPIC_API_KEY = aws_secretsmanager_secret.llm_api_key.arn } : {},
@@ -144,8 +175,11 @@ resource "aws_apprunner_service" "backend_api" {
 
   depends_on = [
     aws_secretsmanager_secret_version.backend_db_url,
+    aws_secretsmanager_secret_version.admin_ro_db_url,
     aws_secretsmanager_secret_version.jwt,
     aws_secretsmanager_secret_version.agent_shared_token,
+    aws_secretsmanager_secret_version.logfire_token,
+    aws_secretsmanager_secret_version.ops_ingest_token,
   ]
 
   source_configuration {
@@ -166,11 +200,29 @@ resource "aws_apprunner_service" "backend_api" {
           DB_SSL             = "require"
           AGENT_URL          = "https://${aws_apprunner_service.data_agent.service_url}"
           EXTRA_CORS_ORIGINS = local.frontend_url
+          # ---- Ops deck (s32) --------------------------------------------
+          # Tier-2 saturation. Off unless ops_cloudwatch_enabled, in which case
+          # the IAM read grant above is attached too — the flag and the grant
+          # move together so the feature can never be on without permission.
+          OPS_CLOUDWATCH_ENABLED         = var.ops_cloudwatch_enabled ? "1" : "0"
+          OPS_CLOUDWATCH_REGION          = var.aws_region
+          OPS_APPRUNNER_BACKEND_SERVICE  = "${local.name}-backend-api"
+          OPS_APPRUNNER_AGENT_SERVICE    = aws_apprunner_service.data_agent.service_name
+          OPS_APPRUNNER_MAX_CONCURRENCY  = tostring(aws_apprunner_auto_scaling_configuration_version.single.max_concurrency)
+          OPS_AURORA_CLUSTER_ID          = aws_rds_cluster.main.cluster_identifier
+          OPS_CLOUDFRONT_DISTRIBUTION_ID = aws_cloudfront_distribution.frontend.id
+          OPS_MONTHLY_BUDGET_USD         = tostring(var.billing_alarm_usd)
         }
         runtime_environment_secrets = {
           DATABASE_URL       = aws_secretsmanager_secret.backend_db_url.arn
           JWT_SECRET         = aws_secretsmanager_secret.jwt.arn
           AGENT_SHARED_TOKEN = aws_secretsmanager_secret.agent_shared_token.arn
+          # s32 W0: the ops rollup's cross-user read. SELECT-only + BYPASSRLS,
+          # never reachable from a request handler.
+          ADMIN_RO_DATABASE_URL = aws_secretsmanager_secret.admin_ro_db_url.arn
+          # s32 W2/W0: traces out, operational outcomes in.
+          LOGFIRE_TOKEN    = aws_secretsmanager_secret.logfire_token.arn
+          OPS_INGEST_TOKEN = aws_secretsmanager_secret.ops_ingest_token.arn
         }
       }
     }

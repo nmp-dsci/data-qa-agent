@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import HTTPException
 from sqlalchemy import text
 
@@ -51,6 +53,18 @@ async def check_daily_llm_cap(user: CurrentUser) -> None:
             {"uid": user.id},
         )
         used = result.scalar_one()
+        if used >= limit:
+            # s32 W0: a cap hit is a capacity signal, not a bug — recorded so the
+            # deck's saturation panel can show "2 users hit the daily cap" beside
+            # the concurrency ceiling, which is what tells you the limit is set
+            # wrong rather than the service being unhealthy.
+            await conn.execute(
+                text(
+                    "INSERT INTO app.events (user_id, event_type, payload) "
+                    "VALUES (:uid, 'llm_cap_reached', CAST(:payload AS jsonb))"
+                ),
+                {"uid": user.id, "payload": json.dumps({"tier": tier, "limit": limit})},
+            )
     if used >= limit:
         raise HTTPException(
             status_code=429,

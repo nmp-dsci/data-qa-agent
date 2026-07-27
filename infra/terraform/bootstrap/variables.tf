@@ -21,3 +21,16 @@ variable "github_repo" {
   type        = string
   default     = "nmp-dsci/data-qa-agent"
 }
+
+variable "deploy_role_scoped" {
+  description = <<-EOT
+    Whether the CI deploy role uses the least-privilege policy (s32 W4, decision
+    Q6) instead of AdministratorAccess.
+
+    Default true — the scoped policy is the intended state. Flip to false and
+    apply to revert if a deploy ever fails on a missing permission, then add the
+    action to the policy rather than leaving the role broad.
+  EOT
+  type        = bool
+  default     = true
+}

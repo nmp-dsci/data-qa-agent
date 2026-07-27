@@ -1,4 +1,4 @@
-.PHONY: help up down reset logs ps samples migrate pipeline pipeline-full pipeline-docs smoke e2e e2e-chat eval eval-diagnose eval-export eval-import eval-compare eval-pack-version
+.PHONY: help up down reset logs ps samples migrate pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version loadtest redteam injection-suite ops-rollup rollback
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
@@ -18,6 +18,12 @@ help:
 	@echo "make eval-compare  - base vs experiment, with the regression gate"
 	@echo "make eval-diagnose - failure clusters + one-lever hypotheses (read-only)"
 	@echo "make eval-pack-version - print the content hash of the golden pack"
+	@echo ""
+	@echo "make loadtest      - k6 load test -> app.load_tests (SCENARIO=browse|chat)"
+	@echo "make redteam       - promptfoo red-team the governed boundary -> app.security_runs"
+	@echo "make injection-suite - the deterministic, zero-LLM guard tests (also runs in CI)"
+	@echo "make ops-rollup    - recompute the /ops deck's windows now"
+	@echo "make rollback      - revert App Runner to the previous image digest (prod)"
 	@echo ""
 	@echo "Then open http://localhost:5230 and sign in as admin / user1 / user2."
 
@@ -96,3 +102,57 @@ e2e:
 # The slow live-LLM chat answer E2E (agent answers a real question).
 e2e-chat:
 	cd frontend && npm run e2e:chat
+
+# The Ops flight deck E2E: admin gating + the deck renders on a cold rollup.
+e2e-ops:
+	cd frontend && npx playwright test ops
+
+# ---------------------------------------------------------------------------
+# Operations (s32 Track A)
+# ---------------------------------------------------------------------------
+
+# k6 load test against a running stack, recorded into app.load_tests so the ops
+# deck's load tile shows a real measurement instead of a number from a README.
+# k6 is NOT a repo dependency — install it (brew install k6) before running.
+#   make loadtest                             browse, 20 VUs, 30s, local
+#   make loadtest SCENARIO=chat VUS=3 DURATION=60s
+#   make loadtest BASE_URL=https://<api> TOKEN=<bearer>
+SCENARIO ?= browse
+VUS ?= 20
+DURATION ?= 30s
+BASE_URL ?= http://localhost:8000
+loadtest:
+	@command -v k6 >/dev/null || { echo "k6 not installed (brew install k6)"; exit 1; }
+	mkdir -p load/out
+	BASE_URL=$(BASE_URL) SCENARIO=$(SCENARIO) VUS=$(VUS) DURATION=$(DURATION) \
+	  TOKEN=$${TOKEN:-} k6 run --summary-export load/out/summary.json load/k6/chat.js
+	uv run python scripts/ops_ingest.py load-test --k6-summary load/out/summary.json \
+	  --scenario $(SCENARIO) --vus $(VUS) --duration-s $$(python3 -c \
+	  "import re,sys; s='$(DURATION)'; m=re.match(r'(\d+)([smh]?)',s); n=int(m.group(1)); \
+	   print(n*{'':1,'s':1,'m':60,'h':3600}[m.group(2)])")
+
+# promptfoo red-team of the governed boundary (RLS bypass, jailbreak to DML,
+# prompt injection, PII exfil). Costs model tokens and needs a running stack, so
+# it is a deliberate run, not a CI gate — the deterministic subset below is the
+# gate. promptfoo comes from the sibling workspace / npx.
+redteam:
+	cd security/promptfoo && npx -y promptfoo@latest eval -c redteam.yaml \
+	  --output ../out/redteam.json --no-cache
+	uv run python scripts/ops_ingest.py security-run --kind redteam \
+	  --promptfoo-json security/out/redteam.json \
+	  --pack-sha $$(uv run python -c \
+	  "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('security/promptfoo/redteam.yaml').read_bytes()).hexdigest()[:12])")
+
+# The deterministic half: no LLM, no network, so it blocks every merge.
+injection-suite:
+	uv run pytest tests/security -q
+
+# Recompute the ops deck's windowed aggregates now (the scheduler's hook).
+ops-rollup:
+	uv run python scripts/ops_ingest.py rollup
+
+# Revert App Runner to the previously deployed image tag (s32 W4, decision Q1).
+#   make rollback                 # both services, to the prior digest
+#   make rollback SERVICE=backend-api
+rollback:
+	./scripts/rollback_apprunner.sh $${SERVICE:-all}

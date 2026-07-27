@@ -131,3 +131,16 @@ variable "agent_memory" {
   type    = string
   default = "4096"
 }
+
+# ---- Ops deck (s32) --------------------------------------------------------
+# Tier-2 infra saturation: one CloudWatch GetMetricData pull per rollup refresh
+# (App Runner CPU/mem, Aurora ACU/connections, CloudFront cache-hit), never on a
+# request path. Off by default because it attaches an IAM read grant to the
+# backend's instance role — the flag and the grant move together, so the feature
+# can never be enabled without permission or granted without being used. The deck
+# renders full Tier-1 (Postgres) telemetry either way.
+variable "ops_cloudwatch_enabled" {
+  description = "Enable the Tier-2 CloudWatch saturation pull on the ops deck."
+  type        = bool
+  default     = false
+}

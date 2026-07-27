@@ -1,19 +1,98 @@
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import AsyncIterator
+import logging
+import random
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, cast
 
 import httpx
 
 from .config import settings
 
+log = logging.getLogger("uvicorn.error")
+
+# s32 W1: the backend→agent hop had no retry at all, so one dropped connection
+# or one App Runner instance replacement turned into a raw 502 in the user's
+# face. Same shape as the agent's own model policy (agent/model_factory.py):
+# retry transport failures and upstream 5xx/429, never a 4xx, with full jitter
+# and a hard ceiling — bounded, so a real outage fails fast and degrades rather
+# than stretching one broken answer over minutes.
+AGENT_HOP_ATTEMPTS = 3
+AGENT_HOP_BASE_DELAY_S = 0.5
+AGENT_HOP_MAX_DELAY_S = 4.0
+_RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504, 529})
+
 
 def _headers() -> dict[str, str]:
-    """Shared-token auth for the agent (s12): sent when configured, empty locally."""
+    """Shared-token auth for the agent (s12): sent when configured, empty locally.
+
+    Also carries the W3C trace context (s32 W2) so a chat request is ONE linked
+    trace across backend-api and data-agent instead of two unrelated ones — the
+    thing that makes "which hop was slow?" answerable in Logfire.
+    """
+    headers: dict[str, str] = {}
     if settings.agent_shared_token:
-        return {"X-Agent-Token": settings.agent_shared_token}
-    return {}
+        headers["X-Agent-Token"] = settings.agent_shared_token
+    _inject_trace_context(headers)
+    return headers
+
+
+def _inject_trace_context(headers: dict[str, str]) -> None:
+    """Add traceparent/tracestate for the current span, if tracing is active.
+
+    Done explicitly rather than relying on httpx auto-instrumentation: the
+    propagation is load-bearing for the cross-service trace, and an explicit
+    injection keeps working even where instrumentation is disabled or the client
+    was constructed before it was installed. A missing OTel install is not an
+    error — the call just goes out unlabelled.
+    """
+    try:
+        from opentelemetry.propagate import inject
+
+        inject(headers)
+    except Exception:  # noqa: BLE001 — tracing must never break a request
+        return
+
+
+def _is_retryable_hop(exc: BaseException) -> bool:
+    """Connection failures and upstream 5xx/429 are worth another attempt.
+
+    A read/write/pool timeout means the request reached the agent and the
+    agent's own model_factory retry policy (up to 4 attempts) may already be
+    mid-flight on a legitimately slow answer — retrying here would restart
+    that work from scratch and stack ~3x latency/spend on top of it. Only a
+    failure to even establish the connection (nothing sent, no agent-side
+    work possible yet) is retried at this hop.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _RETRYABLE_STATUS
+    if isinstance(exc, (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout)):
+        return False
+    return isinstance(exc, httpx.TransportError)
+
+
+async def _with_hop_retry[T](call: Callable[[], Awaitable[T]], *, label: str) -> T:
+    """Run one agent call under the hop retry policy; re-raise if all attempts fail."""
+    for attempt in range(1, AGENT_HOP_ATTEMPTS + 1):
+        try:
+            return await call()
+        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+            if attempt >= AGENT_HOP_ATTEMPTS or not _is_retryable_hop(exc):
+                raise
+            ceiling = min(AGENT_HOP_BASE_DELAY_S * 2 ** (attempt - 1), AGENT_HOP_MAX_DELAY_S)
+            delay = random.uniform(0, ceiling)
+            log.warning(
+                "agent hop %s attempt %d/%d failed (%s); retrying in %.1fs",
+                label,
+                attempt,
+                AGENT_HOP_ATTEMPTS,
+                exc,
+                delay,
+            )
+            await asyncio.sleep(delay)
+    raise RuntimeError(f"agent hop {label}: no attempt ran")  # pragma: no cover
 
 
 async def ask_agent_stream(
@@ -26,6 +105,12 @@ async def ask_agent_stream(
     page stream, then one ``result`` (the full AgentAnswer dict) or ``error``.
     The read timeout is generous: the agent's own 2s heartbeats keep bytes
     flowing, so a stalled step is what this guards.
+
+    Deliberately NOT wrapped in the hop retry (s32 W1). Once frames have been
+    relayed, the client has already drawn a plan and possibly a page; silently
+    restarting the run would replay the whole answer over the top of what the
+    user is watching. The *connect* failure — nothing streamed yet — is retried
+    by the caller instead, which owns the SSE frames and can degrade cleanly.
     """
     payload = {
         "question": question,
@@ -69,14 +154,21 @@ async def ask_agent(
         "user": {"id": user_id, "role": role, "plan": plan},
         "dataset_slug": dataset_slug,
     }
+
     # A full insight report legitimately runs many tool round-trips (knowledge
     # search, several SQL queries, compute_trend, make_chart) and can take well
     # over a minute on a complex multi-entity question. 60s cut those off with a
     # 502 before the agent could even return its (possibly salvaged) report.
-    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
-        resp = await client.post(f"{settings.agent_url}/agent/ask", json=payload)
-        resp.raise_for_status()
-        return cast(dict[str, Any], resp.json())
+    async def once() -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
+            resp = await client.post(f"{settings.agent_url}/agent/ask", json=payload)
+            resp.raise_for_status()
+            return cast(dict[str, Any], resp.json())
+
+    # Retried only because /agent/ask is idempotent from the backend's point of
+    # view: the agent writes nothing, so a repeat costs model tokens and nothing
+    # else. The stream below is deliberately NOT retried — see there.
+    return await _with_hop_retry(once, label="/agent/ask")
 
 
 async def title_agent(question: str) -> str:

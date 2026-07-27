@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Track A · Production Hardening — data-qa-agent</title>
+<style>
+  :root{
+    --bg:#0a0d15; --panel:#111522; --panel2:#171c2b; --panel3:#1e2434;
+    --border:#242b3d; --border2:#33405e;
+    --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+    --accent:#d9a84e; --accent-soft:#f2ca79; --accent-2:#7fb0ff;
+    --good:#9ece6a; --good-bd:#33502f; --warn:#e0af68; --warn-bd:#6b5a2a; --bad:#f2777a; --bad-bd:#6b2a2a;
+    --c1:#d9a84e; --c2:#7fb0ff; --c3:#9ece6a; --c4:#b58be0; --c5:#5fc9d6;
+    --mono:ui-monospace,SFMono-Regular,Menlo,"Cascadia Code",monospace;
+    --radius:12px; --radius-sm:7px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:
+      radial-gradient(1200px 620px at 88% -8%, rgba(217,168,78,.10), transparent 60%),
+      radial-gradient(900px 500px at 6% 4%, rgba(127,176,255,.07), transparent 55%),
+      var(--bg);
+    color:var(--text);font:15px/1.58 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  .wrap{max-width:1080px;margin:0 auto;padding:34px 20px 110px}
+  a{color:var(--accent-2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  h1{font-size:29px;line-height:1.12;margin:0 0 8px;letter-spacing:-.015em}
+  h1 .lo{color:var(--accent-soft)} h1 .hi{color:var(--accent-2)}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.16em;color:var(--accent);margin:0;font-weight:700;font-family:var(--mono)}
+  .sec{margin:44px 0 0;padding-top:22px;border-top:1px solid var(--border)}
+  .sec-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .sec-h .n{font-family:var(--mono);font-size:12px;color:var(--faint);font-weight:700}
+  h3{font-size:17px;margin:0 0 4px;letter-spacing:-.01em}
+  p{margin:0 0 10px} .lead{color:var(--muted);max-width:80ch}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+  code{font-family:var(--mono);font-size:.85em;background:rgba(140,155,190,.14);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+  .mono{font-family:var(--mono)}
+  /* kicker */
+  .kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin-bottom:12px;line-height:1.7}
+  /* cards + grid */
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin:12px 0}
+  .card.pad0{padding:0;overflow:hidden}
+  .grid{display:grid;gap:12px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr))}
+  /* instrument voice */
+  .il{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+  .il.hud{color:var(--good)} .il.acc{color:var(--accent-soft)} .il.blue{color:var(--accent-2)}
+  /* hud-box (faithful to the app primitive) */
+  .hud{position:relative;padding:10px 12px;border-radius:var(--radius-sm);background:color-mix(in srgb,var(--panel2) 62%,transparent)}
+  .hud::before,.hud::after{content:"";position:absolute;width:9px;height:9px;pointer-events:none;border-color:var(--border2)}
+  .hud::before{top:0;left:0;border-top:1.5px solid;border-left:1.5px solid;border-top-left-radius:var(--radius-sm)}
+  .hud::after{bottom:0;right:0;border-bottom:1.5px solid;border-right:1.5px solid;border-bottom-right-radius:var(--radius-sm)}
+  .hud.lit::before,.hud.lit::after{border-color:var(--accent)}
+  .hud-l{display:block;font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .hud-v{display:block;margin-top:3px;font-size:21px;font-weight:700;letter-spacing:-.01em}
+  .hud-s{display:block;margin-top:2px;font-size:11px;color:var(--muted)}
+  .v-good{color:var(--good)} .v-warn{color:var(--warn)} .v-bad{color:var(--bad)} .v-acc{color:var(--accent-soft)} .v-blue{color:var(--accent-2)}
+  /* annunciator */
+  .ann-row{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .ann{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid var(--border);border-radius:999px;background:var(--panel2);font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  .ann::before{content:"";width:5px;height:5px;border-radius:50%;flex:none;background:var(--border2)}
+  .ann.on{color:var(--good);border-color:var(--good-bd)} .ann.on::before{background:var(--good);box-shadow:0 0 6px color-mix(in srgb,var(--good) 70%,transparent)}
+  .ann.warn{color:var(--warn);border-color:var(--warn-bd)} .ann.warn::before{background:var(--warn);box-shadow:0 0 6px color-mix(in srgb,var(--warn) 70%,transparent)}
+  .ann.bad{color:var(--bad);border-color:var(--bad-bd)} .ann.bad::before{background:var(--bad);box-shadow:0 0 6px color-mix(in srgb,var(--bad) 70%,transparent)}
+  .ann.acc{color:var(--accent-soft);border-color:var(--warn-bd)} .ann.acc::before{background:var(--accent);box-shadow:0 0 6px color-mix(in srgb,var(--accent) 70%,transparent)}
+  /* tables */
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius-sm)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td.c,th.c{text-align:center}
+  .yes{color:var(--good);font-weight:700} .no{color:var(--bad);font-weight:700} .part{color:var(--warn);font-weight:700}
+  /* pills / tags */
+  .tag{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:3px 8px;border-radius:5px;white-space:nowrap}
+  .t-r{background:rgba(242,119,122,.13);color:var(--bad);border:1px solid var(--bad-bd)}
+  .t-o{background:rgba(224,175,104,.13);color:var(--warn);border:1px solid var(--warn-bd)}
+  .t-g{background:rgba(158,206,106,.13);color:var(--good);border:1px solid var(--good-bd)}
+  .t-b{background:rgba(127,176,255,.13);color:var(--accent-2);border:1px solid #2f4a72}
+  .t-a{background:rgba(217,168,78,.13);color:var(--accent-soft);border:1px solid var(--warn-bd)}
+  /* workstream card accent rails */
+  .ws{border-left:3px solid var(--rail)}
+  .w0{--rail:var(--accent-2)} .w1{--rail:var(--good)} .w2{--rail:var(--accent)} .w3{--rail:var(--bad)} .w4{--rail:var(--c4)}
+  .ws h3{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .chip{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;padding:3px 8px;border-radius:5px;background:color-mix(in srgb,var(--rail) 16%,transparent);color:var(--rail);border:1px solid color-mix(in srgb,var(--rail) 40%,transparent)}
+  ul.tight{margin:6px 0 0;padding-left:18px} ul.tight li{margin:4px 0}
+  .files{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.7}
+  .files b{color:var(--text);font-weight:600}
+  .unlock{font-size:12px;color:var(--muted);margin-top:9px;padding-top:9px;border-top:1px dashed var(--border)}
+  .unlock .il{margin-right:6px}
+  /* callout */
+  .callout{border-radius:var(--radius);padding:14px 16px;margin:12px 0;border:1px solid}
+  .co-warn{background:rgba(224,175,104,.07);border-color:var(--warn-bd)}
+  .co-blue{background:rgba(127,176,255,.06);border-color:#2f4a72}
+  .co-good{background:rgba(158,206,106,.06);border-color:var(--good-bd)}
+  .callout h4{margin:0 0 6px;font-size:13px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase}
+  .co-warn h4{color:var(--warn)} .co-blue h4{color:var(--accent-2)} .co-good h4{color:var(--good)}
+  /* dashboard mock */
+  .mock{background:linear-gradient(180deg,rgba(127,176,255,.05),transparent 40%),var(--panel);border:1px solid var(--border2);border-radius:14px;padding:0;overflow:hidden}
+  .mock-bar{display:flex;align-items:center;gap:10px;padding:11px 15px;background:var(--panel2);border-bottom:1px solid var(--border)}
+  .mock-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px color-mix(in srgb,var(--accent) 70%,transparent)}
+  .mock-body{padding:15px}
+  .mock-sub{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:16px 0 8px;display:flex;align-items:center;gap:8px}
+  .mock-sub::after{content:"";flex:1;height:1px;background:var(--border)}
+  .panel{background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px}
+  .panel-h{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .bar-row{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:11.5px}
+  .bar-row .lab{width:104px;flex:none;font-family:var(--mono);font-size:10.5px;color:var(--muted);text-align:right}
+  .bar-track{flex:1;height:9px;border-radius:5px;background:var(--panel3);overflow:hidden;min-width:0}
+  .bar-fill{height:100%;border-radius:5px}
+  .bar-row .pct{width:44px;flex:none;text-align:right;font-family:var(--mono);font-size:10.5px}
+  .mini-tl td{padding:6px 8px;font-size:11.5px;border-bottom:1px solid var(--border)}
+  .mini-tl .mono{font-size:10.5px}
+  .footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--border);font-size:11.5px;color:var(--faint);line-height:1.75}
+  /* decisions */
+  .dec{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:15px 17px;margin:12px 0}
+  .dec-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+  .dec-h .q{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700}
+  .dec form{margin:10px 0 0}
+  .opt{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);margin:7px 0;cursor:pointer;transition:border-color .15s,background .15s}
+  .opt:hover{border-color:var(--border2)}
+  .opt input{margin-top:3px;flex:none;accent-color:var(--accent)}
+  .opt input:checked ~ .opt-b .opt-t{color:var(--accent-soft)}
+  .opt:has(input:checked){border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:rgba(217,168,78,.05)}
+  .opt-b{min-width:0}
+  .opt-t{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .opt-d{font-size:12px;color:var(--muted);margin-top:2px}
+  .rec{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.06em;padding:2px 6px;border-radius:4px;background:rgba(158,206,106,.14);color:var(--good);border:1px solid var(--good-bd)}
+  .dec button{margin-top:10px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:8px 14px;border-radius:var(--radius-sm);background:var(--accent);color:var(--gold-ink,#1a1204);border:none;cursor:pointer}
+  .dec button:hover{background:var(--accent-soft)}
+  .dec .sent{font-size:11px;color:var(--faint);margin-top:8px;min-height:1em}
+  /* code */
+  .codewrap{margin:10px 0}
+  .code-cap{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:6px}
+  pre.fallback{overflow-x:auto;font-family:var(--mono);font-size:11.5px;line-height:1.5;background:#0c1119;color:#d6dcea;padding:13px 15px;border-radius:var(--radius-sm);border:1px solid var(--border)}
+  .mermaid{display:flex;justify-content:center;overflow-x:auto;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--muted);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .sw{width:10px;height:10px;border-radius:3px;flex:none}
+  nav.toc{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+  nav.toc a{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;padding:4px 9px;border:1px solid var(--border);border-radius:999px;color:var(--muted)}
+  nav.toc a:hover{border-color:var(--accent);color:var(--accent-soft);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header>
+  <div class="kicker">
+    s32 · Track A — production hardening · 2026-07-26 · branch <code>s32-ops-hardening</code><br/>
+    implements Track A of <code>ai-engineer-fit/.lavish/s07</code> · grounded in a same-day audit of five subsystems (reliability · observability · security · delivery · frontend)
+  </div>
+  <h1>Ship the <span class="lo">operations</span>, and make every outcome<br/>readable on one <span class="hi">flight deck</span>.</h1>
+  <p class="lead">The app is built and live on AWS. What's missing is the <em>operated</em> story: LLM calls have no retry or timeout, cost is counted but never priced, prod runs with no traces, there's no security testing, and deploys are blind <code>apply -auto-approve</code>. This plan closes those four gaps — and routes every result into a new admin <strong>Ops</strong> tab, so "is it healthy, safe, fast and affordable?" is answered by a glance at a cockpit, not a grep through CloudWatch.</p>
+
+  <div class="grid g4" style="margin-top:16px">
+    <div class="hud"><span class="hud-l">LLM call sites w/ retry</span><span class="hud-v v-bad">0 / 6</span><span class="hud-s">timeout also unset</span></div>
+    <div class="hud"><span class="hud-l">Cost charted in $</span><span class="hud-v v-bad">nowhere</span><span class="hud-s">tokens counted, never priced</span></div>
+    <div class="hud"><span class="hud-l">Prod trace backend</span><span class="hud-v v-bad">none</span><span class="hud-s">Logfire unwired in Terraform</span></div>
+    <div class="hud"><span class="hud-l">Alarms that can notify</span><span class="hud-v v-warn">0 / 3</span><span class="hud-s">SNS never confirmed</span></div>
+  </div>
+
+  <nav class="toc">
+    <a href="#deck">1 · The deck</a>
+    <a href="#coverage">2 · Coverage</a>
+    <a href="#state">3 · Where we are</a>
+    <a href="#arch">4 · Architecture</a>
+    <a href="#work">5 · Workstreams</a>
+    <a href="#data">6 · Data model</a>
+    <a href="#code">7 · Key code</a>
+    <a href="#honest">8 · Honest constraints</a>
+    <a href="#risks">9 · Risks</a>
+    <a href="#decide">10 · Your decisions</a>
+    <a href="#roadmap">11 · Roadmap</a>
+  </nav>
+</header>
+
+<!-- ═══════════════ 1 · THE DECK (deliverable-first) ═══════════════ -->
+<section class="sec" id="deck">
+  <div class="sec-h"><span class="n">01</span><h2>The deliverable — a new <code>/ops</code> admin tab</h2></div>
+  <p class="lead">A new admin-only route <code>/ops</code>, sitting beside <code>/evals</code>, built from the app's own Flight Deck primitives (<code>HudBox</code>, <code>Annunciator</code>) and chart wrappers (<code>KPITile</code>, <code>Trend</code>, <code>Bars</code>, <code>DataTable</code>). It reads one new endpoint, <code>/admin/ops/summary</code>, that computes windowed aggregates over <code>app.query_runs</code> and four new ops tables. Each workstream below lights up one region of this panel — <strong>this mock is the contract</strong> for what "done" looks like. For the full metric coverage it's built to hit — mapped to the Four Golden Signals plus the data- and product-specific layers a lead expects — see <a href="#coverage">§2</a>.</p>
+
+  <div class="mock" role="img" aria-label="Mock of the Ops dashboard cockpit">
+    <div class="mock-bar">
+      <span class="mock-dot"></span>
+      <span class="il acc">DATA PILOT · OPS</span>
+      <span class="il" style="margin-left:auto">WINDOW 24H · LIVE</span>
+    </div>
+    <div class="mock-body">
+
+      <!-- annunciator strip = SLO + health lamps (W2/W1/W4) -->
+      <div class="ann-row">
+        <span class="ann on">AVAILABILITY 99.4%</span>
+        <span class="ann on">TTFP&nbsp;P95&nbsp;2.4S</span>
+        <span class="ann warn">ERR&nbsp;BUDGET&nbsp;38%</span>
+        <span class="ann on">SATURATION&nbsp;OK</span>
+        <span class="ann on">MARTS&nbsp;FRESH&nbsp;2H</span>
+        <span class="ann on">PROVIDER&nbsp;OK</span>
+        <span class="ann on">REDTEAM&nbsp;PASS&nbsp;96%</span>
+        <span class="ann on">LAST&nbsp;DEPLOY&nbsp;✓</span>
+        <span class="ann acc">RLS · AUDIT</span>
+      </div>
+
+      <!-- KPI band (W1 latency/error, W2 cost) -->
+      <div class="mock-sub">Telemetry · 24h</div>
+      <div class="grid g4">
+        <div class="hud lit"><span class="hud-l">Full answer p95</span><span class="hud-v">96.2<span style="font-size:12px;color:var(--muted)">s</span></span><span class="hud-s">extract-bound · eval lever</span></div>
+        <div class="hud"><span class="hud-l">Time to first page p95</span><span class="hud-v v-good">2.4<span style="font-size:12px;color:var(--muted)">s</span></span><span class="hud-s">the felt latency</span></div>
+        <div class="hud"><span class="hud-l">Error / degraded rate</span><span class="hud-v v-good">0.6<span style="font-size:12px;color:var(--muted)">%</span></span><span class="hud-s">3 degraded / 512 asks</span></div>
+        <div class="hud"><span class="hud-l">Cost / answer</span><span class="hud-v v-acc">$0.0038</span><span class="hud-s">cache-adjusted</span></div>
+      </div>
+
+      <div class="grid g2" style="margin-top:12px">
+        <!-- latency + cost trend -->
+        <div class="panel">
+          <div class="panel-h"><span>TTFP &amp; COST / ANSWER · 14D</span><span class="il blue">Trend</span></div>
+          <svg viewBox="0 0 320 96" width="100%" height="96" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="0" y1="72" x2="320" y2="72" stroke="var(--border)" stroke-width="1"/>
+            <polyline fill="none" stroke="var(--c2)" stroke-width="2" points="0,58 24,54 48,60 72,49 96,52 120,44 144,47 168,40 192,43 216,38 240,41 264,36 288,39 312,34"/>
+            <polyline fill="none" stroke="var(--c1)" stroke-width="2" stroke-dasharray="3 3" points="0,66 24,64 48,67 72,62 96,60 120,63 144,58 168,59 192,55 216,57 240,52 264,54 288,50 312,51"/>
+          </svg>
+          <div class="legend"><span><span class="sw" style="background:var(--c2)"></span>TTFP p95</span><span><span class="sw" style="background:var(--c1)"></span>$/answer</span></div>
+        </div>
+        <!-- red-team pass by category (W3) -->
+        <div class="panel">
+          <div class="panel-h"><span>RED-TEAM PASS BY CATEGORY</span><span class="il">Bars · nightly</span></div>
+          <div class="bar-row"><span class="lab">RLS bypass</span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--good)"></span></span><span class="pct v-good">100%</span></div>
+          <div class="bar-row"><span class="lab">SQL injection</span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--good)"></span></span><span class="pct v-good">100%</span></div>
+          <div class="bar-row"><span class="lab">prompt inject</span><span class="bar-track"><span class="bar-fill" style="width:92%;background:var(--warn)"></span></span><span class="pct v-warn">92%</span></div>
+          <div class="bar-row"><span class="lab">jailbreak→DML</span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--good)"></span></span><span class="pct v-good">100%</span></div>
+          <div class="bar-row"><span class="lab">PII exfil</span><span class="bar-track"><span class="bar-fill" style="width:88%;background:var(--warn)"></span></span><span class="pct v-warn">88%</span></div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:12px">
+        <!-- deploy timeline (W4) -->
+        <div class="panel">
+          <div class="panel-h"><span>DEPLOY TIMELINE</span><span class="il">DataTable · deploy_events</span></div>
+          <table class="mini-tl"><tbody>
+            <tr><td class="mono">e2b91c</td><td><span class="tag t-g">deployed</span></td><td class="mono faint">31m · smoke 8/8</td></tr>
+            <tr><td class="mono">a4f0d1</td><td><span class="tag t-o">rolled back</span></td><td class="mono faint">manual · prior tag</td></tr>
+            <tr><td class="mono">c536864</td><td><span class="tag t-g">deployed</span></td><td class="mono faint">28m · smoke 8/8</td></tr>
+          </tbody></table>
+        </div>
+        <!-- live judge sampling (W4) + load test (W1) -->
+        <div class="panel">
+          <div class="panel-h"><span>LIVE JUDGE · LOAD</span><span class="il">judge_samples · load_tests</span></div>
+          <div class="grid g2" style="gap:8px">
+            <div class="hud"><span class="hud-l">Judge insight 7d</span><span class="hud-v v-good">7.8<span style="font-size:12px;color:var(--muted)">/10</span></span><span class="hud-s">40 sampled asks</span></div>
+            <div class="hud"><span class="hud-l">k6 p95 @ 20 vu</span><span class="hud-v v-blue">3.1<span style="font-size:12px;color:var(--muted)">s</span></span><span class="hud-s">0 err · last run</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Saturation / resource health (4th golden signal) -->
+      <div class="mock-sub">Saturation &amp; dependency health · CloudWatch + db_warming</div>
+      <div class="grid g4">
+        <div class="hud"><span class="hud-l">backend CPU / mem</span><span class="hud-v v-good">18<span style="font-size:12px;color:var(--muted)">% / 34%</span></span><span class="hud-s">App Runner · 0.25 vCPU</span></div>
+        <div class="hud"><span class="hud-l">agent CPU / mem</span><span class="hud-v v-good">41<span style="font-size:12px;color:var(--muted)">% / 52%</span></span><span class="hud-s">2 vCPU · 1 instance</span></div>
+        <div class="hud"><span class="hud-l">Aurora ACU / conns</span><span class="hud-v">1.4<span style="font-size:12px;color:var(--muted)"> / 12</span></span><span class="hud-s">max 2 ACU · cold-starts 3/24h</span></div>
+        <div class="hud"><span class="hud-l">Concurrency / cap</span><span class="hud-v v-good">6<span style="font-size:12px;color:var(--muted)"> / 100</span></span><span class="hud-s">daily-cap hits · 2 users</span></div>
+      </div>
+
+      <!-- Traffic + product -->
+      <div class="mock-sub">Traffic &amp; product · query_runs · events · answer_feedback</div>
+      <div class="grid g4">
+        <div class="hud"><span class="hud-l">Asks 24h / DAU</span><span class="hud-v v-blue">512<span style="font-size:12px;color:var(--muted)"> / 34</span></span><span class="hud-s">chat 71 · explore 21 · sql 8%</span></div>
+        <div class="hud"><span class="hud-l">Thumbs-up rate</span><span class="hud-v v-good">86<span style="font-size:12px;color:var(--muted)">%</span></span><span class="hud-s">answer_feedback</span></div>
+        <div class="hud"><span class="hud-l">No-answer rate</span><span class="hud-v v-warn">4.1<span style="font-size:12px;color:var(--muted)">%</span></span><span class="hud-s">21 no_answer / 512</span></div>
+        <div class="hud"><span class="hud-l">Spend 7d / budget</span><span class="hud-v v-acc">$14.20<span style="font-size:12px;color:var(--muted)"> / $50</span></span><span class="hud-s">cache-hit 83%</span></div>
+      </div>
+
+      <div class="grid g2" style="margin-top:12px">
+        <!-- data freshness / pipeline (data-app signal) -->
+        <div class="panel">
+          <div class="panel-h"><span>DATA FRESHNESS · PIPELINE</span><span class="il">pipeline_runs</span></div>
+          <table class="mini-tl"><tbody>
+            <tr><td>marts age</td><td class="mono v-good">2h 11m</td><td class="mono faint">rent · sales · yield</td></tr>
+            <tr><td>dbt tests</td><td class="mono v-good">37 / 37</td><td class="mono faint">last run 2h ago · 6m</td></tr>
+            <tr><td>rows</td><td class="mono">3.2M raw</td><td class="mono faint">367K + 816K marts</td></tr>
+          </tbody></table>
+        </div>
+        <!-- errors by service -->
+        <div class="panel">
+          <div class="panel-h"><span>ERRORS BY SERVICE · 24H</span><span class="il">Bars</span></div>
+          <div class="bar-row"><span class="lab">agent 5xx</span><span class="bar-track"><span class="bar-fill" style="width:8%;background:var(--bad)"></span></span><span class="pct">2</span></div>
+          <div class="bar-row"><span class="lab">backend 502</span><span class="bar-track"><span class="bar-fill" style="width:4%;background:var(--warn)"></span></span><span class="pct">1</span></div>
+          <div class="bar-row"><span class="lab">db_warming</span><span class="bar-track"><span class="bar-fill" style="width:12%;background:var(--warn)"></span></span><span class="pct">3</span></div>
+          <div class="bar-row"><span class="lab">degraded</span><span class="bar-track"><span class="bar-fill" style="width:12%;background:var(--warn)"></span></span><span class="pct">3</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <p class="faint" style="font-size:11.5px;margin-top:8px">Indicative mock — numbers illustrative. Real panels render through the existing <code>report-engine/PageLayout</code> + <code>ui/charts/*</code>, exactly as the Explore and Evals tabs already do, so this tab inherits theming, error boundaries and the SQL-link affordance for free. Every run in the table also deep-links to its <strong>Logfire trace</strong> by <code>otel_trace_id</code> — the deck is the outcomes plane, Logfire the microscope.</p>
+</section>
+
+<!-- ═══════════════ 2 · COVERAGE / TAXONOMY ═══════════════ -->
+<section class="sec" id="coverage">
+  <div class="sec-h"><span class="n">02</span><h2>Coverage — the full operational taxonomy</h2></div>
+  <p class="lead"><strong>Direct answer to "does this cover every operational metric a lead would capture?"</strong> — the first draft did <em>not</em>. It covered the LLM-app signals (latency, errors, cost, quality, security, delivery) well, but a staff/lead reviewer would immediately flag three gaps: <strong>saturation</strong> (the 4th Golden Signal), <strong>data freshness</strong> (the exact failure class that already took Explore down in prod), and <strong>product / adoption</strong>. The deck above now carries all three. Here is the complete set, mapped to the frameworks a lead expects — Google's <strong>Four Golden Signals</strong>, <strong>USE/RED</strong>, plus the data- and product-specific layers a served AI app needs on top.</p>
+
+  <div class="callout co-blue">
+    <h4>Two tiers, so "complete" stays shippable</h4>
+    <p style="margin:0;font-size:13px" class="muted"><strong>Tier 1 — Postgres-native</strong> (ships in W0): everything computable from <code>query_runs</code>, <code>events</code>, <code>answer_feedback</code> and the new ops tables — latency, errors, cost, traffic, product, quality, denials, SLOs, plus <em>data freshness</em> (a pipeline-run write) and <em>Aurora cold-starts</em> counted from the existing <code>db_warming</code> 503s (an in-app signal, zero AWS calls). <strong>Tier 2 — CloudWatch pull</strong> (folds into W2): infra saturation — App&nbsp;Runner CPU/mem, Aurora ACU/connections, CloudFront cache-hit — via one boto3 <code>GetMetricData</code> behind an IAM read grant on the backend role, cached server-side. The deck renders Tier&nbsp;1 alone if Tier&nbsp;2 is off — no metrics vendor anywhere.</p>
+  </div>
+
+  <div class="card pad0"><div class="scroll"><table>
+    <thead><tr><th>Layer</th><th>Signal</th><th>On the deck</th><th>Source</th><th class="c">Status</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="4"><strong>A · Four Golden Signals</strong><br/><span class="faint" style="font-size:11px">Google SRE — the baseline</span></td>
+        <td><strong>Latency</strong></td><td>TTFP p50/p95/p99 · full-answer p95 · agent-hop · SQL/extract time</td><td class="mono" style="font-size:11px">query_runs.latency_ms + trace</td><td class="c"><span class="tag t-g">have</span></td></tr>
+      <tr><td><strong>Traffic</strong></td><td>asks/min · concurrent in-flight · DAU/WAU · surface mix (chat/explore/sql)</td><td class="mono" style="font-size:11px">query_runs · events</td><td class="c"><span class="tag t-b">add</span></td></tr>
+      <tr><td><strong>Errors</strong></td><td>error &amp; degraded rate · 5xx by service · 502 agent-unavail · no-answer rate</td><td class="mono" style="font-size:11px">query_runs.status/degraded</td><td class="c"><span class="tag t-o">expand</span></td></tr>
+      <tr><td><strong>Saturation</strong></td><td>App Runner CPU/mem · Aurora ACU &amp; conns · concurrency vs 100 · daily-cap hits</td><td class="mono" style="font-size:11px">CloudWatch (T2) · limits</td><td class="c"><span class="tag t-b">add</span></td></tr>
+      <tr><td rowspan="3"><strong>B · Resource &amp; dependency</strong><br/><span class="faint" style="font-size:11px">USE — is the infra healthy</span></td>
+        <td>App Runner</td><td>CPU · memory · active instances · restarts</td><td class="mono" style="font-size:11px">CloudWatch AWS/AppRunner (T2)</td><td class="c"><span class="tag t-b">add</span></td></tr>
+      <tr><td>Aurora</td><td>ACU · connections · <strong>cold-start / resume count</strong> · storage</td><td class="mono" style="font-size:11px">db_warming 503s (T1) · RDS (T2)</td><td class="c"><span class="tag t-b">add</span></td></tr>
+      <tr><td>Provider &amp; CDN</td><td>DeepSeek/Claude call latency · 429s · retry/degrade counts · CloudFront cache-hit &amp; edge 5xx</td><td class="mono" style="font-size:11px">model_factory counters · CloudWatch</td><td class="c"><span class="tag t-o">expand</span></td></tr>
+      <tr><td rowspan="2"><strong>C · Data-application</strong><br/><span class="faint" style="font-size:11px">unique to a data platform</span></td>
+        <td><strong>Freshness</strong></td><td>marts age since last pipeline · staleness alarm (the Explore-outage metric)</td><td class="mono" style="font-size:11px">app.pipeline_runs (new)</td><td class="c"><span class="tag t-b">add</span></td></tr>
+      <tr><td>Pipeline &amp; DQ</td><td>last run status/duration · dbt test pass (37/37) · row-count drift</td><td class="mono" style="font-size:11px">app.pipeline_runs</td><td class="c"><span class="tag t-b">add</span></td></tr>
+      <tr><td rowspan="3"><strong>D · Product &amp; quality</strong><br/><span class="faint" style="font-size:11px">useful, not just up</span></td>
+        <td>Answer quality</td><td>live-judge insight · <strong>thumbs-up rate</strong> · no-answer/degraded rate</td><td class="mono" style="font-size:11px">judge_samples · answer_feedback</td><td class="c"><span class="tag t-o">expand</span></td></tr>
+      <tr><td>Adoption</td><td>DAU/WAU · asks/user · feature mix · retention</td><td class="mono" style="font-size:11px">query_runs · events</td><td class="c"><span class="tag t-b">add</span></td></tr>
+      <tr><td>Cost efficiency</td><td>cost/answer · cost/user/day · cache-hit ratio · spend vs budget</td><td class="mono" style="font-size:11px">query_runs.cost_usd</td><td class="c"><span class="tag t-o">expand</span></td></tr>
+      <tr><td rowspan="2"><strong>E · Security &amp; delivery ops</strong><br/><span class="faint" style="font-size:11px">safe · changeable safely</span></td>
+        <td>Security</td><td>red-team pass by category · RLS/guard denials · auth-fail (401) rate · cap hits</td><td class="mono" style="font-size:11px">security_runs · query_runs</td><td class="c"><span class="tag t-o">expand</span></td></tr>
+      <tr><td>Delivery / SLO</td><td>deploy freq/duration/success · rollback rate · MTTR · SLO burn · load p95 headroom</td><td class="mono" style="font-size:11px">deploy_events · load_tests</td><td class="c"><span class="tag t-g">have</span></td></tr>
+    </tbody>
+  </table></div></div>
+  <p class="faint" style="font-size:11.5px;margin-top:8px"><span class="tag t-g">have</span> in the original draft · <span class="tag t-o">expand</span> present but broadened · <span class="tag t-b">add</span> new in this revision. The two deliberate <em>omissions</em> for a solo-operated app — synthetic/browser uptime probes (a paid pinger) and formal on-call/paging rotation (MTTA, alert fatigue) — are noted, not built; both are process, not code, and the alarm-notification path is a known parallel chore (§8).</p>
+
+  <h3 style="margin-top:24px">Every output has a review surface</h3>
+  <p class="muted" style="font-size:13px;max-width:82ch">Second question — <em>"does everything this plan creates make it to a dashboard to review / monitor?"</em> Near-enough yes: the <code>/ops</code> deck is the home for every <strong>runtime outcome</strong>. The only things that live elsewhere are the three that <em>shouldn't</em> sit on a metrics deck — a span microscope, static docs, and CI pass/fail — and each is still one click away from it.</p>
+  <div class="card pad0"><div class="scroll"><table>
+    <thead><tr><th>What the plan creates</th><th>Where you review it</th><th class="c">Surface</th></tr></thead>
+    <tbody>
+      <tr><td>Latency · errors · cost · traffic · product · saturation · data-freshness</td><td><code>/ops</code> deck — KPI band, trends, panels</td><td class="c"><span class="tag t-g">deck</span></td></tr>
+      <tr><td>Retry / degrade / attempts · provider health (W1)</td><td><code>/ops</code> deck — errors-by-service panel + PROVIDER lamp</td><td class="c"><span class="tag t-g">deck</span></td></tr>
+      <tr><td>SLO attainment + error-budget burn (W2)</td><td><code>/ops</code> deck — annunciator lamps</td><td class="c"><span class="tag t-g">deck</span></td></tr>
+      <tr><td>Load-test · red-team · deploy · judge-sample runs</td><td><code>/ops</code> deck — load / red-team / timeline / judge panels</td><td class="c"><span class="tag t-g">deck</span></td></tr>
+      <tr><td>RLS/guard denials · auth-fail (401) rate (W3)</td><td><code>/ops</code> deck — denial counter</td><td class="c"><span class="tag t-g">deck</span></td></tr>
+      <tr><td><strong>Deep traces / spans (W2)</strong></td><td><strong>Logfire web app</strong> — deep-linked per run from the deck via <code>otel_trace_id</code></td><td class="c"><span class="tag t-b">1-click</span></td></tr>
+      <tr><td>promptfoo full red-team report (W3)</td><td><code>report_url</code> opened from the deck's security panel</td><td class="c"><span class="tag t-b">1-click</span></td></tr>
+      <tr><td><strong>Threat model (W3) · runbook (W2)</strong></td><td><code>SECURITY.md</code> · <code>docs/runbook.md</code> — linked from the deck</td><td class="c"><span class="tag t-o">doc</span></td></tr>
+      <tr><td><strong>CI gates: mypy · terraform plan (W4)</strong></td><td>GitHub Actions PR checks — the deploy <em>outcome</em> is mirrored to the deck timeline</td><td class="c"><span class="tag t-o">ci</span></td></tr>
+    </tbody>
+  </table></div></div>
+  <p class="faint" style="font-size:11.5px;margin-top:8px"><span class="tag t-g">deck</span> lives on <code>/ops</code> · <span class="tag t-b">1-click</span> deep-linked from the deck · <span class="tag t-o">doc/ci</span> a repo file or PR check, referenced from the deck. Nothing this plan produces is write-only — if it's created, it's reviewable.</p>
+</section>
+
+<!-- ═══════════════ 2 · WHERE WE ARE ═══════════════ -->
+<section class="sec" id="state">
+  <div class="sec-h"><span class="n">03</span><h2>Where we are — the audited baseline</h2></div>
+  <p class="lead">From today's read of the live tree (not READMEs). <span class="yes">●</span> live · <span class="part">◐</span> partial · <span class="no">○</span> absent.</p>
+  <div class="card pad0"><div class="scroll"><table>
+    <thead><tr><th>Pillar</th><th>Live today</th><th>The gap this plan closes</th><th class="c">State</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Reliability</strong><br/><span class="faint mono" style="font-size:10.5px">W1</span></td>
+        <td>Aurora-wake resilience (<code>waking.py</code> → 503 retry); per-user daily cap; role statement-timeouts; agent degrades to a deterministic stub when no key.</td>
+        <td><strong>Zero</strong> retry/timeout/backoff on any of the 6 LLM sites (pydantic-ai library defaults); backend→agent HTTP failure = raw 502/500; no load test ever run; frontend shows a generic bubble, no retry button.</td>
+        <td class="c"><span class="part">◐</span></td>
+      </tr>
+      <tr>
+        <td><strong>Observability</strong><br/><span class="faint mono" style="font-size:10.5px">W2</span></td>
+        <td>Logfire instruments <em>data-agent only</em>; tokens (in/out) persisted per run; latency_ms per run; <code>/admin</code> shows 2 count sparklines.</td>
+        <td>Logfire <strong>unwired in Terraform</strong> (prod blind); backend-api uninstrumented; <strong>no trace propagation</strong>; cache tokens buried in <code>trace</code> jsonb; <strong>no $ anywhere</strong>; no SLO/metrics endpoint; no structured logs or request IDs.</td>
+        <td class="c"><span class="part">◐</span></td>
+      </tr>
+      <tr>
+        <td><strong>Security</strong><br/><span class="faint mono" style="font-size:10.5px">W3</span></td>
+        <td>Strong <em>enforcement</em>: OIDC/JWT auth, RLS + read-only <code>agent_ro</code>, sqlglot AST SQL guard, Pyodide sandbox. <code>ROADMAP.md §1</code> already names red-teaming as the top differentiator.</td>
+        <td>Zero security <em>testing</em>: no promptfoo/injection/jailbreak suite, no PII scrub, no threat model. <strong>RLS denials unrecorded</strong>; chat-path guard rejections mis-logged as <code>status='success'</code>. No rate limit outside the LLM cap; <code>question</code> has no length bound.</td>
+        <td class="c"><span class="no">○</span></td>
+      </tr>
+      <tr>
+        <td><strong>Delivery</strong><br/><span class="faint mono" style="font-size:10.5px">W4</span></td>
+        <td>OIDC → build/push → <code>tf apply</code> → migrate → pipeline → smoke (8 checks); concurrency-serialised; App Runner auto-deploys on <code>:latest</code>.</td>
+        <td>Blind <code>apply -auto-approve</code> (no plan/validate gate); <strong>mypy configured but never run in CI</strong>; no canary/rollback; no deploy telemetry; single prod env; deploy role is <code>AdministratorAccess</code>; the 3 alarms can't notify (SNS unconfirmed).</td>
+        <td class="c"><span class="no">○</span></td>
+      </tr>
+    </tbody>
+  </table></div></div>
+</section>
+
+<!-- ═══════════════ 3 · ARCHITECTURE ═══════════════ -->
+<section class="sec" id="arch">
+  <div class="sec-h"><span class="n">04</span><h2>How every outcome reaches the deck</h2></div>
+  <p class="lead">One principle: <strong>every hardening result becomes a row in Postgres</strong>, and the Ops tab reads a single pre-aggregated table (<code>ops_rollup</code>, Q3) — so it renders fast and stays up even when Logfire or the AWS APIs are down. The refresh job behind the rollup does the heavy aggregation and the one Tier-2 CloudWatch pull, off the request path. Deep traces still go to Logfire for developer debugging. The write-paths:</p>
+
+  <pre class="mermaid" id="arch-diagram"></pre>
+  <script type="text/plain" id="arch-src">
+flowchart TB
+  U["User ask"] --> BE["backend-api"]
+  BE --> AG["data-agent"]
+  AG --> LLM["DeepSeek or Claude"]
+  BE -->|"metrics per run"| QR[("query_runs")]
+  K6["W1 k6 load test"] --> LT[("load_tests")]
+  RT["W3 promptfoo red-team"] --> SR[("security_runs")]
+  DP["W4 deploy recorder"] --> DE[("deploy_events")]
+  JS["W4 judge sampler"] --> JU[("judge_samples")]
+  PIPE["pipeline job"] --> PR[("pipeline_runs")]
+  QR --> ROLL[("ops_rollup")]
+  LT --> ROLL
+  SR --> ROLL
+  DE --> ROLL
+  JU --> ROLL
+  PR --> ROLL
+  FB[("answer_feedback")] --> ROLL
+  CW["CloudWatch Tier 2"] --> ROLL
+  ROLL --> API["admin ops summary"]
+  API --> OPS["ops admin deck"]
+  AG -. traces .-> LF["Logfire traces"]
+  BE -. traces .-> LF
+  </script>
+  <div class="legend"><span><span class="sw" style="background:var(--c3)"></span>Tier-1 · Postgres (in-app)</span><span><span class="sw" style="background:var(--c2)"></span>Tier-2 · CloudWatch (cached)</span><span><span class="sw" style="background:var(--faint)"></span>Logfire · deep traces, deep-linked per run</span></div>
+  <p class="faint" style="font-size:11.5px">W0 builds the frame and the endpoint first; W1–W4 each fill in their tables and light their panels. The dashboard degrades gracefully — a panel with no rows shows "no data yet", never an error.</p>
+</section>
+
+<!-- ═══════════════ 4 · WORKSTREAMS ═══════════════ -->
+<section class="sec" id="work">
+  <div class="sec-h"><span class="n">05</span><h2>The five workstreams</h2></div>
+  <p class="lead">W0 is the spine (build it first); W1–W4 are severable and each ends in a lit dashboard region plus a resume sentence. Ordered by leverage — reliability is the cheapest fix and the most embarrassing gap.</p>
+
+  <!-- W0 -->
+  <div class="card ws w0">
+    <h3><span class="chip">W0</span> Ops dashboard skeleton + the metrics endpoint</h3>
+    <p class="muted" style="font-size:13.5px">Stand up the frame so every later week has a place to land. Migration <code>0031</code> adds the cost/cache columns to <code>query_runs</code> and creates the ops tables, including a pre-aggregated <code>app.ops_rollup</code> (decision Q3). A new <code>/admin/ops/summary</code> reads that rollup — refreshed by a scheduled job, so request-time reads never scan raw <code>query_runs</code> — and a new <code>lazy()</code>-loaded <code>/ops</code> route renders the shell with real latency/error tiles from day one.</p>
+    <ul class="tight">
+      <li>Migration <code>0031</code>: <code>query_runs</code> += <code>cache_read_tokens</code>, <code>cache_write_tokens</code>, <code>cost_usd</code>, <code>degraded bool</code>, <code>attempts int</code>, <code>otel_trace_id</code> (the Logfire deep-link); widen <code>status</code> CHECK to add <code>'degraded'</code>; add <code>created_at</code> index. Create <code>load_tests</code>, <code>security_runs</code>, <code>deploy_events</code>, <code>judge_samples</code>, <code>pipeline_runs</code>, and <code>ops_rollup</code> (§6).</li>
+      <li><code>/admin/ops/summary?window=</code> → percentiles (p50/p95 TTFP + full-answer via <code>percentile_cont</code>), error/degraded rate, cost rollup, SLO status + error-budget burn, latest security/load/deploy/judge rows — served from <code>app.ops_rollup</code> (Q3), refreshed by a scheduled ECS task (reuses the pipeline job runner). <code>require_admin</code>, admin_ro read.</li>
+      <li><strong>Tier-1 metrics land day one</strong> (Postgres-only, §2): latency · errors · traffic/DAU · product (thumbs from <code>answer_feedback</code>, no-answer rate) · cost · denials · SLO burn · Aurora cold-starts (counted from <code>db_warming</code> 503s). Tier-2 infra saturation folds in with W2.</li>
+      <li>Frontend: <code>/ops</code> route (NavRail <code>View</code> union + <code>ITEMS</code>, App.tsx view-chain + admin-gate + <code>lazy</code> Suspense), <code>OpsPage.tsx</code> composing <code>HudBox</code>/<code>Annunciator</code> + charts; react-query with <code>refetchInterval</code> for live tiles (the first polling in the app).</li>
+    </ul>
+    <div class="files"><b>Touches:</b> services/db-migrate/migrations/versions/0031_ops_telemetry.py · services/backend-api/app/routers/ops.py (new) + main.py register · frontend/src/app/{NavRail,App}.tsx · frontend/src/ui/icons.tsx · frontend/src/features/ops/OpsPage.tsx (new) · frontend/src/lib/api.ts · frontend/e2e/ops.spec.ts (new)</div>
+    <div class="unlock"><span class="il blue">lights</span> the whole shell — empty panels that fill as W1–W4 land. <span class="il acc">e2e</span> admin sees Ops; User One does not.</div>
+  </div>
+
+  <!-- W1 -->
+  <div class="card ws w1">
+    <h3><span class="chip">W1</span> Reliability — retries, degraded mode, load test</h3>
+    <p class="muted" style="font-size:13.5px">The cheapest, highest-embarrassment fix. A single <code>model_factory</code> injects a timeout + jittered exponential backoff into every Agent, replacing the bare <code>Agent(f"{provider}:{model}")</code> the audit found copy-pasted at all six sites. On final failure the caller returns a <em>degraded</em> answer and stamps <code>status='degraded'</code> — never a 502/500. The backend→agent httpx hop gets the same policy. A k6 harness produces the first-ever load numbers.</p>
+    <ul class="tight">
+      <li><code>model_factory.build_model()</code> + <code>run_with_policy()</code> (timeout, retry on 408/429/5xx/529 + transport errors, never on 4xx) — wired through all 6 sites (<code>sandbox_agent</code>, <code>object_codegen</code>, <code>sql_assist</code>, <code>skill_codegen</code>, <code>titles</code>, <code>eval_judge</code>).</li>
+      <li><code>agent_client.py</code>: bounded retry around the backend→agent call; on exhaustion emit a proper <code>error</code>/degraded SSE frame, not a 502.</li>
+      <li>Frontend: typed <code>ApiError</code> surfaced in chat with a <strong>Retry</strong> affordance + a client-side fetch ceiling.</li>
+      <li><code>load/k6/chat.js</code> + <code>make loadtest</code>; a results-writer posts p50/p95/p99/rps/error-rate into <code>app.load_tests</code>.</li>
+    </ul>
+    <div class="files"><b>Touches:</b> services/data-agent/agent/model_factory.py (new) + the 6 call sites · services/backend-api/app/agent_client.py · services/backend-api/app/routers/ask.py · frontend/src/{app/App,lib/api}.tsx · load/k6/chat.js (new) · Makefile</div>
+    <div class="unlock"><span class="il hud">lights</span> KPI band (error/degraded rate, attempts), the k6 tile, the PROVIDER lamp. <span class="il acc">sentence</span> "Here's exactly what a user sees during a 429 storm — a retried, then degraded, answer. Never a stack trace."</div>
+  </div>
+
+  <!-- W2 -->
+  <div class="card ws w2">
+    <h3><span class="chip">W2</span> Observability &amp; cost — traces, $, SLOs</h3>
+    <p class="muted" style="font-size:13.5px">Two planes. <strong>Deep traces</strong>: extend Logfire to backend-api, inject W3C <code>traceparent</code> on the agent hop so a chat request is one linked trace across services, and wire <code>LOGFIRE_TOKEN</code> into Terraform/Secrets Manager so prod stops running blind. <strong>Outcomes</strong>: a <code>pricing</code> module turns tokens into <code>cost_usd</code> (cache-aware — cache-hit input dominates this workload, so cost ≈ ⅙ of the naïve all-miss figure), and two honest SLOs with an error budget feed the annunciator gauges.</p>
+    <ul class="tight">
+      <li><code>pricing.py</code>: per-provider rate table (cache-miss in / cache-hit in / out), <code>cost_usd()</code>, unit-tested against a known run so a silent price change trips CI. Persist cache tokens as columns + compute cost at persist time.</li>
+      <li>OTel: <code>logfire.configure</code> + <code>instrument_fastapi/httpx</code> in backend-api; propagate context header in <code>agent_client._headers()</code>; add request-ID middleware + structured log config. <strong>Where you see it:</strong> traces open in the <strong>Logfire web app</strong> (the hosted project dashboard — Live/Explore views, SQL over spans; locally, a <code>logfire</code> dev session streams from your running stack). The trace id is stamped onto <code>query_runs.otel_trace_id</code>, so the deck's run table <strong>deep-links each run to its span waterfall</strong> — a slow row on <code>/ops</code> is one click from its Logfire trace.</li>
+      <li><strong>SLO-A · Availability</strong> ≥99% of asks served (not error/provider-degraded), 28-day rolling. <strong>SLO-B · Responsiveness</strong> p95 time-to-first-page ≤ 3s (decoupled from extract-bound full-answer time). Error-budget burn computed in <code>/admin/ops/summary</code>.</li>
+      <li><strong>Saturation (Tier 2):</strong> the <code>ops_rollup</code> refresh job makes one boto3 <code>GetMetricData</code> pull for App Runner CPU/mem, Aurora ACU/connections and CloudFront cache-hit (behind an IAM read grant on the backend App Runner role) and folds it into the rollup — off the request path. The pipeline job writes marts freshness + dbt pass into <code>app.pipeline_runs</code> so the data-freshness panel needs no AWS call.</li>
+      <li>Terraform: <code>LOGFIRE_TOKEN</code> secret + App Runner env for both services; a runbook (<code>docs/runbook.md</code>) keyed off the alarms.</li>
+    </ul>
+    <div class="files"><b>Touches:</b> services/data-agent/agent/{pricing,agent_common}.py · services/backend-api/app/{main,agent_client,logging}.py · services/backend-api/pyproject.toml (logfire) · infra/terraform/foundations/{secrets,apprunner}.tf · docs/runbook.md (new)</div>
+    <div class="unlock"><span class="il acc">lights</span> cost/answer tile + cost trend, the availability &amp; TTFP &amp; error-budget lamps. <span class="il acc">sentence</span> "Open the deck — cost per answer is a tile, and the error budget is a lamp."</div>
+  </div>
+
+  <!-- W3 -->
+  <div class="card ws w3">
+    <h3><span class="chip">W3</span> Security testing — red-team, denial audit, threat model</h3>
+    <p class="muted" style="font-size:13.5px">Turn strong enforcement into <em>proven</em> enforcement. A promptfoo red-team config (the sibling <code>promptfoo/</code> workspace already exists) attacks the governed boundary — RLS bypass, jailbreak read-only→DML, prompt injection, PII exfil — and writes pass rates into <code>security_runs</code>. A distilled, deterministic injection/jailbreak subset runs in CI (no LLM, like the golden-pack gate). Two correctness fixes fall out: record RLS/guard denials, and stop logging chat-path guard rejections as <code>success</code>.</p>
+    <ul class="tight">
+      <li><code>security/promptfoo/redteam.yaml</code> + <code>make redteam</code> → results-writer → <code>app.security_runs</code> (pack, by-category pass rate, sha).</li>
+      <li><code>tests/security/test_injection.py</code> — deterministic assertions the guard/RLS hold; runs in <code>ci.yml</code> beside the golden-pack gate.</li>
+      <li>Fix: <code>_persist_answer</code> records real <code>status</code> for guard-rejected chat runs; add a <code>denied</code> signal (RLS zero-row + <code>UnsafeSQLError</code>) surfaced as a security-panel counter.</li>
+      <li>Input hardening: <code>question</code> max-length bound; PII scrub on persistence + Logfire scrubbing (see decision Q4). <code>SECURITY.md</code> — one-page threat model.</li>
+    </ul>
+    <div class="files"><b>Touches:</b> security/promptfoo/redteam.yaml (new) · tests/security/test_injection.py (new) · services/backend-api/app/routers/{ask,sql}.py · services/data-agent/agent/sql_guardrails.py · .github/workflows/ci.yml · SECURITY.md (new) · Makefile</div>
+    <div class="unlock"><span class="il" style="color:var(--bad)">lights</span> red-team-by-category bars, the REDTEAM lamp, denial counter. <span class="il acc">sentence</span> "We regression-test our guardrails — here's the nightly pass rate by attack class."</div>
+  </div>
+
+  <!-- W4 -->
+  <div class="card ws w4">
+    <h3><span class="chip">W4</span> Delivery — recorded deploys, rollback, live judge</h3>
+    <p class="muted" style="font-size:13.5px">Make deploys boring and self-recording. A <code>terraform plan</code> + <code>fmt</code> + <code>validate</code> gate comments on PRs; <strong>mypy finally runs in CI</strong>. Per decision Q1, deploys are <strong>recorded, not gated</strong>: every deploy writes a <code>deploy_events</code> row (start/finish/sha/duration/smoke), and a <code>make rollback</code> one-liner reverts App Runner to the previous image tag on demand — no automatic alarm-gate (that alarm-state watch is a noted later upgrade). An async sampler judges a slice of live traffic for quality drift.</p>
+    <ul class="tight">
+      <li><code>ci.yml</code>: add <code>ruff</code>-adjacent <code>mypy</code> job + a <code>terraform fmt -check</code>/<code>validate</code>/<code>plan</code> job commenting the plan on PRs.</li>
+      <li><code>deploy-aws.yml</code>: record start/finish/sha/duration/smoke-result to <code>deploy_events</code>; <code>scripts/rollback_apprunner.sh</code> + <code>make rollback</code> reverts to the prior image tag on demand (records <code>rolled_back</code>). No automatic gate (Q1).</li>
+      <li>Online judge: a scheduled sampler reuses <code>eval_judge</code> on N recent asks → <code>judge_samples</code> (FK <code>query_runs.id</code>), advisory quality trend.</li>
+      <li>Scope the CI deploy role down from <code>AdministratorAccess</code> to least-privilege (Q6) — closes the Phase-F TODO.</li>
+    </ul>
+    <div class="files"><b>Touches:</b> .github/workflows/{ci,deploy-aws}.yml · scripts/{record_deploy,rollback_apprunner,ops_judge_sample}.sh|py (new) · services/backend-api/app/routers/ops.py · infra/terraform/bootstrap/main.tf (role scope, optional)</div>
+    <div class="unlock"><span class="il" style="color:var(--c4)">lights</span> deploy timeline + live-judge tile + LAST DEPLOY lamp. <span class="il acc">sentence</span> "Deploys are gated, self-recording and auto-reverting — and I sample live answer quality, not just uptime."</div>
+  </div>
+</section>
+
+<!-- ═══════════════ 5 · DATA MODEL ═══════════════ -->
+<section class="sec" id="data">
+  <div class="sec-h"><span class="n">06</span><h2>Data model — migration <code>0031</code></h2></div>
+  <p class="lead">Next revision after <code>0030_eval_grader_spec</code>. Follows the established eval-tables convention: created in the <code>app</code> schema, admin/CI-curated with <strong>no RLS</strong> (or an admin-only policy), granted to <code>admin_ro</code> (0012 default privileges already cover new <code>app.*</code> tables), and <em>never</em> reachable by <code>agent_ro</code>. Live-traffic tables FK to <code>app.query_runs(id)</code> exactly as <code>eval_results.query_run_id</code> does.</p>
+  <div class="card pad0"><div class="scroll"><table>
+    <thead><tr><th>Object</th><th>Shape</th><th>Feeds</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">query_runs <span class="tag t-b">+cols</span></td><td><code>cache_read_tokens</code> int · <code>cache_write_tokens</code> int · <code>cost_usd</code> numeric · <code>degraded</code> bool · <code>attempts</code> int · <code>otel_trace_id</code> text (Logfire deep-link) · status CHECK += <code>'degraded'</code> · index <code>(created_at desc)</code></td><td>KPI band · cost · SLOs · traces</td></tr>
+      <tr><td class="mono">load_tests <span class="tag t-g">new</span></td><td><code>id</code> · <code>created_at</code> · <code>scenario</code> · <code>vus</code> · <code>duration_s</code> · <code>rps</code> · <code>p50/p95/p99_ms</code> · <code>error_rate</code> · <code>git_sha</code> · <code>notes</code></td><td>load tile (W1)</td></tr>
+      <tr><td class="mono">security_runs <span class="tag t-g">new</span></td><td><code>id</code> · <code>created_at</code> · <code>kind</code> (redteam/injection) · <code>pack_sha</code> · <code>total</code> · <code>passed</code> · <code>by_category</code> jsonb · <code>report_url</code></td><td>red-team bars (W3)</td></tr>
+      <tr><td class="mono">deploy_events <span class="tag t-g">new</span></td><td><code>id</code> · <code>started_at</code> · <code>finished_at</code> · <code>git_sha</code> · <code>actor</code> · <code>status</code> (running/deployed/rolled_back/failed) · <code>smoke</code> jsonb · <code>duration_s</code></td><td>deploy timeline (W4)</td></tr>
+      <tr><td class="mono">judge_samples <span class="tag t-g">new</span></td><td><code>id</code> · <code>created_at</code> · <code>query_run_id</code> FK · <code>judge_model</code> · <code>rubric_hash</code> · <code>insight_score</code> · <code>verdict</code> jsonb</td><td>live-judge tile (W4)</td></tr>
+      <tr><td class="mono">pipeline_runs <span class="tag t-g">new</span></td><td><code>id</code> · <code>created_at</code> · <code>status</code> · <code>duration_s</code> · <code>marts_refreshed_at</code> · <code>dbt_pass</code> / <code>dbt_total</code> · <code>row_counts</code> jsonb · <code>git_sha</code></td><td>data-freshness panel (W2)</td></tr>
+      <tr><td class="mono">answer_feedback <span class="tag t-a">reuse</span></td><td>existing (0008/0009) — thumbs + issue flags; read for the thumbs-up / product panel. No schema change.</td><td>product panel (W0)</td></tr>
+      <tr><td class="mono">ops_rollup <span class="tag t-g">new</span></td><td><code>window</code> (24h/7d/28d) · <code>refreshed_at</code> · pre-aggregated <code>metrics</code> jsonb (percentiles, error/degraded/cost/traffic/product/SLO-burn) — one row per window, refreshed by a scheduled job</td><td>every deck tile (Q3)</td></tr>
+    </tbody>
+  </table></div></div>
+</section>
+
+<!-- ═══════════════ 6 · KEY CODE ═══════════════ -->
+<section class="sec" id="code">
+  <div class="sec-h"><span class="n">07</span><h2>The two load-bearing changes, concretely</h2></div>
+  <p class="lead">A · the one factory that fixes the 0-of-6 resilience gap. B · the pricing module that turns counted tokens into the dashboard's cost tile. Both illustrative — the rate constants are set from the live provider sheet at implementation and pinned under a CI test.</p>
+
+  <div class="codewrap">
+    <div class="code-cap">A · services/data-agent/agent/model_factory.py — one policy for all six Agent sites</div>
+    <div id="snip-factory"></div>
+  </div>
+  <div class="codewrap">
+    <div class="code-cap">B · services/data-agent/agent/pricing.py — cache-aware cost, the piece the audit found missing entirely</div>
+    <div id="snip-pricing"></div>
+  </div>
+
+  <script type="text/plain" id="src-factory"># services/data-agent/agent/model_factory.py
+# One place every Agent is built, so timeout + retry are uniform across the six
+# call sites (sandbox_agent, object_codegen, sql_assist, skill_codegen, titles,
+# eval_judge). Replaces the bare Agent(f"{provider}:{model}") the audit found
+# copy-pasted at each site with an unconfigured (library-default) transport.
+from __future__ import annotations
+import httpx
+from pydantic_ai import Agent
+from tenacity import (
+    AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter,
+)
+
+# The transport layer the audit found absent. Connect fast; read patiently
+# (DeepSeek is slow on large extracts); never hang forever.
+LLM_TIMEOUT = httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0)
+RETRYABLE = {408, 409, 429, 500, 502, 503, 529}   # 529 = provider overloaded
+
+def _transient(exc: BaseException) -> bool:
+    if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
+        return True
+    return getattr(exc, "status_code", None) in RETRYABLE   # never retry 400/401/422
+
+def build_model(provider: str, model_name: str, api_key: str, client: httpx.AsyncClient):
+    """A pydantic-ai model string bound to a client carrying LLM_TIMEOUT.
+    provider in {'deepseek','anthropic'} — the two choose_provider() returns."""
+    ...   # OpenAIModel(DeepSeekProvider(...)) / AnthropicModel(...), http_client=client
+
+async def run_with_policy(agent: Agent, *args, degraded, **kwargs):
+    """Jittered exponential backoff over transient transport/5xx/429; on final
+    failure return `degraded` (caller stamps query_runs.status='degraded' and
+    attempts) rather than letting a 500 reach the user."""
+    async for attempt in AsyncRetrying(
+        retry=retry_if_exception(_transient),
+        wait=wait_exponential_jitter(initial=1, max=20),
+        stop=stop_after_attempt(4), reraise=True,
+    ):
+        with attempt:
+            return await agent.run(*args, **kwargs)
+</script>
+  <script type="text/plain" id="src-pricing"># services/data-agent/agent/pricing.py
+# Turns token counts into dollars. Cache-aware because for this workload the
+# cache-hit input term dominates volume, so cost_usd is ~1/6 of the naive
+# all-miss figure (corroborated by the trace notes: "billed_full is ~1/6th").
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class Rate:                 # USD per 1M tokens — set from the provider sheet
+    in_miss: float
+    in_hit: float          # cache-hit input: ~10x cheaper than a miss
+    out: float
+
+# Illustrative placeholders — pinned to the live DeepSeek/Anthropic sheets at
+# build and asserted against a known run so a silent price change fails CI.
+RATES = {
+    "deepseek:deepseek-chat":       Rate(in_miss=0.27, in_hit=0.07, out=1.10),
+    "anthropic:claude-sonnet-4-6":  Rate(in_miss=3.00, in_hit=0.30, out=15.00),
+}
+
+def cost_usd(model: str, in_miss: int, in_hit: int, out: int) -> float:
+    r = RATES[model]
+    return (in_miss * r.in_miss + in_hit * r.in_hit + out * r.out) / 1_000_000
+</script>
+</section>
+
+<!-- ═══════════════ 7 · HONEST CONSTRAINTS ═══════════════ -->
+<section class="sec" id="honest">
+  <div class="sec-h"><span class="n">08</span><h2>Honest constraints — where the s07 plan needs correcting</h2></div>
+  <p class="lead">The audit surfaced four places where the parent plan's assumptions don't survive contact with this codebase. Naming them is the senior move.</p>
+  <div class="grid g2">
+    <div class="callout co-warn">
+      <h4>1 · App Runner has no traffic split</h4>
+      <p style="margin:0;font-size:13px" class="muted">s07 says "canary (App Runner traffic split or ECS blue/green)". App Runner offers <em>neither</em> — it's an all-at-once managed replace, and there's no <code>aws_ecs_service</code> (ECS is jobs-only). Real weighted canary means putting backend-api behind ALB+ECS — weeks of work that fights the scale-to-zero cost design. <strong>So W4 records every deploy and ships a one-command manual rollback</strong> — automatic alarm-gated rollback is deferred (decision Q1).</p>
+    </div>
+    <div class="callout co-warn">
+      <h4>2 · The alarms can't notify anyone</h4>
+      <p style="margin:0;font-size:13px" class="muted">All 3 CloudWatch alarms publish to SNS topics whose <strong>email subscriptions were never confirmed</strong> (an account-level issue, per s12 notes). So the rollback trigger can't depend on SNS delivery — W4 <strong>polls the alarm state via the API</strong> instead. Fixing SNS for human alerting is a parallel, non-blocking chore.</p>
+    </div>
+    <div class="callout co-blue">
+      <h4>3 · Cost is cache-dominated, so pricing must be too</h4>
+      <p style="margin:0;font-size:13px" class="muted">Nominal <code>input_tokens</code> massively overstates spend — most are cache hits (~⅙ real cost). A flat price-per-token would make the cost tile wrong by 6×. W2's <code>pricing.py</code> reads cache-hit vs cache-miss tokens separately (currently buried in the <code>trace</code> jsonb — 0031 promotes them to columns).</p>
+    </div>
+    <div class="callout co-blue">
+      <h4>4 · The data is public — so PII scope is narrow</h4>
+      <p style="margin:0;font-size:13px" class="muted">The marts are public NSW property records; the only PII surface is the free-text <code>question</code> a user types (persisted to <code>query_runs</code>/<code>messages</code>). That argues for a light regex scrub + Logfire's built-in scrubber over a heavyweight Presidio pipeline — unless the résumé keyword matters more than the fit (decision Q4).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 8 · RISKS ═══════════════ -->
+<section class="sec" id="risks">
+  <div class="sec-h"><span class="n">09</span><h2>Risks &amp; how the plan absorbs them</h2></div>
+  <div class="card pad0"><div class="scroll"><table>
+    <thead><tr><th>Risk</th><th class="c">Likelihood</th><th>Mitigation built in</th></tr></thead>
+    <tbody>
+      <tr><td>Manual rollback needs a human in the loop during an incident (Q1)</td><td class="c"><span class="tag t-o">med</span></td><td><code>deploy_events</code> + the <code>make rollback</code> one-liner keep MTTR low; the alarm-state auto-gate is scoped as a fast follow if unattended reverts ever matter.</td></tr>
+      <tr><td>Ops summary read gets slow on 3M+ <code>query_runs</code></td><td class="c"><span class="tag t-g">low</span></td><td>Resolved by Q3: reads hit the pre-aggregated <code>app.ops_rollup</code>; the heavy percentile scan runs in the scheduled refresh job, off the request path.</td></tr>
+      <tr><td>Rollup staleness — the deck lags real time by up to one refresh</td><td class="c"><span class="tag t-g">low</span></td><td>Refresh cadence tuned per window (24h window refreshes often); <code>refreshed_at</code> shown on the deck so the lag is visible, never hidden.</td></tr>
+      <tr><td>CloudWatch <code>GetMetricData</code> latency / API cost</td><td class="c"><span class="tag t-g">low</span></td><td>Tier-2 runs only in the rollup refresh job (not per request) and behind a flag; the deck renders full Tier-1 (Postgres) telemetry if the pull is slow, throttled, or disabled.</td></tr>
+      <tr><td>Retry backoff lengthens tail latency under a real outage</td><td class="c"><span class="tag t-o">med</span></td><td>4 attempts, 20s jitter ceiling, then degrade — bounded. The degraded path is deterministic (stub), so worst-case is fast, not slow.</td></tr>
+      <tr><td>Logfire spend / prod token cost</td><td class="c"><span class="tag t-g">low</span></td><td>Sampling on high-volume spans; the dashboard reads Postgres not Logfire, so Logfire can be throttled or paused without blinding the deck.</td></tr>
+      <tr><td>Full-arc branch (Q5) grows long-lived before it merges</td><td class="c"><span class="tag t-o">med</span></td><td>W0→W4 are severable commits on one branch: each ends in a lit deck region and green CI, so the branch is demoable at any point and can pause after any workstream without half-built UI on display.</td></tr>
+      <tr><td>Illustrative prices drift from reality</td><td class="c"><span class="tag t-g">low</span></td><td>Rates live in one module, unit-tested against a known run — a price change fails CI rather than silently mis-billing the tile.</td></tr>
+    </tbody>
+  </table></div></div>
+</section>
+
+<!-- ═══════════════ 9 · DECISIONS ═══════════════ -->
+<section class="sec" id="decide">
+  <div class="sec-h"><span class="n">10</span><h2>Your decisions</h2></div>
+  <p class="lead">All six locked by Nathan on 2026-07-26 — the workstreams, data model and roadmap above already reflect them. Three followed the recommendation; three diverged, with the consequence baked into the plan.</p>
+
+  <div class="grid g2">
+    <div class="card" style="margin:0"><div class="dec-h"><span class="q">Q1 · Canary</span> <span class="tag t-o">rollback only</span></div>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0"><strong>Diverged</strong> from guarded-deploy. W4 records every deploy to <code>deploy_events</code> and gives a <strong>one-command manual rollback</strong> to the previous image tag — no automatic alarm-gate. Simpler; the alarm-state watch is noted as a later upgrade.</p></div>
+    <div class="card" style="margin:0"><div class="dec-h"><span class="q">Q2 · Traces</span> <span class="tag t-g">extend Logfire</span></div>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0">As recommended. Logfire extended to backend-api + W3C propagation + <code>LOGFIRE_TOKEN</code> in Terraform; the deck deep-links each run by <code>otel_trace_id</code>.</p></div>
+    <div class="card" style="margin:0"><div class="dec-h"><span class="q">Q3 · Data source</span> <span class="tag t-o">rollup table</span></div>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0"><strong>Diverged</strong> from compute-on-load. <code>/admin/ops/summary</code> now reads a pre-aggregated <code>app.ops_rollup</code> refreshed by a scheduled job (§6) — fast reads, accepts ~one-refresh staleness. Request-time reads never scan raw <code>query_runs</code>.</p></div>
+    <div class="card" style="margin:0"><div class="dec-h"><span class="q">Q4 · PII</span> <span class="tag t-g">regex + Logfire</span></div>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0">As recommended. Email/phone/CC/TFN regex scrub on persistence + Logfire's built-in scrubber — right-sized for public data.</p></div>
+    <div class="card" style="margin:0"><div class="dec-h"><span class="q">Q5 · Scope</span> <span class="tag t-o">full arc</span></div>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0"><strong>Diverged</strong> from W0+W1-first. Build all of Track A (W0→W4) on <code>s32-ops-hardening</code>, merge once the deck is complete. The roadmap below is the build order within one branch, not four PRs.</p></div>
+    <div class="card" style="margin:0"><div class="dec-h"><span class="q">Q6 · Deploy role</span> <span class="tag t-g">scope down</span></div>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0">As recommended. W4 replaces the CI deploy role's <code>AdministratorAccess</code> with a least-privilege policy — closing the Phase-F TODO.</p></div>
+  </div>
+</section>
+
+<!-- ═══════════════ 10 · ROADMAP ═══════════════ -->
+<section class="sec" id="roadmap">
+  <div class="sec-h"><span class="n">11</span><h2>Roadmap — one lit panel per step</h2></div>
+  <p class="lead">Per Q5, this is the build order within the single <code>s32-ops-hardening</code> branch — merged once the deck is complete, not four PRs. Each step is still a severable commit that ends in a lit dashboard region and a sentence you can say without hedging.</p>
+  <div class="card pad0"><div class="scroll"><table>
+    <thead><tr><th class="c">Step</th><th>Ships (merged PR)</th><th>Deck region lit</th><th>The sentence</th></tr></thead>
+    <tbody>
+      <tr><td class="c"><span class="tag t-b">W0</span></td><td>Migration 0031 · <code>/admin/ops/summary</code> · <code>/ops</code> shell + e2e gating test</td><td>the frame + Tier-1 telemetry (latency · errors · traffic · cost · product)</td><td>"There's a cockpit — and it already shows p95 and error rate."</td></tr>
+      <tr><td class="c"><span class="tag t-g">W1</span></td><td>model_factory across 6 sites · degraded mode · agent-hop retry · Retry button · k6 harness</td><td>error/degraded tiles · k6 tile · PROVIDER lamp</td><td>"Here's what a user sees in a 429 storm — never a stack trace."</td></tr>
+      <tr><td class="c"><span class="tag t-a">W2</span></td><td>pricing.py + cost columns · Logfire on backend-api + propagation + Terraform · CloudWatch saturation · pipeline_runs freshness · 2 SLOs · runbook</td><td>cost + saturation + data-freshness · SLO lamps</td><td>"Cost per answer is a tile; the error budget is a lamp."</td></tr>
+      <tr><td class="c"><span class="tag t-r">W3</span></td><td>promptfoo redteam → security_runs · CI injection suite · denial audit + status fix · SECURITY.md</td><td>red-team bars · REDTEAM lamp · denial counter</td><td>"We regression-test guardrails — here's the pass rate by attack class."</td></tr>
+      <tr><td class="c"><span class="tag" style="background:rgba(181,139,224,.14);color:var(--c4);border:1px solid #4a3a6b">W4</span></td><td>tf-plan PR gate + mypy in CI · deploy_events + one-command rollback · role scope-down · live judge sampler</td><td>deploy timeline · live-judge tile · LAST DEPLOY lamp</td><td>"Deploys are gated, self-recording and reversible — and I watch answer quality, not just uptime."</td></tr>
+    </tbody>
+  </table></div></div>
+</section>
+
+<div class="footer">
+  Artifact <code>.lavish/s32_ops-hardening-plan.html</code> · branch <code>s32-ops-hardening</code> (off <code>origin/main</code> @ c536864) · design source: this project's own Night&nbsp;Flight cockpit system (styles.css tokens + Flight&nbsp;Deck primitives), so the deck mock reads as the real Data&nbsp;Pilot · grounded in a same-day audit of reliability, observability, security, delivery &amp; frontend subsystems · implements Track&nbsp;A of <code>ai-engineer-fit/.lavish/s07_production-grade-plan.html</code>. Latest migration on main is <code>0030</code>; this plan opens <code>0031</code>.
+</div>
+
+</div>
+
+<!-- ═══════════════ decision-mark helper ═══════════════ -->
+<script>
+  function mark(form){
+    const s = form.querySelector('[data-sent]');
+    if (s) s.textContent = window.lavish ? '✓ queued — press Send to Agent when ready' : '✓ noted (open via lavish to queue back)';
+  }
+</script>
+
+<!-- ═══════════════ code rendering (@pierre/diffs, graceful fallback) ═══════════════ -->
+<script type="module">
+  try {
+    const { File } = await import("https://esm.sh/@pierre/diffs@1.2.10?bundle");
+    const options = { theme: { light: "github-light", dark: "github-dark" }, themeType: "dark", overflow: "wrap" };
+    const mounts = [
+      { sel: "#snip-factory", name: "agent/model_factory.py", src: "#src-factory" },
+      { sel: "#snip-pricing", name: "agent/pricing.py", src: "#src-pricing" },
+    ];
+    for (const m of mounts) {
+      const holder = document.querySelector(m.sel), source = document.querySelector(m.src);
+      if (!holder || !source) continue;
+      new File(options).render({ containerWrapper: holder, file: { name: m.name, contents: source.textContent } });
+    }
+  } catch (err) {
+    console.error("code render fallback:", err);
+    for (const [sel, src] of [["#snip-factory","#src-factory"],["#snip-pricing","#src-pricing"]]) {
+      const holder = document.querySelector(sel), source = document.querySelector(src);
+      if (holder && source && !holder.firstChild) {
+        const pre = document.createElement("pre");
+        pre.className = "fallback"; pre.textContent = source.textContent;
+        holder.appendChild(pre);
+      }
+    }
+  }
+</script>
+
+<!-- ═══════════════ mermaid (dark, cockpit-tuned) ═══════════════ -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: false, securityLevel: "strict", theme: "base",
+    themeVariables: {
+      background: "#111522", primaryColor: "#171c2b", primaryBorderColor: "#33405e",
+      primaryTextColor: "#eaecf3", lineColor: "#7a84a0", secondaryColor: "#1e2434",
+      tertiaryColor: "#0a0d15", fontFamily: "ui-monospace, Menlo, monospace", fontSize: "13px",
+    },
+  });
+  const el = document.getElementById("arch-diagram");
+  const src = (document.getElementById("arch-src")?.textContent || "").trim();
+  async function draw() {
+    if (!el || !src) return;
+    el.removeAttribute("data-processed");
+    el.innerHTML = "";
+    el.textContent = src;
+    try { await mermaid.run({ nodes: [el] }); }
+    catch (e) { console.error("mermaid failed:", e); el.textContent = "(architecture diagram — see prose above)"; }
+  }
+  draw();
+</script>
+
+</body>
+</html>

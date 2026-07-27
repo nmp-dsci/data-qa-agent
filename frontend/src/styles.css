@@ -570,7 +570,11 @@ code, pre, kbd { font-family: var(--mono); }
   display: flex; flex-direction: row; overflow: hidden;
   animation: view-in var(--dur-2) var(--ease); }
 .app-body { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.view-host { flex: 1; min-height: 0; display: flex; flex-direction: column;
+/* min-width: 0 is load-bearing: without it a flex item's floor is its content
+   width, so a wide grid stretches the host past the viewport and .app's
+   overflow:hidden clips it (found building the Ops deck, s32 — its readout grids
+   grew the column instead of wrapping inside it). */
+.view-host { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
   animation: view-in var(--dur-2) var(--ease); }
 @keyframes view-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px;
@@ -753,7 +757,30 @@ tbody tr:last-child td { border-bottom: none; }
 .error { color: var(--error-text); font-size: 13px; }
 .muted { color: var(--muted); }
 
+/* Retry affordances (s32 W1) — a failed or degraded answer offers a way forward
+   instead of an apology the user has to act on by retyping. */
+.retry-ask { margin-left: 8px; }
+.degraded-note { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+
 /* Admin + Settings share a centered reading column. */
+/* Ops flight deck (s32) — the same centered reading column Admin and Settings
+   use, a little wider because the readout band wants four tiles across. */
+.ops { gap: 0; align-self: center; width: 100%; max-width: 1180px; min-width: 0; }
+.ops-head { display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; }
+.ops-sub { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-top: 3px; }
+.ops-controls { display: flex; gap: 6px; align-items: center; }
+.ops-controls .chip { font-family: var(--mono); }
+.ops-band { margin-top: 12px; }
+.ops-section { margin-top: 22px; min-width: 0; }
+.ops-section-label { display: block; margin-bottom: 8px; }
+/* auto-fit + a minimum means the band reflows from four across to one on mobile
+   without a media query; min-width:0 keeps the 1fr tracks shrinkable. */
+.ops-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px; min-width: 0; }
+.ops-tile-sub { font-size: 11px; color: var(--faint); margin-top: 2px; }
+.ops-note { font-size: 11.5px; color: var(--faint); margin-top: 6px; }
+
 .admin { gap: 18px; align-self: center; width: 100%; max-width: 1080px; }
 .admin h2, .admin h3 { margin: 0; }
 .admin h3 { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }

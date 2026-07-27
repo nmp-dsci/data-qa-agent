@@ -40,10 +40,20 @@ async function apiFetch(
   { retryWarming = true }: { retryWarming?: boolean } = {},
 ): Promise<Response> {
   const started = Date.now();
+  let waited = false;
   for (;;) {
     const resp = await fetch(input, { ...init, credentials: "include" });
-    if (!retryWarming || !(await isWarmingResponse(resp))) return resp;
+    if (!retryWarming || !(await isWarmingResponse(resp))) {
+      // s32 W0: an Aurora cold start is a real operational event, but the
+      // backend can't log it — the database it would log to is the thing that
+      // was asleep. So the client reports it once the wake completes, which is
+      // the first moment a write can actually land. This feeds the deck's
+      // cold-start counter (Tier 1, zero AWS calls).
+      if (waited) reportWarming(input, Date.now() - started);
+      return resp;
+    }
     if (Date.now() - started >= WARMING_MAX_MS) return resp;
+    waited = true;
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, WARMING_RETRY_MS);
       const onAbort = () => {
@@ -54,6 +64,19 @@ async function apiFetch(
       else init?.signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
+}
+
+/** Report a completed Aurora wake to the event stream (s32 W0).
+ *
+ *  Declared before apiFetch uses it but defined with `track` below, which is
+ *  fine — function declarations hoist. Deliberately never awaited and never
+ *  retried: if this one write fails the counter under-reports by one, which is
+ *  strictly better than a telemetry call that can block a real request.
+ */
+function reportWarming(input: string, waitedMs: number): void {
+  // Strip the origin so the payload carries a path, not a full URL.
+  const path = input.replace(/^https?:\/\/[^/]+/, "");
+  track("db_warming", { path, waited_ms: waitedMs });
 }
 
 export interface User {
@@ -212,6 +235,10 @@ export interface AskResult {
   input_tokens: number | null;
   output_tokens: number | null;
   latency_ms: number | null;
+  /** s32 W1: the answer came back, but not the one that was asked for — a
+   *  retried-then-stubbed run or an unreachable agent. Optional so history
+   *  replays (which predate the field) type-check unchanged. */
+  degraded?: boolean;
   steps: AgentStep[];
   report: InsightReport | null;
   pages: Page[] | null;
@@ -458,22 +485,68 @@ export function wakeDb(): void {
   apiFetch(`${API}/health/db`, { headers: authHeaders() }).catch(() => {});
 }
 
+// s32 W1: a client-side ceiling on one answer. The backend already retries the
+// agent hop and degrades rather than 502-ing, but a request can still hang
+// somewhere neither side controls (a proxy, a dead socket that never resets), and
+// a spinner with no end is the worst failure mode there is. Generous: prod's
+// full-answer p95 is ~96s, so this only fires when something is genuinely stuck.
+export const ASK_CEILING_MS = 240_000;
+
+/** An AbortSignal that fires when `signal` aborts OR the ceiling elapses.
+ *
+ *  Returns a disposer the caller must run, so a completed answer doesn't leave a
+ *  4-minute timer alive — over a chat session that would accumulate one per
+ *  question. */
+function withCeiling(signal: AbortSignal | undefined, ms: number) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error("ask-ceiling")), ms);
+  const onAbort = () => ctrl.abort(signal?.reason);
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
+  return {
+    signal: ctrl.signal,
+    /** True when WE aborted on the ceiling, not the user pressing Stop. */
+    timedOut: () => !signal?.aborted && ctrl.signal.aborted,
+    dispose: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
+function ceilingError(): ApiError {
+  return new ApiError(
+    `That took longer than ${Math.round(ASK_CEILING_MS / 1000)}s with no answer. ` +
+      "The run may still finish server-side — try asking again.",
+    408,
+    "ask_ceiling",
+  );
+}
+
 export async function ask(
   question: string,
   conversationId: string | null,
   signal?: AbortSignal,
 ): Promise<AskResult> {
-  const resp = await apiFetch(`${API}/ask`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ question, conversation_id: conversationId }),
-    signal,
-  });
-  if (!resp.ok) {
-    const detail = await resp.text();
-    throw new Error(`Ask failed (${resp.status}): ${detail}`);
+  const ceiling = withCeiling(signal, ASK_CEILING_MS);
+  try {
+    const resp = await apiFetch(`${API}/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ question, conversation_id: conversationId }),
+      signal: ceiling.signal,
+    });
+    if (!resp.ok) {
+      const detail = (await errorDetail(resp)) ?? `HTTP ${resp.status}`;
+      throw new ApiError(`Ask failed (${resp.status}): ${detail}`, resp.status, detail);
+    }
+    return resp.json();
+  } catch (e) {
+    if (ceiling.timedOut()) throw ceilingError();
+    throw e;
+  } finally {
+    ceiling.dispose();
   }
-  return resp.json();
 }
 
 export interface AskStatus {
@@ -521,6 +594,40 @@ export async function askStream(
   onPage?: (frame: PageFrame) => void,
   signal?: AbortSignal,
 ): Promise<AskResult> {
+  // Same ceiling as ask() — a stream that stops producing frames must not leave
+  // the composer disabled forever (s32 W1). The agent's 2s heartbeats mean a
+  // healthy stream never approaches it.
+  const ceiling = withCeiling(signal, ASK_CEILING_MS);
+  try {
+    return await askStreamInner(
+      question,
+      conversationId,
+      onStatus,
+      onProgress,
+      onPlan,
+      onPage,
+      ceiling.signal,
+      signal,
+    );
+  } catch (e) {
+    if (ceiling.timedOut()) throw ceilingError();
+    throw e;
+  } finally {
+    ceiling.dispose();
+  }
+}
+
+async function askStreamInner(
+  question: string,
+  conversationId: string | null,
+  onStatus: (s: AskStatus) => void,
+  onProgress: ((p: AskProgress) => void) | undefined,
+  onPlan: ((slots: PagePlanSlot[]) => void) | undefined,
+  onPage: ((frame: PageFrame) => void) | undefined,
+  signal: AbortSignal,
+  /** The caller's own signal — only a user-initiated Stop skips the fallback. */
+  userSignal: AbortSignal | undefined,
+): Promise<AskResult> {
   let resp: Response;
   try {
     resp = await apiFetch(`${API}/ask/stream`, {
@@ -530,8 +637,8 @@ export async function askStream(
       signal,
     });
   } catch (e) {
-    // A user-initiated stop must not fall back to the blocking ask().
-    if (signal?.aborted) throw e;
+    // A user-initiated stop (or the ceiling) must not fall back to blocking ask().
+    if (userSignal?.aborted || signal.aborted) throw e;
     return ask(question, conversationId, signal);
   }
   if (!resp.ok || !resp.body) return ask(question, conversationId, signal);
@@ -1501,4 +1608,197 @@ export function getEvalRuns(limit = 50): Promise<EvalRun[]> {
 
 export function getEvalRun(runId: string): Promise<EvalRunDetail> {
   return adminGet<EvalRunDetail>(`/admin/eval-runs/${runId}`);
+}
+
+/* ---------------------------------------------------------------------------
+ * Ops flight deck (s32) — one pre-aggregated read per window (decision Q3).
+ * The shapes mirror services/backend-api/app/ops_rollup.py; every field is
+ * optional because a panel whose workstream hasn't produced rows yet must read
+ * "no data", never break.
+ * ------------------------------------------------------------------------- */
+
+export type OpsWindow = "24h" | "7d" | "28d";
+export type LampStateName = "off" | "on" | "warn" | "bad";
+
+export interface OpsLatency {
+  asks?: number;
+  answer_p50_ms?: number | null;
+  answer_p95_ms?: number | null;
+  answer_p99_ms?: number | null;
+  ttfp_p50_ms?: number | null;
+  ttfp_p95_ms?: number | null;
+  ttfp_p99_ms?: number | null;
+}
+
+export interface OpsErrors {
+  runs?: number;
+  errors?: number;
+  degraded?: number;
+  no_answer?: number;
+  error_rate?: number | null;
+  degraded_rate?: number | null;
+  no_answer_rate?: number | null;
+  by_source?: Record<string, number>;
+}
+
+export interface OpsTraffic {
+  runs?: number;
+  asks?: number;
+  active_users?: number;
+  asks_per_user?: number | null;
+  by_source?: Record<string, number>;
+}
+
+export interface OpsCost {
+  total_usd?: number | null;
+  priced_asks?: number;
+  per_answer_usd?: number | null;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
+  cache_hit_ratio?: number | null;
+  budget_usd?: number | null;
+}
+
+export interface OpsSecurityRun {
+  created_at: string | null;
+  kind: string;
+  total: number;
+  passed: number;
+  pass_rate: number | null;
+  by_category: Record<string, unknown>;
+  report_url: string | null;
+}
+
+export interface OpsSecurity {
+  denials?: number;
+  auth_failures?: number;
+  cap_hits?: number;
+  latest_run?: OpsSecurityRun | null;
+}
+
+export interface OpsLoadTest {
+  created_at: string | null;
+  scenario: string | null;
+  vus: number | null;
+  rps: number | null;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+  error_rate: number | null;
+}
+
+export interface OpsReliability {
+  attempts_mean?: number | null;
+  retried?: number;
+  db_cold_starts?: number;
+  latest_load_test?: OpsLoadTest | null;
+}
+
+export interface OpsSlo {
+  window?: string;
+  availability?: {
+    target?: number;
+    attained?: number | null;
+    asks?: number;
+    served?: number;
+    error_budget_burn?: number | null;
+    state?: LampStateName;
+  };
+  responsiveness?: {
+    target_ms?: number;
+    attained_ms?: number | null;
+    measured?: number;
+    fast?: number;
+    state?: LampStateName;
+  };
+}
+
+export interface OpsFreshness {
+  available?: boolean;
+  created_at?: string | null;
+  status?: string;
+  duration_s?: number | null;
+  age_s?: number | null;
+  dbt_pass?: number | null;
+  dbt_total?: number | null;
+  row_counts?: Record<string, unknown>;
+  source?: string | null;
+  state?: LampStateName;
+}
+
+export interface OpsDeploy {
+  id: string;
+  started_at: string | null;
+  finished_at: string | null;
+  git_sha: string;
+  actor: string | null;
+  status: string;
+  duration_s: number | null;
+  smoke: Record<string, unknown>;
+}
+
+export interface OpsSaturation {
+  available?: boolean;
+  reason?: string;
+  fetched_at?: string;
+  backend?: { cpu_pct?: number | null; mem_pct?: number | null; instances?: number | null };
+  agent?: { cpu_pct?: number | null; mem_pct?: number | null; instances?: number | null };
+  aurora?: { acu?: number | null; connections?: number | null };
+  cdn?: { cache_hit_rate?: number | null };
+  limits?: { max_concurrency?: number | null };
+}
+
+export interface OpsMetrics {
+  window?: string;
+  interval?: string;
+  latency?: OpsLatency;
+  errors?: OpsErrors;
+  traffic?: OpsTraffic;
+  cost?: OpsCost;
+  product?: { thumbs_up?: number; thumbs_down?: number; thumbs_up_rate?: number | null };
+  security?: OpsSecurity;
+  reliability?: OpsReliability;
+  judge?: { sampled?: number; insight_mean?: number | null; latest_at?: string | null };
+  slo?: OpsSlo;
+  freshness?: OpsFreshness;
+  deploys?: OpsDeploy[];
+  saturation?: OpsSaturation;
+}
+
+export interface OpsSummary {
+  window: OpsWindow;
+  windows: OpsWindow[];
+  refreshed_at: string | null;
+  age_s: number | null;
+  stale: boolean;
+  metrics: OpsMetrics;
+}
+
+export interface OpsRun {
+  id: string;
+  created_at: string | null;
+  latency_ms: number | null;
+  ttfp_ms: number | null;
+  status: string;
+  degraded: boolean;
+  attempts: number | null;
+  cost_usd: number | null;
+  otel_trace_id: string | null;
+  engine: string;
+  question: string;
+  username: string;
+}
+
+export function getOpsSummary(window: OpsWindow = "24h"): Promise<OpsSummary> {
+  return adminGet<OpsSummary>(`/admin/ops/summary?window=${window}`);
+}
+
+export function getOpsRuns(limit = 25): Promise<OpsRun[]> {
+  return adminGet<OpsRun[]>(`/admin/ops/runs?limit=${limit}`);
+}
+
+export function refreshOps(): Promise<{ refreshed: string[] }> {
+  return adminPost<{ refreshed: string[] }>("/admin/ops/refresh", {});
 }

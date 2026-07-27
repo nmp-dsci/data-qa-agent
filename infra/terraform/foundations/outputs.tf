@@ -67,3 +67,13 @@ output "data_agent_url" {
   description = "URL of the data-agent (App Runner; requires X-Agent-Token except /health)."
   value       = "https://${aws_apprunner_service.data_agent.service_url}"
 }
+
+output "ops_ingest_token_secret_arn" {
+  description = "Secrets Manager ARN for X-Ops-Token (deploy/load/red-team/pipeline ingest, s32)."
+  value       = aws_secretsmanager_secret.ops_ingest_token.arn
+}
+
+output "logfire_token_secret_arn" {
+  description = "Secrets Manager ARN for LOGFIRE_TOKEN (set its value via CLI, s32 W2)."
+  value       = aws_secretsmanager_secret.logfire_token.arn
+}

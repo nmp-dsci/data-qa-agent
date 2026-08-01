@@ -1293,6 +1293,36 @@ def test_pivot_disambiguates_a_shared_label_across_derives() -> None:
     assert row["bonds · 2076"] != row["bonds growth · 2076"]
 
 
+def test_pivot_disambiguation_avoids_a_preexisting_unique_label() -> None:
+    """The synthesized ``"{label} {derive}"`` candidate must not collide with a
+    label from a different, already-unique measure — else the disambiguation
+    reintroduces the exact merge-collision bug it exists to prevent."""
+    spec = _rent_pivot_spec()
+    spec["pivot_measures"] = [
+        {"label": "bonds", "source": "n_rented", "agg": "sum", "months": 12},
+        {
+            "label": "bonds",
+            "source": "n_rented",
+            "agg": "sum",
+            "months": 12,
+            "derive": "growth",
+        },
+        {
+            "label": "bonds growth",
+            "source": "n_rented",
+            "agg": "mean",
+            "months": 12,
+        },
+    ]
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    keys = [c["key"] for c in outcome.report["table"]["columns"]]
+    labels = {k.split(" · ")[0] for k in keys if " · " in k}
+    assert labels == {"bonds", "bonds growth", "bonds growth 2"}
+
+
 def test_trend_time_derive_needs_a_time_axis() -> None:
     """A growth rate reads a change ALONG the axis. Over categories each series is
     one point, so pct_change yields nothing and the chart came back silently

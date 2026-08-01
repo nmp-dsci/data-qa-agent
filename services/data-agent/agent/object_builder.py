@@ -1181,16 +1181,20 @@ def _dedup_pivot_labels(measures: list[dict[str, Any]]) -> None:
     counts: dict[str, int] = {}
     for m in measures:
         counts[m["label"]] = counts.get(m["label"], 0) + 1
-    seen: dict[str, int] = {}
+    used = set(counts.keys())
     for m in measures:
         label = m["label"]
         if counts[label] <= 1:
             continue
         derive = m.get("derive") or ""
         candidate = f"{label} {derive}" if derive else label
-        n = seen.get(candidate, 0)
-        seen[candidate] = n + 1
-        m["label"] = candidate if n == 0 else f"{candidate} {n + 1}"
+        n = 1
+        final = candidate
+        while final in used and final != label:
+            n += 1
+            final = f"{candidate} {n}"
+        used.add(final)
+        m["label"] = final
 
 
 def _pivot_code(spec: dict[str, Any], prof: MartProfile) -> str:

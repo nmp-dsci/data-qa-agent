@@ -63,7 +63,7 @@ variable "db_extra_ingress_cidrs" {
 variable "ecr_repositories" {
   description = "Service images pushed to ECR. Frontend is static (S3/CloudFront), so it is not here."
   type        = list(string)
-  default     = ["backend-api", "data-agent", "data-pipeline", "db-migrate"]
+  default     = ["backend-api", "data-agent", "data-pipeline", "db-migrate", "mcp-server"]
 }
 
 variable "image_tag" {
@@ -143,4 +143,16 @@ variable "ops_cloudwatch_enabled" {
   description = "Enable the Tier-2 CloudWatch saturation pull on the ops deck."
   type        = bool
   default     = false
+}
+
+# s35: the MCP SDK refuses any request whose Host header isn't declared, and it
+# matches exactly or by a "host:*" prefix — there is no allow-all. App Runner
+# assigns the hostname at create time and a service can't reference its own
+# service_url, so this is a two-step: apply, read the mcp_server_url output,
+# then set this and apply again. Defaulting to localhost means an
+# unconfigured deployment is unreachable rather than open.
+variable "mcp_allowed_hosts" {
+  description = "Comma-separated Host values the MCP server accepts (add its App Runner hostname)."
+  type        = string
+  default     = "localhost:*,127.0.0.1:*"
 }

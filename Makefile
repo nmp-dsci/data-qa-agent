@@ -1,4 +1,4 @@
-.PHONY: help up down reset logs ps samples migrate pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version loadtest redteam injection-suite ops-rollup rollback
+.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version loadtest redteam injection-suite ops-rollup rollback
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
@@ -18,6 +18,9 @@ help:
 	@echo "make eval-compare  - base vs experiment, with the regression gate"
 	@echo "make eval-diagnose - failure clusters + one-lever hypotheses (read-only)"
 	@echo "make eval-pack-version - print the content hash of the golden pack"
+	@echo ""
+	@echo "make mcp-test      - MCP protocol conformance (deterministic, no LLM)"
+	@echo "make mcp-smoke     - drive a REAL Claude client through the MCP server"
 	@echo ""
 	@echo "make loadtest      - k6 load test -> app.load_tests (SCENARIO=browse|chat)"
 	@echo "make redteam       - promptfoo red-team the governed boundary -> app.security_runs"
@@ -106,6 +109,25 @@ e2e-chat:
 # The Ops flight deck E2E: admin gating + the deck renders on a cold rollup.
 e2e-ops:
 	cd frontend && npx playwright test ops
+
+# ---------------------------------------------------------------------------
+# MCP server (s35 rung 3) — two tiers, deliberately
+# ---------------------------------------------------------------------------
+# mcp-test is deterministic protocol conformance: it connects a real MCP client,
+# checks the tool surface and that the guardrails still refuse a write. No LLM,
+# so it can gate every merge, and it catches a renamed or malformed tool before
+# a model ever sees one.
+mcp-test:
+	uv run --directory services/mcp-server pytest tests -q
+
+# mcp-smoke drives a REAL Claude client and asserts it actually invoked an
+# mcp__datapilot__* tool BEFORE trusting any figure in the answer. That ordering
+# is the whole test: Claude knows roughly what Sydney property costs, so pointed
+# at a dead server it produces a plausible number from memory and a naive check
+# goes green. Verified to exit 1 against an unreachable server.
+#   make mcp-smoke EXPECT=15217          make mcp-smoke MCP_URL=https://<host>/mcp
+mcp-smoke:
+	uv run python scripts/mcp_smoke.py $(if $(EXPECT),--expect $(EXPECT)) $(if $(MCP_URL),--url $(MCP_URL))
 
 # ---------------------------------------------------------------------------
 # Operations (s32 Track A)

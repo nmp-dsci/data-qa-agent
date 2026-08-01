@@ -34,6 +34,9 @@ jobs:
       - name: mypy (backend-api)
         working-directory: services/backend-api
         run: uv run mypy app
+      - name: mypy (mcp-server)
+        working-directory: services/mcp-server
+        run: uv run mypy mcp_server
       - name: mypy (data-agent)
         working-directory: services/data-agent
         # --extra llm: pandas/pydantic-ai supply the types the agent annotates
@@ -70,6 +73,14 @@ jobs:
         working-directory: services/backend-api
         # s29: handler-level tests (db_warming 503 contract, /health/db) that
         # need the fastapi stack, which the repo-root env deliberately lacks.
+        run: uv run pytest -q
+      # s35 rung 3. The MCP protocol tests self-skip when no server is listening,
+      # so this run checks the suite imports and collects — it is the tier-1
+      # (deterministic, no-LLM) half. The live acceptance test that drives a real
+      # Claude client is `make mcp-smoke`, deliberately NOT here: it needs
+      # credentials and costs tokens.
+      - name: Pytest (mcp-server service)
+        working-directory: services/mcp-server
         run: uv run pytest -q
 
   frontend-build:

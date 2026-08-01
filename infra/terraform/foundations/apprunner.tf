@@ -223,6 +223,9 @@ resource "aws_apprunner_service" "backend_api" {
           # s32 W2/W0: traces out, operational outcomes in.
           LOGFIRE_TOKEN    = aws_secretsmanager_secret.logfire_token.arn
           OPS_INGEST_TOKEN = aws_secretsmanager_secret.ops_ingest_token.arn
+          # s35: verifies X-Slack-Signature. Placeholder => the Slack endpoint
+          # 404s, which is the correct posture for an env with no workspace.
+          SLACK_SIGNING_SECRET = aws_secretsmanager_secret.slack_signing_secret.arn
         }
       }
     }
@@ -240,4 +243,55 @@ resource "aws_apprunner_service" "backend_api" {
   }
 
   tags = { Name = "${local.name}-backend-api" }
+}
+
+# ---- mcp-server (s35 rung 3) -----------------------------------------------
+# A third public service, and deliberately the least privileged of the three: it
+# holds no database credentials at all. Its only capability is its dpk_ service
+# key, so everything it can reach is whatever that key is granted — and the
+# guardrails, RLS and audit trail it runs behind are backend-api's, not a second
+# copy. ALLOWED_HOSTS must name this service's own hostname: the MCP SDK's
+# DNS-rebinding guard matches the Host header including port, and refuses
+# anything undeclared with a 421.
+resource "aws_apprunner_service" "mcp_server" {
+  service_name                   = "${local.name}-mcp-server"
+  auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.single.arn
+
+  depends_on = [aws_secretsmanager_secret_version.mcp_service_key]
+
+  source_configuration {
+    auto_deployments_enabled = true
+    authentication_configuration {
+      access_role_arn = aws_iam_role.apprunner_access.arn
+    }
+    image_repository {
+      image_repository_type = "ECR"
+      image_identifier      = "${local.registry}/data-qa/mcp-server:${var.image_tag}"
+      image_configuration {
+        port = "8200"
+        runtime_environment_variables = {
+          BACKEND_URL = "https://${aws_apprunner_service.backend_api.service_url}"
+          # The SDK's DNS-rebinding guard matches the Host header exactly (or by
+          # "host:*" prefix) — there is no suffix or allow-all form. App Runner
+          # only assigns this service's hostname at create time, and a service
+          # cannot reference its own service_url, so the value cannot be derived
+          # here. Set var.mcp_allowed_hosts to the assigned hostname after the
+          # first apply; until then the server answers only on localhost and
+          # every remote request is a 421.
+          ALLOWED_HOSTS = var.mcp_allowed_hosts
+        }
+        runtime_environment_secrets = {
+          MCP_SERVICE_KEY = aws_secretsmanager_secret.mcp_service_key.arn
+        }
+      }
+    }
+  }
+
+  instance_configuration {
+    cpu    = var.backend_cpu
+    memory = var.backend_memory
+    # No instance role: this service talks to nothing but backend-api over HTTP.
+  }
+
+  tags = { Name = "${local.name}-mcp-server" }
 }

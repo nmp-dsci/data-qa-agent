@@ -68,6 +68,18 @@ output "data_agent_url" {
   value       = "https://${aws_apprunner_service.data_agent.service_url}"
 }
 
+# Feed this hostname back into var.mcp_allowed_hosts and re-apply — the SDK's
+# DNS-rebinding guard rejects any Host it wasn't told about (421).
+output "mcp_server_url" {
+  description = "MCP endpoint (App Runner). Clients connect to <this>/mcp with streamable HTTP."
+  value       = "https://${aws_apprunner_service.mcp_server.service_url}/mcp"
+}
+
+output "mcp_allowed_hosts_hint" {
+  description = "Set var.mcp_allowed_hosts to this after the first apply, then apply again."
+  value       = "localhost:*,127.0.0.1:*,${aws_apprunner_service.mcp_server.service_url}:*,${aws_apprunner_service.mcp_server.service_url}"
+}
+
 output "ops_ingest_token_secret_arn" {
   description = "Secrets Manager ARN for X-Ops-Token (deploy/load/red-team/pipeline ingest, s32)."
   value       = aws_secretsmanager_secret.ops_ingest_token.arn

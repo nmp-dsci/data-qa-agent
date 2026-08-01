@@ -333,11 +333,29 @@ async def _audit(
 # ---------------------------------------------------------------------------
 class CohortBody(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
+    # Per-cohort dataset override — lets Target and Comparison each be profiled
+    # against a different dataset (e.g. rental bonds vs property sales, both
+    # filtered to a postcode). Falls back to the top-level ProfileBody.dataset
+    # when absent, so existing single-dataset callers are unaffected.
+    dataset: str | None = None
+    # Per-cohort metric override — Target and Comparison can each be measured
+    # by a different metric of their own dataset (e.g. Sold volume vs Bond
+    # volume). Falls back to the top-level ProfileBody.metric, then to the
+    # cohort's own dataset default.
+    metric: str | None = None
 
 
 class ProfileBody(BaseModel):
-    dataset: str
+    # Optional now that each cohort can carry its own dataset; still required
+    # (one way or the other) — see the "each cohort needs a dataset" check below.
+    dataset: str | None = None
     metric: str | None = None
+    # How the two cohort values are framed against each other:
+    # "raw" (plain values), "pct_total" (each side's value as % of that side's
+    # own unfiltered grand total for its metric), or "growth" (target vs
+    # comparison % change). Purely a display/derivation choice — it never
+    # changes which rows are fetched.
+    calculation: str = "raw"
     target: CohortBody
     comparison: CohortBody
 
@@ -349,20 +367,58 @@ async def profile(
     channel: str = Depends(get_channel),
 ) -> dict[str, Any]:
     async with rls_connection(user.id) as conn:
-        dataset = await _require_dataset(conn, body.dataset)
-        response_metric = body.metric or dataset.default_metric
-        if dataset.metric(response_metric) is None:
-            raise HTTPException(status_code=400, detail=f"Unknown metric {response_metric!r}")
+        target_slug = body.target.dataset or body.dataset
+        comparison_slug = body.comparison.dataset or body.dataset
+        if not target_slug or not comparison_slug:
+            raise HTTPException(
+                status_code=400,
+                detail="Each cohort needs a dataset (set target.dataset/comparison.dataset, "
+                "or a top-level dataset both cohorts share)",
+            )
+        target_dataset = await _require_dataset(conn, target_slug)
+        comparison_dataset = await _require_dataset(conn, comparison_slug)
+
+        # Each cohort resolves its own metric now — Target and Comparison can
+        # measure two genuinely different things (e.g. Sold volume vs Bond
+        # volume). body.metric is a shared fallback for older callers (the
+        # NL "ask" flow only ever fills in one top-level metric).
+        target_metric = body.target.metric or body.metric or target_dataset.default_metric
+        comparison_metric = (
+            body.comparison.metric or body.metric or comparison_dataset.default_metric
+        )
+        target_metric_obj = target_dataset.metric(target_metric)
+        comparison_metric_obj = comparison_dataset.metric(comparison_metric)
+        if target_metric_obj is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown metric {target_metric!r} for dataset {target_dataset.slug!r}",
+            )
+        if comparison_metric_obj is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown metric {comparison_metric!r} for dataset "
+                f"{comparison_dataset.slug!r}",
+            )
+        # The full per-predictor uplift pipeline (segment deltas, choropleth,
+        # ranked leaderboards) only makes sense when both cohorts measure the
+        # SAME metric — a segment-by-segment delta between two different
+        # measures isn't meaningful, so that pipeline is skipped below when
+        # the two metrics differ.
+        same_metric = target_metric == comparison_metric
+        calculation = body.calculation or "raw"
         try:
-            # Validate cohort filters up front (both sides).
-            service.validate_spec(dataset, [response_metric], [], body.target.filters)
-            service.validate_spec(dataset, [response_metric], [], body.comparison.filters)
+            # Validate cohort filters up front (each against its own dataset).
+            service.validate_spec(target_dataset, [target_metric], [], body.target.filters)
+            service.validate_spec(
+                comparison_dataset, [comparison_metric], [], body.comparison.filters
+            )
         except service.ExploreValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        count_metric = _count_metric(dataset)
+        count_metric_t = _count_metric(target_dataset)
+        count_metric_c = _count_metric(comparison_dataset)
 
-        async def _totals(filters: dict[str, Any]) -> dict[str, Any]:
+        async def _totals(dataset: Dataset, filters: dict[str, Any]) -> dict[str, Any]:
             started = time.perf_counter()
             result, sql, row_count = await service.cohort_totals(conn, dataset, filters)
             latency_ms = int((time.perf_counter() - started) * 1000)
@@ -370,61 +426,147 @@ async def profile(
             return result
 
         async def _by_predictor(
-            dim_name: str, filters: dict[str, Any]
+            dataset: Dataset, dim_name: str, filters: dict[str, Any], volume_metric: str
         ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
             started = time.perf_counter()
             result, sql, params, row_count = await service.cohort_by_predictor(
-                conn, dataset, dim_name, response_metric, count_metric, filters
+                conn, dataset, dim_name, target_metric, volume_metric, filters
             )
             latency_ms = int((time.perf_counter() - started) * 1000)
             await _audit(conn, user.id, sql, row_count, latency_ms, channel)
             return result, sql, params
 
-        target_totals = await _totals(body.target.filters)
-        comparison_totals = await _totals(body.comparison.filters)
+        target_totals = await _totals(target_dataset, body.target.filters)
+        comparison_totals = await _totals(comparison_dataset, body.comparison.filters)
 
         target_by: dict[str, list[dict[str, Any]]] = {}
         comparison_by: dict[str, list[dict[str, Any]]] = {}
-        # The exact query behind each per-predictor chart (target ∪ comparison),
-        # so its "open in SQL editor" link is faithful and runnable — see
-        # pages_builder._predictor_chart_page, which is DB-free and can't build
-        # this itself.
         predictor_sql: dict[str, str] = {}
-        for dim in dataset.predictor_dimensions:
-            t_rows, t_sql, t_params = await _by_predictor(dim.name, body.target.filters)
-            c_rows, c_sql, c_params = await _by_predictor(dim.name, body.comparison.filters)
-            target_by[dim.name] = t_rows
-            comparison_by[dim.name] = c_rows
-            predictor_sql[dim.name] = _predictor_union_sql(
-                dim.name, response_metric, t_sql, t_params, c_sql, c_params
-            )
+        if same_metric:
+            # Only breakdown by predictors present in BOTH datasets, by name — a
+            # predictor unique to one side (e.g. rent's bedroom_band vs sales'
+            # zoning) has nothing on the other side to compare against.
+            common_predictors = [
+                dim
+                for dim in target_dataset.predictor_dimensions
+                if comparison_dataset.dimension(dim.name) is not None
+            ]
+            for dim in common_predictors:
+                t_rows, t_sql, t_params = await _by_predictor(
+                    target_dataset, dim.name, body.target.filters, count_metric_t
+                )
+                c_rows, c_sql, c_params = await _by_predictor(
+                    comparison_dataset, dim.name, body.comparison.filters, count_metric_c
+                )
+                target_by[dim.name] = t_rows
+                comparison_by[dim.name] = c_rows
+                predictor_sql[dim.name] = _predictor_union_sql(
+                    dim.name, target_metric, t_sql, t_params, c_sql, c_params
+                )
+
+        target_grand_total: float | None = None
+        comparison_grand_total: float | None = None
+        if calculation == "pct_total":
+            target_grand = await _totals(target_dataset, {})
+            comparison_grand = await _totals(comparison_dataset, {})
+            target_grand_total = engine.num(target_grand.get(target_metric))
+            comparison_grand_total = engine.num(comparison_grand.get(comparison_metric))
 
         await _log_event(
             conn,
             user.id,
             "explore_profile",
-            {"dataset": body.dataset, "metric": response_metric},
+            {
+                "target_dataset": target_dataset.slug,
+                "comparison_dataset": comparison_dataset.slug,
+                "target_metric": target_metric,
+                "comparison_metric": comparison_metric,
+                "calculation": calculation,
+            },
         )
 
-    result = engine.build_profile(
-        dataset,
-        response_metric,
-        target_totals,
-        comparison_totals,
-        target_by,
-        comparison_by,
-    )
-    payload = result.to_public()
-    payload["dataset"] = dataset.slug
+    if same_metric:
+        # Target and Comparison measure the same thing — run the full profile
+        # engine (segment deltas, choropleth, ranked leaderboards) unchanged.
+        result = engine.build_profile(
+            target_dataset,
+            comparison_dataset,
+            target_metric,
+            target_totals,
+            comparison_totals,
+            target_by,
+            comparison_by,
+        )
+        payload = result.to_public()
+    else:
+        # Two independently-chosen metrics — there's no shared response metric
+        # to run the segment/leaderboard machinery against, so build just the
+        # topline comparison (KPI tiles + the "all metrics" table, which still
+        # lists whatever metric NAMES the two datasets happen to share).
+        target_value = engine.num(target_totals.get(target_metric))
+        comparison_value = engine.num(comparison_totals.get(comparison_metric))
+        delta = (
+            (target_value - comparison_value)
+            if target_value is not None and comparison_value is not None
+            else None
+        )
+        metric_deltas = engine.metric_deltas(
+            target_dataset, comparison_dataset, target_totals, comparison_totals
+        )
+        payload = {
+            "metric": target_metric,
+            "metric_label": target_metric_obj.label,
+            "metric_format": target_metric_obj.fmt,
+            "target_total": target_value,
+            "comparison_total": comparison_value,
+            "delta": None if delta is None else round(delta, 2),
+            "delta_pct": engine.pct_delta(delta, comparison_value),
+            "metric_deltas": [d.__dict__ for d in metric_deltas],
+            "predictors": [],
+            "positive_uplifts": [],
+            "negative_uplifts": [],
+        }
+
+    payload["calculation"] = calculation
+    payload["target_metric"] = target_metric
+    payload["comparison_metric"] = comparison_metric
+    payload["target_metric_label"] = target_metric_obj.label
+    payload["comparison_metric_label"] = comparison_metric_obj.label
+    payload["target_metric_format"] = target_metric_obj.fmt
+    payload["comparison_metric_format"] = comparison_metric_obj.fmt
+    if calculation == "pct_total":
+        target_value_for_pct = engine.num(payload.get("target_total"))
+        comparison_value_for_pct = engine.num(payload.get("comparison_total"))
+        if target_value_for_pct is not None and target_grand_total:
+            payload["target_pct_total"] = round(target_value_for_pct / target_grand_total * 100, 2)
+        if comparison_value_for_pct is not None and comparison_grand_total:
+            payload["comparison_pct_total"] = round(
+                comparison_value_for_pct / comparison_grand_total * 100, 2
+            )
+    # "dataset" is kept (= target's) for older consumers of this payload shape;
+    # target_dataset/comparison_dataset are the honest per-cohort fields.
+    payload["dataset"] = target_dataset.slug
+    payload["target_dataset"] = target_dataset.slug
+    payload["comparison_dataset"] = comparison_dataset.slug
     payload["target_filters"] = body.target.filters
     payload["comparison_filters"] = body.comparison.filters
+    # The map only ever plots one side's geo binding; target's is the
+    # reasonable default since it's also where a same-dataset comparison
+    # (the common case) gets it from.
     payload["geo"] = (
-        {"dimension": dataset.geo.dimension, "layer": dataset.geo.layer} if dataset.geo else None
+        {"dimension": target_dataset.geo.dimension, "layer": target_dataset.geo.layer}
+        if target_dataset.geo
+        else None
     )
     payload["predictor_sql"] = predictor_sql
+    # Union of both datasets' dimension labels — a predictor common to both
+    # sides is (by manifest construction) labelled identically in each, so
+    # either source is fine; the union just covers whichever built the payload.
+    dim_labels = {d.name: d.label for d in comparison_dataset.dimensions}
+    dim_labels.update({d.name: d.label for d in target_dataset.dimensions})
     # The same result assembled as report-engine pages (s20): the UI renders
     # these through PageLayout, and Save-as-golden persists them unchanged.
-    payload["pages"] = build_profile_pages(payload, {d.name: d.label for d in dataset.dimensions})
+    payload["pages"] = build_profile_pages(payload, dim_labels)
     return payload
 
 

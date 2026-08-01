@@ -14,6 +14,10 @@ export interface TableColumn {
   align?: "left" | "right";
   tone?: ColumnTone;
   format?: CellFormat;
+  /** For a column whose rows are each a DIFFERENT metric (the Profile's "all
+   *  metrics" table: one row is a price, the next a count), the row field
+   *  holding that row's own format. Beats `format`, which is per column. */
+  format_key?: string;
 }
 
 export interface TableData {
@@ -41,6 +45,19 @@ export function formatCell(value: unknown, format: CellFormat | undefined): stri
   if (format === "currency") return `${sign}$${compact}`;
   if (format === "percent") return `${sign}${abs.toFixed(2)}%`;
   return `${sign}${compact}`;
+}
+
+const FORMATS: readonly string[] = ["currency", "number", "percent", "text"];
+
+/** The format for one cell: the row's own when the column defers to it. */
+function cellFormat(c: TableColumn, row: Record<string, unknown>): CellFormat | undefined {
+  if (c.format_key) {
+    const rowFormat = row[c.format_key];
+    if (typeof rowFormat === "string" && FORMATS.includes(rowFormat)) {
+      return rowFormat as CellFormat;
+    }
+  }
+  return c.format;
 }
 
 function toneStyle(tone: ColumnTone, value: unknown): React.CSSProperties {
@@ -87,13 +104,14 @@ export function DataTable({ data }: { data: TableData }) {
               <tr key={i}>
                 {data.columns.map((c) => {
                   const v = row[c.key];
+                  const format = cellFormat(c, row);
                   return (
                     <td
                       key={c.key}
                       style={{ textAlign: c.align ?? "left", ...toneStyle(c.tone ?? null, v) }}
-                      className={c.format && c.format !== "text" ? "dt-num" : undefined}
+                      className={format && format !== "text" ? "dt-num" : undefined}
                     >
-                      {formatCell(v, c.format)}
+                      {formatCell(v, format)}
                     </td>
                   );
                 })}

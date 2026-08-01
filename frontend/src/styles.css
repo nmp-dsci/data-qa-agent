@@ -509,16 +509,20 @@ code, pre, kbd { font-family: var(--mono); }
 .ghost { background: transparent; color: var(--muted); border: 1px solid var(--border);
   padding: 6px 12px; border-radius: var(--radius); }
 
-/* Icon rail (desktop) — a 56px footprint that expands to 196px on hover or
-   focus-within (s33). The expansion is an OVERLAY: .rail keeps its 56px width
-   in the flex row and .rail-inner grows over the content, so a pointer passing
-   through the rail can never reflow the view behind it. */
-.rail { position: relative; width: 56px; flex: none; z-index: 30; }
-.rail-inner { position: absolute; top: 0; bottom: 0; left: 0; width: 56px; overflow: hidden;
-  display: flex; flex-direction: column; gap: 4px; padding: 10px 8px 12px;
-  border-right: 1px solid var(--border); background: var(--panel);
+/* Icon rail (desktop) — a 56px rail that expands to 196px on hover or
+   focus-within (s33, revised). The rail's own width transitions and it sits
+   in the flex row like any other panel, so the app body genuinely makes room
+   for it rather than being covered — an overlay here hid the conversation
+   list underneath it, which read as broken rather than as a reveal. */
+.rail { width: 56px; flex: none; z-index: 30; overflow: hidden;
   transition: width var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease); }
-.rail:hover .rail-inner, .rail:focus-within .rail-inner { width: 196px; box-shadow: var(--elev-2); }
+.rail:hover, .rail:focus-within { width: 196px; box-shadow: var(--elev-2); }
+/* Fixed at the expanded width regardless of .rail's current (transitioning)
+   width — .rail's overflow:hidden clips it down to a 56px sliver at rest and
+   reveals it as the rail grows, instead of squeezing the row's own layout. */
+.rail-inner { width: 196px; height: 100%;
+  display: flex; flex-direction: column; gap: 4px; padding: 10px 8px 12px;
+  border-right: 1px solid var(--border); background: var(--panel); }
 .rail-brand { flex: none; height: 40px; margin-bottom: 8px; padding: 0 5px;
   display: flex; align-items: center; gap: 10px; }
 .rail-brand svg { flex: none; border-radius: 9px; box-shadow: var(--elev-1); }
@@ -1435,29 +1439,41 @@ table.dt .dt-num { font-variant-numeric: tabular-nums; }
 .choro-wrap svg path { transition: opacity .1s; }
 .choro-tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 8px; font-size: 11.5px; color: var(--text); white-space: nowrap; z-index: 5; }
+/* Color-scale legend — the same lo/mid/hi gradient painted on the shapes,
+   so a reader can tell what a color means without hovering every postcode. */
+.choro-legend { display: flex; align-items: center; gap: 8px; padding: 6px 10px 2px; }
+.choro-legend-bar { flex: 1; height: 8px; border-radius: 4px; }
+.choro-legend-tick { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
 /* Explore rev2 — tree cohort setup, 2-col result, searchable filter combo */
-.ex-setup { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px;
-  align-items: center; background: var(--panel); border: 1px solid var(--border);
+/* Cohorts first, then — once Target/Comparison are defined — the dataset and
+   metric they're measured on, then Run. (s33: this used to lead with Metric
+   as a tree "trunk" branching into the two cohorts; reordered so the setup
+   reads in the order you actually decide it — what, then how.) */
+.ex-setup { display: flex; flex-direction: column; gap: 12px;
+  background: var(--panel); border: 1px solid var(--border);
   border-radius: 10px; padding: 12px 16px; }
-.ex-setup-metric { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.ex-setup-metric .ex-ctrl-label { color: var(--muted); }
-/* the two cohort rows form a small tree off a shared trunk (same metric) */
-.ex-setup-cohorts { display: flex; flex-direction: column; border-left: 2px solid var(--border-2, var(--border)); padding-left: 16px; position: relative; }
-.ex-setup-cohorts .ex-cohort-row { position: relative; padding: 8px 0; border-bottom: none; }
-/* s25: the two branches read as contrails — dashed, and coloured by the cohort
-   they carry (Target gold / Comparison blue), so the tree says which is which
-   before you read the labels. */
-.ex-setup-cohorts .ex-cohort-row::before { content: ""; position: absolute; left: -16px; top: 50%;
-  width: 12px; border-top: 2px dashed var(--border-2, var(--border)); }
-.ex-setup-cohorts .ex-cohort-row:has(.tone-target)::before { border-top-color: var(--cohort-target); }
-.ex-setup-cohorts .ex-cohort-row:has(.tone-comparison)::before { border-top-color: var(--cohort-comparison); }
-.ex-tree-brace { display: none; }
+.ex-setup-cohorts { display: flex; flex-direction: column; gap: 4px; }
+.ex-setup-cohorts .ex-cohort-row { padding: 8px 0; border-bottom: none; }
+/* Each cohort's own Dataset picker — sits right after the Target/Comparison
+   label, before the filter chips, so "what am I even measuring" reads before
+   "measuring what subset of it". Deliberately narrow: it's a dataset name,
+   not a sentence. */
+.ex-cohort-dataset { flex: none; max-width: 168px; }
+/* Each cohort's own Metric picker — sits right after its Dataset picker, so
+   Target and Comparison can each measure something different (e.g. Sold
+   volume vs Bond volume). Same narrow treatment as the dataset picker. */
+.ex-cohort-metric { flex: none; max-width: 168px; }
+.ex-setup-footer { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding-top: 12px; border-top: 1px solid var(--border); }
+.ex-setup-footer .ex-run { margin-left: auto; }
+.ex-metric-note { font-size: 11px; }
 .ex-copy { display: inline-flex; align-items: center; gap: 5px;
   background: none; border: 1px dashed var(--border-2, var(--border)); color: var(--muted);
   border-radius: 7px; padding: 3px 9px; font: inherit; font-size: 11.5px; cursor: pointer; margin-left: auto; white-space: nowrap; }
 .ex-copy:hover { color: var(--cohort-comparison); border-color: var(--cohort-comparison); }
-@media (max-width: 820px) { .ex-setup { grid-template-columns: 1fr; } .ex-setup-cohorts { border-left: none; padding-left: 0; } .ex-setup-cohorts .ex-cohort-row::before { display: none; } }
+@media (max-width: 820px) { .ex-setup-footer { flex-direction: column; align-items: stretch; }
+  .ex-setup-footer .ex-run { margin-left: 0; } }
 
 /* Searchable filter combo (sorted list + type-to-filter + typeahead) */
 .ex-combo { position: relative; display: inline-block; }
@@ -1494,6 +1510,31 @@ table.dt .dt-num { font-variant-numeric: tabular-nums; }
 .ex-multi-val { position: relative; flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .ex-multi-count { position: relative; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .ex-multi-empty { color: var(--muted); font-size: 12px; padding: 6px 8px; }
+/* Bulk row — tick/untick everything, with the current selection stated beside it
+   so "none" can't be mistaken for a filter that returns nothing. */
+.ex-multi-bulk { display: flex; align-items: center; gap: 6px; padding: 0 2px 6px;
+  border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.ex-multi-bulk button { background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border-2, var(--border)); border-radius: 5px;
+  padding: 2px 9px; font: inherit; font-size: 11.5px; cursor: pointer; }
+.ex-multi-bulk button:hover { border-color: var(--accent-soft); color: var(--accent-soft); }
+.ex-multi-bulk-note { margin-left: auto; color: var(--muted); font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Goldens builder — "running" indicator. A sandbox build takes seconds, so the
+   wait gets a moving bar rather than only a disabled button. */
+.builder-running { display: inline-flex; align-items: center; gap: 7px; color: var(--accent-soft); }
+.builder-running-bar { display: inline-block; width: 46px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-soft), transparent);
+  background-size: 60% 100%; background-repeat: no-repeat;
+  animation: builder-running-slide 1.1s ease-in-out infinite; }
+@keyframes builder-running-slide {
+  0% { background-position: -60% 0; }
+  100% { background-position: 160% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .builder-running-bar { animation: none; background-position: 50% 0; }
+}
 
 /* Chart -> SQL editor link button (sits to the left of the PNG export) */
 .chart-sql { right: 42px; }

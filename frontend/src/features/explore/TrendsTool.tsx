@@ -142,12 +142,23 @@ const ChartApp = memo(function ChartApp({
   // The result as a typed page object — what a golden or chat answer would
   // carry for this exact chart; ObjectBody renders it identically everywhere.
   const chartObject = useMemo<PageObject>(() => {
+    // The manifest already says what this metric IS, so the chart declares it
+    // rather than leaving the renderer to read it off the column name.
+    const unit = dataset.metrics.find((m) => m.name === config.metric)?.format ?? null;
     if (config.chartType === "line") {
       return {
         type: "trend",
         element_id: `explore:trend:${index}`,
         role: "chart",
-        data: { x: timeDim, y: config.metric, series: config.split, height: 220, sql, rows },
+        data: {
+          x: timeDim,
+          y: config.metric,
+          y_unit: unit,
+          series: config.split,
+          height: 220,
+          sql,
+          rows,
+        },
       };
     }
     return {
@@ -158,6 +169,7 @@ const ChartApp = memo(function ChartApp({
       data: {
         dimension: timeDim,
         measure: config.metric,
+        unit,
         group: config.split,
         stacked: config.chartType === "stacked-bar",
         sort_x: true, // time axis must read left-to-right in order
@@ -166,7 +178,7 @@ const ChartApp = memo(function ChartApp({
         rows,
       },
     };
-  }, [config, rows, timeDim, sql, index]);
+  }, [config, rows, timeDim, sql, index, dataset]);
 
   return (
     <div className="ex-card ex-chartapp">

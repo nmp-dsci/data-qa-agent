@@ -1,5 +1,6 @@
 // Chart tokens — every visx chart reads its colors from the design tokens in
 // styles.css, so charts follow the active theme (dark/light) automatically.
+import { unitFor } from "./units";
 
 export function cssVar(name: string, fallback: string): string {
   if (typeof window === "undefined") return fallback;
@@ -46,8 +47,18 @@ export function asRows(v: unknown): Record<string, unknown>[] {
   return [];
 }
 
-export function formatValue(v: number, field: string): string {
-  const currency = /price|value|rent|cost|amount|\$/i.test(field);
+/**
+ * Format an axis tick or a tooltip figure.
+ *
+ * `unit` is the annotation the object carries (currency / number / percent) and
+ * always wins; `field` is only the fallback for objects saved before units
+ * travelled with them. Never guessed from loose words in the name — see
+ * units.ts.
+ */
+export function formatValue(v: number, field: string, unit?: string | null): string {
+  const resolved = unitFor(field, unit);
+  const currency = resolved === "currency";
+  const percent = resolved === "percent";
   const abs = Math.abs(v);
   const compact =
     abs >= 1_000_000
@@ -57,5 +68,6 @@ export function formatValue(v: number, field: string): string {
         : abs >= 1000
           ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
           : `${Math.round(v * 100) / 100}`;
-  return currency ? `$${compact}` : compact;
+  if (currency) return `$${compact}`;
+  return percent ? `${compact}%` : compact;
 }

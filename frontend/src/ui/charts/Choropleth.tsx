@@ -1,16 +1,24 @@
 // Choropleth — a value shaded across postcode polygons. Renders pre-projected
 // SVG paths (built offline by scripts/build_poa_paths.py) so there is NO runtime
-// geo library and no new dependency; the ~72 KB layer lazy-loads only when a map
-// shows. Registered as the report-engine `choropleth` object type, so agent
+// geo library and no new dependency; the ~330 KB layer lazy-loads only when a
+// map shows. Registered as the report-engine `choropleth` object type, so agent
 // reports and Goldens can emit maps too — it renders only for datasets whose
 // manifest declares a geo binding.
+//
+// The layer declares its own viewBox (a fine integer grid, currently 50000
+// wide), so nothing here may assume a coordinate scale — sizes derive from
+// `layer.viewBox`.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { asRows, cssVar } from "./tokens";
+import { formatPoa, isPoaDimension } from "../../lib/format";
+import { asRows, cssVar, formatValue } from "./tokens";
 
 export interface ChoroplethData {
   layer: string; // e.g. "poa_nsw" -> /geo/poa_nsw.paths.json
   key_field: string; // row key holding the polygon key (postcode)
   value_field: string; // row key holding the shaded value
+  /** What the shaded value IS: currency | number | percent (see units.ts).
+   *  The field is usually a bare "delta", which says nothing about its unit. */
+  unit?: string | null;
   title?: string | null;
   rows: Record<string, unknown>[];
   height?: number | "fill";
@@ -95,7 +103,10 @@ export function Choropleth({ data }: { data: ChoroplethData }) {
       const p = toViewBox(e.clientX, e.clientY);
       setTf((cur) => {
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-        const k = Math.min(8, Math.max(1, cur.k * factor));
+        // 8x used to be plenty for a coarse (0.4px-tolerance) outline, but the
+        // finer geometry (0.1px) has real detail to zoom into — cap raised to
+        // 40x so postcode-level shapes stay legible at the closest zoom.
+        const k = Math.min(40, Math.max(1, cur.k * factor));
         // Keep the point under the cursor fixed.
         const x = p.x - ((p.x - cur.x) / cur.k) * k;
         const y = p.y - ((p.y - cur.y) / cur.k) * k;
@@ -116,7 +127,9 @@ export function Choropleth({ data }: { data: ChoroplethData }) {
     return m;
   }, [data.rows, data.key_field, data.value_field]);
 
-  const scale = useMemo(() => {
+  // The ramp (colorAt) is shared between the map fill and the legend, so the
+  // gradient bar always matches what's actually painted on the shapes.
+  const ramp = useMemo(() => {
     const vals = [...values.values()];
     if (vals.length === 0) return null;
     const lo = Math.min(...vals);
@@ -125,16 +138,28 @@ export function Choropleth({ data }: { data: ChoroplethData }) {
     const warn = hexToRgb(cssVar("--warn", "#e0af68"));
     const good = hexToRgb(cssVar("--good", "#9ece6a"));
     const abs = Math.max(Math.abs(lo), Math.abs(hi)) || 1;
-    return (v: number): string => {
-      const t = data.diverging ? (v / abs + 1) / 2 : hi === lo ? 0.5 : (v - lo) / (hi - lo);
+    const colorAt = (t: number): string => {
       const c = Math.max(0, Math.min(1, t));
       return c <= 0.5 ? lerp(bad, warn, c * 2) : lerp(warn, good, (c - 0.5) * 2);
     };
-  }, [values, data.diverging]);
+    return { lo, hi, abs, colorAt };
+  }, [values]);
+
+  const scale = useMemo(() => {
+    if (!ramp) return null;
+    const { lo, hi, abs, colorAt } = ramp;
+    return (v: number): string => {
+      const t = data.diverging ? (v / abs + 1) / 2 : hi === lo ? 0.5 : (v - lo) / (hi - lo);
+      return colorAt(t);
+    };
+  }, [ramp, data.diverging]);
 
   const muted = cssVar("--chart-grid", "#1d2434");
   const stroke = cssVar("--chart-axis", "#242b3d");
   const height = data.height === "fill" || data.height == null ? 260 : data.height;
+  // Shape keys are ABS Postal Area codes — say so, rather than leaving a bare
+  // "2077" for the reader to identify.
+  const keyLabel = (k: string) => (isPoaDimension(data.key_field) ? formatPoa(k) : k);
 
   if (err) return <p className="muted">Map unavailable: {err}</p>;
   if (!layer) return <div className="skel" style={{ height }} />;
@@ -180,14 +205,24 @@ export function Choropleth({ data }: { data: ChoroplethData }) {
                 d={f.d}
                 fill={fill}
                 stroke={stroke}
-                strokeWidth={0.4 / tf.k}
+                // Borders keep a constant on-screen weight while zooming. Letting
+                // the browser do that (non-scaling-stroke) instead of recomputing
+                // `0.4 / tf.k` per path means these ~650 paths carry identical
+                // props across zoom frames, so React re-renders none of them —
+                // which is what keeps panning smooth at the layer's full detail.
+                strokeWidth={w / 2500}
+                vectorEffect="non-scaling-stroke"
                 style={{ cursor: data.onSelect ? "pointer" : "inherit" }}
                 onMouseEnter={(e) => {
                   const box = wrapRef.current?.getBoundingClientRect();
                   setTip({
                     x: e.clientX - (box?.left ?? 0),
                     y: e.clientY - (box?.top ?? 0),
-                    label: v != null ? `${f.postcode}: ${v.toLocaleString()}` : `${f.postcode}: —`,
+                    // Same value formatting as the legend, so a shade and its
+                    // number are read in one unit.
+                    label: `${keyLabel(f.postcode)}: ${
+                      v != null ? formatValue(v, data.value_field, data.unit) : "—"
+                    }`,
                   });
                 }}
                 onMouseLeave={() => setTip(null)}
@@ -200,6 +235,22 @@ export function Choropleth({ data }: { data: ChoroplethData }) {
       {tip && (
         <div className="choro-tip" style={{ left: tip.x + 10, top: tip.y + 10 }}>
           {tip.label}
+        </div>
+      )}
+      {ramp && (
+        <div className="choro-legend">
+          <span className="choro-legend-tick">
+            {formatValue(data.diverging ? -ramp.abs : ramp.lo, data.value_field, data.unit)}
+          </span>
+          <div
+            className="choro-legend-bar"
+            style={{
+              background: `linear-gradient(to right, ${ramp.colorAt(0)}, ${ramp.colorAt(0.5)}, ${ramp.colorAt(1)})`,
+            }}
+          />
+          <span className="choro-legend-tick">
+            {formatValue(data.diverging ? ramp.abs : ramp.hi, data.value_field, data.unit)}
+          </span>
         </div>
       )}
     </div>

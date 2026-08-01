@@ -50,7 +50,9 @@ def _fmt_value(value: Any, fmt: str | None) -> str:
 def _render_filter(v: Any) -> str:
     """One filter value as display text (multi-select list, min→max range, scalar)."""
     if isinstance(v, (list, tuple)):
-        return ", ".join(str(x) for x in v)
+        # An empty multi-select matches nothing (service compiles it to `false`);
+        # say so rather than leaving a blank cell that reads as "no filter".
+        return ", ".join(str(x) for x in v) if v else "none"
     if isinstance(v, dict):
         lo, hi = v.get("min"), v.get("max")
         arrow = " → " if (lo is not None or hi is not None) else ""
@@ -86,14 +88,35 @@ def _obj(
 
 
 def _kpi_objects(payload: dict[str, Any], t_label: str, c_label: str) -> list[dict[str, Any]]:
-    fmt = payload.get("metric_format")
     metric_label = payload.get("metric_label", "")
+    metric_fmt = payload.get("metric_format")
+    # Target and Comparison may each be measuring a different metric of their
+    # own dataset — fall back to the shared `metric_label`/`metric_format` so
+    # a same-metric comparison (the common case) is unaffected.
+    t_fmt = payload.get("target_metric_format", metric_fmt)
+    c_fmt = payload.get("comparison_metric_format", metric_fmt)
+    t_metric_label = payload.get("target_metric_label", metric_label)
+    c_metric_label = payload.get("comparison_metric_label", metric_label)
+    calculation = payload.get("calculation", "raw")
+
+    t_basis = c_basis = None
+    if calculation == "pct_total":
+        t_pct = payload.get("target_pct_total")
+        c_pct = payload.get("comparison_pct_total")
+        if isinstance(t_pct, (int, float)):
+            t_basis = f"{_fmt_value(t_pct, 'percent')} of total"
+        if isinstance(c_pct, (int, float)):
+            c_basis = f"{_fmt_value(c_pct, 'percent')} of total"
+
     uplift: dict[str, Any] = {
-        "label": "Uplift",
-        "value": _fmt_value(payload.get("delta"), fmt),
+        "label": "Growth rate" if calculation == "growth" else "Uplift",
+        # A raw delta is only meaningful when both sides share a format (the
+        # same-metric case, or two differently-named metrics that happen to
+        # be measured the same way) — otherwise show the % change alone.
+        "value": _fmt_value(payload.get("delta"), t_fmt) if t_fmt == c_fmt else "—",
     }
     delta_pct = payload.get("delta_pct")
-    if isinstance(delta_pct, (int, float)):
+    if calculation != "raw" and isinstance(delta_pct, (int, float)):
         # growth.pct is already a percent (bypasses the fraction heuristic).
         uplift["growth"] = {"pct": delta_pct, "label": "vs comparison"}
     return [
@@ -101,8 +124,9 @@ def _kpi_objects(payload: dict[str, Any], t_label: str, c_label: str) -> list[di
             "kpi",
             "profile:kpi:target",
             {
-                "label": f"{t_label} · {metric_label}",
-                "value": _fmt_value(payload.get("target_total"), fmt),
+                "label": f"{t_label} · {t_metric_label}",
+                "value": _fmt_value(payload.get("target_total"), t_fmt),
+                "basis": t_basis,
                 "tone": "target",
             },
             role="headline",
@@ -111,14 +135,25 @@ def _kpi_objects(payload: dict[str, Any], t_label: str, c_label: str) -> list[di
             "kpi",
             "profile:kpi:comparison",
             {
-                "label": f"{c_label} · {metric_label}",
-                "value": _fmt_value(payload.get("comparison_total"), fmt),
+                "label": f"{c_label} · {c_metric_label}",
+                "value": _fmt_value(payload.get("comparison_total"), c_fmt),
+                "basis": c_basis,
                 "tone": "comparison",
             },
             role="headline",
         ),
         _obj("kpi", "profile:kpi:uplift", uplift, role="headline"),
     ]
+
+
+def _metric_unit(payload: dict[str, Any]) -> str | None:
+    """The response metric's format (currency / number / percent) — what every
+    number derived from it is measured in. Only meaningful when both cohorts
+    measure the same metric; a two-metric profile has no single unit, so the
+    shared surfaces annotate nothing rather than annotate one side's."""
+    t_fmt = payload.get("target_metric_format", payload.get("metric_format"))
+    c_fmt = payload.get("comparison_metric_format", payload.get("metric_format"))
+    return t_fmt if t_fmt == c_fmt else None
 
 
 def _map_object(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -145,6 +180,8 @@ def _map_object(payload: dict[str, Any]) -> dict[str, Any] | None:
             "layer": geo.get("layer"),
             "key_field": geo_dim,
             "value_field": "delta",
+            # A Δ is measured in the metric's own unit — a $200 gap is dollars.
+            "unit": _metric_unit(payload),
             "title": f"Selection map · Δ by {geo_dim} · scroll to zoom",
             "rows": rows,
             "diverging": True,
@@ -164,9 +201,30 @@ def _tables_page(
             "variant": "comparison",
             "columns": [
                 {"key": "label", "label": "Metric"},
-                {"key": "target", "label": t_label, "align": "right", "tone": "target"},
-                {"key": "comparison", "label": c_label, "align": "right", "tone": "comparison"},
-                {"key": "delta", "label": "Δ", "align": "right", "tone": "delta"},
+                # One row per METRIC, so the format is the row's, not the
+                # column's: a price row is dollars where the count row above it
+                # is not.
+                {
+                    "key": "target",
+                    "label": t_label,
+                    "align": "right",
+                    "tone": "target",
+                    "format_key": "fmt",
+                },
+                {
+                    "key": "comparison",
+                    "label": c_label,
+                    "align": "right",
+                    "tone": "comparison",
+                    "format_key": "fmt",
+                },
+                {
+                    "key": "delta",
+                    "label": "Δ",
+                    "align": "right",
+                    "tone": "delta",
+                    "format_key": "fmt",
+                },
                 {
                     "key": "delta_pct",
                     "label": "Δ%",
@@ -178,6 +236,7 @@ def _tables_page(
             "rows": [
                 {
                     "label": d.get("label"),
+                    "fmt": d.get("fmt"),
                     "target": d.get("target"),
                     "comparison": d.get("comparison"),
                     "delta": d.get("delta"),
@@ -216,7 +275,9 @@ def _tables_page(
     return {"template": "two-col", "columns": [[metrics_table], [filters_table]]}
 
 
-def _uplift_table(element_id: str, title: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _uplift_table(
+    element_id: str, title: str, rows: list[dict[str, Any]], fmt: str | None
+) -> dict[str, Any]:
     return _obj(
         "table",
         element_id,
@@ -227,7 +288,7 @@ def _uplift_table(element_id: str, title: str, rows: list[dict[str, Any]]) -> di
             "columns": [
                 {"key": "label", "label": "Predictor"},
                 {"key": "segment", "label": "Segment"},
-                {"key": "delta", "label": "Δ", "align": "right", "tone": "delta"},
+                {"key": "delta", "label": "Δ", "align": "right", "tone": "delta", "format": fmt},
             ],
             "rows": rows,
         },
@@ -254,6 +315,10 @@ def _predictor_chart_page(
             "title": f"{p.get('label')} · signal {p.get('signal')}",
             "dimension": "segment",
             "measure": "value",
+            # Every segment bar is the profile's response metric, so it carries
+            # that metric's unit — the column is called "value", which on its
+            # own tells the renderer nothing.
+            "unit": _metric_unit(payload),
             "group": "cohort",
             "group_order": [t_label, c_label],
             "rows": rows,
@@ -297,7 +362,13 @@ def build_profile_pages(
 
     kpis = _kpi_objects(payload, t_label, c_label)
     map_obj = _map_object(payload)
-    headline = f"{t_label} vs {c_label} · {payload.get('metric_label', '')}"
+    t_metric_label = payload.get("target_metric_label", payload.get("metric_label", ""))
+    c_metric_label = payload.get("comparison_metric_label", payload.get("metric_label", ""))
+    headline = (
+        f"{t_label} vs {c_label} · {t_metric_label}"
+        if t_metric_label == c_metric_label
+        else f"{t_label} · {t_metric_label} vs {c_label} · {c_metric_label}"
+    )
     if map_obj is not None:
         pages.append(
             {
@@ -324,6 +395,7 @@ def build_profile_pages(
                             "profile:table:uplifts-positive",
                             "Positive uplifts · ranked",
                             positives,
+                            _metric_unit(payload),
                         )
                     ],
                     [
@@ -331,6 +403,7 @@ def build_profile_pages(
                             "profile:table:uplifts-negative",
                             "Negative uplifts · ranked",
                             negatives,
+                            _metric_unit(payload),
                         )
                     ],
                 ],

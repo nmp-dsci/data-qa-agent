@@ -15,6 +15,10 @@ import { asRows, chartPalette, chartTheme, cssVar, formatValue } from "./tokens"
 export interface BarsData {
   dimension: string;
   measure: string;
+  /** What the bars measure: currency | number | percent (see units.ts). The
+   *  measure's own annotation, so the axis and tooltip never guess from a
+   *  column name that may just be "value". */
+  unit?: string | null;
   group?: string | null;
   title?: string | null;
   /** Stack the groups within each category instead of clustering them side by
@@ -180,7 +184,7 @@ function BarsInner({ data, width, height }: { data: BarsData; width: number; hei
               rows: [
                 {
                   label: d.group || data.measure,
-                  value: formatValue(d.value, data.measure),
+                  value: formatValue(d.value, data.measure, data.unit),
                   color: color(d.group),
                 },
                 ...(d.growth != null
@@ -240,7 +244,7 @@ function BarsInner({ data, width, height }: { data: BarsData; width: number; hei
           numTicks={4}
           stroke={theme.axis}
           tickStroke={theme.axis}
-          tickFormat={(v) => formatValue(Number(v), data.measure)}
+          tickFormat={(v) => formatValue(Number(v), data.measure, data.unit)}
           tickLabelProps={() => ({
             fill: theme.label,
             fontSize: 10,

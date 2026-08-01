@@ -619,11 +619,10 @@ def test_label_with_apostrophe_emits_runnable_code() -> None:
 
 
 def test_extract_grain_extends_bar_family_only() -> None:
-    """Bar-family extracts append the dimension/group columns their snippet
-    groups by; trend/kpi keep the typed grain untouched apart from defensively
-    appending ``group`` (needed by trend_series's group_col) so a spec that
-    violates the frontend's group-is-a-grain-member invariant still gets a
-    usable extract instead of a runtime KeyError."""
+    """Every charting type appends the columns its snippet groups by — a trend
+    now has a real x axis and aggregates to (x, group) itself, so its extract
+    must carry both. Only kpi (which has no axis) keeps the typed grain plus a
+    defensive ``group``."""
     spec = {
         "grain": ["month"],
         "dimension": ["bedroom_band", "property_type"],
@@ -636,11 +635,16 @@ def test_extract_grain_extends_bar_family_only() -> None:
             "property_type",
             "postcode",
         ]
-    for object_type in ("trend", "kpi"):
-        assert extract_grain(spec, object_type=object_type, dataset="nsw_rent") == [
-            "month",
-            "postcode",
-        ]
+    # trend: typed grain + its x axis + the series column.
+    assert extract_grain(spec, object_type="trend", dataset="nsw_rent") == [
+        "month",
+        "bedroom_band",
+        "postcode",
+    ]
+    # A trend with no dimension keeps the TIME axis rather than falling back to
+    # the profile's first categorical.
+    assert extract_grain({"grain": ["month"]}, object_type="trend", dataset="nsw_rent") == ["month"]
+    assert extract_grain(spec, object_type="kpi", dataset="nsw_rent") == ["month", "postcode"]
 
 
 def test_canonical_extract_rejects_non_identifier_grain() -> None:
@@ -716,13 +720,21 @@ def test_build_object_code_rejects_non_identifier_column() -> None:
         build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
 
 
-def test_trend_column_mode_over_ratio_still_builds() -> None:
-    """A trend plotting a bucket-level average directly (line_mode 'column') is
-    legitimate — the extract recomposes it per month — so the additive guard
-    must not reject it."""
+def test_trend_over_a_bare_ratio_column_is_rejected() -> None:
+    """A trend now AGGREGATES the extract to its own (x, group) grain, so a bare
+    ratio column can no longer be plotted per row: collapsing it would be an
+    average-of-averages. The guard says so instead of drawing a wrong line —
+    matching what the builder UI already refuses to submit."""
     spec = {"line_measure": {"label": "avg_weekly_rent", "source": "avg_weekly_rent"}}
-    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
-    assert 'value_col="avg_weekly_rent"' in code
+    with pytest.raises(ValueError, match="not additive"):
+        build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+
+    # The correct expression of the same intent — recompose from the legs.
+    wavg = {
+        "line_measure": {"label": "avg_weekly_rent", "num": "total_weekly_rent", "den": "n_rented"}
+    }
+    code = build_object_code(object_type="trend", spec=wavg, dataset="nsw_rent")
+    assert "_num=(\"total_weekly_rent\", 'sum'), _den=(\"n_rented\", 'sum')" in code
 
 
 def test_table_supports_composite_dimension() -> None:
@@ -782,3 +794,689 @@ def test_composite_x_columns_land_in_the_regenerated_extract() -> None:
     # The composite x uses a dash join in the generated sandbox code (concat(x1,'-',x2)).
     code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
     assert "+ '-' +" in code
+
+
+# ---------------------------------------------------------------------------
+# Pivot table (s34) — rows x a pivoted dimension, metrics in the cells.
+# ---------------------------------------------------------------------------
+def _rent_pivot_spec() -> dict:
+    """The curator's motivating case: bedrooms/type down the side, postcode
+    across the top, bond volume + average weekly rent in each cell."""
+    return {
+        "dimension": ["bedroom_band", "property_type"],
+        "pivot_column": "postcode",
+        "pivot_measures": [
+            {"label": "bonds", "source": "n_rented", "agg": "sum", "months": 12},
+            {
+                "label": "avg_weekly_rent",
+                "num": "total_weekly_rent",
+                "den": "n_rented",
+                "months": 12,
+            },
+        ],
+        "months": 12,
+        "title": "rent by postcode",
+    }
+
+
+def test_pivot_extract_grain_carries_rows_and_the_pivoted_column() -> None:
+    """The extract must be grouped finely enough to fill every cell: a pivot
+    grouped coarser than rows x column would average cells together."""
+    spec = _rent_pivot_spec()
+    grain = extract_grain(spec, object_type="pivot", dataset="nsw_rent")
+    assert {"bedroom_band", "property_type", "postcode"} <= set(grain)
+    assert "month" in grain  # the 12-month window reads it
+    # And the columns the measures read are pulled into the regenerated extract.
+    assert {"n_rented", "total_weekly_rent"} <= needed_columns(spec)
+
+
+def test_pivot_recomposes_a_ratio_rather_than_averaging_averages() -> None:
+    spec = _rent_pivot_spec()
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    # The ratio is built from its two additive legs, never summed as avg_*.
+    assert "_num=(\"total_weekly_rent\", 'sum'), _den=(\"n_rented\", 'sum')" in code
+    assert "avg_weekly_rent" in code
+    # One column per (postcode, metric), grouped so a postcode's metrics adjoin.
+    assert "pivot_table(index=_rows, columns=_col, values=_vals" in code
+    assert "for mv in _vals for cv in _col_vals" in code
+    assert code.rstrip().endswith("table=table)")
+
+
+def test_pivot_rejects_a_column_that_is_also_a_row() -> None:
+    spec = _rent_pivot_spec()
+    spec["pivot_column"] = "bedroom_band"
+    with pytest.raises(ValueError, match="also a row column"):
+        build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+
+
+def test_pivot_needs_a_column_and_at_least_one_metric() -> None:
+    spec = _rent_pivot_spec()
+    spec["pivot_column"] = ""
+    with pytest.raises(ValueError, match="pivot_column"):
+        build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    spec = _rent_pivot_spec()
+    spec["pivot_measures"] = []
+    with pytest.raises(ValueError, match="at least one metric"):
+        build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+
+
+def _rent_pivot_frame() -> pd.DataFrame:
+    """A rent extract with the three cuts a pivot needs: postcode (pivoted across),
+    bedroom_band + property_type (down the side), and month for the window."""
+    rows = []
+    months = [f"2025-{m:02d}" for m in range(1, 13)]
+    for i, mo in enumerate(months):
+        for postcode in ("2076", "2077"):
+            for band, base in (("1", 450), ("2", 600)):
+                for ptype in ("house", "unit"):
+                    n = 10 + i
+                    rent = (
+                        base + (50 if postcode == "2077" else 0) + (30 if ptype == "house" else 0)
+                    )
+                    rows.append(
+                        {
+                            "month": mo,
+                            "postcode": postcode,
+                            "bedroom_band": band,
+                            "property_type": ptype,
+                            "n_rented": n,
+                            "total_weekly_rent": n * rent,
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+def test_pivot_object_runs_and_lifts_to_a_valid_table_page_object() -> None:
+    """End to end in the sandbox: the generated pandas produces one row per
+    bedroom_band x property_type and a column per (postcode, metric), which is
+    the whole point — comparing postcodes reads ACROSS a row."""
+    spec = _rent_pivot_spec()
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    assert "data_table" in outcome.skills_used
+
+    from agent.main import _lift_object
+    from agent.pages import PageObject
+
+    # Lifted with the BUILD type the router passes ("pivot"), not "table" — the
+    # cross-tab still has to come out as a plain table page object.
+    obj = _lift_object(
+        outcome.report,
+        element_id=element_id_for("rent-pivot"),
+        object_type="pivot",
+        sql="SELECT 1",
+    )
+    assert obj["type"] == "table"
+    assert obj is not None
+    data = obj["data"]
+    keys = [c["key"] for c in data["columns"]]
+    assert keys[:2] == ["bedroom_band", "property_type"]
+    # Columns are grouped by METRIC, its pivoted values adjacent within each.
+    # METRIC-major: each metric's postcodes adjoin, so the two numbers you want
+    # to compare sit next to each other.
+    assert keys[2:] == [
+        "bonds · 2076",
+        "bonds · 2077",
+        "avg_weekly_rent · 2076",
+        "avg_weekly_rent · 2077",
+    ]
+    # 2 bands x 2 property types = 4 rows.
+    assert len(data["rows"]) == 4
+    row = next(
+        r for r in data["rows"] if r["bedroom_band"] == "2" and r["property_type"] == "house"
+    )
+    # 2077 is the dearer postcode in the fixture (+50) — the pivot makes that a
+    # single left-to-right comparison, and the ratio is recomposed not averaged.
+    assert row["avg_weekly_rent · 2077"] > row["avg_weekly_rent · 2076"]
+    assert row["avg_weekly_rent · 2076"] == 630  # 600 base + 30 house
+    assert row["avg_weekly_rent · 2077"] == 680  # + 50 postcode premium
+    PageObject(**obj)
+
+
+def _rent_frame_finer_than_the_chart() -> pd.DataFrame:
+    """A rent extract at (month, postcode, bedroom_band) — FINER than a trend of
+    avg rent by month. Two postcodes per month per band, with different volumes,
+    so a per-row plot and a correctly-aggregated one cannot coincide."""
+    rows = []
+    for i, mo in enumerate([f"2025-{m:02d}" for m in range(1, 13)]):
+        for postcode, n, rent in (("2076", 10, 500), ("2077", 90, 1000)):
+            rows.append(
+                {
+                    "month": mo,
+                    "postcode": postcode,
+                    "bedroom_band": "2",
+                    "n_rented": n,
+                    "total_weekly_rent": n * (rent + i),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_trend_aggregates_the_extract_to_its_own_grain() -> None:
+    """The regression this fixes: trend_series emits one point per ROW, so an
+    extract finer than the chart drew several points on the same month and
+    divided per row. The snippet now sums the legs to (month) first, so each
+    month has ONE point and it is a volume-weighted ratio of sums."""
+    spec = {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "line_measure": {
+            "label": "avg_weekly_rent",
+            "num": "total_weekly_rent",
+            "den": "n_rented",
+        },
+    }
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    frame = _rent_frame_finer_than_the_chart()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+
+    points = outcome.report["main_chart"]["data"]["values"]
+    actual = [p for p in points if p["layer"] == "actual"]
+    # One point per month, not one per (month, postcode).
+    assert len(actual) == 12, actual
+    assert len({p["month"] for p in actual}) == 12
+    # Volume weighted: (10*500 + 90*1000) / 100 = 950 for the first month — NOT
+    # the unweighted mean of the two bucket averages (750).
+    first = min(actual, key=lambda p: p["month"])
+    assert first["value"] == 950.0
+
+
+def test_trend_can_plot_a_non_time_x_axis() -> None:
+    """A line chart over a category (the curator picks the x axis): the values
+    are aggregated to that axis, the x stays verbatim rather than being coerced
+    into a date, and the axis is declared ordinal rather than temporal."""
+    spec = {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "dimension": ["bedroom_band"],
+        "line_measure": {
+            "label": "avg_weekly_rent",
+            "num": "total_weekly_rent",
+            "den": "n_rented",
+        },
+    }
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    assert "date_axis=False" in code
+    assert "x_type='ordinal'" in code
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    chart = outcome.report["main_chart"]
+    assert chart["encoding"]["x"]["type"] == "ordinal"
+    xs = sorted({p["month"] for p in chart["data"]["values"]})
+    assert xs == ["1", "2"]  # the fixture's bedroom bands, not YYYY-MM-01 dates
+
+
+def test_pivot_difference_column_states_the_gap() -> None:
+    """The point of pivoting two postcodes: the table can state the gap between
+    them per metric, rather than leaving the reader to subtract two columns. The
+    Δ sits directly after its own metric's block."""
+    spec = _rent_pivot_spec()
+    spec["pivot_compare"] = "diff"
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+
+    data = outcome.report["table"]
+    keys = [c["key"] for c in data["columns"]]
+    assert keys[2:] == [
+        "bonds · 2076",
+        "bonds · 2077",
+        "bonds · Δ",
+        "avg_weekly_rent · 2076",
+        "avg_weekly_rent · 2077",
+        "avg_weekly_rent · Δ",
+    ]
+    row = next(
+        r for r in data["rows"] if r["bedroom_band"] == "2" and r["property_type"] == "house"
+    )
+    # 680 - 630 = 50, the fixture's postcode premium, computed not eyeballed.
+    assert row["avg_weekly_rent · Δ"] == 50
+    assert row["bonds · Δ"] == 0  # same volumes in both postcodes
+
+
+def test_pivot_percentage_difference() -> None:
+    spec = _rent_pivot_spec()
+    spec["pivot_compare"] = "pct_diff"
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    data = outcome.report["table"]
+    assert "avg_weekly_rent · Δ%" in [c["key"] for c in data["columns"]]
+    row = next(
+        r for r in data["rows"] if r["bedroom_band"] == "2" and r["property_type"] == "house"
+    )
+    assert row["avg_weekly_rent · Δ%"] == round(50 * 100 / 630, 2)
+
+
+def test_pivot_difference_needs_exactly_two_pivoted_values() -> None:
+    """With three postcodes there is no single "the difference", so the columns
+    are omitted rather than silently comparing an arbitrary pair."""
+    spec = _rent_pivot_spec()
+    spec["pivot_compare"] = "diff"
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    extra = frame.copy()
+    extra["postcode"] = "2079"
+    frame = pd.concat([frame, extra], ignore_index=True)
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    keys = [c["key"] for c in outcome.report["table"]["columns"]]
+    assert not any(k.endswith("· Δ") for k in keys)
+    assert "bonds · 2079" in keys
+
+
+def test_pivot_difference_columns_are_coloured_by_sign() -> None:
+    """A signed gap is the one number whose DIRECTION is the point, so the Δ
+    columns always carry the delta tone (green up / red down) while the plain
+    value columns stay neutral."""
+    spec = _rent_pivot_spec()
+    spec["pivot_compare"] = "diff"
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    tones = {c["key"]: c.get("tone") for c in outcome.report["table"]["columns"]}
+    assert tones["avg_weekly_rent · Δ"] == "delta"
+    assert tones["bonds · Δ"] == "delta"
+    assert tones["avg_weekly_rent · 2076"] is None
+
+
+def test_pivot_color_by_sign_extends_to_every_metric_column() -> None:
+    spec = _rent_pivot_spec()
+    spec["color_by_sign"] = True
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    cols = outcome.report["table"]["columns"]
+    metric_cols = [c for c in cols if c["key"] not in ("bedroom_band", "property_type")]
+    assert metric_cols and all(c.get("tone") == "delta" for c in metric_cols)
+    # Row labels stay uncoloured — only numbers have a sign.
+    assert all(c.get("tone") is None for c in cols if c["key"] == "bedroom_band")
+
+
+def _trend_points(spec: dict, frame: pd.DataFrame) -> list[dict]:
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    return outcome.report["main_chart"]["data"]["values"]
+
+
+def test_trend_smoothing_layers_are_the_curators_choice() -> None:
+    """The faint actual line under the rolling average, and the window that
+    sizes it, were both hardcoded. Each is now a spec option."""
+    base = {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "line_measure": {
+            "label": "avg_weekly_rent",
+            "num": "total_weekly_rent",
+            "den": "n_rented",
+        },
+    }
+    frame = _rent_frame_finer_than_the_chart()
+
+    layers = lambda pts: {p["layer"] for p in pts}  # noqa: E731
+    # Default: actual + a 6-month rolling overlay, as before.
+    assert layers(_trend_points(base, frame)) == {"actual", "6-mo avg"}
+    # Actual off: only the smoothed line remains.
+    assert layers(_trend_points({**base, "show_actual": False}, frame)) == {"6-mo avg"}
+    # A different window renames the layer, so the chart says what it is.
+    assert layers(_trend_points({**base, "rolling_window": 3}, frame)) == {"actual", "3-mo avg"}
+    # No smoothing at all: just the actual line.
+    assert layers(_trend_points({**base, "rolling_window": 0}, frame)) == {"actual"}
+    # Turning both off would leave an empty chart, so actual survives.
+    both_off = {**base, "rolling_window": 0, "show_actual": False}
+    assert layers(_trend_points(both_off, frame)) == {"actual"}
+
+
+def test_multi_attribute_sort_orders_by_priority() -> None:
+    """Databricks-style ordering: the sort list IS the priority. Sort by
+    property_type ascending, then break ties by bonds descending."""
+    spec = _rent_pivot_spec()
+    spec["sort"] = [
+        {"col": "property_type", "dir": "asc"},
+        {"col": "bonds · 2077", "dir": "desc"},
+    ]
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    rows = outcome.report["table"]["rows"]
+    # P1: every house before every unit.
+    types = [r["property_type"] for r in rows]
+    assert types == sorted(types)
+    # P2: within a property type, bonds descending.
+    houses = [r["bonds · 2077"] for r in rows if r["property_type"] == "house"]
+    assert houses == sorted(houses, reverse=True)
+
+
+def test_sort_skips_columns_the_frame_does_not_have() -> None:
+    """A pivot's metric columns are named after DATA values, so a saved sort can
+    reference one that this run has no column for. It is skipped, not raised."""
+    spec = _rent_pivot_spec()
+    spec["sort"] = [{"col": "bonds · 9999", "dir": "desc"}, {"col": "bedroom_band", "dir": "desc"}]
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    bands = [r["bedroom_band"] for r in outcome.report["table"]["rows"]]
+    assert bands == sorted(bands, reverse=True)
+
+
+def test_sort_applies_to_the_bar_family_too() -> None:
+    """The x-axis order of a bar chart is a presentation choice, so the same
+    sort spec drives it (this replaces the old one-off 'sort x' control)."""
+    spec = {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "bonds", "source": "n_rented", "agg": "sum"},
+        "sort": [{"col": "bonds", "dir": "desc"}],
+    }
+    code = build_object_code(object_type="breakdown", spec=spec, dataset="nsw_rent")
+    assert "sort_values" in code
+    frame = _rent_pivot_frame()
+    # Band "2" is made the larger one, so descending order is observable.
+    frame.loc[frame["bedroom_band"] == "2", "n_rented"] *= 3
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    vals = [v["bonds"] for v in outcome.report["main_chart"]["data"]["values"]]
+    assert vals == sorted(vals, reverse=True)
+
+
+def test_trend_can_plot_a_growth_rate_line() -> None:
+    """A line chart OF a growth rate: the derive transforms the series per point
+    (month over month), rather than collapsing it the way the bar family's
+    window derive does."""
+    spec = {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "line_measure": {
+            "label": "bonds",
+            "source": "n_rented",
+            "agg": "sum",
+            "derive": "growth",
+        },
+        "show_actual": True,
+        "rolling_window": 0,
+    }
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    # A frame whose volume doubles each month, so the growth rate is unambiguous.
+    frame = pd.DataFrame(
+        [
+            {
+                "month": f"2025-{m:02d}",
+                "postcode": "2076",
+                "bedroom_band": "2",
+                "n_rented": 100 * (2 ** (m - 1)),
+                "total_weekly_rent": 100 * (2 ** (m - 1)) * 500,
+            }
+            for m in range(1, 7)
+        ]
+    )
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    pts = sorted(outcome.report["main_chart"]["data"]["values"], key=lambda p: p["month"])
+    # 6 months, the first has nothing to grow from; every other is +100%.
+    assert len(pts) == 5
+    assert [p["value"] for p in pts] == [100.0] * 5
+
+
+def test_trend_rejects_a_derive_that_is_not_a_series() -> None:
+    """`latest` and `rank` reduce a series to one number, and `rolling` is the
+    smoothing control — none of them is a line, so they are refused by name."""
+    for derive in ("latest", "rank", "rolling"):
+        spec = {
+            "grain": ["month"],
+            "line_measure": {
+                "label": "bonds",
+                "source": "n_rented",
+                "agg": "sum",
+                "derive": derive,
+            },
+        }
+        with pytest.raises(ValueError, match="cannot be drawn as a line"):
+            build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+
+
+def test_same_metric_twice_with_and_without_a_derive() -> None:
+    """The curator's ask: a table of actuals AND growth needs the same metric
+    added twice — once raw, once derived — so the labels must stay distinct and
+    both columns must appear."""
+    spec = _rent_pivot_spec()
+    spec["pivot_measures"] = [
+        {"label": "bonds", "source": "n_rented", "agg": "sum", "months": 12},
+        {
+            "label": "bonds growth %",
+            "source": "n_rented",
+            "agg": "sum",
+            "months": 12,
+            "derive": "growth",
+        },
+    ]
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    keys = [c["key"] for c in outcome.report["table"]["columns"]]
+    assert "bonds · 2076" in keys and "bonds growth % · 2076" in keys
+    # Two different numbers from the same source column — an actual and a rate.
+    row = outcome.report["table"]["rows"][0]
+    assert row["bonds · 2076"] != row["bonds growth % · 2076"]
+
+
+def test_trend_time_derive_needs_a_time_axis() -> None:
+    """A growth rate reads a change ALONG the axis. Over categories each series is
+    one point, so pct_change yields nothing and the chart came back silently
+    empty — say why instead. `share` compares series at each x, so it is exempt."""
+    base = {
+        "grain": ["month", "bedroom_band"],
+        "dimension": ["bedroom_band"],
+        "group": "bedroom_band",
+    }
+    for derive in ("growth", "yoy", "index", "cumulative"):
+        spec = {
+            **base,
+            "line_measure": {
+                "label": "bonds",
+                "source": "n_rented",
+                "agg": "sum",
+                "derive": derive,
+            },
+        }
+        with pytest.raises(ValueError, match="change over TIME"):
+            build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+
+    share = {
+        **base,
+        "line_measure": {"label": "bonds", "source": "n_rented", "agg": "sum", "derive": "share"},
+    }
+    assert "transform('sum')" in build_object_code(
+        object_type="trend", spec=share, dataset="nsw_rent"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Unit annotations (s34) — every number an object emits says what it IS, so the
+# axis, the tooltip and the cell can't each guess differently. The reported
+# defect: a YoY on avg weekly rent was annotated in dollars.
+# ---------------------------------------------------------------------------
+def _rent_trend_spec(**measure: Any) -> dict:
+    return {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "line_measure": {"label": "avg_weekly_rent", **measure},
+        "rolling_window": 0,
+    }
+
+
+def _rent_trend_frame() -> pd.DataFrame:
+    # Two years, so a YoY has a prior year to compare against.
+    return pd.DataFrame(
+        [
+            {
+                "month": f"{2024 + (i // 12)}-{i % 12 + 1:02d}",
+                "postcode": "2076",
+                "bedroom_band": "2",
+                "n_rented": 100,
+                "total_weekly_rent": 100 * (500 + i),
+            }
+            for i in range(24)
+        ]
+    )
+
+
+def _trend_unit(spec: dict) -> str | None:
+    """The y unit of the trend object a spec produces, end to end."""
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    frame = _rent_trend_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    obj = chart_object_from_spec(outcome.report["main_chart"], element_id="obj:x")
+    assert obj is not None
+    unit = obj.data["y_unit"]
+    return None if unit is None else str(unit)
+
+
+def test_a_trend_carries_its_measures_unit_not_its_columns_name() -> None:
+    """The rows' value column is always literally "value" — the unit has to be
+    declared or every trend, a bond count included, reads as dollars."""
+    assert _trend_unit(_rent_trend_spec(num="total_weekly_rent", den="n_rented")) == "currency"
+    assert (
+        _trend_unit(
+            {
+                "grain": ["month", "postcode", "bedroom_band"],
+                "line_measure": {"label": "bonds", "source": "n_rented", "agg": "sum"},
+                "rolling_window": 0,
+            }
+        )
+        == "number"
+    )
+
+
+def test_a_derived_trend_is_annotated_as_the_derived_value() -> None:
+    """The reported bug: YoY on avg_weekly_rent is a percentage; the tooltip and
+    the axis were both annotating it as the money it was derived from."""
+    for derive in ("yoy", "growth"):
+        spec = _rent_trend_spec(num="total_weekly_rent", den="n_rented", derive=derive)
+        assert _trend_unit(spec) == "percent", derive
+
+
+def test_pivot_columns_state_a_unit_per_metric() -> None:
+    """Two metrics of different units sit side by side in one cross-tab, so the
+    format is per generated column — a name like "bonds · 2077" can't carry it."""
+    spec = _rent_pivot_spec()
+    spec["pivot_measures"].append(
+        {
+            "label": "avg_weekly_rent growth",
+            "num": "total_weekly_rent",
+            "den": "n_rented",
+            "derive": "growth",
+            "months": 6,
+        }
+    )
+    spec["pivot_compare"] = "pct_diff"
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    fmt = {c["key"]: c.get("format") for c in outcome.report["table"]["columns"]}
+    assert fmt["bonds · 2076"] == "number"
+    assert fmt["avg_weekly_rent · 2077"] == "currency"
+    assert fmt["avg_weekly_rent growth · 2076"] == "percent"
+    # A relative gap is a percentage whatever the metric it compares.
+    assert fmt["avg_weekly_rent · Δ%"] == "percent"
+    # The row labels are text, not numbers to annotate.
+    assert fmt["bedroom_band"] is None
+
+
+def test_a_raw_pivot_gap_keeps_the_metrics_own_unit() -> None:
+    """A $200 difference in rent is dollars — only the % variant changes unit."""
+    spec = {**_rent_pivot_spec(), "pivot_compare": "diff"}
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    fmt = {c["key"]: c.get("format") for c in outcome.report["table"]["columns"]}
+    assert fmt["avg_weekly_rent · Δ"] == "currency"
+    assert fmt["bonds · Δ"] == "number"
+
+
+def test_table_columns_carry_their_measures_unit() -> None:
+    spec = {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "bonds", "source": "n_rented", "agg": "sum"},
+        "line_measure": {
+            "label": "avg_weekly_rent",
+            "num": "total_weekly_rent",
+            "den": "n_rented",
+        },
+    }
+    code = build_object_code(object_type="table", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    fmt = {c["key"]: c.get("format") for c in outcome.report["table"]["columns"]}
+    assert fmt["bonds"] == "number"
+    assert fmt["avg_weekly_rent"] == "currency"
+
+
+def test_a_dual_axis_object_annotates_each_axis_separately() -> None:
+    """The bars and the line are different measures — that is the whole reason
+    for a second axis, so one being dollars says nothing about the other."""
+    spec = {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "dimension": "bedroom_band",
+        "bar_measure": {"label": "bonds", "source": "n_rented", "agg": "sum"},
+        "line_measure": {
+            "label": "avg_weekly_rent",
+            "num": "total_weekly_rent",
+            "den": "n_rented",
+        },
+    }
+    code = build_object_code(object_type="compare", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    obj = chart_object_from_spec(outcome.report["main_chart"], element_id="obj:x")
+    assert obj is not None
+    assert obj.data["unit"] == "number"
+    assert obj.data["line_unit"] == "currency"
+
+
+def test_a_yoy_line_reaches_back_past_the_window_it_draws() -> None:
+    """A YoY over the latest 12 months has no prior year INSIDE those 12 months,
+    so the window has to fetch 12 more — otherwise every point is undefined and
+    the chart renders empty, with no error to explain why."""
+    frame = pd.DataFrame(
+        [
+            {
+                "month": f"{2024 + (i // 12)}-{i % 12 + 1:02d}",
+                "postcode": "2076",
+                "bedroom_band": "2",
+                "n_rented": 100,
+                "total_weekly_rent": 100 * (500 + i),
+            }
+            for i in range(36)
+        ]
+    )
+    spec = {
+        "grain": ["month", "postcode", "bedroom_band"],
+        "months": 12,
+        "line_measure": {
+            "label": "avg_weekly_rent",
+            "num": "total_weekly_rent",
+            "den": "n_rented",
+            "derive": "yoy",
+        },
+        "rolling_window": 0,
+    }
+    code = build_object_code(object_type="trend", spec=spec, dataset="nsw_rent")
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    points = outcome.report["main_chart"]["data"]["values"]
+    # The 12 months asked for, each with a real year-ago comparison.
+    assert len(points) == 12
+    assert all(p["value"] > 0 for p in points)

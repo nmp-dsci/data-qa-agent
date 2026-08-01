@@ -13,6 +13,7 @@ import { KitSelect } from "@/components/kit/KitSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  BuilderObjectType,
   ExploreDataset,
   GoldenInput,
   GoldenListItem,
@@ -44,6 +45,7 @@ import {
 } from "../../lib/api";
 import { ObjectBody } from "../../report-engine/PageLayout";
 import { Annunciator, Annunciators } from "../../ui/flightdeck";
+import { BuilderFilter } from "./BuilderFilter";
 import { GraderEditor } from "./GraderEditor";
 import { graderColumns, graderIssue, pruneGrader } from "./graderSpec";
 import { ReportEditor } from "./ReportEditor";
@@ -329,13 +331,56 @@ function formatSql(raw: string): string {
 
 // The object types the Presentation Object builder can create, labelled like the
 // report editor's picker so "Line + bar chart" reads the same everywhere.
-const BUILDER_TYPES: { type: PageObjectType; label: string }[] = [
+const BUILDER_TYPES: { type: BuilderObjectType; label: string }[] = [
   { type: "compare", label: "Line + bar chart" },
   { type: "breakdown", label: "Bar chart" },
   { type: "trend", label: "Line chart" },
   { type: "kpi", label: "KPI" },
   { type: "table", label: "Table" },
+  { type: "pivot", label: "Pivot table" },
 ];
+
+/** Which inputs each object type actually reads. The builder shows exactly these
+ *  and nothing else: a trend's x-axis is always `month` in the codegen, and a KPI
+ *  has no axis at all, so offering a dimension picker for them only invited
+ *  configurations that were quietly ignored.
+ *
+ *  `x` is the axis / row dimension(s), `group` the series split, `pivot` the
+ *  dimension turned into columns, `bar`/`line` the measures. Labels differ per
+ *  type so each form reads in that chart's own language. */
+interface TypeFields {
+  x?: string;
+  group?: string;
+  pivot?: string;
+  metrics?: string;
+  bar?: string;
+  line?: string;
+  lineOptional?: boolean;
+  window?: boolean;
+  /** Offer the time column in the x picker (a trend's natural axis). */
+  xTime?: boolean;
+  /** Offer the rolling-average window + actual-layer toggle. */
+  smoothing?: boolean;
+  /** Offer red/green colouring of numeric cells. */
+  colorBySign?: boolean;
+  /** Offer the multi-attribute row sort. */
+  sortable?: boolean;
+}
+const TYPE_FIELDS: Record<string, TypeFields> = {
+  compare: { x: "x axis", group: "series", bar: "bars", line: "line", window: true, sortable: true },
+  breakdown: { x: "x axis", group: "series", bar: "bars", window: true, sortable: true },
+  trend: { x: "x axis", group: "series", line: "line", window: true, xTime: true, smoothing: true },
+  kpi: { line: "value" },
+  table: {
+    x: "rows", group: "series", bar: "column 1", line: "column 2", lineOptional: true,
+    window: true, colorBySign: true, sortable: true,
+  },
+  pivot: {
+    x: "rows", pivot: "columns", metrics: "metrics", window: true,
+    colorBySign: true, sortable: true,
+  },
+};
+const fieldsFor = (t: BuilderObjectType): TypeFields => TYPE_FIELDS[t] ?? TYPE_FIELDS.compare;
 
 // A measure is a BASE aggregation of its column(s) + an optional DERIVE that
 // augments it over the window (s31). sum/mean are the single-column base aggs (a
@@ -373,6 +418,15 @@ const TIME_DERIVES = new Set<MeasureDerive>([
 // and kpi read the raw column, so the form hides the derive for them and the spec
 // never claims one it wouldn't compute.
 const HOW_OBJECT_TYPES = new Set<PageObjectType>(["compare", "breakdown", "table"]);
+// A trend keeps one value per point, so only the derives that TRANSFORM a series
+// can be drawn as a line — latest/rank collapse it to a number and rolling is the
+// smoothing control. Mirrors _SERIES_DERIVES in agent/object_builder.py.
+const SERIES_DERIVES = new Set<MeasureDerive>(["growth", "yoy", "index", "cumulative", "share"]);
+/** Derives this object type can apply to its line/value measure. */
+const lineDerivesFor = (t: BuilderObjectType): { value: MeasureDerive; label: string }[] => {
+  if (t === "trend") return MEASURE_DERIVES.filter((d) => !d.value || SERIES_DERIVES.has(d.value));
+  return HOW_OBJECT_TYPES.has(t as PageObjectType) ? MEASURE_DERIVES : [];
+};
 // A saved measure's base aggregation. Pre-s31 measures stored the base agg in
 // `agg` (an augmented `how` always implied a sum base), so this reads across both.
 const aggOf = (m: SandboxMeasure): MeasureAgg => (m.agg === "mean" ? "mean" : "sum");
@@ -381,17 +435,88 @@ const deriveOf = (m: SandboxMeasure): MeasureDerive =>
   m.derive ??
   (m.how === "share" || m.how === "growth" || m.how === "latest" ? m.how : "");
 
+/** A short unique object name, so the builder is never blocked on the curator
+ *  inventing one. It is only an identity — the object's TITLE is the `name`
+ *  field the curator edits, and renaming stays available. */
+function autoObjectName(type: BuilderObjectType): string {
+  return `${type}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** True when a name looks generated rather than chosen — `compare-2rz29u`, or a
+ *  previously derived name. Only these are re-derived on build; a name the
+ *  curator typed is never overwritten. */
+const GENERATED_NAME = /^[a-z]+-[a-z0-9]{6}$|^[a-z]+-[a-z0-9_-]+-[a-z0-9]{4}$/;
+
+/** A readable, unique-ish object name from what the object actually shows —
+ *  `compare-area_band-by-suburb-k3f9`. The 4-char suffix keeps two objects over
+ *  the same columns distinguishable (the name is also the element_id). */
+function derivedObjectName(f: BuilderForm): string {
+  const fields = fieldsFor(f.object_type);
+  const parts: string[] = [f.object_type];
+  if (fields.x) parts.push(...f.dimension.filter(Boolean));
+  if (fields.pivot && f.pivot_column) parts.push("by", f.pivot_column);
+  else if (fields.group && f.group) parts.push("by", f.group);
+  const stem = parts.join("-").toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return `${stem}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** A sentence describing the object, for an empty Title. The backend already
+ *  titles its own charts; this is what the CURATOR sees on the card. */
+function derivedObjectTitle(f: BuilderForm): string {
+  const fields = fieldsFor(f.object_type);
+  // Only the measures this type actually reads — a trend has no bars, so naming
+  // one in the heading would describe a series that isn't drawn.
+  const measures =
+    f.object_type === "pivot"
+      ? f.pivot_metrics.map((e) => (e.derive ? `${e.metric} ${e.derive}` : e.metric)).join(", ")
+      : [fields.bar ? f.bar_label : "", fields.line ? f.line_label : ""]
+          .filter(Boolean)
+          .join(" + ");
+  const x = f.dimension.filter(Boolean).join(" · ");
+  if (f.object_type === "kpi") return f.line_label;
+  if (f.object_type === "pivot") {
+    return `${measures} by ${x || "row"}, pivoted by ${f.pivot_column}`;
+  }
+  const over = fields.xTime && x === "month" ? "over time" : x ? `by ${x}` : "";
+  const split = f.group ? ` split by ${f.group}` : "";
+  return `${measures} ${over}${split}`.replace(/\s+/g, " ").trim();
+}
+
 // The builder's flat form state (compare covers every field; simpler types read a
 // subset). Defaults are the house line+bar recipe so a first build just works.
+//
+// There is deliberately no `grain` field. The extract's grain is fully implied by
+// what the curator picked — the axis, the series, the pivot column — so asking
+// for it separately only created a way to get it wrong (an x column missing from
+// the grain was the builder's most common blocking error). `derivedGrain` below
+// computes it instead.
 interface BuilderForm {
+  /** Identity — also the element_id the report links by, so it must be unique
+   *  and is only auto-derived while it still looks generated. */
   name: string;
-  object_type: PageObjectType;
-  // grain = the columns the extract is grouped to (multi-select of the dataset's
-  // dimensions). The x-axis and group are chosen FROM the grain: x is multi (a
-  // composite axis concat(x1,'-',x2,…)), group is a single series column.
-  grain: string[];
+  /** What the card shows. Separate from `name` because the identity should not
+   *  have to read well and the heading should not have to be unique. Blank means
+   *  "describe it from the selections" (derivedObjectTitle). */
+  title: string;
+  object_type: BuilderObjectType;
   dimension: string[];
   group: string;
+  /** Pivot only: the dimension whose values become column groups. */
+  pivot_column: string;
+  /** Pivot only: the metrics tabulated under each column group. A LIST of
+   *  entries, not a set of names, because the same metric appears more than once
+   *  with different derives — an actual column next to its growth rate. */
+  pivot_metrics: { metric: string; derive: MeasureDerive }[];
+  /** Pivot only: append a per-metric difference across the two pivoted values. */
+  pivot_compare: "" | "diff" | "pct_diff";
+  /** Table/pivot: colour numeric cells green up / red down. */
+  color_by_sign: boolean;
+  /** Trend: rolling-average window in months (0 = no smoothing). */
+  rolling_window: number;
+  /** Trend: draw the faint unsmoothed line under the rolling average. */
+  show_actual: boolean;
+  /** Row order, highest priority first. */
+  sort: { col: string; dir: "asc" | "desc" }[];
   filter: string;
   months: number;
   bar_label: string;
@@ -416,11 +541,21 @@ interface BuilderForm {
 const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
   dataset === "nsw_rent"
     ? {
-        name: "",
+        name: autoObjectName("trend"),
         object_type: "trend",
-        grain: ["month", "bedroom_band"],
         dimension: ["month"],
         group: "bedroom_band",
+        pivot_column: "postcode",
+        pivot_metrics: [
+          { metric: "n_rented", derive: "" },
+          { metric: "avg_weekly_rent", derive: "" },
+        ],
+        title: "",
+        pivot_compare: "",
+        color_by_sign: false,
+        rolling_window: 6,
+        show_actual: true,
+        sort: [],
         filter: "property_type = 'house'",
         months: 12,
         bar_label: "rentals_volume",
@@ -439,11 +574,21 @@ const defaultBuilder = (dataset = "nsw_sales"): BuilderForm =>
         instruction: "",
       }
     : {
-        name: "",
+        name: autoObjectName("compare"),
         object_type: "compare",
-        grain: ["month", "suburb", "area_band"],
         dimension: ["area_band"],
         group: "suburb",
+        pivot_column: "postcode",
+        pivot_metrics: [
+          { metric: "n_sold", derive: "" },
+          { metric: "avg_sale_price", derive: "" },
+        ],
+        title: "",
+        pivot_compare: "",
+        color_by_sign: false,
+        rolling_window: 6,
+        show_actual: true,
+        sort: [],
         filter: "",
         months: 12,
         bar_label: "sales_volume",
@@ -513,8 +658,9 @@ function measureFromParts(
 /** Derives only compute for the bar family (compare/breakdown/table). A derive
  *  left over after switching to trend/kpi is dropped so the spec never claims one
  *  the codegen wouldn't build. */
-function effectiveDerive(objectType: PageObjectType, derive: MeasureDerive): MeasureDerive {
-  return HOW_OBJECT_TYPES.has(objectType) ? derive : "";
+function effectiveDerive(objectType: BuilderObjectType, derive: MeasureDerive): MeasureDerive {
+  if (objectType === "trend") return SERIES_DERIVES.has(derive) ? derive : "";
+  return HOW_OBJECT_TYPES.has(objectType as PageObjectType) ? derive : "";
 }
 
 function barMeasure(f: BuilderForm): SandboxMeasure {
@@ -542,21 +688,103 @@ function lineMeasure(f: BuilderForm): SandboxMeasure {
   return measureFromParts(f.line_label, f.line_source, f.line_agg, derive, f.line_months);
 }
 
+/** A dataset metric offered by the builder's dropdowns, with what the codegen
+ *  needs to know about it: whether it can be summed, and (for a ratio) the legs
+ *  to recompose it from. */
+interface MetricOption {
+  value: string;
+  label: string;
+  additive: boolean;
+  num?: string | null;
+  den?: string | null;
+}
+
+/** The columns a spec's extract must be grouped to, implied by what the curator
+ *  chose rather than picked separately.
+ *
+ *  `month` is always included: every measure can carry a latest-N-month window,
+ *  the time derives (growth / rolling / YoY) read it, and trend/kpi aggregate per
+ *  month in the codegen. It only affects the window dedup — the measure blocks
+ *  aggregate back up to the chart's own keys — so carrying it is free and its
+ *  absence is what used to break those features. */
+function derivedGrain(f: BuilderForm): string[] {
+  const fields = fieldsFor(f.object_type);
+  const cols = ["month"];
+  const add = (c: string) => {
+    if (c && !cols.includes(c)) cols.push(c);
+  };
+  if (fields.x) f.dimension.filter(Boolean).forEach(add);
+  if (fields.group) add(f.group);
+  if (fields.pivot) add(f.pivot_column);
+  return cols;
+}
+
+/** The x/dimension columns the spec carries. Trend and KPI have no axis picker —
+ *  the codegen reads `month` directly — so the spec states that rather than
+ *  carrying whatever dimension a previous object type left behind. */
+function specDimensions(f: BuilderForm): string[] {
+  const fields = fieldsFor(f.object_type);
+  if (!fields.x) return fields.group || fields.line ? ["month"] : [];
+  return f.dimension.filter(Boolean);
+}
+
+/** A dataset metric as a sandbox measure. An additive metric is summed; a ratio
+ *  is recomposed from its two legs as a weighted average, which is the only way
+ *  it stays correct at the object's own grain (summing an avg_* column is a
+ *  sum-of-averages, and the backend rejects it outright). Returns null for a
+ *  metric that is neither — the caller reports it rather than emitting a measure
+ *  the codegen would refuse. */
+function measureForMetric(
+  metric: MetricOption | undefined,
+  months: number,
+  derive: MeasureDerive = "",
+): SandboxMeasure | null {
+  if (!metric) return null;
+  // The label is the column name, so a derived copy of a metric must not collide
+  // with its raw one — that is what lets the same metric sit in the object twice,
+  // once as an actual and once as a rate.
+  const label = derive ? `${metric.value} ${derive}` : metric.value;
+  const base: SandboxMeasure | null = metric.additive
+    ? { label, source: metric.value, agg: "sum", months }
+    : metric.num && metric.den
+      ? { label, num: metric.num, den: metric.den, months }
+      : null;
+  if (!base) return null;
+  return derive ? { ...base, derive } : base;
+}
+
 /** Assemble the structured spec the deterministic builder emits code from. */
-function specFromBuilder(f: BuilderForm): SandboxObjectSpec {
-  const grain = f.grain.filter(Boolean);
+function specFromBuilder(f: BuilderForm, metricOpts: MetricOption[] = []): SandboxObjectSpec {
+  const grain = derivedGrain(f);
   // Two or more x columns make a composite axis (concat(x1,'-',x2,…)); one stays a
   // plain string so the builder and the lift behave exactly as before.
-  const dims = f.dimension.filter(Boolean);
+  const dims = specDimensions(f);
   const spec: SandboxObjectSpec = {
     grain,
     dimension: dims.length > 1 ? dims : (dims[0] ?? ""),
     group: f.group.trim() || null,
     months: Number(f.months) || 12,
-    bar_measure: barMeasure(f),
-    line_measure: lineMeasure(f),
-    title: f.name,
+    title: f.title.trim() || derivedObjectTitle(f),
   };
+  if (f.object_type === "pivot") {
+    spec.pivot_column = f.pivot_column;
+    spec.pivot_measures = f.pivot_metrics
+      .map((e) =>
+        measureForMetric(metricOpts.find((m) => m.value === e.metric), f.bar_months, e.derive),
+      )
+      .filter((m): m is SandboxMeasure => m != null);
+    if (f.pivot_compare) spec.pivot_compare = f.pivot_compare;
+  } else {
+    spec.bar_measure = barMeasure(f);
+    spec.line_measure = lineMeasure(f);
+  }
+  if (f.object_type === "trend") {
+    spec.rolling_window = f.rolling_window;
+    spec.show_actual = f.show_actual;
+  }
+  if (fieldsFor(f.object_type).colorBySign && f.color_by_sign) spec.color_by_sign = true;
+  const sort = f.sort.filter((s) => s.col);
+  if (sort.length) spec.sort = sort;
   if (f.filter.trim()) spec.filter = f.filter.trim();
   if (f.instruction.trim()) spec.instruction = f.instruction.trim();
   return spec;
@@ -629,7 +857,7 @@ function lineFields(m: SandboxMeasure | undefined, d: BuilderForm) {
 function builderFromSpec(
   spec: SandboxObjectSpec,
   dataset: string,
-  objectType: PageObjectType,
+  objectType: BuilderObjectType,
   name: string,
 ): BuilderForm {
   const d = defaultBuilder(dataset);
@@ -640,11 +868,25 @@ function builderFromSpec(
       : [];
   return {
     ...d,
-    name: spec.title || name,
+    name,
+    title: spec.title ?? "",
     object_type: objectType,
-    grain: spec.grain?.length ? spec.grain : d.grain,
+    // `grain` is intentionally not read back: it is derived from these fields.
     dimension: dims.length ? dims : d.dimension,
     group: spec.group ?? "",
+    pivot_column: spec.pivot_column ?? d.pivot_column,
+    pivot_metrics: spec.pivot_measures?.length
+      ? spec.pivot_measures.map((m) => ({
+          // The source column is the metric; the label carries the derive suffix.
+          metric: m.source ?? m.num ?? "",
+          derive: deriveOf(m),
+        }))
+      : d.pivot_metrics,
+    pivot_compare: spec.pivot_compare ?? "",
+    color_by_sign: spec.color_by_sign ?? false,
+    rolling_window: spec.rolling_window ?? d.rolling_window,
+    show_actual: spec.show_actual ?? d.show_actual,
+    sort: spec.sort ?? [],
     filter: spec.filter ?? "",
     months: spec.months ?? d.months,
     ...barFields(spec.bar_measure, d),
@@ -667,10 +909,16 @@ function builderFromObject(o: PageObject, dataset: string): BuilderForm {
   const type = (["trend", "breakdown", "compare", "kpi", "table"] as string[]).includes(o.type)
     ? (o.type as PageObjectType)
     : d.object_type;
+  // A named object's id (obj:line-bar-sale-volume) reads as a name; a card the
+  // curator just added carries a scratch id (edit:compare:ms5d4t0g:gdg3) that
+  // does not, so fall through to the generated name rather than showing it.
+  const fromId = o.element_id?.startsWith("edit:") ? "" : (o.element_id || "").replace(/^obj:/, "");
   return {
     ...d,
-    name:
-      s("title") || s("label") || s("heading") || (o.element_id || "").replace(/^obj:/, "") || d.name,
+    // Name the generated fallback after THIS object's type, not the dataset
+    // default's — a compare card seeded "trend-…" otherwise.
+    name: fromId || autoObjectName(type),
+    title: s("title") || s("label") || s("heading"),
     object_type: type,
   };
 }
@@ -708,29 +956,49 @@ function whereFromSql(sql: string): string {
  *  or null. Mirrors the builder's own rules (grain-derived x/group, additive
  *  measure sources, month required for growth/latest) so the curator sees a green
  *  "will build" before pressing Run — no LLM, no round-trip. */
-function buildabilityIssue(
-  f: BuilderForm,
-  metricOpts: { value: string; additive: boolean }[],
-): string | null {
-  const grain = f.grain.filter(Boolean);
-  if (!grain.length) return "pick at least one grain column";
+function buildabilityIssue(f: BuilderForm, metricOpts: MetricOption[]): string | null {
+  // The grain is derived from the selections now, so the errors it used to
+  // produce ("x column must be in the grain") are structurally impossible.
+  const grain = derivedGrain(f);
   const chart = f.object_type;
+  const fields = fieldsFor(chart);
   const additive = new Set(metricOpts.filter((m) => m.additive).map((m) => m.value));
   const needsAdditive = (src: string) =>
     metricOpts.length > 0 && !additive.has(src) ? `${src} is not additive` : null;
-  if (chart !== "kpi") {
-    const x = f.dimension.filter(Boolean);
-    if (!x.length) return "pick an x / dimension column";
-    const stray = x.find((c) => !grain.includes(c));
-    if (stray) return `x column ${stray} must be in the grain`;
+  if (fields.x && !f.dimension.filter(Boolean).length) {
+    return `pick at least one ${fields.x} column`;
   }
-  if (f.group && !grain.includes(f.group)) return `group ${f.group} must be in the grain`;
+  if (chart === "pivot") {
+    if (!f.pivot_column) return "pick the column dimension to pivot on";
+    if (f.dimension.includes(f.pivot_column)) {
+      return `${f.pivot_column} can't be both a row and the pivoted column`;
+    }
+    if (!f.pivot_metrics.length) return "pick at least one metric";
+    const bad = f.pivot_metrics.find(
+      (e) => !measureForMetric(metricOpts.find((m) => m.value === e.metric), f.bar_months, e.derive),
+    );
+    if (bad) return `${bad.metric} can't be re-aggregated — pick an additive metric or a ratio`;
+    // Two identical entries would emit two columns with the same name, and the
+    // second would silently overwrite the first in the pivot.
+    const seen = new Set<string>();
+    const dup = f.pivot_metrics.find((e) => {
+      const k = `${e.metric}|${e.derive}`;
+      if (seen.has(k)) return true;
+      seen.add(k);
+      return false;
+    });
+    if (dup) return `${dup.metric} is listed twice with the same calculation`;
+    return null;
+  }
   // A derive is only meaningful under the right base + grain: % of total /
   // cumulative need a sum base; the time derives (growth, rolling, …) need month.
   const deriveIssue = (derive: MeasureDerive, isSum: boolean, what: string): string | null => {
     if (!derive) return null;
     if (SUM_ONLY_DERIVES.has(derive) && !isSum)
       return `${what} ${derive} needs a sum aggregation`;
+    // The time derives need month in the grain; derivedGrain always carries it,
+    // so this can no longer fail — asserted rather than dropped, because the
+    // backend still rejects the combination if that ever stops being true.
     if (TIME_DERIVES.has(derive) && !grain.includes("month"))
       return `${what} ${derive} needs month in the grain`;
     return null;
@@ -744,6 +1012,16 @@ function buildabilityIssue(
     if (bd) return bd;
   }
   // The line: wavg legs or a summed column must be additive.
+  if (chart === "trend" && f.line_derive) {
+    if (!SERIES_DERIVES.has(f.line_derive)) {
+      return `line: ${f.line_derive} reduces the series to one value — not a line`;
+    }
+    // A change ALONG the axis needs a time axis; over categories each series is
+    // a single point and the chart comes back empty.
+    if (f.line_derive !== "share" && !f.dimension.includes("month")) {
+      return `line: ${f.line_derive} is a change over time — put month on the x axis`;
+    }
+  }
   if (chart === "compare" || chart === "trend" || chart === "kpi") {
     if (f.line_mode === "wavg") {
       const n = needsAdditive(f.line_num);
@@ -889,8 +1167,10 @@ export function GoldensPage({
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewEditId, setPreviewEditId] = useState<string | null>(null);
+  // The config the CURRENTLY SHOWN preview was built from, so the form can say
+  // when what you're looking at no longer matches what you've selected.
+  const [previewBuiltKey, setPreviewBuiltKey] = useState("");
   const previewToken = useRef(0);
-  const builderRef = useRef<HTMLDivElement | null>(null);
   // Where a NEW built object lands (page index, column index). Editing an object
   // ignores these — it replaces the card in place.
   const [placePage, setPlacePage] = useState(0);
@@ -1123,9 +1403,20 @@ export function GoldensPage({
    *  preview replaces the chart, and its options are the controls to change it;
    *  pressing Build re-runs the deterministic pipeline and replaces the card in
    *  place (placeObjectInReport matches on element_id). No LLM, no free text. */
-  function editObjectInBuilder(o: PageObject) {
+  function editObjectInBuilder(o: PageObject, builderType?: BuilderObjectType) {
     const ds = datasetFromSql(draft.golden_sql) ?? draft.dataset;
     const go = draft.golden_objects.find((g) => g.element_id === o.element_id);
+    if (builderType) {
+      // A card the curator just added from the ③ picker (e.g. "Pivot table"):
+      // there is no stored recipe to invert, so open the dataset defaults in the
+      // requested mode and let them configure it here.
+      setBuilder({ ...defaultBuilder(ds), object_type: builderType, name: autoObjectName(builderType) });
+      setBuildMsg(
+        `New ${builderType} — set the options below, Refresh preview to check it, then Build.`,
+      );
+      setPreviewEditId(o.element_id);
+      return;
+    }
     if (go?.spec) {
       setBuilder(builderFromSpec(go.spec, ds, go.object_type as PageObjectType, go.name));
       setBuildMsg(`Editing “${go.name}” — change the options below, then Build to update it in place.`);
@@ -1139,8 +1430,10 @@ export function GoldensPage({
     }
     // Either way, mark the edit so Build REPLACES this object in place (by its
     // element_id) instead of orphaning a new one somewhere in the report.
+    // No scroll: the builder now renders inline under this object (ReportEditor
+    // takes `builderPanel`), which is the whole point — the curator keeps their
+    // place in the report instead of being sent up to the Sandbox section.
     setPreviewEditId(o.element_id);
-    builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   /** Replace/insert an object in a list keyed by element_id. */
@@ -1245,7 +1538,7 @@ export function GoldensPage({
     // When editing in place the identity is previewEditId, so a blank name is
     // fine — fall back to the object's own id-derived label rather than blocking.
     const name =
-      builder.name.trim() || (previewEditId ? previewEditId.replace(/^(obj|report):/, "") : "");
+      applyDerivedNaming() || (previewEditId ? previewEditId.replace(/^(obj|report):/, "") : "");
     if (!name) {
       setBuildMsg("Give the object a name first.");
       return;
@@ -1254,7 +1547,7 @@ export function GoldensPage({
       setBuildMsg("Add the ① SQL extract first.");
       return;
     }
-    const spec = specFromBuilder(builder);
+    const spec = specFromBuilder(builder, metricOpts);
     setBusy("build");
     setBuildMsg(null);
     try {
@@ -1705,17 +1998,27 @@ export function GoldensPage({
   // rent SQL mis-tagged nsw_sales still offers rent dimensions/metrics.
   const builderDataset = datasetFromSql(draft.golden_sql) ?? draft.dataset;
   const dsVocab = vocab.find((d) => d.slug === builderDataset) ?? null;
-  const dimOpts = (dsVocab?.dimensions ?? [])
-    .filter((d) => d.source === "mart")
-    .map((d) => ({ value: d.name, label: d.label }));
-  const metricOpts = (dsVocab?.metrics ?? []).map((m) => ({
+  // The columns the filter chips may name. Same mart-only restriction as the
+  // grain (a geo rollup or a computed year needs a JOIN/expression the extract
+  // can't emit), minus the time dim — the window is the `latest N months` field,
+  // not a WHERE predicate.
+  const filterDims = (dsVocab?.dimensions ?? []).filter(
+    (d) => d.source === "mart" && d.kind !== "time",
+  );
+  const metricOpts: MetricOption[] = (dsVocab?.metrics ?? []).map((m) => ({
     value: m.name,
     label: m.label,
     additive: m.kind === "additive",
+    num: m.num,
+    den: m.den,
   }));
+  // Metrics a pivot cell can hold: additive (summed) or a ratio with legs to
+  // recompose. A metric that is neither would be a sum-of-averages, so it is not
+  // offered rather than offered and rejected at build time.
+  const pivotMetricOpts = metricOpts.filter((m) => m.additive || (m.num && m.den));
   const additiveMetricOpts = metricOpts.filter((m) => m.additive);
   // The derive dropdown only renders for the bar family — trend/kpi ignore it.
-  const howApplies = HOW_OBJECT_TYPES.has(builder.object_type);
+  const howApplies = HOW_OBJECT_TYPES.has(builder.object_type as PageObjectType);
   // Every base aggregation sums the source through the window dedup, so a source
   // must be additive; snap a non-additive (e.g. legacy free-text) one to the first
   // additive metric so the invalid combo can't reach the build.
@@ -1791,76 +2094,887 @@ export function GoldensPage({
       </div>
     );
   };
-  // x / dimension and group are chosen FROM the grain, so their options are the
-  // grain columns (labelled from the dataset vocabulary where known).
-  const dimLabel = (v: string) => dimOpts.find((o) => o.value === v)?.label ?? v;
-  const grainOpts = builder.grain.filter(Boolean).map((v) => ({ value: v, label: dimLabel(v) }));
+  // Every mart dimension is offered everywhere. Constraining the axis and series
+  // pickers to a separately-chosen grain is what made the form hard to use; the
+  // grain now follows the picks (derivedGrain), so the pickers can just expose
+  // the dataset's vocabulary. The time dim is excluded from the axis/series/pivot
+  // pickers because month is always in the grain and is the trend's own axis.
+  const cutOpts = (dsVocab?.dimensions ?? [])
+    .filter((d) => d.source === "mart" && d.kind !== "time")
+    .map((d) => ({ value: d.name, label: d.label }));
+  const fields = fieldsFor(builder.object_type);
+  // Columns the rows can be ordered by. When a preview exists its ACTUAL column
+  // keys are the truth — a pivot's are named after data values ("bonds · 2077")
+  // and cannot be known from the form alone. Before the first build, fall back
+  // to what the form implies so the control is still usable.
+  const previewCols = (() => {
+    const cols = (previewObject?.data as { columns?: { key?: unknown }[] } | undefined)?.columns;
+    return Array.isArray(cols) ? cols.map((c) => String(c?.key ?? "")).filter(Boolean) : [];
+  })();
+  const sortOpts = [
+    ...new Set(
+      previewCols.length
+        ? previewCols
+        : [
+            ...builder.dimension,
+            builder.group,
+            // The pivot's column names carry the derive suffix, matching
+            // measureForMetric's label.
+            ...(builder.object_type === "pivot"
+              ? builder.pivot_metrics.map((e) =>
+                  e.derive ? `${e.metric} ${e.derive}` : e.metric,
+                )
+              : [builder.bar_label, builder.line_label]),
+          ].filter(Boolean),
+    ),
+  ].map((v) => ({ value: v, label: v }));
+  // A line chart's axis is usually the time column, so it is offered there (and
+  // only there — for a bar family x, month would just be a very wide axis).
+  const xOpts = fields.xTime
+    ? (dsVocab?.dimensions ?? [])
+        .filter((d) => d.source === "mart")
+        .map((d) => ({ value: d.name, label: d.label }))
+    : cutOpts;
   const buildBlocker = buildabilityIssue(builder, metricOpts);
 
-  // Live preview: whenever the config is green (buildBlocker null) and an extract
-  // exists, deterministically build the object — minus placement — and show its
-  // chart. Debounced so typing doesn't storm the sandbox; a token guards against a
-  // slow build landing after a newer edit. A blocked config clears the preview.
+  // The config the preview would be built from. Used to tell a STALE preview
+  // (shown, but not what the current form says) from a current one.
   const previewKey =
     buildBlocker || !draft.golden_sql.trim()
       ? ""
       : JSON.stringify({
-          spec: specFromBuilder(builder),
+          spec: specFromBuilder(builder, metricOpts),
           type: builder.object_type,
           sql: draft.golden_sql,
           user: draft.as_user,
           dataset: builderDataset,
         });
-  useEffect(() => {
-    if (!previewKey) {
-      previewToken.current++; // invalidate any in-flight request from a prior valid config
-      setPreviewObject(null);
-      setPreviewError(null);
-      setPreviewBusy(false);
-      return;
+  // The preview is refreshed ON REQUEST, not on every keystroke. Auto-building
+  // meant every edit fired a sandbox round-trip and the chart flickered through
+  // half-finished configurations; now the curator sets the form up, then asks.
+  const previewStale = !!previewKey && previewKey !== previewBuiltKey;
+
+  /** Re-derive the object's name from its selections, and fill an empty title.
+   *
+   *  Only a GENERATED name is replaced — once the curator types their own it is
+   *  never overwritten, because the name is also the element_id and renaming an
+   *  object out from under the report would orphan its card. Returns the name so
+   *  the caller can use it in the same tick as the state update. */
+  function applyDerivedNaming(): string {
+    const current = builder.name.trim();
+    const name = !current || GENERATED_NAME.test(current) ? derivedObjectName(builder) : current;
+    const title = builder.title.trim() || derivedObjectTitle(builder);
+    if (name !== current || title !== builder.title) {
+      setBuilder((b) => ({ ...b, name, title }));
     }
+    return name;
+  }
+
+  async function refreshPreview() {
+    if (!previewKey) return;
+    applyDerivedNaming();
     const token = ++previewToken.current;
     setPreviewBusy(true);
+    setPreviewError(null);
     const parsed = JSON.parse(previewKey) as {
       spec: SandboxObjectSpec;
-      type: PageObjectType;
+      type: BuilderObjectType;
       sql: string;
       user: string;
       dataset: string;
     };
-    const timer = setTimeout(() => {
-      void buildGoldenObject({
+    try {
+      const res = await buildGoldenObject({
         sql: parsed.sql,
         name: builder.name.trim() || "preview",
         object_type: parsed.type,
         spec: parsed.spec,
         dataset: parsed.dataset,
         as_user: parsed.user || null,
-      })
-        .then((res) => {
-          if (token !== previewToken.current) return; // a newer edit superseded this
-          if (res.object) {
-            setPreviewObject(res.object);
-            setPreviewError(res.error || null);
-          } else {
-            setPreviewObject(null);
-            setPreviewError(res.error || "no preview");
-          }
-        })
-        .catch((e: unknown) => {
-          if (token === previewToken.current) {
-            setPreviewObject(null);
-            setPreviewError((e as Error).message);
-          }
-        })
-        .finally(() => {
-          if (token === previewToken.current) setPreviewBusy(false);
-        });
-    }, 800);
-    return () => clearTimeout(timer);
-    // builder.name is intentionally excluded — renaming shouldn't re-fetch a preview.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      });
+      if (token !== previewToken.current) return; // superseded by a newer refresh
+      setPreviewObject(res.object ?? null);
+      setPreviewError(res.object ? res.error || null : res.error || "no preview");
+      setPreviewBuiltKey(previewKey);
+    } catch (e) {
+      if (token !== previewToken.current) return;
+      setPreviewObject(null);
+      setPreviewError((e as Error).message);
+    } finally {
+      if (token === previewToken.current) setPreviewBusy(false);
+    }
+  }
+
+  // A blocked config can't be built, so drop a preview that no longer matches
+  // anything buildable rather than leaving a chart that looks current.
+  useEffect(() => {
+    if (!previewKey) {
+      previewToken.current++; // invalidate any in-flight build
+      setPreviewObject(null);
+      setPreviewError(null);
+      setPreviewBusy(false);
+      setPreviewBuiltKey("");
+    }
   }, [previewKey]);
+
+  // The Structured Builder panel. Held as a value rather than inlined so it can
+  // render in EITHER place: normally in the ② Sandbox section, or — while an
+  // object is being edited — directly under that object in the ③ report, so the
+  // curator changes it where they are instead of being scrolled away.
+  const builderPanel = (
+        <div
+          style={{
+            ...box,
+            marginTop: 10,
+            borderColor: previewEditId ? "rgba(120,160,255,0.85)" : "rgba(120,160,255,0.55)",
+            background: "rgba(120,160,255,0.06)",
+          }}
+        >
+          <div style={{ ...label, color: "rgb(120,160,255)", marginBottom: 4 }}>
+            {previewEditId
+              ? "◆ Structured builder — editing this object in place; change the options, then Build"
+              : "◆ Structured builder — pick columns; deterministic (no LLM)"}
+          </div>
+          {/* Chart preview (s30): what Build will place. Refreshed on request
+              rather than on every keystroke — see refreshPreview. When editing an
+              object the preview replaces its chart and the options below are the
+              controls to change it. */}
+          {!buildBlocker && (
+            <div
+              data-testid="builder-preview"
+              style={{
+                marginTop: 8,
+                padding: 10,
+                border: `1px solid ${previewBusy ? "rgba(120,160,255,0.9)" : "rgba(120,160,255,0.4)"}`,
+                borderRadius: 8,
+                background: "var(--panel)",
+              }}
+            >
+              <div
+                style={{
+                  ...label,
+                  marginBottom: 6,
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                preview
+                {previewEditId && <span style={{ color: "rgb(120,160,255)" }}>· editing in place</span>}
+                <button
+                  type="button"
+                  data-testid="builder-refresh-preview"
+                  onClick={() => void refreshPreview()}
+                  disabled={previewBusy}
+                  style={{
+                    ...btn(!previewBusy),
+                    padding: "2px 10px",
+                    fontSize: 12,
+                    // The button itself carries the state, so the thing you would
+                    // click is the thing telling you whether to click it.
+                    borderColor: previewBusy
+                      ? undefined
+                      : previewStale
+                        ? "var(--bad)"
+                        : "rgba(158,206,106,0.7)",
+                    color: previewBusy ? undefined : previewStale ? "var(--bad)" : "var(--good)",
+                  }}
+                >
+                  {previewBusy ? "Running…" : "↻ Refresh preview"}
+                </button>
+                {previewBusy ? (
+                  // A moving bar, so "running" is visible rather than inferred
+                  // from a button that merely looks disabled.
+                  <span className="builder-running" aria-live="polite">
+                    <span className="builder-running-bar" />
+                    running the sandbox…
+                  </span>
+                ) : (
+                  // Is what you are looking at what you have selected? Green yes,
+                  // red no — stated, not inferred from the chart.
+                  <span
+                    data-testid="preview-freshness"
+                    aria-live="polite"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      color: previewStale ? "var(--bad)" : "var(--good)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background: previewStale ? "var(--bad)" : "var(--good)",
+                      }}
+                    />
+                    {previewStale
+                      ? previewObject
+                        ? "out of date — refresh to match your options"
+                        : "not built yet — press refresh"
+                      : "up to date"}
+                  </span>
+                )}
+              </div>
+              {previewObject ? (
+                <div style={{ opacity: previewBusy ? 0.45 : 1, transition: "opacity .15s" }}>
+                  <ObjectBody o={previewObject} />
+                </div>
+              ) : (
+                <div style={{ ...label, opacity: 0.75, color: previewError ? "var(--bad)" : undefined }}>
+                  {!draft.golden_sql.trim()
+                    ? "add the ① SQL extract to preview"
+                    : previewBusy
+                      ? "building preview…"
+                      : previewError
+                        ? `preview unavailable: ${previewError}`
+                        : "set the options below, then Refresh preview"}
+                </div>
+              )}
+            </div>
+          )}
+          {vocabError && (
+            <div
+              data-testid="builder-vocab-error"
+              style={{ ...label, color: "var(--bad)", marginTop: 8 }}
+            >
+              ⚠ {vocabError}
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                data-testid="builder-name"
+                value={builder.name}
+                title="Identity — also the id the report links by. Auto-derived from your picks until you name it yourself."
+                placeholder="object name, e.g. line-bar-sale-volume"
+                onChange={(e) => setBuilder((b) => ({ ...b, name: e.target.value }))}
+                style={{ padding: 5, minWidth: 220, fontSize: 13 }}
+              />
+              <input
+                data-testid="builder-title"
+                value={builder.title}
+                title="The heading on the card. Left empty, it is described from your selections."
+                placeholder="title (blank = describe it for me)"
+                onChange={(e) => setBuilder((b) => ({ ...b, title: e.target.value }))}
+                style={{ padding: 5, minWidth: 220, fontSize: 13 }}
+              />
+              <KitSelect
+                testId="builder-type"
+                ariaLabel="Object type"
+                value={builder.object_type}
+                onValueChange={(v) => {
+                  const type = v as BuilderObjectType;
+                  setBuilder((b) =>
+                    HOW_OBJECT_TYPES.has(type as PageObjectType)
+                      ? {
+                          ...b,
+                          object_type: type,
+                          bar_source: ensureAdditive(b.bar_source),
+                          line_source:
+                            b.line_mode === "column"
+                              ? ensureAdditive(b.line_source)
+                              : b.line_source,
+                        }
+                      : { ...b, object_type: type },
+                  );
+                }}
+                options={BUILDER_TYPES.map((t) => ({ value: t.type, label: t.label }))}
+              />
+            </div>
+            {/* Only the inputs THIS object type reads. A trend's axis is always
+                month in the codegen and a KPI has none, so those pickers are
+                absent rather than present-and-ignored. The grain the extract is
+                grouped to follows from these picks (derivedGrain) — it is
+                summarised below, not chosen. */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              {fields.x && (
+                <div
+                  style={{ ...label, display: "flex", flexDirection: "column", gap: 3 }}
+                  title="Tick 2+ for a composite axis concat(x1,'-',x2,…)."
+                >
+                  {fields.x}
+                  {checkList(
+                    builder.dimension,
+                    xOpts,
+                    (d) => setBuilder((b) => ({ ...b, dimension: d })),
+                    "builder-dimension",
+                  )}
+                </div>
+              )}
+              {fields.pivot && (
+                <label style={label}>
+                  {fields.pivot}{" "}
+                  <KitSelect
+                    testId="builder-pivot-column"
+                    ariaLabel="Pivot column"
+                    value={builder.pivot_column}
+                    onValueChange={(v) => setBuilder((b) => ({ ...b, pivot_column: v }))}
+                    options={selOptions(builder.pivot_column, cutOpts)}
+                  />
+                </label>
+              )}
+              {fields.metrics && (
+                <div
+                  data-testid="builder-pivot-metrics"
+                  style={{ ...label, display: "flex", flexDirection: "column", gap: 4 }}
+                  title="Each metric becomes a column under every pivoted value. Add the same metric twice — once raw, once derived — for actuals beside their growth rate."
+                >
+                  {fields.metrics}
+                  {builder.pivot_metrics.map((entry, i) => (
+                    <span key={i} className="ex-chip">
+                      <KitSelect
+                        testId={`builder-metric-${i}`}
+                        ariaLabel={`Metric ${i + 1}`}
+                        value={entry.metric}
+                        onValueChange={(v) =>
+                          setBuilder((b) => ({
+                            ...b,
+                            pivot_metrics: b.pivot_metrics.map((e, j) =>
+                              j === i ? { ...e, metric: v } : e,
+                            ),
+                          }))
+                        }
+                        options={pivotMetricOpts.map((m) => ({ value: m.value, label: m.label }))}
+                      />
+                      <KitSelect
+                        testId={`builder-metric-derive-${i}`}
+                        ariaLabel={`Metric ${i + 1} calculation`}
+                        value={entry.derive}
+                        onValueChange={(v) =>
+                          setBuilder((b) => ({
+                            ...b,
+                            pivot_metrics: b.pivot_metrics.map((e, j) =>
+                              j === i ? { ...e, derive: v as MeasureDerive } : e,
+                            ),
+                          }))
+                        }
+                        options={MEASURE_DERIVES.map((dv) => ({
+                          value: dv.value,
+                          label: dv.value ? dv.label : "actual",
+                        }))}
+                      />
+                      <button
+                        className="ex-chip-x"
+                        aria-label={`Remove metric ${i + 1}`}
+                        onClick={() =>
+                          setBuilder((b) => ({
+                            ...b,
+                            pivot_metrics: b.pivot_metrics.filter((_, j) => j !== i),
+                          }))
+                        }
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  <KitSelect
+                    className="ex-add-filter"
+                    testId="builder-metric-add"
+                    value=""
+                    ariaLabel="Add metric"
+                    placeholder="+ metric"
+                    onValueChange={(v) =>
+                      v &&
+                      setBuilder((b) => ({
+                        ...b,
+                        pivot_metrics: [...b.pivot_metrics, { metric: v, derive: "" }],
+                      }))
+                    }
+                    options={pivotMetricOpts.map((m) => ({ value: m.value, label: m.label }))}
+                  />
+                </div>
+              )}
+              {fields.group && (
+                <label style={label}>
+                  {fields.group}{" "}
+                  <KitSelect
+                    testId="builder-group"
+                    ariaLabel="Group"
+                    value={builder.group}
+                    onValueChange={(v) => setBuilder((b) => ({ ...b, group: v }))}
+                    options={selOptions(builder.group, cutOpts, "— none —")}
+                  />
+                </label>
+              )}
+              <label style={label}>
+                latest N months{" "}
+                <input
+                  type="number"
+                  value={builder.months}
+                  onChange={(e) =>
+                    setBuilder((b) => ({ ...b, months: Number(e.target.value) || 12 }))
+                  }
+                  style={{ fontSize: 12, padding: "2px 4px", width: 56 }}
+                />
+              </label>
+              {/* The grain, stated rather than asked for — so the curator can
+                  still see what the extract is grouped to. */}
+              <span
+                data-testid="builder-grain-summary"
+                style={{ ...label, opacity: 0.55 }}
+                title="The extract is grouped to these columns, derived from your picks above."
+              >
+                grouped by {derivedGrain(builder).join(" · ")}
+              </span>
+            </div>
+            {/* Presentation options — what the object shows beyond its columns.
+                Each is offered only where it means something (TYPE_FIELDS). */}
+            {(fields.smoothing || fields.colorBySign || builder.object_type === "pivot") && (
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                {fields.smoothing && (
+                  <>
+                    <label style={label} title="Rolling average over N months. 0 draws no smoothed line.">
+                      smoothing{" "}
+                      <KitSelect
+                        testId="builder-rolling-window"
+                        ariaLabel="Rolling window"
+                        value={String(builder.rolling_window)}
+                        onValueChange={(v) =>
+                          setBuilder((b) => ({ ...b, rolling_window: Number(v) }))
+                        }
+                        options={[
+                          { value: "0", label: "none" },
+                          { value: "3", label: "3-mo avg" },
+                          { value: "6", label: "6-mo avg" },
+                          { value: "12", label: "12-mo avg" },
+                        ]}
+                      />
+                    </label>
+                    <label
+                      style={{ ...label, display: "inline-flex", alignItems: "center", gap: 5 }}
+                      title="The faint unsmoothed line under the rolling average."
+                    >
+                      <input
+                        type="checkbox"
+                        data-testid="builder-show-actual"
+                        checked={builder.show_actual}
+                        disabled={builder.rolling_window === 0}
+                        onChange={(e) =>
+                          setBuilder((b) => ({ ...b, show_actual: e.target.checked }))
+                        }
+                      />
+                      show actuals
+                    </label>
+                  </>
+                )}
+                {builder.object_type === "pivot" && (
+                  <label
+                    style={label}
+                    title="Adds a per-metric difference column — only with exactly two pivoted values."
+                  >
+                    compare{" "}
+                    <KitSelect
+                      testId="builder-pivot-compare"
+                      ariaLabel="Pivot compare"
+                      value={builder.pivot_compare}
+                      onValueChange={(v) =>
+                        setBuilder((b) => ({
+                          ...b,
+                          pivot_compare: v as BuilderForm["pivot_compare"],
+                        }))
+                      }
+                      options={[
+                        { value: "", label: "— values only —" },
+                        { value: "diff", label: "+ difference (Δ)" },
+                        { value: "pct_diff", label: "+ % difference (Δ%)" },
+                      ]}
+                    />
+                  </label>
+                )}
+                {fields.colorBySign && (
+                  <label
+                    style={{ ...label, display: "inline-flex", alignItems: "center", gap: 5 }}
+                    title="Colour numeric cells by sign — green positive, red negative."
+                  >
+                    <input
+                      type="checkbox"
+                      data-testid="builder-color-by-sign"
+                      checked={builder.color_by_sign}
+                      onChange={(e) =>
+                        setBuilder((b) => ({ ...b, color_by_sign: e.target.checked }))
+                      }
+                    />
+                    red / green by sign
+                  </label>
+                )}
+              </div>
+            )}
+            {/* Row order. The LIST is the priority — P1 breaks first, P2 breaks
+                its ties — so reordering is how you re-prioritise. */}
+            {fields.sortable && (
+              <div
+                data-testid="builder-sort"
+                style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+              >
+                <span style={{ ...label, opacity: 0.5 }}>sort by</span>
+                {builder.sort.map((entry, i) => (
+                  <span key={i} className="ex-chip">
+                    <b>P{i + 1}</b>
+                    <KitSelect
+                      testId={`builder-sort-col-${i}`}
+                      ariaLabel={`Sort column ${i + 1}`}
+                      value={entry.col}
+                      onValueChange={(v) =>
+                        setBuilder((b) => ({
+                          ...b,
+                          sort: b.sort.map((e, j) => (j === i ? { ...e, col: v } : e)),
+                        }))
+                      }
+                      options={selOptions(entry.col, sortOpts)}
+                    />
+                    <button
+                      type="button"
+                      data-testid={`builder-sort-dir-${i}`}
+                      title={entry.dir === "asc" ? "ascending" : "descending"}
+                      style={{ ...btn(), padding: "1px 7px", fontSize: 12 }}
+                      onClick={() =>
+                        setBuilder((b) => ({
+                          ...b,
+                          sort: b.sort.map((e, j) =>
+                            j === i ? { ...e, dir: e.dir === "asc" ? "desc" : "asc" } : e,
+                          ),
+                        }))
+                      }
+                    >
+                      {entry.dir === "asc" ? "↑" : "↓"}
+                    </button>
+                    <button
+                      type="button"
+                      title="raise priority"
+                      disabled={i === 0}
+                      style={{ ...btn(i > 0), padding: "1px 6px", fontSize: 12 }}
+                      onClick={() =>
+                        setBuilder((b) => {
+                          const next = [...b.sort];
+                          [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                          return { ...b, sort: next };
+                        })
+                      }
+                    >
+                      ⇧
+                    </button>
+                    <button
+                      className="ex-chip-x"
+                      aria-label={`Remove sort ${i + 1}`}
+                      onClick={() =>
+                        setBuilder((b) => ({ ...b, sort: b.sort.filter((_, j) => j !== i) }))
+                      }
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {sortOpts.length > builder.sort.length && (
+                  <KitSelect
+                    className="ex-add-filter"
+                    testId="builder-sort-add"
+                    value=""
+                    ariaLabel="Add sort column"
+                    placeholder="+ sort"
+                    onValueChange={(v) =>
+                      v &&
+                      setBuilder((b) => ({ ...b, sort: [...b.sort, { col: v, dir: "asc" }] }))
+                    }
+                    options={sortOpts.filter((o) => !builder.sort.some((e) => e.col === o.value))}
+                  />
+                )}
+              </div>
+            )}
+            <div>
+              <div style={{ ...label, display: "block" }}>filter (WHERE)</div>
+              {/* Line 1 — the golden's own filter, carried from the ① SQL extract
+                  and ALWAYS kept (an object is a summary of the same rows the
+                  question scoped). Read-only; the builder never changes it. */}
+              <div
+                data-testid="builder-carried-filter"
+                style={{
+                  ...mono,
+                  fontSize: 12,
+                  padding: "3px 6px",
+                  marginTop: 3,
+                  borderRadius: 4,
+                  border: "1px solid rgba(128,128,128,0.3)",
+                  background: "rgba(128,128,128,0.08)",
+                  opacity: 0.85,
+                }}
+              >
+                <span style={{ opacity: 0.6 }}>1 · carried from the golden's SQL: </span>
+                {whereFromSql(draft.golden_sql) || "— none —"}
+              </div>
+              {/* Line 2 — an ADDITIONAL predicate, ANDed on top of line 1.
+                  Edited as Explore-style dimension chips (same controls as the
+                  Profile cohorts) and serialised back to SQL; free text stays
+                  available for a predicate the chips can't express. */}
+              <BuilderFilter
+                dataset={dsVocab}
+                dims={filterDims}
+                value={builder.filter}
+                onChange={(sql) => setBuilder((b) => ({ ...b, filter: sql }))}
+              />
+            </div>
+            {/* bars = <name> = <agg> of <column> · window <N> · derive <derive> */}
+            {fields.bar && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ ...label, color: "rgb(90,170,90)" }}>{fields.bar} =</span>
+              <input
+                data-testid="builder-bar-label"
+                title="metric name"
+                value={builder.bar_label}
+                onChange={(e) => setBuilder((b) => ({ ...b, bar_label: e.target.value }))}
+                style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
+              />
+              <span style={label}>=</span>
+              <KitSelect
+                testId="builder-bar-agg"
+                title="aggregation"
+                ariaLabel="Bar aggregation"
+                value={builder.bar_agg}
+                onValueChange={(v) =>
+                  setBuilder((b) => ({
+                    ...b,
+                    bar_agg: v as MeasureAgg,
+                    bar_source: ensureAdditive(b.bar_source),
+                  }))
+                }
+                options={MEASURE_AGGS.map((a) => ({ value: a.value, label: a.label }))}
+              />
+              <span style={label}>of</span>
+              <KitSelect
+                testId="builder-bar-source"
+                title="column"
+                ariaLabel="Bar column"
+                value={builder.bar_source}
+                onValueChange={(v) => setBuilder((b) => ({ ...b, bar_source: v }))}
+                options={selOptions(builder.bar_source, additiveMetricOpts)}
+              />
+              <label style={label}>
+                window{" "}
+                <input
+                  type="number"
+                  value={builder.bar_months}
+                  onChange={(e) =>
+                    setBuilder((b) => ({ ...b, bar_months: Number(e.target.value) || 12 }))
+                  }
+                  style={{ fontSize: 12, padding: "2px 4px", width: 50 }}
+                />
+              </label>
+              {howApplies && (
+                <label style={label}>
+                  derive{" "}
+                  <KitSelect
+                    testId="builder-bar-derive"
+                    ariaLabel="Bar derive"
+                    value={builder.bar_derive}
+                    onValueChange={(v) =>
+                      setBuilder((b) => ({ ...b, bar_derive: v as MeasureDerive }))
+                    }
+                    options={MEASURE_DERIVES.map((dv) => ({ value: dv.value, label: dv.label }))}
+                  />
+                </label>
+              )}
+            </div>
+            )}
+            {fields.line && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ ...label, color: "rgb(120,160,255)" }}>{fields.line} =</span>
+              <input
+                data-testid="builder-line-label"
+                title="series label"
+                value={builder.line_label}
+                onChange={(e) => setBuilder((b) => ({ ...b, line_label: e.target.value }))}
+                style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
+              />
+              <KitSelect
+                testId="builder-line-mode"
+                ariaLabel="Line mode"
+                value={builder.line_mode}
+                onValueChange={(v) => {
+                  const mode = v as "wavg" | "column";
+                  setBuilder((b) => ({
+                    ...b,
+                    line_mode: mode,
+                    line_source:
+                      mode === "column" ? ensureAdditive(b.line_source) : b.line_source,
+                  }));
+                }}
+                options={[
+                  { value: "wavg", label: "wtd-avg" },
+                  { value: "column", label: "column" },
+                ]}
+              />
+              {builder.line_mode === "wavg" ? (
+                <>
+                  <KitSelect
+                    testId="builder-line-num"
+                    title="numerator"
+                    ariaLabel="Line numerator"
+                    value={builder.line_num}
+                    onValueChange={(v) => setBuilder((b) => ({ ...b, line_num: v }))}
+                    options={selOptions(builder.line_num, additiveMetricOpts)}
+                  />
+                  <span style={label}>/</span>
+                  <KitSelect
+                    testId="builder-line-den"
+                    title="denominator"
+                    ariaLabel="Line denominator"
+                    value={builder.line_den}
+                    onValueChange={(v) => setBuilder((b) => ({ ...b, line_den: v }))}
+                    options={selOptions(builder.line_den, additiveMetricOpts)}
+                  />
+                </>
+              ) : (
+                <>
+                  <KitSelect
+                    testId="builder-line-agg"
+                    title="aggregation"
+                    ariaLabel="Line aggregation"
+                    value={builder.line_agg}
+                    onValueChange={(v) =>
+                      setBuilder((b) => ({
+                        ...b,
+                        line_agg: v as MeasureAgg,
+                        line_source: ensureAdditive(b.line_source),
+                      }))
+                    }
+                    options={MEASURE_AGGS.map((a) => ({ value: a.value, label: a.label }))}
+                  />
+                  <span style={label}>of</span>
+                  <KitSelect
+                    testId="builder-line-source"
+                    title="column"
+                    ariaLabel="Line column"
+                    value={builder.line_source}
+                    onValueChange={(v) => setBuilder((b) => ({ ...b, line_source: v }))}
+                    options={selOptions(builder.line_source, additiveMetricOpts)}
+                  />
+                </>
+              )}
+              <label style={label}>
+                window{" "}
+                <input
+                  type="number"
+                  value={builder.line_months}
+                  onChange={(e) =>
+                    setBuilder((b) => ({ ...b, line_months: Number(e.target.value) || 6 }))
+                  }
+                  style={{ fontSize: 12, padding: "2px 4px", width: 50 }}
+                />
+              </label>
+              {lineDerivesFor(builder.object_type).length > 0 && (
+                <label style={label} title="A trend can only carry calculations that keep one value per point.">
+                  calculation{" "}
+                  <KitSelect
+                    testId="builder-line-derive"
+                    ariaLabel="Line calculation"
+                    value={builder.line_derive}
+                    onValueChange={(v) =>
+                      setBuilder((b) => ({ ...b, line_derive: v as MeasureDerive }))
+                    }
+                    options={lineDerivesFor(builder.object_type).map((dv) => ({
+                      value: dv.value,
+                      label: dv.value ? dv.label : "actual",
+                    }))}
+                  />
+                </label>
+              )}
+            </div>
+            )}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                data-testid="builder-build"
+                style={{
+                  ...btn(busy !== "build" && !buildBlocker),
+                  background: "rgba(120,160,255,0.22)",
+                  borderColor: "rgba(120,160,255,0.6)",
+                  fontWeight: 600,
+                }}
+                onClick={() => void buildObject()}
+                disabled={busy === "build" || !!buildBlocker}
+                title={
+                  previewEditId
+                    ? "Rebuild this object from the options above and update the same card in place"
+                    : "Build the object and place it at the chosen page/column"
+                }
+              >
+                {busy === "build"
+                  ? previewEditId
+                    ? "Updating…"
+                    : "Building…"
+                  : previewEditId
+                    ? "↻ Update object"
+                    : "＋ Build object"}
+              </button>
+              {/* Placement: editing updates the same card in place; a new object
+                  lands exactly where the curator picks (not a fixed slot). */}
+              {previewEditId ? (
+                <span style={{ ...label, color: "rgb(120,160,255)" }}>
+                  ↻ updates the edited object in place
+                </span>
+              ) : (
+                pendingPages.length > 0 && (
+                  <span
+                    style={{ ...label, display: "inline-flex", gap: 6, alignItems: "center" }}
+                  >
+                    place at page
+                    <KitSelect
+                      testId="builder-place-page"
+                      ariaLabel="Place on page"
+                      value={String(Math.min(placePage, pendingPages.length - 1))}
+                      onValueChange={(v) => {
+                        setPlacePage(Number(v));
+                        setPlaceCol(0);
+                      }}
+                      options={pendingPages.map((_, i) => ({
+                        value: String(i),
+                        label: String(i + 1),
+                      }))}
+                    />
+                    column
+                    <KitSelect
+                      testId="builder-place-col"
+                      ariaLabel="Place in column"
+                      value={String(placeCol)}
+                      onValueChange={(v) => setPlaceCol(Number(v))}
+                      options={Array.from(
+                        {
+                          length:
+                            pendingPages[Math.min(placePage, pendingPages.length - 1)]?.columns
+                              ?.length ?? 1,
+                        },
+                        (_, i) => ({ value: String(i), label: String(i + 1) }),
+                      )}
+                    />
+                  </span>
+                )
+              )}
+              {/* Deterministic pre-flight: the config is validated against the same
+                  rules the builder enforces, so a green tick means it WILL build —
+                  no LLM, no round-trip. */}
+              <span
+                data-testid="builder-check"
+                title="Deterministic — the same config always produces the same object; no LLM"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: buildBlocker ? "var(--bad)" : "var(--good)",
+                }}
+              >
+                {buildBlocker ? `✗ ${buildBlocker}` : "✓ will build · deterministic"}
+              </span>
+              {buildMsg && (
+                <span data-testid="builder-msg" style={{ fontSize: 12, opacity: 0.85 }}>
+                  {buildMsg}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+  );
 
   return (
     <section
@@ -2110,430 +3224,7 @@ export function GoldensPage({
               an object: pick columns from the dataset's vocabulary and Run. Same
               config → same object, every time. (The NL "New object with AI" panel
               was removed in favour of this.) */}
-          <div
-            ref={builderRef}
-            style={{
-              ...box,
-              marginTop: 10,
-              borderColor: previewEditId ? "rgba(120,160,255,0.85)" : "rgba(120,160,255,0.55)",
-              background: "rgba(120,160,255,0.06)",
-            }}
-          >
-            <div style={{ ...label, color: "rgb(120,160,255)", marginBottom: 4 }}>
-              {previewEditId
-                ? "◆ Structured builder — editing this object in place; change the options, then Build"
-                : "◆ Structured builder — pick columns; deterministic (no LLM)"}
-            </div>
-            {/* Live chart preview (s30): shown while the config is green, so what
-                you see is exactly what Build will place. When editing an object the
-                preview replaces its chart and the options below are the controls to
-                change it. */}
-            {!buildBlocker && (
-              <div
-                data-testid="builder-preview"
-                style={{
-                  marginTop: 8,
-                  padding: 10,
-                  border: "1px solid rgba(120,160,255,0.4)",
-                  borderRadius: 8,
-                  background: "var(--panel)",
-                }}
-              >
-                <div style={{ ...label, marginBottom: 6, display: "flex", gap: 8, alignItems: "center" }}>
-                  live preview
-                  {previewBusy && <span style={{ opacity: 0.7 }}>· rendering…</span>}
-                  {previewEditId && <span style={{ color: "rgb(120,160,255)" }}>· editing in place</span>}
-                </div>
-                {previewObject ? (
-                  <ObjectBody o={previewObject} />
-                ) : (
-                  <div style={{ ...label, opacity: 0.75, color: previewError ? "var(--bad)" : undefined }}>
-                    {!draft.golden_sql.trim()
-                      ? "add the ① SQL extract to preview"
-                      : previewBusy
-                        ? "building preview…"
-                        : previewError
-                          ? `preview unavailable: ${previewError}`
-                          : "adjust the options below to preview"}
-                  </div>
-                )}
-              </div>
-            )}
-            {vocabError && (
-              <div
-                data-testid="builder-vocab-error"
-                style={{ ...label, color: "var(--bad)", marginTop: 8 }}
-              >
-                ⚠ {vocabError}
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <input
-                  data-testid="builder-name"
-                  value={builder.name}
-                  placeholder="object name, e.g. line-bar-sale-volume"
-                  onChange={(e) => setBuilder((b) => ({ ...b, name: e.target.value }))}
-                  style={{ padding: 5, minWidth: 240, fontSize: 13 }}
-                />
-                <KitSelect
-                  testId="builder-type"
-                  ariaLabel="Object type"
-                  value={builder.object_type}
-                  onValueChange={(v) => {
-                    const type = v as PageObjectType;
-                    setBuilder((b) =>
-                      HOW_OBJECT_TYPES.has(type)
-                        ? {
-                            ...b,
-                            object_type: type,
-                            bar_source: ensureAdditive(b.bar_source),
-                            line_source:
-                              b.line_mode === "column"
-                                ? ensureAdditive(b.line_source)
-                                : b.line_source,
-                          }
-                        : { ...b, object_type: type },
-                    );
-                  }}
-                  options={BUILDER_TYPES.map((t) => ({ value: t.type, label: t.label }))}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div
-                  style={{ ...label, display: "flex", flexDirection: "column", gap: 3 }}
-                  title="Columns the extract is grouped to. X and group are chosen from these."
-                >
-                  grain (tick all that apply)
-                  {checkList(
-                    builder.grain,
-                    dimOpts,
-                    (g) =>
-                      setBuilder((b) => ({
-                        ...b,
-                        grain: g,
-                        // Cascade: x and group can only be grain columns.
-                        dimension: b.dimension.filter((c) => g.includes(c)),
-                        group: g.includes(b.group) ? b.group : "",
-                      })),
-                    "builder-grain",
-                  )}
-                </div>
-                <div
-                  style={{ ...label, display: "flex", flexDirection: "column", gap: 3 }}
-                  title="X-axis column(s), from the grain. Tick 2+ for a composite axis concat(x1,'-',x2,…)."
-                >
-                  x / dimension (from grain)
-                  {checkList(
-                    builder.dimension,
-                    grainOpts,
-                    (d) => setBuilder((b) => ({ ...b, dimension: d })),
-                    "builder-dimension",
-                  )}
-                </div>
-                <label style={label}>
-                  group (from grain){" "}
-                  <KitSelect
-                    testId="builder-group"
-                    ariaLabel="Group"
-                    value={builder.group}
-                    onValueChange={(v) => setBuilder((b) => ({ ...b, group: v }))}
-                    options={selOptions(builder.group, grainOpts, "— none —")}
-                  />
-                </label>
-                <label style={label}>
-                  latest N months{" "}
-                  <input
-                    type="number"
-                    value={builder.months}
-                    onChange={(e) =>
-                      setBuilder((b) => ({ ...b, months: Number(e.target.value) || 12 }))
-                    }
-                    style={{ fontSize: 12, padding: "2px 4px", width: 56 }}
-                  />
-                </label>
-              </div>
-              <div>
-                <div style={{ ...label, display: "block" }}>filter (WHERE)</div>
-                {/* Line 1 — the golden's own filter, carried from the ① SQL extract
-                    and ALWAYS kept (an object is a summary of the same rows the
-                    question scoped). Read-only; the builder never changes it. */}
-                <div
-                  data-testid="builder-carried-filter"
-                  style={{
-                    ...mono,
-                    fontSize: 12,
-                    padding: "3px 6px",
-                    marginTop: 3,
-                    borderRadius: 4,
-                    border: "1px solid rgba(128,128,128,0.3)",
-                    background: "rgba(128,128,128,0.08)",
-                    opacity: 0.85,
-                  }}
-                >
-                  <span style={{ opacity: 0.6 }}>1 · carried from the golden's SQL: </span>
-                  {whereFromSql(draft.golden_sql) || "— none —"}
-                </div>
-                {/* Line 2 — an ADDITIONAL predicate, ANDed on top of line 1. */}
-                <input
-                  data-testid="builder-filter"
-                  value={builder.filter}
-                  placeholder="2 · additional filter (ANDed), e.g. property_type = 'house'"
-                  onChange={(e) => setBuilder((b) => ({ ...b, filter: e.target.value }))}
-                  style={{ ...mono, fontSize: 12, padding: "3px 5px", width: "100%", marginTop: 4 }}
-                />
-              </div>
-              {/* bars = <name> = <agg> of <column> · window <N> · derive <derive> */}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ ...label, color: "rgb(90,170,90)" }}>bars =</span>
-                <input
-                  data-testid="builder-bar-label"
-                  title="metric name"
-                  value={builder.bar_label}
-                  onChange={(e) => setBuilder((b) => ({ ...b, bar_label: e.target.value }))}
-                  style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
-                />
-                <span style={label}>=</span>
-                <KitSelect
-                  testId="builder-bar-agg"
-                  title="aggregation"
-                  ariaLabel="Bar aggregation"
-                  value={builder.bar_agg}
-                  onValueChange={(v) =>
-                    setBuilder((b) => ({
-                      ...b,
-                      bar_agg: v as MeasureAgg,
-                      bar_source: ensureAdditive(b.bar_source),
-                    }))
-                  }
-                  options={MEASURE_AGGS.map((a) => ({ value: a.value, label: a.label }))}
-                />
-                <span style={label}>of</span>
-                <KitSelect
-                  testId="builder-bar-source"
-                  title="column"
-                  ariaLabel="Bar column"
-                  value={builder.bar_source}
-                  onValueChange={(v) => setBuilder((b) => ({ ...b, bar_source: v }))}
-                  options={selOptions(builder.bar_source, additiveMetricOpts)}
-                />
-                <label style={label}>
-                  window{" "}
-                  <input
-                    type="number"
-                    value={builder.bar_months}
-                    onChange={(e) =>
-                      setBuilder((b) => ({ ...b, bar_months: Number(e.target.value) || 12 }))
-                    }
-                    style={{ fontSize: 12, padding: "2px 4px", width: 50 }}
-                  />
-                </label>
-                {howApplies && (
-                  <label style={label}>
-                    derive{" "}
-                    <KitSelect
-                      testId="builder-bar-derive"
-                      ariaLabel="Bar derive"
-                      value={builder.bar_derive}
-                      onValueChange={(v) =>
-                        setBuilder((b) => ({ ...b, bar_derive: v as MeasureDerive }))
-                      }
-                      options={MEASURE_DERIVES.map((dv) => ({ value: dv.value, label: dv.label }))}
-                    />
-                  </label>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ ...label, color: "rgb(120,160,255)" }}>line =</span>
-                <input
-                  data-testid="builder-line-label"
-                  title="series label"
-                  value={builder.line_label}
-                  onChange={(e) => setBuilder((b) => ({ ...b, line_label: e.target.value }))}
-                  style={{ fontSize: 12, padding: "2px 4px", width: 110 }}
-                />
-                <KitSelect
-                  testId="builder-line-mode"
-                  ariaLabel="Line mode"
-                  value={builder.line_mode}
-                  onValueChange={(v) => {
-                    const mode = v as "wavg" | "column";
-                    setBuilder((b) => ({
-                      ...b,
-                      line_mode: mode,
-                      line_source:
-                        mode === "column" ? ensureAdditive(b.line_source) : b.line_source,
-                    }));
-                  }}
-                  options={[
-                    { value: "wavg", label: "wtd-avg" },
-                    { value: "column", label: "column" },
-                  ]}
-                />
-                {builder.line_mode === "wavg" ? (
-                  <>
-                    <KitSelect
-                      testId="builder-line-num"
-                      title="numerator"
-                      ariaLabel="Line numerator"
-                      value={builder.line_num}
-                      onValueChange={(v) => setBuilder((b) => ({ ...b, line_num: v }))}
-                      options={selOptions(builder.line_num, additiveMetricOpts)}
-                    />
-                    <span style={label}>/</span>
-                    <KitSelect
-                      testId="builder-line-den"
-                      title="denominator"
-                      ariaLabel="Line denominator"
-                      value={builder.line_den}
-                      onValueChange={(v) => setBuilder((b) => ({ ...b, line_den: v }))}
-                      options={selOptions(builder.line_den, additiveMetricOpts)}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <KitSelect
-                      testId="builder-line-agg"
-                      title="aggregation"
-                      ariaLabel="Line aggregation"
-                      value={builder.line_agg}
-                      onValueChange={(v) =>
-                        setBuilder((b) => ({
-                          ...b,
-                          line_agg: v as MeasureAgg,
-                          line_source: ensureAdditive(b.line_source),
-                        }))
-                      }
-                      options={MEASURE_AGGS.map((a) => ({ value: a.value, label: a.label }))}
-                    />
-                    <span style={label}>of</span>
-                    <KitSelect
-                      testId="builder-line-source"
-                      title="column"
-                      ariaLabel="Line column"
-                      value={builder.line_source}
-                      onValueChange={(v) => setBuilder((b) => ({ ...b, line_source: v }))}
-                      options={selOptions(builder.line_source, additiveMetricOpts)}
-                    />
-                  </>
-                )}
-                <label style={label}>
-                  window{" "}
-                  <input
-                    type="number"
-                    value={builder.line_months}
-                    onChange={(e) =>
-                      setBuilder((b) => ({ ...b, line_months: Number(e.target.value) || 6 }))
-                    }
-                    style={{ fontSize: 12, padding: "2px 4px", width: 50 }}
-                  />
-                </label>
-                {howApplies && (
-                  <label style={label}>
-                    derive{" "}
-                    <KitSelect
-                      testId="builder-line-derive"
-                      ariaLabel="Line derive"
-                      value={builder.line_derive}
-                      onValueChange={(v) =>
-                        setBuilder((b) => ({ ...b, line_derive: v as MeasureDerive }))
-                      }
-                      options={MEASURE_DERIVES.map((dv) => ({ value: dv.value, label: dv.label }))}
-                    />
-                  </label>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  data-testid="builder-build"
-                  style={{
-                    ...btn(busy !== "build" && !buildBlocker),
-                    background: "rgba(120,160,255,0.22)",
-                    borderColor: "rgba(120,160,255,0.6)",
-                    fontWeight: 600,
-                  }}
-                  onClick={() => void buildObject()}
-                  disabled={busy === "build" || !!buildBlocker}
-                  title={
-                    previewEditId
-                      ? "Rebuild this object from the options above and update the same card in place"
-                      : "Build the object and place it at the chosen page/column"
-                  }
-                >
-                  {busy === "build"
-                    ? previewEditId
-                      ? "Updating…"
-                      : "Building…"
-                    : previewEditId
-                      ? "↻ Update object"
-                      : "＋ Build object"}
-                </button>
-                {/* Placement: editing updates the same card in place; a new object
-                    lands exactly where the curator picks (not a fixed slot). */}
-                {previewEditId ? (
-                  <span style={{ ...label, color: "rgb(120,160,255)" }}>
-                    ↻ updates the edited object in place
-                  </span>
-                ) : (
-                  pendingPages.length > 0 && (
-                    <span
-                      style={{ ...label, display: "inline-flex", gap: 6, alignItems: "center" }}
-                    >
-                      place at page
-                      <KitSelect
-                        testId="builder-place-page"
-                        ariaLabel="Place on page"
-                        value={String(Math.min(placePage, pendingPages.length - 1))}
-                        onValueChange={(v) => {
-                          setPlacePage(Number(v));
-                          setPlaceCol(0);
-                        }}
-                        options={pendingPages.map((_, i) => ({
-                          value: String(i),
-                          label: String(i + 1),
-                        }))}
-                      />
-                      column
-                      <KitSelect
-                        testId="builder-place-col"
-                        ariaLabel="Place in column"
-                        value={String(placeCol)}
-                        onValueChange={(v) => setPlaceCol(Number(v))}
-                        options={Array.from(
-                          {
-                            length:
-                              pendingPages[Math.min(placePage, pendingPages.length - 1)]?.columns
-                                ?.length ?? 1,
-                          },
-                          (_, i) => ({ value: String(i), label: String(i + 1) }),
-                        )}
-                      />
-                    </span>
-                  )
-                )}
-                {/* Deterministic pre-flight: the config is validated against the same
-                    rules the builder enforces, so a green tick means it WILL build —
-                    no LLM, no round-trip. */}
-                <span
-                  data-testid="builder-check"
-                  title="Deterministic — the same config always produces the same object; no LLM"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: buildBlocker ? "var(--bad)" : "var(--good)",
-                  }}
-                >
-                  {buildBlocker ? `✗ ${buildBlocker}` : "✓ will build · deterministic"}
-                </span>
-                {buildMsg && (
-                  <span data-testid="builder-msg" style={{ fontSize: 12, opacity: 0.85 }}>
-                    {buildMsg}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
+          {!previewEditId && builderPanel}
 
           {/* data-knowledge — the dataset's ordinal band orders (s23). Like the skills
               catalogue, this surfaces what the agent knows about the data; editing an
@@ -2877,6 +3568,9 @@ export function GoldensPage({
               pages={pendingPages}
               onChange={setDraftPages}
               onEditInBuilder={editObjectInBuilder}
+              builderPanel={builderPanel}
+              editingId={previewEditId}
+              onCloseBuilder={() => setPreviewEditId(null)}
               sandboxObjects={sandboxObjects}
             />
           </div>

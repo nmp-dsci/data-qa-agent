@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "services" / "backend-api"))
 sys.path.insert(0, str(ROOT / "services" / "data-agent"))
 
 from agent.tools_explore import EXPLORE_DATASETS  # noqa: E402
+from agent.units import COLUMN_UNITS  # noqa: E402
 from app.explore.manifest import MANIFEST  # noqa: E402
 
 
@@ -37,6 +38,21 @@ def test_agent_headline_metric_is_a_real_metric() -> None:
 def test_agent_geo_key_is_a_real_dimension() -> None:
     for slug, meta in EXPLORE_DATASETS.items():
         assert MANIFEST[slug].dimension(meta["geo"]) is not None, slug
+
+
+def test_agent_units_match_manifest_metric_formats() -> None:
+    """The manifest's per-metric `fmt` is the source of truth for what a number
+    IS. The agent resolves the same unit offline (it can't import backend-api),
+    so a metric added as currency there but missing here would be drawn — axis,
+    tooltip and cell alike — as a bare count."""
+    for slug, dataset in MANIFEST.items():
+        for metric in dataset.metrics:
+            where = f"{slug}.{metric.name}"
+            # Explicitly listed, not merely resolving: an unlisted name falls
+            # back to "number", which would quietly pass for every count metric
+            # and hide the currency one added beside it.
+            assert metric.name in COLUMN_UNITS, f"{where} missing from agent COLUMN_UNITS"
+            assert COLUMN_UNITS[metric.name] == metric.fmt, where
 
 
 # ---------------------------------------------------------------------------

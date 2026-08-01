@@ -112,14 +112,34 @@ def _num(v: Any) -> float | None:
         return None
 
 
+# Public aliases — the router uses these directly when Target and Comparison
+# are profiled on two independently-chosen metrics (no shared response metric
+# to run the full `build_profile` pipeline against).
+num = _num
+pct_delta = _pct
+
+
 def metric_deltas(
-    dataset: Dataset,
+    target_dataset: Dataset,
+    comparison_dataset: Dataset,
     target_totals: dict[str, Any],
     comparison_totals: dict[str, Any],
 ) -> list[MetricDelta]:
-    """Topline delta for every metric in the dataset."""
+    """Topline delta for every metric the two datasets have in common (by name).
+
+    Target and Comparison can each be profiled against a different dataset — a
+    metric only makes sense in this table when both sides actually compute it
+    (e.g. `pct_unit`, deliberately given the same name in both `nsw_sales` and
+    `nsw_rent`'s manifests). When target_dataset is comparison_dataset (the
+    common case), every metric is "common" by definition, so this is a no-op
+    restriction and behaves exactly as before."""
+    target_names = {m.name for m in target_dataset.metrics}
+    comparison_names = {m.name for m in comparison_dataset.metrics}
+    common_names = target_names & comparison_names
     out: list[MetricDelta] = []
-    for mtr in dataset.metrics:
+    for mtr in target_dataset.metrics:
+        if mtr.name not in common_names:
+            continue
         t = _num(target_totals.get(mtr.name))
         c = _num(comparison_totals.get(mtr.name))
         delta = (t - c) if (t is not None and c is not None) else None
@@ -198,7 +218,8 @@ def _ordinal_key(seg: Segment) -> tuple[int, float | str]:
 
 
 def build_profile(
-    dataset: Dataset,
+    target_dataset: Dataset,
+    comparison_dataset: Dataset,
     response_metric: str,
     target_totals: dict[str, Any],
     comparison_totals: dict[str, Any],
@@ -208,16 +229,22 @@ def build_profile(
     min_segment_volume: int = 3,
     max_leaderboard: int = 8,
 ) -> ProfileResult:
-    """Assemble the full profile result from pre-fetched aggregate rows."""
-    metric = dataset.metric(response_metric)
+    """Assemble the full profile result from pre-fetched aggregate rows.
+
+    Target and Comparison may each be aggregated against a different Dataset
+    (the router only ever fetches `_by_predictor` rows for dimensions present
+    in BOTH, so a predictor unique to one side simply never appears in
+    `target_by_predictor`/`comparison_by_predictor` and is skipped below by the
+    existing "no rows on either side" guard — no extra filtering needed here)."""
+    metric = target_dataset.metric(response_metric)
     if metric is None:
         raise ValueError(f"unknown response metric {response_metric!r}")
 
-    deltas = metric_deltas(dataset, target_totals, comparison_totals)
+    deltas = metric_deltas(target_dataset, comparison_dataset, target_totals, comparison_totals)
     topline = next((d for d in deltas if d.metric == response_metric), None)
 
     predictors: list[PredictorProfile] = []
-    for dim in dataset.predictor_dimensions:
+    for dim in target_dataset.predictor_dimensions:
         t_rows = target_by_predictor.get(dim.name, [])
         c_rows = comparison_by_predictor.get(dim.name, [])
         if not t_rows and not c_rows:

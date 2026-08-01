@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .schema import RENT_MART, SALES_MART, YIELD_MART
+from .units import unit_for_measure
 
 # ---------------------------------------------------------------------------
 # Mart profiles (s22 P2) — the deterministic builder is dataset-aware. Each
@@ -243,7 +244,11 @@ def _x_axis_lines(dim_cols: list[str]) -> tuple[str, list[str]]:
 def measure_source_cols(spec: dict[str, Any]) -> set[str]:
     """The source/num/den columns the spec's measures read from the extract."""
     cols: set[str] = set()
-    for raw in (spec.get("bar_measure"), spec.get("line_measure")):
+    pivot = spec.get("pivot_measures")
+    raws = [spec.get("bar_measure"), spec.get("line_measure")]
+    if isinstance(pivot, list):
+        raws += list(pivot)
+    for raw in raws:
         if not isinstance(raw, dict):
             continue
         for k in ("source", "num", "den"):
@@ -262,6 +267,8 @@ def needed_columns(spec: dict[str, Any]) -> set[str]:
         cols.add(str(dim))
     if spec.get("group"):
         cols.add(str(spec["group"]))
+    if spec.get("pivot_column"):
+        cols.add(str(spec["pivot_column"]))
     cols |= measure_source_cols(spec)
     return {c for c in cols if c}
 
@@ -284,6 +291,36 @@ def _grain_with_chart_cols(spec: dict[str, Any], prof: MartProfile) -> list[str]
     return grain
 
 
+def _trend_axis(spec: dict[str, Any]) -> str:
+    """A trend's x column. Any grain column works, but an unset ``dimension``
+    means the time axis — NOT ``dimension_cols``' first-categorical fallback,
+    which would silently turn a time series into a line over bedroom bands."""
+    raw = spec.get("dimension")
+    cols = [str(c) for c in raw if c] if isinstance(raw, list) else ([str(raw)] if raw else [])
+    return cols[0] if cols else "month"
+
+
+def _trend_grain(spec: dict[str, Any], prof: MartProfile) -> list[str]:
+    """Typed grain plus the trend's x axis and series column — the extract has to
+    carry both, because the snippet aggregates to exactly (x, group)."""
+    grain = _typed_grain(spec, prof)
+    for col in (_trend_axis(spec), str(spec.get("group") or "")):
+        if col and col not in grain:
+            grain.append(col)
+    return grain
+
+
+def _pivot_grain(spec: dict[str, Any], prof: MartProfile) -> list[str]:
+    """Typed grain plus the pivot's row columns and its pivoted column — the one
+    place both the rewritten extract and the codegen read it from, so the extract
+    can never be grouped coarser than the cross-tab it has to fill."""
+    grain = _typed_grain(spec, prof)
+    for col in (*dimension_cols(spec.get("dimension"), prof), str(spec.get("pivot_column") or "")):
+        if col and col not in grain:
+            grain.append(col)
+    return grain
+
+
 def extract_grain(
     spec: dict[str, Any], *, object_type: str, dataset: str = "nsw_sales"
 ) -> list[str]:
@@ -298,7 +335,15 @@ def extract_grain(
     ``trend_series``/``latest_value`` read the extract per month, so a finer
     grain would otherwise change their numbers."""
     prof = profile_for(dataset)
-    if object_type in ("trend", "kpi"):
+    if object_type == "pivot":
+        return _pivot_grain(spec, prof)
+    if object_type == "trend":
+        # Its x axis is a real dimension now, and the snippet aggregates the
+        # extract to exactly (x, group) — so both must be in the grain.
+        return _trend_grain(spec, prof)
+    if object_type == "kpi":
+        # No axis: the typed grain, plus `group` defensively so a spec authored
+        # before the group-is-a-grain-member invariant still resolves.
         grain = _typed_grain(spec, prof)
         group = spec.get("group")
         if group and str(group) not in grain:
@@ -485,6 +530,117 @@ def canonical_extract_sql(
 # ---------------------------------------------------------------------------
 
 
+# Derives a LINE CHART can carry. A trend keeps one value per point, so the
+# derive has to be a transform of the series — not the window collapse
+# `_measure_block` performs for the bar family. `latest`/`rank` collapse a series
+# to a single number and `rolling` is the smoothing control, so none of the three
+# is a line; they are rejected by name rather than silently ignored.
+_SERIES_DERIVES = {"growth", "yoy", "index", "cumulative", "share"}
+
+# Extra months a series derive needs BEFORE the window it draws, because each
+# point is read against an earlier one. `index` rebases to the window's own
+# first point and `share`/`cumulative` look sideways or forward, so they need
+# nothing.
+_SERIES_LOOKBACK = {"yoy": 12, "growth": 1}
+
+
+def _series_derive_lines(
+    measure: dict[str, Any], x: str, group: str | None, keys: list[str]
+) -> list[str]:
+    """Transform a trend's value column in place, per series, ordered by x.
+
+    * ``growth``     — % change against the previous point
+    * ``yoy``        — % change against 12 points back
+    * ``index``      — rebased to 100 at the series' first point
+    * ``cumulative`` — running total along the series
+    * ``share``      — % of all series' total AT EACH x (a mix over time)
+    """
+    derive = measure.get("derive") or ""
+    if not derive:
+        return []
+    label = measure["label"]
+    # growth / yoy / index / cumulative read a value ALONG the axis, so the axis
+    # has to be time. Over categories each series is one point and pct_change
+    # yields nothing — an empty chart rather than an error. `share` is exempt: it
+    # compares series to each other at each x, whatever x is.
+    if derive != "share" and x != "month":
+        raise ValueError(
+            f"{derive!r} on {label!r} reads a change over TIME, but this chart's x axis "
+            f"is {x!r}. Put month on the x axis, or use 'share'."
+        )
+    if derive not in _SERIES_DERIVES:
+        raise ValueError(
+            f"{derive!r} cannot be drawn as a line: it reduces {label!r} to a single "
+            "value. Use it on a bar/table object, or pick growth / yoy / index / "
+            "cumulative / share for a trend."
+        )
+    lab = json.dumps(label)
+    lines = [
+        f"agg = agg.sort_values({json.dumps(keys)}, kind='stable')",
+        # One series per group; ungrouped is a single series, so a constant key
+        # keeps the grouped and ungrouped paths identical.
+        f"agg['_sk'] = agg[{json.dumps(group)}] if {bool(group)} else 0",
+    ]
+    if derive == "growth":
+        lines.append(f"agg[{lab}] = agg.groupby('_sk')[{lab}].pct_change() * 100")
+    elif derive == "yoy":
+        lines.append(f"agg[{lab}] = agg.groupby('_sk')[{lab}].pct_change(12) * 100")
+    elif derive == "index":
+        lines.append(
+            f"agg[{lab}] = agg[{lab}] * 100.0 / "
+            f"agg.groupby('_sk')[{lab}].transform('first').where(lambda v: v != 0)"
+        )
+    elif derive == "cumulative":
+        lines.append(f"agg[{lab}] = agg.groupby('_sk')[{lab}].cumsum()")
+    else:  # share
+        lines.append(
+            f"agg[{lab}] = agg[{lab}] * 100.0 / "
+            f"agg.groupby({json.dumps(x)})[{lab}].transform('sum').where(lambda v: v != 0)"
+        )
+    lines += [f"agg[{lab}] = agg[{lab}].round(2)", "agg = agg.drop(columns=['_sk'])"]
+    # Rename the column to say what it now IS. A growth on avg_weekly_rent is a
+    # percentage, so leaving the label as the money column makes the legend and
+    # the axis claim dollars.
+    derived_label = f"{label} {derive}"
+    lines.append(f"agg = agg.rename(columns={{{lab}: {json.dumps(derived_label)}}})")
+    measure["label"] = derived_label
+    return lines
+
+
+def _sort_lines(spec: dict[str, Any], var: str) -> list[str]:
+    """Order the object's rows by the spec's ``sort`` list.
+
+    ``sort`` is ORDERED — ``[{"col": "suburb"}, {"col": "n_sold", "dir": "desc"}]``
+    sorts by suburb, then breaks ties by volume descending — so the curator
+    controls priority by ordering the list, not by a hidden rule. Columns are
+    matched against the frame AT RUNTIME because a pivot's metric columns are
+    named after data values (``avg_weekly_rent · 2077``) and cannot be checked
+    here; a name that isn't there is skipped rather than raising.
+
+    A stable sort, so ties keep the order the aggregation produced instead of
+    shuffling between otherwise identical runs (the graders diff row order).
+    """
+    entries = spec.get("sort")
+    if not isinstance(entries, list):
+        return []
+    pairs = [
+        (str(e.get("col") or ""), str(e.get("dir") or "asc") != "desc")
+        for e in entries
+        if isinstance(e, dict) and e.get("col")
+    ]
+    if not pairs:
+        return []
+    return [
+        # repr, not json.dumps: the ascending flags are Python bools and JSON
+        # would render them `false`/`true`, which the sandbox has no names for.
+        f"_sort = [(c, a) for c, a in {pairs!r} if c in {var}.columns]",
+        "if _sort:",
+        f"    {var} = {var}.sort_values(",
+        "        [c for c, _ in _sort], ascending=[a for _, a in _sort], kind='stable'",
+        "    )",
+    ]
+
+
 def _dedup_cols(prof: MartProfile, *measures: dict[str, Any]) -> list[str]:
     """The union of the profile's additive legs and the measures' source columns
     — every column the window dedup must sum so a measure over a non-profile leg
@@ -505,14 +661,20 @@ def _window_setup(grain: list[str], months: int | None, additive: list[str]) -> 
     add = json.dumps(list(additive))
     lines = [
         "work = df.copy()",
-        f"_grain = {keys}",
+        # Grain columns the extract doesn't carry are dropped rather than raising:
+        # you can only dedup by what is present, and the window dedup only SUMS
+        # additive legs, so a coarser dedup yields the same numbers once the
+        # measure blocks aggregate to the chart's own keys. A column the chart
+        # genuinely needs still fails loudly, at the chart groupby.
+        f"_grain = [c for c in {keys} if c in work.columns]",
         f"_add = {add}",
         "_agg = {c: (c, 'sum') for c in _add if c in work.columns}",
-        "base = work.groupby(_grain, as_index=False).agg(**_agg) if _agg else work",
+        "base = work.groupby(_grain, as_index=False).agg(**_agg) if (_agg and _grain) else work",
     ]
     if "month" in grain:
         lines += [
-            "_months = sorted(m for m in base['month'].dropna().unique())",
+            "_months = sorted(m for m in base['month'].dropna().unique()) "
+            "if 'month' in base.columns else []",
             f"_win_default = set(_months[-{int(months or 12)}:])",
         ]
     else:
@@ -747,6 +909,8 @@ def _combo_code(spec: dict[str, Any], prof: MartProfile) -> str:
         "    x_type='nominal',",
         f"    left_title={json.dumps(bar['label'])},",
         f"    right_title={json.dumps(line['label'])}{series},",
+        f"    left_unit={json.dumps(unit_for_measure(bar))},",
+        f"    right_unit={json.dumps(unit_for_measure(line))},",
         f"    title={title},",
         ")",
         f"result = skills.build_report(summary={summary}, main_chart=chart)",
@@ -771,6 +935,7 @@ def _breakdown_code(spec: dict[str, Any], prof: MartProfile) -> str:
         within=within,
         default_months=int(spec.get("months") or 12),
     )
+    lines += _sort_lines(spec, "agg")
     series = f", series_col={json.dumps(group)}" if group else ""
     x_label = " · ".join(dim_cols)
     title = json.dumps(spec.get("title") or f"{bar['label']} by {x_label}")
@@ -780,6 +945,7 @@ def _breakdown_code(spec: dict[str, Any], prof: MartProfile) -> str:
         "    agg,",
         f"    category_col={json.dumps(x_col)},",
         f"    value_col={json.dumps(bar['label'])}{series},",
+        f"    value_unit={json.dumps(unit_for_measure(bar))},",
         f"    title={title},",
         ")",
         f"result = skills.build_report(summary={summary}, main_chart=chart)",
@@ -788,7 +954,21 @@ def _breakdown_code(spec: dict[str, Any], prof: MartProfile) -> str:
 
 
 def _trend_code(spec: dict[str, Any], prof: MartProfile) -> str:
+    """A line chart of one measure over an x axis, optionally split into series.
+
+    The x axis is the spec's ``dimension`` (``month`` for the usual time series,
+    but any grain column works — e.g. a line across bedroom_band).
+
+    The extract is AGGREGATED TO THE CHART'S OWN GRAIN first. ``trend_series``
+    emits one point per row it is handed, so feeding it a raw extract that is
+    finer than (x, group) drew several points on the same x and divided a ratio
+    per row instead of recomposing it from summed legs. Summing the additive
+    legs here and dividing after is the same ratio-of-sums rule the bar family
+    already followed.
+    """
+    x = _trend_axis(spec)
     group = spec.get("group") or None
+    group = str(group) if group else None
     line = _measure(
         spec.get("line_measure") or spec.get("bar_measure"),
         default_label=prof.ratio_col,
@@ -796,20 +976,77 @@ def _trend_code(spec: dict[str, Any], prof: MartProfile) -> str:
         default_num=prof.value_col,
         default_den=prof.count_col,
     )
-    group_arg = f", group_col={json.dumps(str(group))}" if group else ""
+    grain = _trend_grain(spec, prof)
+    has_month = "month" in grain
+    months = int(spec.get("months") or 12)
+    keys = [x] + ([group] if group and group != x else [])
+    label = line["label"]
+
+    # Monthly additive components, exactly as _measure_block builds them: a sum
+    # is its own numerator; a mean is sum/count; a wavg is num/den.
     if line["base"] == "wavg":
-        val = f"value_col={json.dumps(line['num'])}, den_col={json.dumps(line['den'])}"
+        num, den = (
+            json.dumps(_additive_source(line["num"])),
+            json.dumps(_additive_source(line["den"])),
+        )
+        comp = f"_num=({num}, 'sum'), _den=({den}, 'sum')"
+        ratio = True
+    elif line["base"] == "mean":
+        sc = json.dumps(_additive_source(line["source"]))
+        comp = f"_num=({sc}, 'sum'), _den=({sc}, 'count')"
+        ratio = True
     else:
-        val = f"value_col={json.dumps(line['source'])}"
-    title = json.dumps(spec.get("title") or f"{line['label']} over time")
-    summary = json.dumps(spec.get("summary") or f"{line['label']} trend by month.")
-    return "\n".join(
-        [
-            f"series = skills.trend_series(df, month_col='month', {val}{group_arg})",
-            f"chart = skills.trend_chart(series, title={title})",
-            f"result = skills.build_report(summary={summary}, main_chart=chart)",
-        ]
+        comp = f"_num=({json.dumps(_additive_source(line['source']))}, 'sum')"
+        ratio = False
+
+    # A time derive reads each point against an EARLIER one, so the window has
+    # to reach back past the first point the chart draws: a YoY over the latest
+    # 12 months had no prior year inside that window to compare with, and drew
+    # an empty chart. The extra months are consumed by the derive, not plotted.
+    lookback = _SERIES_LOOKBACK.get(line.get("derive") or "", 0)
+    lines = _window_setup(grain, months + lookback, _dedup_cols(prof, line))
+    # Only a time axis gets the latest-N-month window; over categories the window
+    # would silently drop rows the axis is meant to show.
+    src = "base[base['month'].isin(_win_default)]" if has_month and x == "month" else "base"
+    lines.append(f"agg = {src}.groupby({json.dumps(keys)}, as_index=False).agg({comp})")
+    lines.append(
+        f"agg[{json.dumps(label)}] = (agg['_num'] / agg['_den'].where(agg['_den'] != 0))"
+        if ratio
+        else f"agg[{json.dumps(label)}] = agg['_num']"
     )
+    lines += _series_derive_lines(line, x, group, keys)
+    # _series_derive_lines renames the column to include the derive, so re-read
+    # the label before it is used to address the column downstream.
+    label = line["label"]
+
+    date_axis = x == "month"
+    group_arg = f", group_col={json.dumps(group)}" if group and group != x else ""
+    date_arg = "" if date_axis else ", date_axis=False"
+    x_type = "" if date_axis else ", x_type='ordinal'"
+    # The smoothing overlay, both halves of it, are the curator's call: `window`
+    # sizes the rolling average (0 = none) and `show_actual` decides whether the
+    # faint unsmoothed line is drawn under it. Both were hardcoded in here.
+    window = spec.get("rolling_window")
+    window = 6 if window is None else int(window)
+    show_actual = spec.get("show_actual")
+    show_actual = True if show_actual is None else bool(show_actual)
+    if date_axis:
+        date_arg += f", window={window}"
+        if not show_actual:
+            date_arg += ", show_actual=False"
+    over = "over time" if date_axis else f"by {x}"
+    title = json.dumps(spec.get("title") or f"{label} {over}")
+    summary = json.dumps(spec.get("summary") or f"{label} {over}.")
+    lines += [
+        f"series = skills.trend_series(agg, month_col={json.dumps(x)}, "
+        f"value_col={json.dumps(label)}{group_arg}{date_arg})",
+        # The derive is already folded into the measure's unit — a growth line
+        # over avg_weekly_rent is a percentage, not the dollars it came from.
+        f"chart = skills.trend_chart(series, title={title}{x_type}, "
+        f"y_label={json.dumps(label)}, y_unit={json.dumps(unit_for_measure(line))})",
+        f"result = skills.build_report(summary={summary}, main_chart=chart)",
+    ]
+    return "\n".join(lines)
 
 
 def _kpi_code(spec: dict[str, Any], prof: MartProfile) -> str:
@@ -830,6 +1067,7 @@ def _kpi_code(spec: dict[str, Any], prof: MartProfile) -> str:
         [
             f"latest = skills.latest_value(df, month_col='month', {val})",
             "headline = {'label': " + label + ", 'value': latest.get('value'), "
+            f"'format': {json.dumps(unit_for_measure(m))}, "
             "'basis': 'latest 6-mo avg · ' + str(latest.get('month'))}",
             f"result = skills.build_report(summary={summary}, headlines=[headline])",
         ]
@@ -886,12 +1124,28 @@ def _table_code(spec: dict[str, Any], prof: MartProfile) -> str:
     bar_label = measures[0]["label"]
     if variant == "ranked":
         lines += [f"agg = agg.sort_values({json.dumps(bar_label)}, ascending=False)"]
+    # Applied last, so an explicit sort overrides the ranked variant's default.
+    lines += _sort_lines(spec, "agg")
 
     x_label = " · ".join(dim_cols)
     columns = [{"key": x_col, "label": x_label}]
     if group:
         columns.append({"key": group, "label": group})
-    columns += [{"key": m["label"], "label": m["label"], "align": "right"} for m in measures]
+    # Conditional formatting: colour the measure cells by sign (green up, red
+    # down). Only the numbers — a row label has no sign to read.
+    tone = {"tone": "delta"} if spec.get("color_by_sign") else {}
+    # Each measure column states its own unit, so a $ column and a % column in
+    # the same table are both read correctly (the cell renderer never guesses).
+    columns += [
+        {
+            "key": m["label"],
+            "label": m["label"],
+            "align": "right",
+            "format": unit_for_measure(m),
+            **tone,
+        }
+        for m in measures
+    ]
     title = json.dumps(spec.get("title") or f"{bar_label} by {x_label}")
     summary = json.dumps(spec.get("summary") or f"{bar_label} tabulated by {x_label}.")
     bar_key = json.dumps(bar_label if variant == "ranked" else None)
@@ -908,12 +1162,156 @@ def _table_code(spec: dict[str, Any], prof: MartProfile) -> str:
     return "\n".join(lines)
 
 
+def pivot_measures(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """The pivot's metrics, normalised. Falls back to the bar/line measures so a
+    spec authored as another table type still pivots if it is switched over."""
+    raw = spec.get("pivot_measures")
+    if isinstance(raw, list) and raw:
+        return [_measure(m, default_label="value", default_source="") for m in raw if m]
+    return []
+
+
+def _pivot_code(spec: dict[str, Any], prof: MartProfile) -> str:
+    """A cross-tab: rows x one pivoted dimension, each cell a set of metrics.
+
+    ``dimension`` gives the row columns and ``pivot_column`` the dimension whose
+    VALUES become column groups, so ``rows = bedroom_band, property_type`` and
+    ``columns = postcode`` reads as one row per dwelling with a block of metrics
+    per postcode. That is the shape a long table can't give you: with postcode as
+    just another row column, comparing two postcodes means scanning up and down
+    instead of across.
+
+    Every metric goes through the same ``_measure_block`` the charts use, so a
+    ratio (avg_weekly_rent) is recomposed as a weighted average at the pivot's
+    grain rather than averaged-of-averages, and the window/derive rules are
+    identical. The pivoted column labels depend on the DATA, so the column list
+    is assembled at runtime rather than baked into the snippet.
+    """
+    rows = dimension_cols(spec.get("dimension"), prof)
+    col = str(spec.get("pivot_column") or "")
+    if not col:
+        raise ValueError("pivot needs a pivot_column")
+    if col in rows:
+        raise ValueError(f"pivot_column {col!r} is also a row column — pick a different one")
+    measures = pivot_measures(spec)
+    if not measures:
+        raise ValueError("pivot needs at least one metric")
+
+    months = int(spec.get("months") or 12)
+    grain = _pivot_grain(spec, prof)
+    has_month = "month" in grain
+    keys = [*rows, col]
+
+    lines = _window_setup(grain, months, _dedup_cols(prof, *measures))
+    for i, m in enumerate(measures):
+        var = f"_m{i}"
+        lines += _measure_block(m, keys, var, has_month, within=[], default_months=months)
+        lines.append(
+            f"agg = {var}"
+            if i == 0
+            else f"agg = agg.merge({var}, on={json.dumps(keys)}, how='outer')"
+        )
+
+    labels = [m["label"] for m in measures]
+    lines += [
+        f"_rows = {json.dumps(rows)}",
+        f"_col = {json.dumps(col)}",
+        f"_vals = {json.dumps(labels)}",
+        # Unit per metric. The cross-tab's column NAMES are data ("· 2077"), so
+        # the format is looked up per generated column below rather than being
+        # readable off the name — the same metric twice with different derives
+        # (rent, rent growth) is exactly the case a name can't resolve.
+        f"_units = {json.dumps({m['label']: unit_for_measure(m) for m in measures})}",
+        # Sorted so the column order is stable run to run (the grader diffs it).
+        "_col_vals = sorted(str(v) for v in agg[_col].dropna().unique())",
+        "agg[_col] = agg[_col].astype(str)",
+        "piv = agg.pivot_table(index=_rows, columns=_col, values=_vals, aggfunc='first')",
+        # pivot_table gives (metric, column-value) pairs; flatten to one column per
+        # pair. METRIC-MAJOR: all of avg_weekly_rent's postcodes sit together, then
+        # all of bonds'. Grouping the other way (every metric of 2076, then every
+        # metric of 2077) puts the two numbers you actually want to compare at
+        # opposite ends of the row.
+        "piv.columns = [str(mv) + ' · ' + str(cv) for mv, cv in piv.columns]",
+        "_order = [mv + ' · ' + cv for mv in _vals for cv in _col_vals "
+        "if mv + ' · ' + cv in piv.columns]",
+        "piv = piv[_order].reset_index()",
+        "_fmt = {mv + ' · ' + cv: _units.get(mv, 'number') for mv in _vals for cv in _col_vals}",
+        # Names of columns whose SIGN carries the meaning (the Δs), so the
+        # renderer can colour them green up / red down.
+        "_delta_names = set()",
+    ]
+
+    # A difference column per metric, across the pivoted values. This is the
+    # whole reason to pivot two postcodes side by side, so the table can state
+    # the gap instead of leaving it to be read off two numbers.
+    compare = str(spec.get("pivot_compare") or "")
+    if compare in ("diff", "pct_diff"):
+        expr = (
+            "(_b - _a)" if compare == "diff" else "((_b - _a) * 100.0 / _a.where(_a != 0)).round(2)"
+        )
+        suffix = " · Δ" if compare == "diff" else " · Δ%"
+        # A raw gap is measured in the metric's own unit ($200 more rent); a
+        # relative gap is a percentage whatever the metric was.
+        gap_unit = "_units.get(mv, 'number')" if compare == "diff" else "'percent'"
+        lines += [
+            "_diff_cols = []",
+            # Only meaningful across exactly two values; with more, the "gap" has
+            # no single definition, so the columns are left off rather than
+            # guessing which pair the reader meant.
+            "if len(_col_vals) == 2:",
+            "    for mv in _vals:",
+            "        _ca, _cb = mv + ' · ' + _col_vals[0], mv + ' · ' + _col_vals[1]",
+            "        if _ca in piv.columns and _cb in piv.columns:",
+            "            _a, _b = piv[_ca], piv[_cb]",
+            f"            _name = mv + {json.dumps(suffix)}",
+            f"            piv[_name] = {expr}",
+            "            _diff_cols.append((_cb, _name))",
+            "            _delta_names.add(_name)",
+            f"            _fmt[_name] = {gap_unit}",
+            # Insert each Δ directly after its metric's last column, so it reads
+            # as part of that metric's block rather than in a trailing clump.
+            "    for _after, _name in _diff_cols:",
+            "        _order.insert(_order.index(_after) + 1, _name)",
+            "    piv = piv[_rows + _order]",
+        ]
+
+    # Conditional formatting: colour a numeric cell by its sign (green up, red
+    # down). A difference column is ALWAYS coloured — a signed gap is the one
+    # number whose direction is the point — and `color_by_sign` extends it to
+    # every metric column.
+    sign_all = bool(spec.get("color_by_sign"))
+    lines += _sort_lines(spec, "piv")
+    lines += [
+        "columns = [{'key': r, 'label': r} for r in _rows] + [",
+        "    dict({'key': c, 'label': c, 'align': 'right', 'format': _fmt.get(c, 'number')},",
+        f"         **({{'tone': 'delta'}} if ({str(sign_all)} or c in _delta_names) else {{}}))",
+        "    for c in _order",
+        "]",
+    ]
+    row_label = " · ".join(rows)
+    title = json.dumps(spec.get("title") or f"{row_label} by {col}")
+    summary = json.dumps(
+        spec.get("summary") or f"{', '.join(labels)} for each {row_label}, pivoted by {col}."
+    )
+    lines += [
+        "table = skills.data_table(",
+        "    piv,",
+        "    columns=columns,",
+        f"    title={title},",
+        "    variant='plain',",
+        ")",
+        f"result = skills.build_report(summary={summary}, table=table)",
+    ]
+    return "\n".join(lines)
+
+
 _BUILDERS = {
     "compare": _combo_code,
     "breakdown": _breakdown_code,
     "trend": _trend_code,
     "kpi": _kpi_code,
     "table": _table_code,
+    "pivot": _pivot_code,
 }
 
 

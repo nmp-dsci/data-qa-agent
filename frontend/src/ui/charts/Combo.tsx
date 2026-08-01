@@ -17,6 +17,11 @@ export interface ComboData {
   dimension: string; // x field (nominal — categories / bands)
   measure: string; // bar y field (primary axis)
   line_measure: string; // line y field (secondary axis)
+  // One annotation per axis (currency | number | percent — see units.ts). A
+  // dual axis exists precisely because the two measures differ, so the bars
+  // being dollars says nothing about the line.
+  unit?: string | null;
+  line_unit?: string | null;
   group?: string | null; // optional series (one bar cluster + one line per series)
   title?: string | null;
   rows: Record<string, unknown>[];
@@ -131,12 +136,12 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
         return [
           {
             label: `${label} · ${data.measure}`,
-            value: d.bar != null ? formatValue(d.bar, data.measure) : "—",
+            value: d.bar != null ? formatValue(d.bar, data.measure, data.unit) : "—",
             color: barColor(g),
           },
           {
             label: `${label} · ${data.line_measure}`,
-            value: d.line != null ? formatValue(d.line, data.line_measure) : "—",
+            value: d.line != null ? formatValue(d.line, data.line_measure, data.line_unit) : "—",
             color: lineColor(g),
           },
         ];
@@ -232,7 +237,7 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
             numTicks={4}
             stroke={theme.axis}
             tickStroke={theme.axis}
-            tickFormat={(v) => formatValue(Number(v), data.measure)}
+            tickFormat={(v) => formatValue(Number(v), data.measure, data.unit)}
             tickLabelProps={() => ({ fill: theme.label, fontSize: 10, textAnchor: "end", dx: -4, dy: 3 })}
           />
           <AxisRight
@@ -241,7 +246,7 @@ function ComboInner({ data, width, height }: { data: ComboData; width: number; h
             numTicks={4}
             stroke={theme.axis}
             tickStroke={theme.axis}
-            tickFormat={(v) => formatValue(Number(v), data.line_measure)}
+            tickFormat={(v) => formatValue(Number(v), data.line_measure, data.line_unit)}
             tickLabelProps={() => ({ fill: theme.label, fontSize: 10, textAnchor: "start", dx: 4, dy: 3 })}
           />
         </Group>

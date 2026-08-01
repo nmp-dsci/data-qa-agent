@@ -47,9 +47,15 @@ function specEncoding(spec: Spec): Spec {
 }
 
 function encField(encoding: Spec, channel: string): string | null {
+  return encProp(encoding, channel, "field");
+}
+
+/** A string property of an encoding channel — `field`, or the `title`/`unit`
+ *  the chart skills stamp on so an axis knows what its numbers ARE. */
+function encProp(encoding: Spec, channel: string, prop: string): string | null {
   const ch = encoding[channel];
-  if (ch && typeof ch === "object" && typeof (ch as Spec)["field"] === "string") {
-    return (ch as Spec)["field"] as string;
+  if (ch && typeof ch === "object" && typeof (ch as Spec)[prop] === "string") {
+    return (ch as Spec)[prop] as string;
   }
   return null;
 }
@@ -70,6 +76,8 @@ export function SpecChart({ spec }: { spec: Spec }) {
     const data: TrendData = {
       x: encField(encoding, "x") ?? "month",
       y: encField(encoding, "y") ?? "value",
+      y_label: encProp(encoding, "y", "title"),
+      y_unit: encProp(encoding, "y", "unit"),
       series,
       title,
       rows: values,
@@ -87,6 +95,7 @@ export function SpecChart({ spec }: { spec: Spec }) {
     const data: BarsData = {
       dimension,
       measure,
+      unit: encProp(encoding, "y", "unit"),
       group: group !== dimension ? group : null,
       title,
       rows: values,

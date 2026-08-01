@@ -1,12 +1,18 @@
 // KPITile — latest number + secondary growth rate (+ optional sparkline).
 // The Summary page's hero object.
 import { useMemo } from "react";
+import { CellFormat, formatCell } from "./DataTable";
 import { chartPalette } from "./tokens";
 
 export interface KPIData {
   label: string;
   value?: string | number | null;
+  /** How to render a numeric `value`: currency | number | percent (units.ts).
+   *  Producers that pre-format their own string (the Explore profile) don't
+   *  set it; the builder's headline is a raw number and does. */
+  format?: CellFormat | null;
   latest?: number | null;
+  /** A free-text suffix for `latest` (e.g. "sales") — not a unit annotation. */
   unit?: string | null;
   basis?: string | null;
   /** Cohort colour for the label — the Explore profile's Target gold /
@@ -61,7 +67,11 @@ function Sparkline({ series }: { series: Record<string, unknown>[] }) {
 export function KPITile({ data }: { data: KPIData }) {
   const display =
     data.value != null && data.value !== ""
-      ? String(data.value)
+      ? // A raw number formats to its declared unit; a pre-formatted string is
+        // already the display value and passes through untouched.
+        typeof data.value === "number" && data.format
+        ? formatCell(data.value, data.format)
+        : String(data.value)
       : data.latest != null
         ? `${data.latest.toLocaleString()}${data.unit ? ` ${data.unit}` : ""}`
         : "n/a";

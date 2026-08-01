@@ -201,6 +201,12 @@ export type PageObjectType =
   | "table"
   | "choropleth";
 
+/** What the Goldens structured builder can be asked to BUILD. A superset of the
+ *  rendered object types: "pivot" is a recipe for shaping a table (rows x a
+ *  pivoted column dimension), not a new visual primitive, so it still emits a
+ *  `table` PageObject and the render registry stays untouched. */
+export type BuilderObjectType = PageObjectType | "pivot";
+
 export interface PageObject {
   type: PageObjectType;
   element_id: string;
@@ -770,6 +776,11 @@ export interface ExploreMetric {
   label: string;
   format: "currency" | "number" | "percent";
   kind: "additive" | "derived";
+  /** For a plain ratio-of-sums, the two additive legs behind it — what a client
+   *  needs to recompose the metric as a weighted average at its own grain.
+   *  Null for metrics that aren't a simple num/den (they can't be). */
+  num?: string | null;
+  den?: string | null;
 }
 
 export interface ExploreGeo {
@@ -834,9 +845,25 @@ export interface ProfileMetricDelta {
 
 export interface ProfileResult {
   dataset: string;
+  /** The dataset each cohort was actually profiled against — equal to `dataset`
+   *  for a same-dataset comparison, different for a cross-dataset one. */
+  target_dataset: string;
+  comparison_dataset: string;
   metric: string;
   metric_label: string;
   metric_format: string;
+  /** The metric each cohort was actually measured on — equal to `metric` when
+   *  Target and Comparison share one, different when they were chosen
+   *  independently (e.g. Sold volume vs Bond volume). */
+  target_metric: string;
+  comparison_metric: string;
+  target_metric_label: string;
+  comparison_metric_label: string;
+  target_metric_format: string;
+  comparison_metric_format: string;
+  calculation: "raw" | "pct_total" | "growth";
+  target_pct_total?: number | null;
+  comparison_pct_total?: number | null;
   target_total: number | null;
   comparison_total: number | null;
   delta: number | null;
@@ -882,10 +909,14 @@ export async function exploreAggregate(body: {
 }
 
 export async function exploreProfile(body: {
-  dataset: string;
+  /** Shared fallback when a cohort doesn't set its own `dataset`/`metric`. */
+  dataset?: string;
   metric?: string | null;
-  target: { filters: ExploreFilters };
-  comparison: { filters: ExploreFilters };
+  /** How the two cohort values are framed: plain values, each as % of its own
+   *  dataset's unfiltered grand total, or target-vs-comparison % change. */
+  calculation?: "raw" | "pct_total" | "growth";
+  target: { dataset?: string; metric?: string; filters: ExploreFilters };
+  comparison: { dataset?: string; metric?: string; filters: ExploreFilters };
 }): Promise<ProfileResult> {
   const resp = await apiFetch(`${API}/explore/profile`, {
     method: "POST",
@@ -1196,6 +1227,20 @@ export interface SandboxObjectSpec {
   filter?: string;
   /** Optional natural-language instruction (routes to the LLM scaffold path). */
   instruction?: string;
+  /** Pivot only: the dimension whose values become column groups. */
+  pivot_column?: string;
+  /** Pivot only: one measure per metric tabulated under each column group. */
+  pivot_measures?: SandboxMeasure[];
+  /** Pivot only: append a per-metric difference across the two pivoted values. */
+  pivot_compare?: "" | "diff" | "pct_diff";
+  /** Table/pivot: colour numeric cells by sign (green up, red down). */
+  color_by_sign?: boolean;
+  /** Trend: rolling-average window in months (0 = no smoothing). */
+  rolling_window?: number;
+  /** Trend: draw the faint unsmoothed line under the rolling average. */
+  show_actual?: boolean;
+  /** Row order, highest priority first — see agent/object_builder.py _sort_lines. */
+  sort?: { col: string; dir: "asc" | "desc" }[];
 }
 
 /** A named presentation object persisted on a golden: its stable link id, the
@@ -1203,7 +1248,7 @@ export interface SandboxObjectSpec {
 export interface GoldenObject {
   name: string;
   element_id: string;
-  object_type: PageObjectType;
+  object_type: BuilderObjectType;
   code: string;
   spec?: SandboxObjectSpec;
 }
@@ -1244,7 +1289,7 @@ export interface PrepResult {
 export interface BuildObjectResult {
   name: string;
   element_id: string;
-  object_type: PageObjectType;
+  object_type: BuilderObjectType;
   /** The extract that produced this — revised (extended) when the object needed
    *  columns the shared extract lacked, else the caller's SQL unchanged. */
   sql: string;

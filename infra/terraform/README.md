@@ -5,7 +5,7 @@ the Azure Bicep in `../` stays as a reference and is **not** touched by this.
 
 - **Account:** `089783391188`  ·  **Region:** `ap-southeast-2` (Sydney)  ·  **Profile:** `data-qa`
 - **Database:** Aurora Serverless v2 (PostgreSQL 16, scale-to-zero)
-- **Compute:** App Runner (backend-api + data-agent) + ECS Fargate one-shot jobs (migrate, pipeline)
+- **Compute:** App Runner (backend-api + data-agent + mcp-server) + ECS Fargate one-shot jobs (migrate, pipeline)
 - **Frontend:** static Vite build in S3 behind CloudFront  ·  **Images:** ECR  ·  **Secrets:** Secrets Manager
 
 ## Layout
@@ -71,7 +71,7 @@ cloud smoke test. The same steps run manually via the scripts (each defaults to
 the `data-qa` SSO profile and the Terraform outputs):
 
 ```bash
-./scripts/aws_build_push.sh     # build the 4 service images (linux/amd64) → ECR
+./scripts/aws_build_push.sh     # build the 5 service images (linux/amd64) → ECR
 ./scripts/run_job.sh migrate    # one-shot ECS job: alembic upgrade head
 ./scripts/run_job.sh pipeline   # one-shot ECS job: dlt + dbt (full CSVs from S3)
 VITE_API_URL=$(terraform -chdir=infra/terraform/foundations output -raw backend_api_url) \
@@ -79,22 +79,56 @@ VITE_API_URL=$(terraform -chdir=infra/terraform/foundations output -raw backend_
 ./scripts/cloud_smoke.sh        # health, auth, token guard, governed SQL, frontend
 ```
 
-Pushing `:latest` auto-deploys both App Runner services. The pipeline job reads
-the full CSVs from the `data-qa-source-data-*` S3 bucket (`DATA_S3_BUCKET`)
-instead of local disk.
+Pushing `:latest` auto-deploys all three App Runner services (backend-api,
+data-agent, mcp-server). The pipeline job reads the full CSVs from the
+`data-qa-source-data-*` S3 bucket (`DATA_S3_BUCKET`) instead of local disk.
+
+### MCP server (s35 rung 3)
+
+`aws_apprunner_service.mcp_server` is a third, deliberately least-privileged App
+Runner service — no instance role, no database access, only an HTTP call to
+backend-api carrying its own service key. Two things need a manual step because
+Terraform can't do them safely:
+
+- **`MCP_SERVICE_KEY`** is not Terraform-generated — a `dpk_` key only exists
+  once, at mint time, and its secret half is never stored anywhere (only a
+  SHA-256). Mint one via the admin API (`POST /admin/service-accounts` with
+  `surface="mcp"`, or the Settings tab) and push it to the placeholder secret
+  Terraform creates:
+  ```bash
+  aws secretsmanager put-secret-value --profile data-qa \
+    --secret-id data-qa/mcp-service-key --secret-string 'dpk_...'
+  ```
+- **`var.mcp_allowed_hosts`** is a two-step apply. The MCP SDK's DNS-rebinding
+  guard matches the `Host` header exactly (or by a `host:*` prefix) with no
+  allow-all form, and App Runner only assigns this service's hostname at create
+  time — so the first `apply` can't reference it. Apply once, read the
+  `mcp_allowed_hosts_hint` output, set `-var mcp_allowed_hosts=<that value>`,
+  and apply again. Until the second apply, the server only answers on
+  `localhost` and every remote request is a `421`.
+
+`SLACK_SIGNING_SECRET` follows the same "placeholder, set by hand" pattern as
+`MCP_SERVICE_KEY` — it comes from a Slack app's config, not from Terraform.
+Unset/placeholder closes the Slack endpoint with a 404, the correct default
+for an environment not wired to a workspace.
 
 ## Notes / knobs
 
 - **Scale-to-zero:** `db_min_acu = 0` (near-$0 when idle). If an apply rejects `0`
   for the engine version, set `-var db_min_acu=0.5` (or bump `db_engine_version`).
-- **The LLM API key** is the only secret you set by hand, in Phase D:
+- **Secrets set by hand** (Terraform creates a placeholder, you fill it):
+  the LLM API key (Phase D):
   ```bash
   aws secretsmanager put-secret-value \
     --secret-id data-qa/llm-api-key \
     --secret-string 'sk-...' \
     --profile data-qa --region ap-southeast-2
   ```
-  DB password + `JWT_SECRET` are Terraform-generated into Secrets Manager.
+  and, since s35, `data-qa/mcp-service-key` and `data-qa/slack-signing-secret`
+  (see "MCP server (s35 rung 3)" above) — all three for the same reason: the
+  value either can't be generated safely (a `dpk_` key's secret half is never
+  stored anywhere) or comes from a third party (Slack). DB password +
+  `JWT_SECRET` are Terraform-generated into Secrets Manager.
 - **Alarms (Phase E):** CloudWatch alarms (billing > `billing_alarm_usd` USD in
   us-east-1; backend/agent ≥ 5 5xx per 5 min) notify `alert_email` via SNS. The
   email subscription needs a one-time confirmation click, and the billing metric

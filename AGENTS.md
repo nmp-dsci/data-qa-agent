@@ -121,6 +121,8 @@ services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS cont
 services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails, Explore grounding
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
+services/mcp-server/    Standalone MCP front door (s35 rung 3) — no DB credentials, calls backend-api
+                        over HTTP with its own service key; `make mcp-test`/`make mcp-smoke`
 frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore tab + event tracking
 frontend/public/geo/    pre-built choropleth paths (poa_nsw.paths.json — see scripts/build_topojson.md)
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
@@ -221,6 +223,13 @@ reimplement none of it. Four front doors, one security surface. `data-agent` is 
 - The MCP server holds **no database credentials at all** — it calls backend-api over HTTP with its own key.
   Its auth tier is a service key, which does not meet the OAuth-2.1-with-scopes bar for enterprise MCP; that
   gap is deliberate and staged, not closed.
+- **Key management (rung 4)** is an admin-only **Settings → Service accounts** panel
+  (`frontend/src/features/settings/SettingsPage.tsx`) over `/admin/service-accounts*`: mint a key for a
+  surface with a dataset grant, revoke one, see `last_used_at`. The reveal-once view is styled as a warning,
+  not a success state, since the raw key exists exactly once in the mint response and can never be
+  re-displayed — only `key_id` is listed afterward. The dataset picker reads the Explore dataset catalogue
+  (`GET /explore/datasets`), not the admin's own `dataset_access` rows — an admin reads across users by role
+  and has none of their own, so sourcing from `getMyAccess` would leave the picker empty.
 
 ---
 
@@ -421,7 +430,8 @@ All capabilities live in one Postgres, all under RLS.
 
 | Table | Group | Purpose | RLS |
 |-------|-------|---------|-----|
-| `users` | Identity | Local mirror of signed-in users (Google or dev-seeded) + role (`admin`/`user`) | self; admin sees all |
+| `users` | Identity | Local mirror of signed-in users (Google, dev-seeded, or `auth_provider='service'`) + role (`admin`/`user`) + `plan` (incl. `service`) | self; admin sees all |
+| `service_accounts` | Identity | Machine identities for non-UI surfaces (s35) — `key_id`/`key_hash` (SHA-256, secret shown once), `surface`, `revoked_at`; FK to a `users` row | granted to `app_user` only, **never `agent_ro`** |
 | `datasets` | Datasets | Registry of ingested datasets the agent can answer over | readable if access granted |
 | `dataset_access` | Datasets | Which users/roles may query which dataset | self; admin manages |
 | `dataset_ordinals` | Datasets | Curator-editable ordinal band order per `(dataset, column)` (e.g. `area_band`) so ordinal chart axes sort naturally, not alphabetically | admin/CI-curated; no RLS |

@@ -1323,6 +1323,25 @@ def test_pivot_disambiguation_avoids_a_preexisting_unique_label() -> None:
     assert labels == {"bonds", "bonds growth", "bonds growth 2"}
 
 
+def test_pivot_disambiguates_duplicate_labels_with_no_derive() -> None:
+    """Two ``pivot_measures`` sharing a label while both lacking a ``derive``
+    (e.g. same label, different ``agg``) must still be disambiguated — the
+    derive-suffix candidate is a no-op when ``derive`` is falsy, so dedup must
+    fall back to a numeric suffix instead of leaving both labels identical."""
+    spec = _rent_pivot_spec()
+    spec["pivot_measures"] = [
+        {"label": "bonds", "source": "n_rented", "agg": "sum", "months": 12},
+        {"label": "bonds", "source": "n_rented", "agg": "mean", "months": 12},
+    ]
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    keys = [c["key"] for c in outcome.report["table"]["columns"]]
+    labels = {k.split(" · ")[0] for k in keys if " · " in k}
+    assert labels == {"bonds", "bonds 2"}
+
+
 def test_trend_time_derive_needs_a_time_axis() -> None:
     """A growth rate reads a change ALONG the axis. Over categories each series is
     one point, so pct_change yields nothing and the chart came back silently

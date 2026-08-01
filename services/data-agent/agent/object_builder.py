@@ -1182,15 +1182,19 @@ def _dedup_pivot_labels(measures: list[dict[str, Any]]) -> None:
     for m in measures:
         counts[m["label"]] = counts.get(m["label"], 0) + 1
     used = set(counts.keys())
+    occurrence: dict[str, int] = {}
     for m in measures:
         label = m["label"]
         if counts[label] <= 1:
+            continue
+        occurrence[label] = occurrence.get(label, 0) + 1
+        if occurrence[label] == 1:
             continue
         derive = m.get("derive") or ""
         candidate = f"{label} {derive}" if derive else label
         n = 1
         final = candidate
-        while final in used and final != label:
+        while final in used:
             n += 1
             final = f"{candidate} {n}"
         used.add(final)

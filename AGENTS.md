@@ -243,6 +243,22 @@ Comparison cohort, rank segment deltas) so "what drove X" questions get answered
 Explore Profile tool answers them. `tests/test_explore_agent_sync.py` asserts the agent's mirror never drifts
 from the backend manifest.
 
+**Per-cohort profiling.** Target and Comparison each carry their own `CohortBody.dataset`/`.metric` (falling
+back to the top-level `ProfileBody.dataset`/`.metric` for older callers), so a cohort pair can compare across
+datasets entirely — e.g. Sold volume (`nsw_sales`) against Bond volume (`nsw_rent`) for the same postcode.
+`POST /explore/profile` also takes a `calculation`: `raw` (plain values), `pct_total` (each side's value as %
+of that side's own unfiltered grand total), or `growth` (target vs comparison % change) — purely a
+display/derivation choice, it never changes which rows are fetched. The per-predictor segment-delta pipeline
+(rank leaderboards, choropleth) only runs when both cohorts resolve to the **same** metric name, since a
+segment-by-segment delta between two different measures isn't meaningful.
+
+**Dimension picker tri-state.** `frontend/src/features/explore/MultiSelect.tsx`'s selection is `null` (no
+filter — every row matches), `[]` (explicitly zero values chosen — matches nothing), or a populated array,
+rather than collapsing "nothing ticked" and "no filter" into one state; the picker adds "all"/"none" bulk
+actions and a live "3 of 12"-style summary. Postcode filters (`controls.tsx`/`lib/format.ts`) display and
+search with a `POA:` prefix (`formatPoa`/`isPoaDimension`/`stripPoa`) to read as ABS Postal Area codes rather
+than bare digits, without changing the underlying stored/filtered value.
+
 **Chart-object unification (s20):** Explore, chat, and Golden Examples now render page objects through one
 shared contract (`frontend/src/report-engine/PageLayout.tsx` + `registry.ts`) instead of divergent chart
 code paths. `DataTable` was promoted to a first-class, agent-emittable chart object (migration 0027); the
@@ -611,7 +627,12 @@ builder derives its dataset (vocabulary, defaults, and build target) from the �
 (`datasetFromSql`, mirroring the backend mart tables), so a golden mis-tagged `nsw_sales` whose SQL reads
 `marts.property_rent` still opens with rent grains/metrics instead of sales ones. The filter is shown as two
 lines: line 1 is the golden's own WHERE, carried from the SQL and always kept (read-only); line 2 is the
-builder's `filter` field, an additional predicate ANDed on top.
+builder's `filter` field, an additional predicate ANDed on top — `BuilderFilter.tsx` renders that second line
+as the same dimension chips (domain dropdowns with distribution bars, typeahead) the Explore/Profile cohorts
+use, rather than a raw SQL box, so both tabs read identically. `filterSql.ts` translates between the chips and
+the SQL fragment the object builder expects; a predicate the chips can't express (a range, an OR, a
+comparison) keeps the raw-SQL escape hatch instead of being silently dropped, since dropping one would widen
+the object's rows.
 
 **Metric = aggregation + a derived augmentation (s31).** A bar/line measure is now a **base aggregation**
 (`sum`/`mean` of one column, or a weighted-average `num`/`den`) plus an optional **derive** that augments it
@@ -620,12 +641,60 @@ over the window — the two were previously conflated in one `how` dropdown. The
 additive components once, then the `derive` reduces them to one value per key: `share` (% of total within
 the series), `growth` (**period-over-period** — the recent window vs the prior window, replacing the old
 first-vs-last-month math), `latest`, `rolling` (window mean), `index` (=100 at the window's start),
-`cumulative` (running total), `rank` (within the series), `yoy` (vs 12 months prior). `share`/`cumulative`
+`cumulative` (running total), `rank` (within the series), `yoy` (vs 12 months prior). A ratio metric
+(`avg_sale_price`, `avg_weekly_rent`, …) exposes its two additive legs as `Metric.num`/`.den` in the manifest
+and over `GET /explore/datasets` (null for a non-ratio metric, e.g. `gross_yield_pct`), so a consumer that
+must re-aggregate at its own grain — the object builder's `wavg` base above — recomposes the weighted average
+instead of summing the pre-computed ratio, which is silently wrong. `share`/`cumulative`
 need a `sum` base and the time derives need `month` in the grain — both rejected at codegen, and mirrored in
 the frontend `buildabilityIssue` so the green check gates them. Old goldens stored the augmentation as `how`
 (share/growth/latest, sum base); `_measure`/`aggOf`/`deriveOf` map it forward so they keep working, and the
 `none`/`sum`/`mean`/`wavg` paths are byte-identical to before so existing objects don't shift. The derive
 dropdown only shows for the bar family (compare/breakdown/table).
+
+A trend/line chart's x-axis is no longer assumed to be a date: `trend_series`/`trend_chart`
+(`agent/skills/analysis.py`/`agent/skills/charts.py`) take a `date_axis`/`x_type` param so an ordinal category
+(e.g. `bedroom_band`) can drive the x-axis instead of always parsing dates, and `show_actual` independently
+toggles whether the faint unsmoothed line renders under the rolling average.
+
+**Value units travel with the number, not the name (s34).** A bare number is ambiguous (82 could be $82, 82
+bonds, or 82%), and every renderer used to guess the unit from the *column name* via regex — which broke on
+any derived metric, since a trend's value column is literally called `value` and a YoY on `avg_weekly_rent`
+is a percentage even though the name still says rent. Units now travel with the number end-to-end instead:
+`agent/units.py` (Python) resolves a unit — `currency` | `number` | `percent` — from the manifest's per-metric
+`fmt` first, then a derive suffix on the label, then whole-word name matching, falling back to `number` (never
+`currency`, since guessing dollars on an unknown name is the worse failure). `unit_for_measure()` composes a
+built measure's base aggregation with its `derive`: `growth`/`yoy`/`share` are always percent regardless of
+the base metric, and a `wavg` is currency only when the denominator is a count, not another dollar value.
+`frontend/src/ui/charts/units.ts` is a mirrored copy for the frontend (currency/general JS can't import the
+Python module), checked byte-for-byte against `agent/units.py` by
+`services/data-agent/tests/test_registry_sync.py`; `tests/test_explore_agent_sync.py` separately asserts both
+copies agree with the manifest's `fmt`. Chart skills (trend/bars/combo/dual-axis/distribution/profile) now
+take explicit unit params and stamp them onto the Vega-Lite encoding via `object_builder`, which threads them
+through to every rendered object type — including the pivot table, which computes its per-column format at
+**runtime** because cross-tab column names are data (e.g. `bonds - 2077`) and the same metric can appear
+twice under two different derives, a case no name can resolve (`_dedup_pivot_labels` disambiguates those
+same-label-different-derive collisions before they hit `pivot_table`, appending the derive and, if still
+colliding, a counter). Frontend chart components (`Trend`/`Bars`/`Combo`/`DataTable`/`KPITile`) read the
+declared unit and only fall back to name-guessing for objects saved before units existed. Building the YoY
+test case also surfaced a real pre-existing defect: a 12-month YoY trend rendered with zero points, because
+the chart window is the latest N months and a 12-month YoY has no prior-year data inside that window —
+`_SERIES_LOOKBACK` (`agent/object_builder.py`) widens the fetch by the derive's own lookback (12 months for
+`yoy`, 1 for `growth`) so the comparison data is actually in range.
+
+**Pivot cross-tab builder.** A new `pivot` object type (`agent/object_builder.py::_pivot_code`, rendered as an
+ordinary `table` `PageObject`) puts one dimension's *values* across the columns instead of down the rows:
+`dimension` gives the row columns and `pivot_column` the dimension whose values become column groups — e.g.
+rows `bedroom_band, property_type` and `pivot_column = postcode` reads as one row per dwelling with a metric
+block per postcode, the shape a long table can't give (comparing two postcodes in a long table means scanning
+up and down instead of across). `pivot_measures` (each a base + optional derive, same shape as a bar/line
+measure) go through the same `_measure_block` the charts use, so a ratio metric is recomposed as a weighted
+average at the pivot's own grain rather than averaged-of-averages. `pivot_compare` (`"diff"` | `"pct_diff"`)
+adds a gap column per metric — only when the pivoted dimension has exactly two values, since a gap has no
+single definition across more — and `color_by_sign` extends sign-based cell coloring (always on for a diff
+column) to every metric column. Column labels are data (a postcode, a derive-qualified metric name appearing
+twice), so both the format lookup and the label-collision fix (`_dedup_pivot_labels`, see above) resolve at
+runtime rather than off the static spec.
 
 ---
 

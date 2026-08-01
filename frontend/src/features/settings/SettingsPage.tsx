@@ -3,10 +3,15 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createServiceAccount,
   deleteMyMemory,
   getAdminConfig,
+  getExploreDatasets,
   getMyAccess,
   getMyMemories,
+  listServiceAccounts,
+  revokeServiceAccount,
+  ServiceAccountCreated,
   User,
 } from "../../lib/api";
 import { formatTime } from "../../lib/format";
@@ -193,6 +198,161 @@ function AccessSection({ user }: { user: User }) {
   );
 }
 
+/** s35: machine identities for Slack, webhooks and the MCP server.
+ *
+ *  The whole panel is built around one fact: the key exists exactly once, in
+ *  the create response. So the reveal is a deliberate, dismissible block that
+ *  says so plainly — if the UI let anyone believe it could be read back later,
+ *  they wouldn't copy it, and the only fix is minting another one. */
+function ServiceAccountsSection() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["admin", "service-accounts"], queryFn: listServiceAccounts });
+  // Every dataset, NOT the admin's own grants: an admin reads across users via
+  // the role and so has no dataset_access rows of their own, which left the
+  // picker empty and made it impossible to grant a new key anything.
+  const catalog = useQuery({ queryKey: ["explore", "datasets"], queryFn: getExploreDatasets });
+  const [name, setName] = useState("");
+  const [surface, setSurface] = useState("slack");
+  const [datasets, setDatasets] = useState<string[]>([]);
+  const [minted, setMinted] = useState<ServiceAccountCreated | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const available = catalog.data ?? [];
+
+  async function create() {
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await createServiceAccount({
+        name: name.trim(),
+        surface,
+        dataset_slugs: datasets,
+      });
+      setMinted(created);
+      setCopied(false);
+      setName("");
+      setDatasets([]);
+      qc.invalidateQueries({ queryKey: ["admin", "service-accounts"] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke(id: string) {
+    try {
+      await revokeServiceAccount(id);
+      qc.invalidateQueries({ queryKey: ["admin", "service-accounts"] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <section>
+      <h3>Service accounts</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Keys for the non-UI surfaces. A key answers with its own data grants, so grant it only
+        what everyone using that surface should see — for Slack, that means the channel it lives in.
+      </p>
+
+      {minted && (
+        <div className="key-reveal">
+          <strong>Copy this key now — it is never shown again.</strong>
+          <p className="muted">
+            Only the hash is stored, so it cannot be recovered or re-displayed. If you lose it,
+            revoke this account and mint another.
+          </p>
+          <div className="key-reveal-row">
+            <code>{minted.key}</code>
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(minted.key);
+                setCopied(true);
+              }}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+            <button onClick={() => setMinted(null)}>Done</button>
+          </div>
+        </div>
+      )}
+
+      <div className="settings-row" style={{ flexWrap: "wrap", gap: 8 }}>
+        <input
+          placeholder="Name (e.g. property channel bot)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          aria-label="Service account name"
+        />
+        <select value={surface} onChange={(e) => setSurface(e.target.value)} aria-label="Surface">
+          <option value="slack">slack</option>
+          <option value="webhook">webhook</option>
+          <option value="mcp">mcp</option>
+        </select>
+        <span className="seg" role="group" aria-label="Datasets">
+          {available.map((d) => (
+            <button
+              key={d.slug}
+              className={datasets.includes(d.slug) ? "on" : ""}
+              aria-pressed={datasets.includes(d.slug)}
+              onClick={() =>
+                setDatasets((prev) =>
+                  prev.includes(d.slug) ? prev.filter((s) => s !== d.slug) : [...prev, d.slug],
+                )
+              }
+            >
+              {d.slug}
+            </button>
+          ))}
+        </span>
+        <button onClick={create} disabled={busy || !name.trim()}>
+          {busy ? "Minting…" : "Mint key"}
+        </button>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+
+      {q.data && q.data.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Surface</th>
+                <th>Key id</th>
+                <th>Last used</th>
+                <th>State</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {q.data.map((a) => (
+                <tr key={a.id}>
+                  <td>{a.name}</td>
+                  <td>{a.surface}</td>
+                  <td>
+                    <code>{a.key_id}</code>
+                  </td>
+                  <td>{a.last_used_at ? formatTime(a.last_used_at) : "never"}</td>
+                  <td>{a.revoked_at ? "revoked" : "active"}</td>
+                  <td>
+                    {!a.revoked_at && <button onClick={() => revoke(a.id)}>Revoke</button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {q.data && q.data.length === 0 && <p className="muted">No service accounts yet.</p>}
+    </section>
+  );
+}
+
 export function SettingsPage({ user }: { user: User }) {
   return (
     <main className="admin settings">
@@ -206,6 +366,7 @@ export function SettingsPage({ user }: { user: User }) {
       <ModelSection user={user} />
       <MemoriesSection />
       <AccessSection user={user} />
+      {user.role === "admin" && <ServiceAccountsSection />}
     </main>
   );
 }

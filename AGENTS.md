@@ -195,6 +195,33 @@ CREATE POLICY tenant_isolation ON insights
 - Role-level `statement_timeout`s (migration 0018: `app_user`/`agent_ro` 15s, `admin_ro` 30s) are a
   database-side backstop against runaway queries on every code path, independent of app-level guards.
 
+### Non-UI surfaces and service accounts (s35)
+
+Three front doors besides the web UI — a webhook, a Slack slash command, and a standalone MCP server —
+all reach the *same* pipeline. `routers/ask.run_question()` is the single implementation of the daily cap,
+RLS scoping, degraded-mode fallback and the audit write; the adapters authenticate and deliver, and
+reimplement none of it. Four front doors, one security surface. `data-agent` is untouched by all of this.
+
+- A **service account is a user** (`auth_provider='service'`, migration 0032), so grants, RLS, conversations
+  and `query_runs` work unchanged. Keys are `dpk_<key_id>_<secret>`: only a SHA-256 of the secret is stored,
+  and the full key exists exactly once, in the create response. `surface` pins a key to one door.
+- Service accounts are never `role='admin'`. Usage is tiered via `plan='service'` instead, so a leaked key
+  cannot read across users. `app.service_accounts` is granted to `app_user` only — **never `agent_ro`**, since
+  the agent runs model-authored SQL.
+- **The access boundary for Slack is channel membership, and that is a deliberate trade, not an oversight.**
+  v1 answers as a bot identity with its own dataset grants: everyone in the channel sees the same scope, so
+  grant a Slack account only what everyone in that channel should see. Per-user delegation (an act-as header
+  resolved against a default-deny mapping table) is the documented upgrade path, unbuilt until something
+  needs it. Accountability is kept even though authorisation is shared: the asking Slack user, their name
+  and channel are recorded against every run.
+- Slack authenticates differently from the other two: it signs its own requests, so `X-Slack-Signature`
+  (verified over the **raw** body, 5-minute replay window) proves the *request*, while the service account
+  decides what may be *seen*. An unset `SLACK_SIGNING_SECRET` closes the endpoint with a 404 rather than
+  weakening it.
+- The MCP server holds **no database credentials at all** — it calls backend-api over HTTP with its own key.
+  Its auth tier is a service key, which does not meet the OAuth-2.1-with-scopes bar for enterprise MCP; that
+  gap is deliberate and staged, not closed.
+
 ---
 
 ## The data agent

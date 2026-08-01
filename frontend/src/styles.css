@@ -1224,6 +1224,24 @@ a:focus-visible, [role="option"]:focus-visible {
 /* Settings */
 .settings section { display: flex; flex-direction: column; gap: 10px; }
 .settings-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* s35: a freshly minted service key. Styled as a warning rather than a result
+   because it is the only moment the secret exists — once dismissed there is no
+   way back, so the block has to read as "act now", not "here's your key". */
+.key-reveal {
+  border: 1px solid var(--warn-border);
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 8px;
+}
+.key-reveal strong { color: var(--warn); }
+.key-reveal p { margin: 0; font-size: 13px; }
+.key-reveal-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.key-reveal-row code {
+  flex: 1 1 320px; min-width: 0; overflow-wrap: anywhere;
+  background: var(--code-bg); padding: 8px 10px; border-radius: var(--radius-sm);
+  font-family: var(--mono); font-size: 12.5px;
+}
+.error-text { color: var(--error-text); font-size: 13px; margin: 0; }
 /* Remembered preferences as cards (issue #13): each memory gets its learned/used
    context and a quiet "forget" — the login's memory promise, made visible. */
 .mem-list { display: grid; gap: 8px; }

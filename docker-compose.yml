@@ -104,6 +104,11 @@ services:
       OPS_INGEST_TOKEN: ${OPS_INGEST_TOKEN:-dev-ops-token}
       # Optional — ships backend traces to Logfire Cloud; local-only otherwise.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
+      # s35: Slack's workspace signing secret, used to verify X-Slack-Signature.
+      # A fixed dev value so the signature path is exercisable locally without a
+      # real workspace; empty CLOSES the Slack endpoint (404), which is the
+      # config.py default and the right posture for any env that isn't using it.
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-dev-slack-secret}
     ports:
       - "8000:8000"
     depends_on:

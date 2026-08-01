@@ -32,8 +32,10 @@ from .routers import (  # noqa: E402
     explore,
     feedback,
     goldens,
+    integrations,
     ops,
     profile,
+    service_accounts,
     sql,
 )
 from .waking import is_db_waking  # noqa: E402
@@ -122,6 +124,8 @@ app.include_router(profile.router)
 app.include_router(explore.router)
 app.include_router(evals.router)
 app.include_router(ops.router)
+app.include_router(integrations.router)
+app.include_router(service_accounts.router)
 
 # Instrumented once every route is registered, so spans carry route templates
 # (/conversations/{conversation_id}) rather than raw paths — otherwise

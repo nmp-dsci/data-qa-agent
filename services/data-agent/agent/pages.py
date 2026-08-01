@@ -33,6 +33,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from .ordinals import order_rows
+from .units import UNITS
 
 # The published template registry — the frontend owns the layouts; the agent
 # side may only reference these ids. Only column layouts exist (s14): a page's
@@ -199,6 +200,23 @@ def _spec_encoding(spec: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _enc_title(encoding: dict[str, Any], channel: str) -> str | None:
+    """The declared title of an encoding channel, if any."""
+    enc = encoding.get(channel)
+    title = enc.get("title") if isinstance(enc, dict) else None
+    return str(title) if title else None
+
+
+def _enc_unit(encoding: dict[str, Any], channel: str) -> str | None:
+    """What a channel's numbers ARE (currency / number / percent), as declared by
+    the chart skill that built the spec — see agent/units.py. Carried into the
+    object so the renderer formats the axis and tooltip from the metric instead
+    of guessing from a column name that is usually just ``value``."""
+    enc = encoding.get(channel)
+    unit = enc.get("unit") if isinstance(enc, dict) else None
+    return str(unit) if unit in UNITS else None
+
+
 def _enc_field(encoding: dict[str, Any], channel: str) -> str | None:
     ch = encoding.get(channel)
     if isinstance(ch, dict):
@@ -252,6 +270,10 @@ def _combo_object_from_spec(
             "dimension": dim,
             "measure": measure,
             "line_measure": line_measure,
+            # One unit per axis — a dual axis exists because the two measures
+            # differ, so the bars being dollars says nothing about the line.
+            "unit": _enc_unit(bar_enc, "y"),
+            "line_unit": _enc_unit(line_enc, "y"),
             "group": group,
             "title": title,
             "rows": values,
@@ -323,6 +345,10 @@ def chart_object_from_spec(
                 "intent": "line",
                 "x": x,
                 "y": y,
+                # What the y values are (the frame's column is always "value"),
+                # so the axis is formatted as the measure, not as its field name.
+                "y_label": _enc_title(encoding, "y"),
+                "y_unit": _enc_unit(encoding, "y"),
                 "series": series,
                 "title": title,
                 "rows": values,
@@ -345,6 +371,7 @@ def chart_object_from_spec(
                 "intent": "grouped-bar" if obj_type == "compare" else "bar",
                 "dimension": dim,
                 "measure": measure,
+                "unit": _enc_unit(encoding, "y"),
                 "group": group,
                 "title": title,
                 "rows": values,
@@ -578,6 +605,9 @@ def compose_summary_page(
                     data={
                         "label": h.get("label", ""),
                         "value": h.get("value", ""),
+                        # A raw number needs its unit to render as one: without
+                        # it a headline reads "742.86" instead of "$742.86".
+                        "format": h.get("format"),
                         "basis": h.get("basis", ""),
                     },
                 )

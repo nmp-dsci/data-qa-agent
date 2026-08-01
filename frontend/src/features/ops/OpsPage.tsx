@@ -100,6 +100,7 @@ function redteamBars(m: OpsMetrics): PageObject | null {
     title: "Red-team pass by attack class",
     dimension: "category",
     measure: "pass_pct",
+    unit: "percent",
     height: "sm",
     rows,
   });
@@ -113,6 +114,7 @@ function errorBars(m: OpsMetrics): PageObject | null {
     title: "Errors & degradations by surface",
     dimension: "surface",
     measure: "count",
+    unit: "number",
     height: "sm",
     rows: Object.entries(bySource).map(([surface, count]) => ({
       surface,
@@ -129,6 +131,7 @@ function trafficBars(m: OpsMetrics): PageObject | null {
     title: "Runs by surface",
     dimension: "surface",
     measure: "runs",
+    unit: "number",
     height: "sm",
     rows: Object.entries(mix).map(([surface, runs]) => ({ surface, runs })),
   });

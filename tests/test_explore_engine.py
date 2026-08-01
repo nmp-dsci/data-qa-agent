@@ -47,7 +47,7 @@ def _profile():
         ],
     }
     return engine.build_profile(
-        ds, "avg_weekly_rent", target_totals, comparison_totals, target_by, comparison_by
+        ds, ds, "avg_weekly_rent", target_totals, comparison_totals, target_by, comparison_by
     )
 
 
@@ -62,7 +62,7 @@ def test_topline_delta() -> None:
 def test_all_metric_deltas_present() -> None:
     r = _profile()
     names = {d.metric for d in r.metric_deltas}
-    assert names == {"n_rented", "total_weekly_rent", "avg_weekly_rent"}
+    assert names == {"n_rented", "total_weekly_rent", "avg_weekly_rent", "n_unit", "pct_unit"}
     n = next(d for d in r.metric_deltas if d.metric == "n_rented")
     assert n.delta == -5250 and n.target == 4860 and n.comparison == 10110
 

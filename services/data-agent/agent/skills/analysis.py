@@ -70,6 +70,8 @@ def trend_series(
     den_col: str | None = None,
     group_col: str | None = None,
     window: int = 6,
+    date_axis: bool = True,
+    show_actual: bool = True,
 ) -> pd.DataFrame:
     """Long-form trend rows for charting: actual + N-month rolling per series.
 
@@ -79,7 +81,25 @@ def trend_series(
 
     ``value = value_col / den_col`` when ``den_col`` is given (e.g.
     total_sale_value / n_sold → average price), else ``value_col`` directly.
+
+    NOTE ON GRAIN: one point is emitted per ROW of ``df`` per group. Rows are not
+    summed here, so ``df`` must already be at the (x, group) grain — pass an
+    aggregated frame, never a raw extract that is finer than the chart. The
+    object builder guarantees this; a finer frame would plot several points on
+    the same x and compute a per-row ratio instead of a ratio of sums.
+
+    ``date_axis=False`` plots a non-time x (e.g. bedroom_band): the x value is
+    kept verbatim rather than being turned into a ``YYYY-MM-01`` date, and the
+    rolling overlay is dropped — a rolling average over categories is not a
+    meaningful quantity.
+
+    The smoothing overlay is two independent choices. ``window`` sizes the
+    rolling average (``0`` emits none, so only the actual line is drawn) and
+    ``show_actual`` decides whether the faint unsmoothed line is drawn under it.
+    Turning both off would leave nothing to plot, so ``show_actual`` is honoured
+    only while a rolling layer exists.
     """
+    keep_actual = show_actual or window <= 0
     grouped = _grouped(
         df,
         month_col=month_col,
@@ -91,7 +111,33 @@ def trend_series(
     rows: list[dict[str, Any]] = []
     for group, series in grouped.items():
         label = group if group != "_all" else value_col
+        if not date_axis:
+            rows.extend(
+                {
+                    "month": str(point["month"]),
+                    "value": None if point["value"] is None else round(point["value"], 2),
+                    "series": label,
+                    "layer": "actual",
+                }
+                for point in series
+                if point.get("value") is not None
+            )
+            continue
+        if window <= 0:
+            rows.extend(
+                {
+                    "month": f"{point['month']}-01",
+                    "value": round(point["value"], 2),
+                    "series": label,
+                    "layer": "actual",
+                }
+                for point in series
+                if point.get("value") is not None
+            )
+            continue
         for row in analytics.chart_series(series, rolling_window=window):
+            if row["layer"] == "actual" and not keep_actual:
+                continue
             rows.append(
                 {
                     "month": f"{row['month']}-01",

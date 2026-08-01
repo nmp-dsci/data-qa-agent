@@ -814,11 +814,16 @@ def _lift_object(
     ``skills.data_table``) verbatim; kpi/headline objects carry no chart, so the
     first headline tile is lifted. ``sql`` — the governed extract behind the
     object — rides along in ``data.sql`` so golden charts get the same "open in
-    SQL editor" action as chat/Explore."""
+    SQL editor" action as chat/Explore.
+
+    ``pivot`` is a BUILD recipe, not a render type: it shapes a cross-tab and
+    emits the same ``table`` payload, so it lifts through the table branch and
+    the rendered page object is a plain ``table``. That is what keeps the render
+    registry (and its three-way sync test) out of this feature entirely."""
     if not isinstance(report, dict):
         return None
     table = report.get("table")
-    if object_type == "table" and isinstance(table, dict) and table.get("columns"):
+    if object_type in ("table", "pivot") and isinstance(table, dict) and table.get("columns"):
         data = {k: v for k, v in table.items() if v is not None}
         if sql:
             data["sql"] = sql

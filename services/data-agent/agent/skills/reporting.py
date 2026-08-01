@@ -59,6 +59,9 @@ def _headline(tile: dict[str, Any], i: int) -> dict[str, Any]:
         "element_id": f"headline:{i}",
         "label": tile.get("label", ""),
         "value": tile.get("value", ""),
+        # currency / number / percent (agent/units.py) — how to render a numeric
+        # `value`. A tile that pre-formats its own string doesn't need one.
+        "format": tile.get("format"),
         "basis": tile.get("basis", ""),
         "related": bool(tile.get("related", False)),
         "query_ref": tile.get("query_ref"),

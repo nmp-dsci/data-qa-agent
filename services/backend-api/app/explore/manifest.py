@@ -81,6 +81,14 @@ class Metric:
     kind: str  # additive | derived
     expr: str  # aggregate SQL over mart columns (references MART_ALIAS)
     depends_on: tuple[str, ...]  # physical mart columns the expr sums
+    # For a simple ratio-of-sums, the two additive legs behind it. Consumers that
+    # must re-aggregate the metric themselves (the Goldens object builder, whose
+    # sandbox recomposes a weighted average at the object's own grain) need the
+    # legs by name — summing the ratio column instead is silently wrong. Left
+    # None for metrics that are not a plain num/den (e.g. gross_yield_pct,
+    # pct_unit), which is the signal that they can't be recomposed this way.
+    num: str | None = None
+    den: str | None = None
 
 
 @dataclass(frozen=True)
@@ -143,7 +151,16 @@ class Dataset:
                 for d in self.dimensions
             ],
             "metrics": [
-                {"name": mtr.name, "label": mtr.label, "format": mtr.fmt, "kind": mtr.kind}
+                {
+                    "name": mtr.name,
+                    "label": mtr.label,
+                    "format": mtr.fmt,
+                    "kind": mtr.kind,
+                    # Present only for a plain ratio-of-sums; null otherwise, which
+                    # tells a client the metric can't be recomposed from two legs.
+                    "num": mtr.num,
+                    "den": mtr.den,
+                }
                 for mtr in self.metrics
             ],
         }
@@ -228,7 +245,58 @@ def _additive(name: str, label: str, fmt: str, column: str | None = None) -> Met
 def _ratio(name: str, label: str, fmt: str, num: str, den: str, scale: float = 1.0) -> Metric:
     scale_prefix = "" if scale == 1.0 else f"{scale} * "
     expr = f"{scale_prefix}sum({MART_ALIAS}.{num}) / nullif(sum({MART_ALIAS}.{den}), 0)"
-    return Metric(name=name, label=label, fmt=fmt, kind="derived", expr=expr, depends_on=(num, den))
+    return Metric(
+        name=name,
+        label=label,
+        fmt=fmt,
+        kind="derived",
+        expr=expr,
+        depends_on=(num, den),
+        num=num,
+        den=den,
+    )
+
+
+def _share_pair(
+    name: str,
+    label: str,
+    raw_name: str,
+    raw_label: str,
+    category_col: str,
+    match: str,
+    volume_col: str,
+) -> tuple[Metric, Metric]:
+    """% of a cohort's volume in one category of a dimension (e.g. dwelling type
+    = 'unit'), plus the raw count behind it — a ratio-of-sums pair, so both
+    re-aggregate correctly at any grain. `match` is a fixed literal baked in at
+    manifest-definition time, not user input, so string-formatting it into the
+    expr is safe here (the same pattern as every other static SQL fragment in
+    this module) — it never touches a request-supplied value.
+
+    Returns (share_metric, raw_metric) — two independently selectable metrics
+    (e.g. "Units" and "% unit"), so a Profile cohort can pick whichever framing
+    it wants for the same underlying measure."""
+    raw_expr = (
+        f"sum(case when {MART_ALIAS}.{category_col} = '{match}' "
+        f"then {MART_ALIAS}.{volume_col} else 0 end)"
+    )
+    raw = Metric(
+        name=raw_name,
+        label=raw_label,
+        fmt="number",
+        kind="additive",
+        expr=raw_expr,
+        depends_on=(category_col, volume_col),
+    )
+    share = Metric(
+        name=name,
+        label=label,
+        fmt="percent",
+        kind="derived",
+        expr=f"100 * {raw_expr} / nullif(sum({MART_ALIAS}.{volume_col}), 0)",
+        depends_on=(category_col, volume_col),
+    )
+    return share, raw
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +323,11 @@ _SALES = Dataset(
         _additive("n_sold", "Sales", "number"),
         _additive("total_sale_value", "Total sale value", "currency"),
         _ratio("avg_sale_price", "Avg sale price", "currency", "total_sale_value", "n_sold"),
+        # Same metric NAME as _RENT's below — this is what lets a cross-dataset
+        # profile (target on one dataset, comparison on another) use "% unit" as
+        # a shared response metric even though the two sides aggregate different
+        # tables/volume columns.
+        *_share_pair("pct_unit", "% unit", "n_unit", "Units", "property_type", "unit", "n_sold"),
     ),
 )
 
@@ -277,6 +350,7 @@ _RENT = Dataset(
         _additive("n_rented", "Bonds", "number"),
         _additive("total_weekly_rent", "Total weekly rent", "currency"),
         _ratio("avg_weekly_rent", "Avg weekly rent", "currency", "total_weekly_rent", "n_rented"),
+        *_share_pair("pct_unit", "% unit", "n_unit", "Units", "property_type", "unit", "n_rented"),
     ),
 )
 

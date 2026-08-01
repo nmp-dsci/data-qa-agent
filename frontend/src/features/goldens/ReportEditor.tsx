@@ -1,8 +1,8 @@
 // Interactive report editor for the Golden Builder (s14 E1, Goal C).
 //
-// The curator fully composes the golden's presentation here: add / retype /
-// remove objects, move them to ANY column (or reorder within one), edit their
-// text fields, and add / remove / re-template pages. Edits mutate a working
+// The curator fully composes the golden's presentation here: add / remove
+// objects, move them to ANY column (or reorder within one), edit their text
+// fields, and add / remove / re-template pages. Edits mutate a working
 // DRAFT (the parent's pendingPages) — nothing is committed until the curator
 // presses Submit in the Report stage, which writes golden_report + reconciles
 // the sandbox output JSON (see GoldensPage).
@@ -11,10 +11,16 @@
 // the template width), the editor renders EXACTLY the template's columns —
 // including empty ones — as stable drop targets, so "move object to column 1/3"
 // behaves predictably and nothing silently vanishes.
+//
+// An object's DATA is not edited here (s34). A card's edit panel offers only the
+// linked sandbox object, the Structured Builder, where it sits (page / column /
+// height) and its text. Chart encodings, x-axis sorting and retyping used to live
+// here too, which meant two places could change what a chart showed and they
+// disagreed; the builder is now the single one.
 import { KitSelect } from "@/components/kit/KitSelect";
 import { ReactNode, useEffect, useRef, useState } from "react";
 
-import { Page, PageObject, PageObjectType, TemplateId } from "../../lib/api";
+import { BuilderObjectType, Page, PageObject, PageObjectType, TemplateId } from "../../lib/api";
 import { ObjectBody, objectCardClass } from "../../report-engine/PageLayout";
 import {
   OBJECT_TYPE_DESCRIPTIONS,
@@ -72,6 +78,15 @@ const OBJECT_GLYPHS: Record<PageObjectType, ReactNode> = {
     </>,
   ),
 };
+
+// A cross-tab: the table glyph plus a second column rule and a header band, so it
+// reads as "rows x columns" rather than a plain list.
+const PIVOT_GLYPH = g(
+  <>
+    <rect x="2.5" y="3.5" width="11" height="9" rx="1" />
+    <path d="M2.5 6.5h11M6 3.5v9M10 6.5v6" />
+  </>,
+);
 
 /** A short label for a ② Sandbox output in the link picker (title/label/heading). */
 function objectTitle(o: PageObject): string {
@@ -214,14 +229,23 @@ export function ReportEditor({
   onChange,
   onEditInBuilder,
   sandboxObjects = [],
+  builderPanel,
+  editingId,
+  onCloseBuilder,
 }: {
   pages: Page[];
   onChange: (pages: Page[]) => void;
+  /** The Structured Builder, to render under the object currently being edited
+   *  so the curator stays where they are. Rendered only for `editingId`. */
+  builderPanel?: React.ReactNode;
+  editingId?: string | null;
+  /** Collapse the Structured Builder without leaving the card's edit panel. */
+  onCloseBuilder?: () => void;
   /** Edit a chart object in the deterministic Structured Builder (s30): the parent
    *  seeds the builder from the object's stored spec and scrolls to it. Replaces
    *  the old plain-English "describe this object" LLM path. When absent, the
    *  "edit in builder" button is hidden (e.g. a non-golden consumer). */
-  onEditInBuilder?: (o: PageObject) => void;
+  onEditInBuilder?: (o: PageObject, builderType?: BuilderObjectType) => void;
   /** The objects the ② Sandbox produced — an object can be *linked* to one of
    *  these (by element_id) to base its data on it (the "linked object" picker). */
   sandboxObjects?: PageObject[];
@@ -286,9 +310,14 @@ export function ReportEditor({
     emit(next);
   }
 
-  function addObject(pi: number, ci: number, type: PageObjectType) {
+  function addObject(pi: number, ci: number, type: PageObjectType, builderType?: BuilderObjectType) {
     const obj = newObject(type);
-    const next = clone(pages);
+    // Normalise BEFORE the push, not just on emit: the editor renders one drop
+    // target per TEMPLATE column, but a stored page can carry fewer column arrays
+    // (a golden saved under a narrower template, or an agent draft). Adding into a
+    // column that exists on screen but not in the data threw on `.push` of
+    // undefined and silently dropped the click.
+    const next = clone(pages).map(normColumns);
     next[pi].columns[ci].push(obj);
     emit(next);
     setPickerKey(null);
@@ -297,13 +326,17 @@ export function ReportEditor({
     setOpen((prev) => new Set(prev).add(obj.element_id));
     setSelectedId(obj.element_id);
     focusNext.current = obj.element_id;
+    // A builder-authored type (pivot) opens the Structured Builder on the new,
+    // empty card so the curator configures it where they added it.
+    if (builderType) onEditInBuilder?.(obj, builderType);
   }
 
   /** Add an object linked to a ② Sandbox output — a deep copy that keeps the
    *  sandbox object's type + data + element_id, so the curated card carries real
    *  data (the shared element_id IS the link, same as bindLinked). */
   function addLinked(pi: number, ci: number, src: PageObject) {
-    const next = clone(pages);
+    // Same missing-column guard as addObject.
+    const next = clone(pages).map(normColumns);
     next[pi].columns[ci].push(JSON.parse(JSON.stringify(src)) as PageObject);
     emit(next);
     setPickerKey(null);
@@ -359,17 +392,36 @@ export function ReportEditor({
     setClipboard(o);
   }
 
-  /** Paste the clipboard object immediately below `afterId` in its column. */
-  function pasteAfter(afterId: string) {
-    if (!clipboard) return;
+  /** Insert a detached copy of `src` immediately below `afterId` in its column,
+   *  and focus it. Shared by paste and duplicate. */
+  function insertCopyAfter(src: PageObject, afterId: string) {
     const loc = locate(pages, afterId);
     if (!loc) return;
-    const obj = reid(clipboard);
-    const next = clone(pages);
+    const obj = reid(src);
+    const next = clone(pages).map(normColumns);
     next[loc.pi].columns[loc.ci].splice(loc.oi + 1, 0, obj);
     focusNext.current = obj.element_id;
     setSelectedId(obj.element_id);
     emit(next);
+  }
+
+  /** Paste the clipboard object immediately below `afterId` in its column. */
+  function pasteAfter(afterId: string) {
+    if (!clipboard) return;
+    insertCopyAfter(clipboard, afterId);
+  }
+
+  /** Duplicate a card in place, right below itself.
+   *
+   *  The copy gets a FRESH element_id, because that id IS the link to a ②
+   *  Sandbox object and one sandbox object backs at most one report object. So a
+   *  duplicate starts UNLINKED, carrying the original's data snapshot until it
+   *  is linked or rebuilt — which the sandbox-coverage badge will report
+   *  honestly rather than counting one sandbox object twice. */
+  function cloneObject(id: string) {
+    const loc = locate(pages, id);
+    if (!loc) return;
+    insertCopyAfter(pages[loc.pi].columns[loc.ci][loc.oi], id);
   }
 
   /** Delete `id` and focus a neighbour so the keyboard flow keeps going. */
@@ -404,51 +456,12 @@ export function ReportEditor({
     }
   }
 
-  function patchObject(id: string, patch: Partial<PageObject>) {
-    const loc = locate(pages, id);
-    if (!loc) return;
-    const next = clone(pages);
-    const obj = next[loc.pi].columns[loc.ci][loc.oi];
-    next[loc.pi].columns[loc.ci][loc.oi] = { ...obj, ...patch };
-    emit(next);
-  }
-
   function patchData(id: string, key: string, value: unknown) {
     const loc = locate(pages, id);
     if (!loc) return;
     const next = clone(pages);
     const obj = next[loc.pi].columns[loc.ci][loc.oi];
     obj.data = { ...obj.data, [key]: value };
-    emit(next);
-  }
-
-  /** s23: the manual x-axis order override — reorder a chart object's rows (the
-   *  renderer keeps first-seen category order). The backend already auto-orders
-   *  known ordinals; this is the escape hatch for custom / non-ordinal columns. */
-  function sortXAxis(o: PageObject, mode: string) {
-    const field = String(o.data[o.type === "trend" ? "x" : "dimension"] ?? "");
-    const rows = (o.data["rows"] as Record<string, unknown>[]) ?? [];
-    if (!field || rows.length === 0) return;
-    const val = (r: Record<string, unknown>) => String(r[field] ?? "");
-    const lead = (s: string) => {
-      const m = s.match(/-?\d+(\.\d+)?/);
-      return m ? parseFloat(m[0]) : Number.POSITIVE_INFINITY;
-    };
-    const rowsSorted = [...rows];
-    if (mode === "numeric") rowsSorted.sort((a, b) => lead(val(a)) - lead(val(b)));
-    else if (mode === "az") rowsSorted.sort((a, b) => val(a).localeCompare(val(b)));
-    else if (mode === "za") rowsSorted.sort((a, b) => val(b).localeCompare(val(a)));
-    patchData(o.element_id, "rows", rowsSorted);
-  }
-
-  function retype(id: string, type: PageObjectType) {
-    const loc = locate(pages, id);
-    if (!loc) return;
-    const next = clone(pages);
-    const obj = next[loc.pi].columns[loc.ci][loc.oi];
-    // Keep whatever data still applies; fill any gaps the new type needs.
-    obj.type = type;
-    obj.data = { ...defaultData(type), ...obj.data };
     emit(next);
   }
 
@@ -551,83 +564,18 @@ export function ReportEditor({
     emit(next);
   }
 
-  /** Chart encoding controls — map the object's row columns onto the chart's
-   *  channels (x/measure/line/group per type). This is how a curator "configures
-   *  the chart as x=area_band, line=avg price, bar=volume, group=suburb" after
-   *  linking it to a sandbox dataset. Columns come from the object's own rows. */
-  const encodingControls = (o: PageObject) => {
-    const rows = (o.data["rows"] as Record<string, unknown>[]) ?? [];
-    const cols = rows.length ? Object.keys(rows[0]) : [];
-    if (cols.length === 0) {
-      return (
-        <div style={{ ...label, opacity: 0.5 }}>
-          link a sandbox object (above) to configure encodings from its columns
-        </div>
-      );
-    }
-    const enc = (key: string, lbl: string, testid: string) => (
-      <label style={label}>
-        {lbl}{" "}
-        <KitSelect
-          testId={testid}
-          ariaLabel={lbl}
-          value={String(o.data[key] ?? "")}
-          onValueChange={(v) => patchData(o.element_id, key, v || null)}
-          options={[{ value: "", label: "—" }, ...cols.map((c) => ({ value: c, label: c }))]}
-        />
-      </label>
-    );
-    return (
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          alignItems: "center",
-          padding: 6,
-          borderRadius: 6,
-          border: "1px solid rgba(128,128,128,0.25)",
-        }}
-      >
-        <span style={{ ...label, opacity: 0.7 }}>encoding</span>
-        {o.type === "trend" ? (
-          <>
-            {enc("x", "x", "enc-x")}
-            {enc("y", "y", "enc-y")}
-            {enc("series", "series", "enc-series")}
-          </>
-        ) : (
-          <>
-            {enc("dimension", "x / dimension", "enc-dimension")}
-            {enc("measure", o.type === "compare" ? "bars (measure)" : "measure", "enc-measure")}
-            {o.type === "compare" && enc("line_measure", "line (2nd axis)", "enc-line_measure")}
-            {enc("group", "group / series", "enc-group")}
-          </>
-        )}
-        <label style={label} title="reorder the x-axis categories (known ordinals are auto-ordered by the agent; this overrides for custom / non-ordinal columns)">
-          sort x{" "}
-          <KitSelect
-            testId="sort-xaxis"
-            ariaLabel="Sort x-axis"
-            value=""
-            onValueChange={(v) => {
-              if (v) sortXAxis(o, v);
-            }}
-            options={[
-              { value: "", label: "— reorder —" },
-              { value: "numeric", label: "by number (400 → 5000)" },
-              { value: "az", label: "A → Z" },
-              { value: "za", label: "Z → A" },
-            ]}
-          />
-        </label>
-      </div>
-    );
-  };
-
+  /** The card's edit panel: what it's called, where it sits, what data backs it,
+   *  and — for a builder-authored object — the Structured Builder itself,
+   *  expanded INSIDE its own box rather than pushed below the panel, so the
+   *  controls stay visually attached to the button that opened them. */
   const editPanel = (o: PageObject, cols: number) => {
     const isChart = o.type === "trend" || o.type === "breakdown" || o.type === "compare";
     const loc = locate(pages, o.element_id);
+    // Tables are builder-authored too (a plain table, or a pivot), so they get
+    // the same in-place edit as the charts — otherwise the builder could create
+    // an object it then refused to reopen.
+    const buildable = (isChart || o.type === "table") && !!onEditInBuilder;
+    const building = builderPanel && editingId === o.element_id;
     return (
       <div
         style={{
@@ -639,6 +587,88 @@ export function ReportEditor({
           gap: 6,
         }}
       >
+        {/* Panel header — the close control lives here, apart from the card's own
+            ✕ (which REMOVES the object), so the two are never confused. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ ...label, opacity: 0.5 }}>edit</span>
+          <button
+            type="button"
+            data-testid="close-edit"
+            title="close edit"
+            aria-label="Close edit"
+            style={{ ...ctrl, marginLeft: "auto", padding: "1px 7px" }}
+            onClick={() => {
+              if (building) onCloseBuilder?.();
+              toggleOpen(o.element_id);
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {TEXT_FIELDS[o.type].map(([key, lbl, multi]) => (
+          <label key={key} style={{ display: "block" }}>
+            <span style={label}>{lbl}</span>
+            {multi ? (
+              <textarea
+                value={String(o.data[key] ?? "")}
+                onChange={(e) => patchData(o.element_id, key, e.target.value)}
+                rows={2}
+                style={fieldInput}
+              />
+            ) : (
+              <input
+                value={String(o.data[key] ?? "")}
+                onChange={(e) => patchData(o.element_id, key, e.target.value)}
+                style={fieldInput}
+              />
+            )}
+          </label>
+        ))}
+
+        {/* Where the object sits, and how tall it draws. */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ ...label, opacity: 0.5 }}>location</span>
+          {pages.length > 1 && loc && (
+            <label style={{ ...label }}>
+              page{" "}
+              <KitSelect
+                testId="move-page"
+                ariaLabel="Move to page"
+                value={String(loc.pi)}
+                onValueChange={(v) => moveTo(o.element_id, Number(v), loc.ci)}
+                options={pages.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
+              />
+            </label>
+          )}
+          {cols > 1 && loc && (
+            <label style={{ ...label }}>
+              column{" "}
+              <KitSelect
+                testId="move-column"
+                ariaLabel="Move to column"
+                value={String(loc.ci)}
+                onValueChange={(v) => moveTo(o.element_id, loc.pi, Number(v))}
+                options={Array.from({ length: cols }, (_, i) => ({
+                  value: String(i),
+                  label: String(i + 1),
+                }))}
+              />
+            </label>
+          )}
+          {isChart && (
+            <label style={{ ...label }}>
+              height{" "}
+              <KitSelect
+                ariaLabel="Chart height"
+                value={String(o.data["height"] ?? "md")}
+                onValueChange={(v) => patchData(o.element_id, "height", v)}
+                options={HEIGHTS.map((h) => ({ value: h, label: h }))}
+              />
+            </label>
+          )}
+        </div>
+
         {/* Link this object to a ② Sandbox object — pick one to base its data on.
             The shared element_id ties the two views together and drives the sandbox
             coverage. Only unlinked sandbox objects (+ the current one) are offered,
@@ -693,118 +723,45 @@ export function ReportEditor({
             );
           })()}
         </div>
-        {isChart && onEditInBuilder && (
+
+        {/* Edit with the Structured Builder. The builder expands INTO this box
+            when opened, so the panel grows in place instead of the controls
+            appearing somewhere below the card's other fields. */}
+        {buildable && (
           <div
+            data-testid="builder-box"
             style={{
               display: "flex",
+              flexDirection: "column",
               gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
               padding: 6,
               borderRadius: 6,
-              border: "1px solid rgba(120,160,255,0.45)",
+              border: `1px solid rgba(120,160,255,${building ? 0.85 : 0.45})`,
               background: "rgba(120,160,255,0.07)",
             }}
           >
-            <button
-              type="button"
-              data-testid="edit-in-builder"
-              style={{
-                ...ctrl,
-                padding: "3px 10px",
-                background: "rgba(120,160,255,0.28)",
-                borderColor: "rgba(120,160,255,0.6)",
-              }}
-              onClick={() => onEditInBuilder(o)}
-            >
-              ◆ edit in Structured Builder
-            </button>
-            <span style={{ ...label, opacity: 0.55, textTransform: "none", letterSpacing: 0 }}>
-              change columns · measures · group · filter deterministically, with a live preview
-            </span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                data-testid="edit-in-builder"
+                aria-expanded={!!building}
+                style={{
+                  ...ctrl,
+                  padding: "3px 10px",
+                  background: "rgba(120,160,255,0.28)",
+                  borderColor: "rgba(120,160,255,0.6)",
+                }}
+                onClick={() => (building ? onCloseBuilder?.() : onEditInBuilder?.(o))}
+              >
+                {building ? "▾ edit with Structured Builder" : "◆ edit with Structured Builder"}
+              </button>
+              <span style={{ ...label, opacity: 0.55, textTransform: "none", letterSpacing: 0 }}>
+                change columns · measures · group · filter deterministically, with a preview
+              </span>
+            </div>
+            {building && <div data-testid="inline-builder">{builderPanel}</div>}
           </div>
         )}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <label style={{ ...label }}>
-            type{" "}
-            <KitSelect
-              ariaLabel="Object type"
-              value={o.type}
-              onValueChange={(v) => retype(o.element_id, v as PageObjectType)}
-              options={OBJECT_TYPES.map((t) => ({ value: t, label: OBJECT_TYPE_LABELS[t] }))}
-            />
-          </label>
-          {pages.length > 1 && loc && (
-            <label style={{ ...label }}>
-              page{" "}
-              <KitSelect
-                testId="move-page"
-                ariaLabel="Move to page"
-                value={String(loc.pi)}
-                onValueChange={(v) => moveTo(o.element_id, Number(v), loc.ci)}
-                options={pages.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
-              />
-            </label>
-          )}
-          {cols > 1 && loc && (
-            <label style={{ ...label }}>
-              column{" "}
-              <KitSelect
-                testId="move-column"
-                ariaLabel="Move to column"
-                value={String(loc.ci)}
-                onValueChange={(v) => moveTo(o.element_id, loc.pi, Number(v))}
-                options={Array.from({ length: cols }, (_, i) => ({
-                  value: String(i),
-                  label: String(i + 1),
-                }))}
-              />
-            </label>
-          )}
-          {isChart && (
-            <label style={{ ...label }}>
-              height{" "}
-              <KitSelect
-                ariaLabel="Chart height"
-                value={String(o.data["height"] ?? "md")}
-                onValueChange={(v) => patchData(o.element_id, "height", v)}
-                options={HEIGHTS.map((h) => ({ value: h, label: h }))}
-              />
-            </label>
-          )}
-          <label style={{ ...label }}>
-            role{" "}
-            <input
-              value={o.role ?? ""}
-              placeholder="e.g. headline"
-              onChange={(e) => patchObject(o.element_id, { role: e.target.value || null })}
-              style={{ fontSize: 12, padding: "2px 4px", width: 90 }}
-            />
-          </label>
-        </div>
-        {TEXT_FIELDS[o.type].map(([key, lbl, multi]) => (
-          <label key={key} style={{ display: "block" }}>
-            <span style={label}>{lbl}</span>
-            {multi ? (
-              <textarea
-                value={String(o.data[key] ?? "")}
-                onChange={(e) => patchData(o.element_id, key, e.target.value)}
-                rows={2}
-                style={fieldInput}
-              />
-            ) : (
-              <input
-                value={String(o.data[key] ?? "")}
-                onChange={(e) => patchData(o.element_id, key, e.target.value)}
-                style={fieldInput}
-              />
-            )}
-          </label>
-        ))}
-        {isChart && encodingControls(o)}
-        <button type="button" style={{ ...ctrl, alignSelf: "flex-start" }} onClick={() => toggleOpen(o.element_id)}>
-          done
-        </button>
       </div>
     );
   };
@@ -839,6 +796,16 @@ export function ReportEditor({
         </button>
         <button type="button" title="move down" style={ctrl} onClick={() => moveInCol(o.element_id, 1)}>
           ↓
+        </button>
+        <button
+          type="button"
+          title="duplicate"
+          aria-label="Duplicate object"
+          data-testid="clone-object"
+          style={ctrl}
+          onClick={() => cloneObject(o.element_id)}
+        >
+          ⧉
         </button>
         <button
           type="button"
@@ -953,8 +920,8 @@ export function ReportEditor({
                 ✕ page
               </button>
               <span style={{ fontSize: 11, opacity: 0.5 }}>
-                drag cards or use ↑↓ · ✎ edit · column picker to move · ✕ remove · click a card
-                then ⌘/Ctrl+C copy · ⌘/Ctrl+V paste below · Del remove
+                drag cards or use ↑↓ · ⧉ duplicate · ✎ edit · column picker to move · ✕ remove ·
+                click a card then ⌘/Ctrl+C copy · ⌘/Ctrl+V paste below · Del remove
               </span>
             </div>
             <input
@@ -1022,6 +989,28 @@ export function ReportEditor({
                               </span>
                             </button>
                           ))}
+                          {/* A pivot RENDERS as a table, so it isn't its own object
+                              type — but a curator looks for it here, next to the
+                              things they add. Picking it drops in the table and
+                              opens the builder on it, already in pivot mode. */}
+                          {onEditInBuilder && (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="obj-row"
+                              data-testid={`add-opt-${pi}-${ci}-pivot`}
+                              onClick={() => addObject(pi, ci, "table", "pivot")}
+                            >
+                              <span className="obj-row-glyph">{PIVOT_GLYPH}</span>
+                              <span className="obj-row-text">
+                                <b>Pivot table</b>
+                                <span>
+                                  rows × a pivoted column (e.g. postcode across the top), metrics in
+                                  the cells
+                                </span>
+                              </span>
+                            </button>
+                          )}
                           {(() => {
                             // Only offer sandbox objects not already placed anywhere in the
                             // page — mirrors the edit-panel's linked-object-select guard, so

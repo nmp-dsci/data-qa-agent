@@ -66,18 +66,23 @@ export function ExplorePage({ isAdmin = false }: { isAdmin?: boolean }) {
     <main className="ex-page">
       <div className="ex-top">
         <h2 className="ex-title">Explore</h2>
-        <label className="ex-ctrl">
-          <span className="ex-ctrl-label">Dataset</span>
-          <KitSelect
-            value={slug ?? ""}
-            ariaLabel="Dataset"
-            onValueChange={(v) => {
-              setSlug(v);
-              track("explore_dataset_changed", { dataset: v });
-            }}
-            options={datasets.map((d) => ({ value: d.slug, label: d.name }))}
-          />
-        </label>
+        {/* Profile has its own Dataset picker lower down, next to Metric,
+            below the cohorts it applies to — Trends and Dictionary don't have
+            a setup panel of their own, so they keep it up here. */}
+        {tool !== "profile" && (
+          <label className="ex-ctrl">
+            <span className="ex-ctrl-label">Dataset</span>
+            <KitSelect
+              value={slug ?? ""}
+              ariaLabel="Dataset"
+              onValueChange={(v) => {
+                setSlug(v);
+                track("explore_dataset_changed", { dataset: v });
+              }}
+              options={datasets.map((d) => ({ value: d.slug, label: d.name }))}
+            />
+          </label>
+        )}
         <span className="ex-top-note muted">datasets you're granted</span>
       </div>
 
@@ -97,7 +102,9 @@ export function ExplorePage({ isAdmin = false }: { isAdmin?: boolean }) {
 
       {dataset && (
         <div className="ex-tool-host" key={`${dataset.slug}-${tool}`}>
-          {tool === "profile" && <ProfileTool dataset={dataset} isAdmin={isAdmin} />}
+          {tool === "profile" && (
+            <ProfileTool dataset={dataset} datasets={datasets} isAdmin={isAdmin} />
+          )}
           {tool === "trends" && <TrendsTool dataset={dataset} />}
           {tool === "dictionary" && <DictionaryTool dataset={dataset} />}
         </div>

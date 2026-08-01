@@ -64,6 +64,10 @@ function ObjectBodyInner({ o }: { o: PageObject }) {
           data={{
             x: String(d["x"] ?? "month"),
             y: String(d["y"] ?? "value"),
+            // The rows' value column is literally "value", so the axis needs the
+            // measure's own name and unit to format honestly.
+            y_label: (d["y_label"] as string | null) ?? null,
+            y_unit: (d["y_unit"] as string | null) ?? null,
             series: (d["series"] as string | null) ?? null,
             title: (d["title"] as string | null) ?? null,
             sql: (d["sql"] as string | null) ?? null,
@@ -76,6 +80,7 @@ function ObjectBodyInner({ o }: { o: PageObject }) {
       const barsData: BarsData = {
         dimension: String(d["dimension"] ?? ""),
         measure: String(d["measure"] ?? ""),
+        unit: (d["unit"] as string | null) ?? null,
         group: (d["group"] as string | null) ?? null,
         title: (d["title"] as string | null) ?? null,
         stacked: Boolean(d["stacked"]),
@@ -90,7 +95,13 @@ function ObjectBodyInner({ o }: { o: PageObject }) {
         return (
           <Combo
             height={resolveHeight(d["height"])}
-            data={{ ...barsData, line_measure: String(d["line_measure"]) } satisfies ComboData}
+            data={
+              {
+                ...barsData,
+                line_measure: String(d["line_measure"]),
+                line_unit: (d["line_unit"] as string | null) ?? null,
+              } satisfies ComboData
+            }
           />
         );
       }
@@ -116,6 +127,7 @@ function ObjectBodyInner({ o }: { o: PageObject }) {
               layer: String(d["layer"] ?? "poa_nsw"),
               key_field: String(d["key_field"] ?? "postcode"),
               value_field: String(d["value_field"] ?? "value"),
+              unit: (d["unit"] as string | null) ?? null,
               title: (d["title"] as string | null) ?? null,
               rows: (d["rows"] as Record<string, unknown>[]) ?? [],
               height: resolveHeight(d["height"]),

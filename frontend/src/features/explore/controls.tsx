@@ -2,6 +2,7 @@
 // editor the Profile and Trends tools compose. Kept dumb: they read the dataset
 // manifest and emit plain selections; the tools own the fetching.
 import { KitSelect } from "@/components/kit/KitSelect";
+import { formatPoa, isPoaDimension, stripPoa } from "../../lib/format";
 import {
   ExploreDataset,
   ExploreDimension,
@@ -12,9 +13,12 @@ import {
 import { MultiSelect } from "./MultiSelect";
 import { SearchableSelect } from "./SearchableSelect";
 
-function toArray(raw: unknown): (string | number)[] {
+/** A multi-select's three states, read off a stored filter value: null when the
+ *  filter isn't set (a fresh chip), [] when the user explicitly chose nothing,
+ *  otherwise the values. See MultiSelect's header for why they stay distinct. */
+function toSelection(raw: unknown): (string | number)[] | null {
   if (Array.isArray(raw)) return raw as (string | number)[];
-  if (raw == null || raw === "") return [];
+  if (raw == null || raw === "") return null;
   return [raw as string | number];
 }
 function scalarOf(raw: unknown): string {
@@ -92,26 +96,34 @@ function FilterValueInput({
   rawValue: unknown;
   onChange: (v: ExploreFilterValue | undefined) => void;
 }) {
-  const emitList = (vals: (string | number)[]) => onChange(vals.length ? vals : undefined);
+  // null clears the filter (chip and all); [] is kept, because "nothing
+  // selected" is a real answer the backend compiles to `false`.
+  const emitList = (vals: (string | number)[] | null) => onChange(vals ?? undefined);
+  // Postcodes read as bare four-digit numbers; label them as Postal Area codes
+  // in the picker (display only — the emitted filter stays the bare code).
+  const poa = isPoaDimension(dim.name);
+  const poaProps = poa ? { format: formatPoa, transformQuery: stripPoa } : {};
 
   if (dim.multi && dim.domain && dim.domain.length > 0) {
     return (
       <MultiSelect
-        selected={toArray(rawValue)}
+        selected={toSelection(rawValue)}
         options={dim.domain}
         allByDefault
         onChange={emitList}
         ariaLabel={`${dim.label} values`}
+        {...poaProps}
       />
     );
   }
   if (dim.multi && dim.typeahead) {
     return (
       <MultiSelect
-        selected={toArray(rawValue)}
+        selected={toSelection(rawValue)}
         fetchOptions={(q) => exploreTypeahead(datasetSlug, dim.name, q)}
         onChange={emitList}
         ariaLabel={`${dim.label} values`}
+        {...poaProps}
       />
     );
   }
@@ -163,19 +175,26 @@ export function FilterEditor({
   filters,
   onChange,
   tone,
+  dims: dimsProp,
 }: {
   dataset: ExploreDataset;
   filters: ExploreFilters;
   onChange: (f: ExploreFilters) => void;
   tone?: "target" | "comparison";
+  /** Which dimensions may be filtered. Explore offers every one; the Goldens
+   *  builder narrows it to the mart-backed columns its extract can name. */
+  dims?: ExploreDimension[];
 }) {
-  const dims = splittableDimensions(dataset, { includeTime: true });
+  const dims = dimsProp ?? splittableDimensions(dataset, { includeTime: true });
   const active = Object.keys(filters);
   const available = dims.filter((d) => !active.includes(d.name));
 
   const setValue = (name: string, raw: ExploreFilterValue | undefined) => {
     const next = { ...filters };
-    if (raw == null || raw === "" || (Array.isArray(raw) && raw.length === 0)) delete next[name];
+    // An empty array is KEPT: "nothing selected" is a real state the chip has to
+    // hold while you tick values back in, and the backend already compiles it to
+    // `false`. Only an absent/blank value removes the filter.
+    if (raw == null || raw === "") delete next[name];
     else next[name] = raw;
     onChange(next);
   };

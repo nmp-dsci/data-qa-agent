@@ -24,6 +24,13 @@ from pathlib import Path
 import pytest
 
 from agent.pages import TEMPLATE_COLUMNS, TEMPLATE_IDS, ObjectType
+from agent.units import (
+    _MONEY_WORDS,
+    _PERCENT_WORDS,
+    _PLACEHOLDER_NAMES,
+    COLUMN_UNITS,
+    DERIVE_UNITS,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = (
@@ -157,3 +164,49 @@ def test_seeded_chart_registry_types_are_agent_emittable() -> None:
     assert seeded, "no chart seeds found in migrations"
     assert seeded <= _agent_object_types()
     assert "table" in seeded, "the DataTable chart seed (0027) is missing"
+
+
+# ---------------------------------------------------------------------------
+# Unit vocabulary (s34) — a number's unit is declared by whatever builds the
+# object, but a golden saved before units existed carries none, so the frontend
+# keeps a fallback table keyed by metric name. That copy must not drift from
+# agent/units.py, or the same column would be dollars on one path and a bare
+# count on the other.
+# ---------------------------------------------------------------------------
+UNITS_TS = REPO_ROOT / "frontend" / "src" / "ui" / "charts" / "units.ts"
+
+
+def _ts_unit_table(name: str) -> dict[str, str]:
+    """A `const <name>: Record<string, Unit> = { key: "unit", … }` literal."""
+    src = UNITS_TS.read_text()
+    match = re.search(rf"const {name}[^{{]*\{{(.*?)\n\}};", src, re.S)
+    assert match, f"{name} not found in units.ts"
+    return dict(re.findall(r'^\s*([A-Za-z_][\w]*):\s*"([a-z]+)"', match.group(1), re.M))
+
+
+@pytest.mark.skipif(not UNITS_TS.exists(), reason="frontend source not on disk")
+def test_frontend_column_units_match_agent() -> None:
+    assert _ts_unit_table("COLUMN_UNITS") == COLUMN_UNITS
+
+
+@pytest.mark.skipif(not UNITS_TS.exists(), reason="frontend source not on disk")
+def test_frontend_derive_units_match_agent() -> None:
+    assert _ts_unit_table("DERIVE_UNITS") == DERIVE_UNITS
+
+
+def _ts_word_list(name: str) -> set[str]:
+    """A `const <name> = ["a", "b", …];` literal (possibly multi-line)."""
+    src = UNITS_TS.read_text()
+    match = re.search(rf"const {name}[^=]*=\s*\[(.*?)\];", src, re.S)
+    assert match, f"{name} not found in units.ts"
+    return set(re.findall(r'"([^"]+)"', match.group(1)))
+
+
+@pytest.mark.skipif(not UNITS_TS.exists(), reason="frontend source not on disk")
+def test_frontend_name_resolution_words_match_agent() -> None:
+    """The fallback resolver runs on both sides — server-side for a pivot's
+    generated column names, client-side for objects saved before units existed.
+    The same name must not be dollars on one and a bare count on the other."""
+    assert _ts_word_list("PERCENT_WORDS") == set(_PERCENT_WORDS)
+    assert _ts_word_list("MONEY_WORDS") == set(_MONEY_WORDS)
+    assert _ts_word_list("PLACEHOLDER_NAMES") == set(_PLACEHOLDER_NAMES)

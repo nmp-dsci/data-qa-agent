@@ -18,16 +18,26 @@ Reads `docs/chronicle/assets/POA_2016_NSW_reduced.geojson` (gitignored — see
 { "viewBox": [1000, 412.1], "features": [ { "postcode": "2000", "d": "M..Z" }, … ] }
 ```
 
-Current output: **616 postcode shapes, ~261 KB raw / ~72 KB gzipped** — well under
-the 1 MB budget, and lazy-loaded only when a map first renders.
+Current output: **647 postcode shapes, ~1.3 MB raw / ~330 KB gzipped** — lazy-loaded
+only when a map first renders.
 
 ## How it works
 
 * **Projection** — equirectangular with a `cos(lat)` longitude correction (fine for
-  a single state), scaled uniformly to a 1000-wide viewBox so aspect is preserved.
-  The projection is baked in once here, so the browser only draws `<path>`s.
-* **Simplification** — Douglas–Peucker in projected pixels (`DP_TOLERANCE = 0.4`),
-  seeded with the farthest point so closed rings simplify correctly.
+  a single state), scaled uniformly to a `VIEW_W`-wide (200,000) integer coordinate
+  grid so aspect is preserved. The projection is baked in once here, so the browser
+  only draws `<path>`s; the frontend reads the viewBox out of the payload, so
+  `VIEW_W` can be re-tuned here alone. Paths use relative `l` deltas instead of
+  absolute `L` points — neighbouring vertices are a few grid units apart, so the
+  deltas are 1-3 digits where absolute coordinates would be 5-6 (~2.5x smaller
+  gzipped).
+* **Simplification** — Douglas–Peucker in projected grid units (`DP_TOLERANCE =
+  VIEW_W / 100_000`, ~2.0), seeded with the farthest point so closed rings simplify
+  correctly. The grid width is the knob that matters for zoomed-in legibility: too
+  coarse a grid collapses neighbouring source vertices onto the same line and the
+  outline reads as a rectilinear staircase however many vertices survive
+  simplification — see the module docstring in `build_poa_paths.py` for the
+  measured staircase-vs-size tradeoff behind the current setting.
 * **Runtime** — `Choropleth.tsx` fetches the layer once (cached per layer id),
   builds a `postcode → value` map from its rows, and shades each path with a
   red→amber→green ramp (`--bad`/`--warn`/`--good` tokens). `diverging: true`

@@ -13,7 +13,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -355,7 +355,7 @@ class ProfileBody(BaseModel):
     # own unfiltered grand total for its metric), or "growth" (target vs
     # comparison % change). Purely a display/derivation choice — it never
     # changes which rows are fetched.
-    calculation: str = "raw"
+    calculation: Literal["raw", "pct_total", "growth"] = "raw"
     target: CohortBody
     comparison: CohortBody
 

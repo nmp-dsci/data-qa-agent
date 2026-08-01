@@ -1267,6 +1267,32 @@ def test_same_metric_twice_with_and_without_a_derive() -> None:
     assert row["bonds · 2076"] != row["bonds growth % · 2076"]
 
 
+def test_pivot_disambiguates_a_shared_label_across_derives() -> None:
+    """Two ``pivot_measures`` sharing a label but differing only by ``derive``
+    must not collide on the merge — the label is auto-disambiguated (mirroring
+    the trend path's derive-suffix rename) rather than letting pandas silently
+    suffix the merged column ``_x``/``_y`` and break every downstream lookup."""
+    spec = _rent_pivot_spec()
+    spec["pivot_measures"] = [
+        {"label": "bonds", "source": "n_rented", "agg": "sum", "months": 12},
+        {
+            "label": "bonds",
+            "source": "n_rented",
+            "agg": "sum",
+            "months": 12,
+            "derive": "growth",
+        },
+    ]
+    code = build_object_code(object_type="pivot", spec=spec, dataset="nsw_rent")
+    frame = _rent_pivot_frame()
+    outcome = run_code(code, df=frame, frames={"extract": frame})
+    assert outcome.error is None, outcome.error
+    keys = [c["key"] for c in outcome.report["table"]["columns"]]
+    assert "bonds · 2076" in keys and "bonds growth · 2076" in keys
+    row = outcome.report["table"]["rows"][0]
+    assert row["bonds · 2076"] != row["bonds growth · 2076"]
+
+
 def test_trend_time_derive_needs_a_time_axis() -> None:
     """A growth rate reads a change ALONG the axis. Over categories each series is
     one point, so pct_change yields nothing and the chart came back silently

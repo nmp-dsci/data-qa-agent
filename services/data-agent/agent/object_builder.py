@@ -1171,6 +1171,28 @@ def pivot_measures(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _dedup_pivot_labels(measures: list[dict[str, Any]]) -> None:
+    """Disambiguate pivot measures that share a label, mirroring the trend path's
+    ``_series_derive_lines`` (which appends the derive to a re-derived series'
+    label). Two ``pivot_measures`` entries with the same label but different
+    ``derive`` would otherwise collide on ``agg.merge``'s shared column name —
+    pandas silently suffixes it ``_x``/``_y``, and every downstream lookup by
+    label (``_vals``/``_units``/``piv.pivot_table``) breaks."""
+    counts: dict[str, int] = {}
+    for m in measures:
+        counts[m["label"]] = counts.get(m["label"], 0) + 1
+    seen: dict[str, int] = {}
+    for m in measures:
+        label = m["label"]
+        if counts[label] <= 1:
+            continue
+        derive = m.get("derive") or ""
+        candidate = f"{label} {derive}" if derive else label
+        n = seen.get(candidate, 0)
+        seen[candidate] = n + 1
+        m["label"] = candidate if n == 0 else f"{candidate} {n + 1}"
+
+
 def _pivot_code(spec: dict[str, Any], prof: MartProfile) -> str:
     """A cross-tab: rows x one pivoted dimension, each cell a set of metrics.
 
@@ -1196,6 +1218,7 @@ def _pivot_code(spec: dict[str, Any], prof: MartProfile) -> str:
     measures = pivot_measures(spec)
     if not measures:
         raise ValueError("pivot needs at least one metric")
+    _dedup_pivot_labels(measures)
 
     months = int(spec.get("months") or 12)
     grain = _pivot_grain(spec, prof)

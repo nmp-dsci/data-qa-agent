@@ -27,15 +27,23 @@ async def check_daily_llm_cap(user: CurrentUser) -> None:
         plan = (
             await conn.execute(text("SELECT plan FROM app.users WHERE id = :uid"), {"uid": user.id})
         ).scalar() or "free"
-        paid = plan in ("plus", "pro")
-        tier, limit = (
-            ("paid", settings.ask_daily_limit_paid)
-            if paid
-            else (
-                "free",
-                settings.ask_daily_limit_free,
+        # A service account (s35) is shared by everyone on its surface — a whole
+        # Slack channel behind one identity — so the per-person tiers are the
+        # wrong shape for it and the free cap would be gone by lunchtime. It gets
+        # its own limit rather than a role-based exemption: a machine identity
+        # must never need to be an admin to function.
+        if plan == "service":
+            tier, limit = "service", settings.ask_daily_limit_service
+        else:
+            paid = plan in ("plus", "pro")
+            tier, limit = (
+                ("paid", settings.ask_daily_limit_paid)
+                if paid
+                else (
+                    "free",
+                    settings.ask_daily_limit_free,
+                )
             )
-        )
         if limit <= 0:
             return
         result = await conn.execute(

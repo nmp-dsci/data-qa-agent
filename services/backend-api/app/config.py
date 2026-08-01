@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     # 0 disables that tier's cap.
     ask_daily_limit_free: int = 5
     ask_daily_limit_paid: int = 10
+    # Service accounts (s35) are shared by a whole surface — a Slack channel
+    # behind one identity — so they get their own ceiling rather than a
+    # role-based exemption. Still capped: a leaked key must not be able to run
+    # up an unbounded bill. 0 disables the cap.
+    ask_daily_limit_service: int = 200
+
+    # ---- Integrations (s35) ------------------------------------------------
+    # Slack signs its own requests; this is the workspace signing secret used to
+    # verify X-Slack-Signature. Empty (the default) closes the Slack path
+    # entirely, mirroring how ops_ingest_token gates the ingest endpoints.
+    slack_signing_secret: str = ""
 
     # ---- Observability (s32 W2) --------------------------------------------
     # Optional — ships backend traces to Logfire Cloud when set; local-only

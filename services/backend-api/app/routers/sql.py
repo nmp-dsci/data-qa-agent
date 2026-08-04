@@ -13,7 +13,7 @@ from ..agent_client import assist_sql_on_agent, fetch_catalog, run_sql_on_agent
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
 from ..db import jsonable, rls_connection
-from ..limits import check_daily_llm_cap
+from ..limits import check_daily_llm_cap, check_daily_query_cap
 
 router = APIRouter(tags=["sql"])
 
@@ -60,6 +60,11 @@ async def run_sql(
     sql = body.sql.strip()
     if not sql:
         raise HTTPException(status_code=400, detail="SQL must not be empty")
+
+    # s36: bounds a *service* account only. Human editor use stays uncapped —
+    # a governed SELECT costs no tokens — but a machine key driving the MCP
+    # surface can loop, so it gets a daily ceiling.
+    await check_daily_query_cap(user)
 
     async with rls_connection(user.id) as conn:
         await _log_event(conn, user.id, "sql_query_submitted", {"length": len(sql)})

@@ -13,6 +13,8 @@ from starlette.concurrency import run_in_threadpool
 
 from .config import settings
 from .db import rls_connection
+from .service_auth import split_key as split_service_key
+from .service_auth import verify as verify_service_secret
 
 # Dev-auth stub only (auth_mode=dev): the local HS256 session token, also set
 # as an httpOnly cookie by /auth/dev-login so a page reload doesn't drop the
@@ -187,6 +189,64 @@ async def _provision_google_user(claims: dict[str, Any]) -> CurrentUser:
 
 
 # ---------------------------------------------------------------------------
+# Service accounts (s35): a machine caller that resolves to a real app.users row
+# ---------------------------------------------------------------------------
+async def _service_account_user(key_id: str, secret: str, surface: str | None) -> CurrentUser:
+    """Resolve a ``dpk_`` key to the bot's own users row, or 401.
+
+    Deliberately identical in every environment — this is a production
+    authentication path, not a dev convenience, so it never relaxes on
+    auth_mode. The identity comes solely from the verified key: no request
+    field, header or body value can influence which user is returned. There is
+    no act-as in v1 (see s35: bot identity, channel membership is the boundary).
+    """
+    async with rls_connection(None) as conn:
+        row = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT sa.key_hash, sa.surface, sa.revoked_at, "
+                        "       u.id, u.username, u.email, u.role "
+                        "FROM app.service_accounts sa "
+                        "JOIN app.users u ON u.id = sa.user_id "
+                        "WHERE sa.key_id = :key_id"
+                    ),
+                    {"key_id": key_id},
+                )
+            )
+            .mappings()
+            .first()
+        )
+        # Verify before branching on anything else the row says, so a wrong
+        # secret and an unknown key_id are indistinguishable from outside.
+        if row is None or not verify_service_secret(secret, row["key_hash"]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid service key"
+            )
+        if row["revoked_at"] is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Service key revoked"
+            )
+        # A key is valid on exactly one front door. Checked per request, never
+        # cached: revocation that takes effect in five minutes is not revocation.
+        if surface is not None and row["surface"] != surface:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This key is not valid for the {surface} surface",
+            )
+        await conn.execute(
+            text("UPDATE app.service_accounts SET last_used_at = now() WHERE key_id = :key_id"),
+            {"key_id": key_id},
+        )
+    return CurrentUser(
+        id=str(row["id"]),
+        username=row["username"],
+        email=row["email"],
+        role=row["role"],
+    )
+
+
+# ---------------------------------------------------------------------------
 # FastAPI dependencies (dispatch on auth_mode)
 # ---------------------------------------------------------------------------
 def _bearer_token(authorization: str | None) -> str | None:
@@ -196,7 +256,7 @@ def _bearer_token(authorization: str | None) -> str | None:
 
 
 async def _user_from_credentials(
-    authorization: str | None, session_cookie: str | None
+    authorization: str | None, session_cookie: str | None, surface: str | None = None
 ) -> CurrentUser | None:
     # Header first, so nothing that already sends an explicit bearer (scripts,
     # smoke tests, the CI journeys, Google mode's ID token) changes behaviour.
@@ -205,6 +265,13 @@ async def _user_from_credentials(
     # server never accepts a dev-mode cookie while running in Google mode.
     token = _bearer_token(authorization)
     if token is not None:
+        # Service keys are checked before the auth_mode dispatch: they are their
+        # own credential type, valid in every environment, and must not fall
+        # through to Google verification (which would reject them) or to the dev
+        # stub (which would be a prod backdoor).
+        parsed = split_service_key(token)
+        if parsed is not None:
+            return await _service_account_user(parsed[0], parsed[1], surface)
         if settings.auth_mode == "google":
             claims = await _google_verifier.verify(token)
             return await _provision_google_user(claims)
@@ -212,6 +279,41 @@ async def _user_from_credentials(
     if session_cookie is not None and settings.auth_mode == "dev":
         return _dev_user(session_cookie)
     return None
+
+
+async def service_account_from_header(authorization: str | None, surface: str) -> CurrentUser:
+    """Resolve a ``dpk_`` key from a raw Authorization header, or raise.
+
+    The ASGI-level twin of ``service_key_user`` (s36). The MCP surface is mounted
+    as an ASGI sub-application rather than a FastAPI route, so it has to
+    authenticate before Starlette ever builds a Request and cannot use a
+    dependency. Same verification, same surface pinning, same failure modes.
+    """
+    token = _bearer_token(authorization)
+    parsed = split_service_key(token) if token is not None else None
+    if parsed is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Service key required")
+    return await _service_account_user(parsed[0], parsed[1], surface)
+
+
+def service_key_user(surface: str) -> Any:
+    """A dependency that accepts ONLY a ``dpk_`` key pinned to ``surface``.
+
+    Used by the integration routers so a human session (or a key minted for a
+    different front door) cannot drive a machine endpoint.
+    """
+
+    async def _dep(authorization: str | None = Header(default=None)) -> CurrentUser:
+        token = _bearer_token(authorization)
+        if token is None or split_service_key(token) is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Service key required"
+            )
+        user = await _user_from_credentials(authorization, None, surface)
+        assert user is not None  # noqa: S101 - the branch above always resolves or raises
+        return user
+
+    return _dep
 
 
 async def get_current_user(

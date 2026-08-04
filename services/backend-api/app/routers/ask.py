@@ -423,18 +423,26 @@ def _degraded_result(reason: str) -> dict[str, Any]:
     }
 
 
-@router.post("/ask", response_model=AskResponse)
-async def ask(
-    body: AskRequest,
-    background_tasks: BackgroundTasks,
-    user: CurrentUser = Depends(get_current_user),
-    channel: str = Depends(get_channel),
+async def run_question(
+    user: CurrentUser,
+    raw_question: str,
+    channel: str,
+    conversation_id: str | None = None,
 ) -> AskResponse:
-    question = _clean_question(body.question)
+    """The whole ask pipeline: cap -> agent -> persist -> response.
+
+    Shared by /ask and the s35 integration surfaces (Slack, webhook, MCP) so a
+    machine caller goes through the *same* cap, RLS scoping, degraded-mode
+    fallback and audit write as the web UI. Any new front door that reimplements
+    this is a second security surface; there should only ever be one.
+
+    Titling is deliberately not done here — it is a UI-sidebar concern, and the
+    integrations have no sidebar.
+    """
+    question = _clean_question(raw_question)
     await check_daily_llm_cap(user)
 
-    is_new = body.conversation_id is None
-    conversation_id, plan = await _open_conversation(user, body.conversation_id, question)
+    conv_id, plan = await _open_conversation(user, conversation_id, question)
     # Delegate to the agent (its own connection enforces the same RLS).
     started = time.perf_counter()
     try:
@@ -451,16 +459,26 @@ async def ask(
         result = _degraded_result(f"agent unavailable: {exc}")
     latency_ms = int((time.perf_counter() - started) * 1000)
 
-    message_id, run_id = await _persist_answer(
-        user, channel, conversation_id, question, result, latency_ms
-    )
+    message_id, run_id = await _persist_answer(user, channel, conv_id, question, result, latency_ms)
+    return _build_response(conv_id, message_id, run_id, result, latency_ms, user.role == "admin")
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask(
+    body: AskRequest,
+    background_tasks: BackgroundTasks,
+    user: CurrentUser = Depends(get_current_user),
+    channel: str = Depends(get_channel),
+) -> AskResponse:
+    is_new = body.conversation_id is None
+    response = await run_question(user, body.question, channel, body.conversation_id)
     # Summarise the first question into a short sidebar title after the response
     # is sent, so it never adds to the answer's latency (s17 E1).
     if is_new:
-        background_tasks.add_task(_retitle_conversation, user, conversation_id, question)
-    return _build_response(
-        conversation_id, message_id, run_id, result, latency_ms, user.role == "admin"
-    )
+        background_tasks.add_task(
+            _retitle_conversation, user, response.conversation_id, body.question.strip()
+        )
+    return response
 
 
 def _sse(event: str, data: dict[str, Any] | str) -> str:

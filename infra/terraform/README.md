@@ -71,7 +71,7 @@ cloud smoke test. The same steps run manually via the scripts (each defaults to
 the `data-qa` SSO profile and the Terraform outputs):
 
 ```bash
-./scripts/aws_build_push.sh     # build the 4 service images (linux/amd64) → ECR
+./scripts/aws_build_push.sh     # build the 5 service images (linux/amd64) → ECR
 ./scripts/run_job.sh migrate    # one-shot ECS job: alembic upgrade head
 ./scripts/run_job.sh pipeline   # one-shot ECS job: dlt + dbt (full CSVs from S3)
 VITE_API_URL=$(terraform -chdir=infra/terraform/foundations output -raw backend_api_url) \
@@ -79,22 +79,50 @@ VITE_API_URL=$(terraform -chdir=infra/terraform/foundations output -raw backend_
 ./scripts/cloud_smoke.sh        # health, auth, token guard, governed SQL, frontend
 ```
 
-Pushing `:latest` auto-deploys both App Runner services. The pipeline job reads
-the full CSVs from the `data-qa-source-data-*` S3 bucket (`DATA_S3_BUCKET`)
-instead of local disk.
+Pushing `:latest` auto-deploys both App Runner services (backend-api,
+data-agent). The pipeline job reads the full CSVs from the
+`data-qa-source-data-*` S3 bucket (`DATA_S3_BUCKET`) instead of local disk.
+
+### MCP surface (s35 rung 3, mounted in s36)
+
+There is no separate MCP service to deploy. The surface is mounted on
+backend-api at `/mcp`, and the **client** authenticates with a `dpk_` key minted
+for `surface='mcp'` — so there is no server-side key for Terraform to hold, and
+nothing here to configure. Mint a key via the admin API (`POST
+/admin/service-accounts`, or the Settings tab) and hand it to whoever runs the
+client.
+
+`var.mcp_allowed_hosts` is gone with it. The SDK's DNS-rebinding host allowlist
+is now defence-in-depth rather than the primary control (the key gate sits in
+front of the transport), and it is off unless `MCP_ALLOWED_HOSTS` is set on
+backend-api. That removes the two-step apply the standalone service needed: App
+Runner assigns a hostname at create time and a service cannot reference its own
+`service_url`, so the allowlist could not be derived here and every remote
+request `421`'d until a second apply.
+
+`SLACK_SIGNING_SECRET` follows a "placeholder, set by hand" pattern — it comes
+from a Slack app's config, not from Terraform.
+Unset/placeholder closes the Slack endpoint with a 404, the correct default
+for an environment not wired to a workspace.
 
 ## Notes / knobs
 
 - **Scale-to-zero:** `db_min_acu = 0` (near-$0 when idle). If an apply rejects `0`
   for the engine version, set `-var db_min_acu=0.5` (or bump `db_engine_version`).
-- **The LLM API key** is the only secret you set by hand, in Phase D:
+- **Secrets set by hand** (Terraform creates a placeholder, you fill it):
+  the LLM API key (Phase D):
   ```bash
   aws secretsmanager put-secret-value \
     --secret-id data-qa/llm-api-key \
     --secret-string 'sk-...' \
     --profile data-qa --region ap-southeast-2
   ```
-  DB password + `JWT_SECRET` are Terraform-generated into Secrets Manager.
+  and, since s35, `data-qa/slack-signing-secret` — both for the same reason:
+  the value either can't be generated safely or comes from a third party
+  (Slack). The MCP service key secret is gone as of s36: the surface is mounted
+  on backend-api and the *client* carries the key, so there is nothing
+  server-side to store. DB password +
+  `JWT_SECRET` are Terraform-generated into Secrets Manager.
 - **Alarms (Phase E):** CloudWatch alarms (billing > `billing_alarm_usd` USD in
   us-east-1; backend/agent ≥ 5 5xx per 5 min) notify `alert_email` via SNS. The
   email subscription needs a one-time confirmation click, and the billing metric

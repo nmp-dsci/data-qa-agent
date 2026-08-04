@@ -70,6 +70,11 @@ jobs:
         working-directory: services/backend-api
         # s29: handler-level tests (db_warming 503 contract, /health/db) that
         # need the fastapi stack, which the repo-root env deliberately lacks.
+        # Also carries the s35/s36 MCP protocol suite, which self-skips without
+        # a running stack and a key — it is the tier-1 (deterministic, no-LLM)
+        # half. The live acceptance test that drives a real Claude client is
+        # `make mcp-smoke`, deliberately NOT here: it needs credentials and
+        # costs tokens.
         run: uv run pytest -q
 
   frontend-build:

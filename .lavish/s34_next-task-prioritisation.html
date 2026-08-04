@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What to build next — Data Pilot vs the AI-engineer gap matrix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Night Flight — the app's own tokens (frontend/src/styles.css) */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-ink:#1a1204; --accent-soft:#f2ca79;
+  --accent-2:#7fb0ff; --good:#9ece6a; --warn:#e0af68; --bad:#f2777a;
+  --purple:#c58fff; --info:#7dcfff;
+  --good-border:#33502f; --warn-border:#6b5a2a; --bad-border:#6b2a2a;
+  --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-2:0 8px 24px rgba(0,0,0,.32);
+}
+*{box-sizing:border-box;min-width:0}
+html,body{max-width:100%;overflow-x:hidden}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:15px;line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1120px;margin:0 auto;padding:48px 24px 96px}
+@media(max-width:640px){.wrap{padding:28px 16px 64px}}
+
+/* ---- masthead ---- */
+.mast{border-bottom:1px solid var(--border);padding-bottom:28px;margin-bottom:36px}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+}
+.eyebrow::before{content:"";width:22px;height:1px;background:var(--accent);flex:none}
+h1{font-size:clamp(27px,4.4vw,40px);line-height:1.14;margin:0 0 14px;letter-spacing:-.02em;font-weight:700}
+.dek{font-size:17px;color:var(--muted);margin:0;max-width:70ch}
+.dek strong{color:var(--text);font-weight:600}
+
+/* ---- section furniture ---- */
+section{margin:44px 0 0}
+h2{
+  font-size:12px;font-family:var(--mono);letter-spacing:.15em;text-transform:uppercase;
+  color:var(--faint);margin:0 0 18px;padding-bottom:9px;border-bottom:1px solid var(--border);
+  font-weight:600;
+}
+h3{font-size:19px;margin:0 0 9px;letter-spacing:-.01em;font-weight:600}
+p{margin:0 0 13px}
+p:last-child{margin-bottom:0}
+code{
+  font-family:var(--mono);font-size:.855em;background:var(--panel-3);
+  padding:1.5px 5px;border-radius:4px;color:var(--accent-soft);
+  word-break:break-word;overflow-wrap:anywhere;
+}
+a{color:var(--accent-2)}
+
+/* ---- the reframe banner ---- */
+.reframe{
+  background:linear-gradient(180deg,rgba(217,168,78,.09),rgba(217,168,78,.03));
+  border:1px solid rgba(217,168,78,.34);border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);padding:24px 26px;margin:0 0 8px;
+}
+.reframe h3{color:var(--accent-soft);font-size:20px}
+.reframe p{color:var(--muted)}
+.reframe strong{color:var(--text)}
+
+/* ---- verdict cards for the 3 ideas ---- */
+.ideas{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr))}
+.idea{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:20px;display:flex;flex-direction:column;gap:11px;
+}
+.idea-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.idea h3{font-size:16px;margin:0}
+.idea p{font-size:14px;color:var(--muted);margin:0}
+.idea .ask{
+  font-family:var(--mono);font-size:11.5px;color:var(--faint);
+  border-left:2px solid var(--border-2);padding-left:10px;font-style:italic;
+}
+.verdict{
+  font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  padding:3px 9px;border-radius:999px;white-space:nowrap;flex:none;font-weight:600;
+}
+.v-done{background:rgba(158,206,106,.14);color:var(--good);border:1px solid var(--good-border)}
+.v-part{background:rgba(224,175,104,.13);color:var(--warn);border:1px solid var(--warn-border)}
+.v-gap{background:rgba(242,119,122,.13);color:var(--bad);border:1px solid var(--bad-border)}
+
+/* ---- evidence line ---- */
+.ev{
+  font-family:var(--mono);font-size:11.5px;color:var(--faint);
+  display:block;margin-top:3px;overflow-wrap:anywhere;
+}
+
+/* ---- diagram ---- */
+.diagram-wrap{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:22px;overflow-x:auto;
+}
+.diagram-wrap .mermaid{min-width:520px}
+.cap{font-size:13px;color:var(--faint);margin-top:14px;font-style:italic}
+
+/* ---- tables ---- */
+.tscroll{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:660px;font-size:13.5px}
+th{
+  text-align:left;padding:11px 14px;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+  border-bottom:1px solid var(--border);background:var(--panel-2);font-weight:600;
+  position:sticky;top:0;
+}
+td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.cap-col{font-weight:500;color:var(--text)}
+.pill{
+  font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:2px 8px;
+  border-radius:999px;white-space:nowrap;font-weight:600;
+}
+.p-yes{background:rgba(158,206,106,.14);color:var(--good)}
+.p-part{background:rgba(224,175,104,.13);color:var(--warn)}
+.p-no{background:rgba(242,119,122,.13);color:var(--bad)}
+.note{font-size:12.5px;color:var(--muted)}
+
+/* ---- ranked plan ---- */
+.rank{display:flex;flex-direction:column;gap:14px}
+.item{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:20px 22px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:start;
+}
+@media(max-width:640px){.item{grid-template-columns:1fr;gap:12px}}
+.tier{
+  font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.06em;
+  padding:7px 12px;border-radius:var(--radius);white-space:nowrap;align-self:start;
+}
+.t0{background:var(--accent);color:var(--accent-ink)}
+.t1{background:rgba(127,176,255,.16);color:var(--accent-2);border:1px solid rgba(127,176,255,.3)}
+.t2{background:rgba(197,143,255,.14);color:var(--purple);border:1px solid rgba(197,143,255,.28)}
+.t3{background:var(--panel-3);color:var(--muted);border:1px solid var(--border-2)}
+.meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:11px}
+.tag{
+  font-family:var(--mono);font-size:10.5px;padding:2.5px 9px;border-radius:999px;
+  background:var(--panel-3);color:var(--muted);border:1px solid var(--border);
+}
+.tag.win{color:var(--accent-soft);border-color:rgba(217,168,78,.3)}
+.unlocks{
+  margin-top:12px;padding:11px 14px;background:var(--panel-2);
+  border-radius:var(--radius);border-left:2px solid var(--accent);font-size:13.5px;
+}
+.unlocks b{color:var(--accent-soft);font-weight:600}
+.item ul{margin:10px 0 0;padding-left:19px;font-size:13.5px;color:var(--muted)}
+.item li{margin-bottom:5px}
+
+/* ---- blindspots ---- */
+.blind{
+  background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--bad);
+  border-radius:var(--radius-lg);padding:20px 22px;margin-bottom:14px;
+}
+.blind h3{color:var(--bad);font-size:16px}
+.blind p{font-size:14px;color:var(--muted)}
+
+/* ---- input form ---- */
+.decide{
+  background:var(--panel);border:1px solid var(--border-2);
+  border-radius:var(--radius-xl);padding:26px;box-shadow:var(--elev-2);
+}
+fieldset{border:none;padding:0;margin:0 0 22px}
+legend{font-size:15px;font-weight:600;margin-bottom:4px;padding:0;color:var(--text)}
+.legend-sub{font-size:13px;color:var(--faint);margin:0 0 13px}
+.opts{display:flex;flex-direction:column;gap:9px}
+.opt{
+  display:flex;gap:11px;align-items:flex-start;padding:12px 14px;
+  background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);
+  cursor:pointer;transition:border-color .12s,background .12s;
+}
+.opt:hover{border-color:var(--border-2);background:var(--panel-3)}
+.opt:has(input:checked){border-color:var(--accent);background:rgba(217,168,78,.07)}
+.opt input{margin:4px 0 0;accent-color:var(--accent);flex:none;width:15px;height:15px}
+.opt-body{display:flex;flex-direction:column;gap:2px}
+.opt-t{font-weight:600;font-size:14px}
+.opt-d{font-size:12.5px;color:var(--faint)}
+textarea{
+  width:100%;background:var(--panel-2);border:1px solid var(--border);
+  border-radius:var(--radius);color:var(--text);font-family:var(--sans);font-size:14px;
+  padding:11px 13px;resize:vertical;min-height:76px;
+}
+textarea:focus,.opt input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{
+  background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius);
+  padding:11px 22px;font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer;
+  transition:filter .12s;
+}
+button:hover{filter:brightness(1.08)}
+.sent{margin-top:11px;font-size:13px;color:var(--good);font-family:var(--mono);min-height:19px}
+.foot{
+  margin-top:52px;padding-top:22px;border-top:1px solid var(--border);
+  font-size:12.5px;color:var(--faint);
+}
+
+/* ---- locked-decision strip ---- */
+.locked{
+  margin:20px 0 0;padding:11px 15px;background:rgba(158,206,106,.07);
+  border:1px solid var(--good-border);border-radius:var(--radius);
+  font-size:13.5px;color:var(--muted);
+}
+.locked span{
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--good);margin-right:9px;font-weight:600;
+}
+.locked b{color:var(--text);font-weight:600}
+
+/* ---- runnable command blocks ---- */
+.steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}
+.step{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+.step h3{font-size:15px;margin:0 0 4px}
+.step .sub{font-size:12.5px;color:var(--faint);margin:0 0 13px}
+pre.sh{
+  background:#0a0d13;border:1px solid var(--border);border-radius:var(--radius);
+  padding:13px 15px;overflow-x:auto;margin:0 0 11px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.75;color:var(--text);
+}
+pre.sh .c{color:var(--faint)}
+pre.sh .v{color:var(--accent-soft)}
+.step ol{margin:0;padding-left:19px;font-size:13.5px;color:var(--muted)}
+.step ol li{margin-bottom:7px}
+.step ol li:last-child{margin-bottom:0}
+.callout{
+  margin-top:13px;padding:10px 13px;background:var(--panel-2);border-radius:var(--radius);
+  border-left:2px solid var(--warn);font-size:12.5px;color:var(--muted);
+}
+.callout b{color:var(--warn)}
+
+/* ---- build ladder ---- */
+.ladder{display:flex;flex-direction:column;gap:10px;margin-top:13px}
+.rung{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;
+  padding:12px 15px;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);
+}
+@media(max-width:640px){.rung{grid-template-columns:auto minmax(0,1fr);gap:10px}.rung .eff{grid-column:2;justify-self:start}}
+.rung .n{
+  font-family:var(--mono);font-size:11px;font-weight:700;width:24px;height:24px;
+  display:grid;place-items:center;border-radius:50%;background:var(--panel-3);
+  color:var(--accent);border:1px solid var(--border-2);flex:none;
+}
+.rung .what{font-size:13.5px}
+.rung .what b{color:var(--text);font-weight:600}
+.rung .what span{color:var(--faint)}
+.rung .eff{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+.deferred{opacity:.62}
+.deferred .tier{background:var(--panel-3);color:var(--faint);border:1px dashed var(--border-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">s34 · prioritisation · 2026-08-01</p>
+  <h1>You are further along than your own research says</h1>
+  <p class="dek">Five parallel audits of <code>data-qa-agent</code>, read against the gap matrix in
+  <code>ai-engineer-fit</code>. The headline: <strong>s07's Track&nbsp;A is most of the way done</strong> —
+  you closed it while building features and never updated the plan. The highest-value action on this page
+  takes <strong>fifteen minutes</strong>, and two of your three ideas need re-scoping before you spend a day on
+  the wrong half of them.</p>
+  <p class="locked"><span>Decided</span> Logfire on for <b>dev and prod</b> · build <b>all three</b> non-UI
+  surfaces off one auth change · eval CI gate <b>deferred until you've authored golden answers</b>.
+  Plan below reflects this.</p>
+</header>
+
+<section>
+  <h2>The reframe</h2>
+  <div class="reframe">
+    <h3>Your gap doc is five days stale, in your favour</h3>
+    <p><code>s07_production-grade-plan.html</code> (26 Jul) ranks your top three gaps as
+    <strong>LLM-call resilience</strong>, <strong>observability depth</strong>, and <strong>security
+    testing</strong>. Since then <code>s32</code> shipped. Today the flagship actually has:</p>
+    <p>— a centralised retry policy with jittered backoff and correct 4xx/usage-limit exclusion, wired to
+    all six LLM call sites <span class="ev">services/data-agent/agent/model_factory.py</span>
+    — p50/p95/p99 latency, two named SLOs and 28-day error-budget burn
+    <span class="ev">services/backend-api/app/ops_rollup.py</span>
+    — cost-per-answer on a live dashboard <span class="ev">agent/pricing.py → /ops flight deck</span>
+    — a 43-case deterministic injection suite gating every merge, plus a promptfoo red-team config and a
+    PII scrubber <span class="ev">tests/security/test_injection.py · security/promptfoo/redteam.yaml · app/scrub.py</span></p>
+    <p>s07 says <em>"no dashboard anyone can look at, no SLOs, no cost-per-answer chart"</em> and
+    <em>"resilience absent in 4 of 5 agents… data-qa △ 1 file."</em> Both are now wrong about the flagship.
+    <strong>What's missing isn't the engineering — it's that none of it is switched on, published, or
+    pointed at.</strong> That is a much cheaper problem.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Your three ideas, audited</h2>
+  <div class="ideas">
+
+    <div class="idea">
+      <div class="idea-top">
+        <h3>Logfire</h3>
+        <span class="verdict v-part">built · switched off</span>
+      </div>
+      <p class="ask">"have I properly hooked up logfire, I don't know how to see the results"</p>
+      <p>Fully wired in both services — <code>configure()</code> at two call sites, pydantic-ai + FastAPI +
+      httpx instrumentation, and W3C <code>traceparent</code> injected on the backend→agent hop so one chat
+      is <em>one linked trace</em>. You can't see results because
+      <strong><code>LOGFIRE_TOKEN</code> is empty</strong> — in <code>.env:12</code> and in both running
+      containers, confirmed by <code>docker exec</code>. With
+      <code>send_to_logfire="if-token-present"</code> it silently no-ops.</p>
+      <p class="ev">agent/main.py:18 · app/tracing.py:70 · .env:12 (empty)</p>
+    </div>
+
+    <div class="idea">
+      <div class="idea-top">
+        <h3>Evals</h3>
+        <span class="verdict v-part">built · unused</span>
+      </div>
+      <p class="ask">"I still need to build the evals / optimise on them"</p>
+      <p>You already built them. Runner, four grader pillars, a cross-family LLM judge that refuses to grade
+      its own model family, a regression comparator that blocks on any pass→fail flip, failure clustering,
+      pack versioning, results tables and an Evaluations tab — all wired, and <em>proven</em> in three
+      documented cycles on 20 Jul, one of which correctly blocked a regression.
+      <strong>Only 2 of 41 goldens are real.</strong> 32 are drafts with empty grader specs; 5 "ready" rows
+      are debug junk. <code>make eval</code> has run once, ever.</p>
+      <p style="font-size:13px;color:var(--faint);margin:0"><b style="color:var(--good)">→ Deferred:</b>
+      the CI gate waits until you've authored goldens. Right call — see below.</p>
+      <p class="ev">scripts/eval_run.py · agent/eval_graders.py · docs/evals/cycle-001..003.md</p>
+    </div>
+
+    <div class="idea">
+      <div class="idea-top">
+        <h3>Webhook / Slack</h3>
+        <span class="verdict v-gap">genuine gap</span>
+      </div>
+      <p class="ask">"leverage the data-agent outside the ui… I need experience here"</p>
+      <p>The only one of the three that is real net-new work — and the transport is already there.
+      <code>POST /ask</code> is <strong>already synchronous</strong> request→response (not SSE-only), and the
+      App Runner URL is publicly reachable. The blocker is singular: identity comes only from a verified
+      Google OIDC bearer, so <strong>there is no way for a machine to authenticate as a user</strong>.
+      <code>AGENTS.md:166</code> names this mapping as intended — no code implements it.</p>
+      <p class="ev">app/routers/ask.py:426 · app/auth.py:198-224 · apprunner.tf</p>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>The finding that changes the order</h2>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TD
+  A["Service-account auth<br/><i>map a non-human caller to an app.users row</i>"]:::key
+
+  A --> B["Slack bot<br/>slash-command → governed answer"]
+  A --> C["Data Pilot MCP server<br/>FastMCP + OAuth 2.1 scopes"]
+
+  B --> D["Xero: 'webhooks' + 'Slack'<br/>two named asks you can't claim today"]:::win
+  C --> E["Galileo / Canva / FDE lane:<br/>'an MCP server you authored'"]:::win
+
+  F["Already shipped — no work needed"]:::have
+  F --> G["POST /ask is synchronous"]
+  F --> H["public HTTPS endpoint"]
+  F --> I["RLS scoping per user"]
+  G --> A
+  H --> A
+  I --> A
+
+  classDef key fill:#1e2434,stroke:#d9a84e,stroke-width:2px,color:#f2ca79
+  classDef win fill:#16241a,stroke:#33502f,color:#9ece6a
+  classDef have fill:#111522,stroke:#242b3d,color:#7a84a0
+    </pre>
+  </div>
+  <p class="cap">Neither your research nor mine spotted this until the audits were read side by side:
+  <strong>the webhook, the Slack bot and the MCP server share one prerequisite.</strong> s11 lists them as
+  separate 1–2 day builds (A4, A5). They aren't — build service-account auth once and each additional
+  surface is a thin adapter. Wanting all three makes that shared auth <em>more</em> worth doing properly,
+  not less.</p>
+</section>
+
+<section>
+  <h2>Where the flagship sits on a production Gen-AI matrix</h2>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Capability</th><th>State</th><th>Evidence / what's actually missing</th></tr></thead>
+    <tbody>
+      <tr><td class="cap-col">SQL &amp; query guardrails</td><td><span class="pill p-yes">strong</span></td>
+        <td class="note">Three layers incl. sqlglot AST. Two <em>real</em> historical bypasses found and fixed
+        (<code>set_config</code> RLS rewrite; quoted-identifier variant). 43 CI cases. The best code in the repo.</td></tr>
+      <tr><td class="cap-col">Authz / RLS / audit trail</td><td><span class="pill p-yes">strong</span></td>
+        <td class="note"><code>agent_ro</code> NOBYPASSRLS, <code>SET LOCAL</code> per transaction, every ask logged to <code>query_runs</code>.</td></tr>
+      <tr><td class="cap-col">Eval machinery</td><td><span class="pill p-yes">strong</span></td>
+        <td class="note">Exceeds most production apps. Judge refuses same-family grading. <em>Starved of goldens.</em></td></tr>
+      <tr><td class="cap-col">Cost / latency discipline</td><td><span class="pill p-yes">strong</span></td>
+        <td class="note">Cache-aware billing pinned by a regression test; percentiles not averages.</td></tr>
+      <tr><td class="cap-col">Retry / timeout / degrade</td><td><span class="pill p-yes">strong</span></td>
+        <td class="note">Closes s07 gap #1 for this repo. Still open in the other four.</td></tr>
+      <tr><td class="cap-col">Tracing</td><td><span class="pill p-part">inert</span></td>
+        <td class="note">Cross-service OTel fully coded. <strong>Token empty → nothing ships.</strong></td></tr>
+      <tr><td class="cap-col">Alerting</td><td><span class="pill p-part">decorative</span></td>
+        <td class="note">3 CloudWatch alarms → SNS, <strong>email subscriptions never confirmed</strong>. Nothing pages anyone. <span class="ev">alarms.tf</span></td></tr>
+      <tr><td class="cap-col">Eval gate in CI</td><td><span class="pill p-no">absent</span></td>
+        <td class="note">CI lints the pack's <em>structure</em>; nothing gates on <em>score</em>. This is the differentiator you keep being told nobody has.</td></tr>
+      <tr><td class="cap-col">Multi-turn conversation</td><td><span class="pill p-no">absent</span></td>
+        <td class="note">No <code>message_history</code>; every ask is a cold start. See blind spot below.</td></tr>
+      <tr><td class="cap-col">Non-UI surface (MCP / webhook / bot)</td><td><span class="pill p-no">absent</span></td>
+        <td class="note">No service-account auth. Blocks both Slack and MCP.</td></tr>
+      <tr><td class="cap-col">Served model / fine-tune</td><td><span class="pill p-no">absent</span></td>
+        <td class="note">s07 Track C. Unchanged — and still the thing keeping MLE-titled doors shut.</td></tr>
+      <tr><td class="cap-col">Error tracking (Sentry-class)</td><td><span class="pill p-no">absent</span></td>
+        <td class="note">Spans + a status column substitute. Fine at this scale.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>P0 · Switching Logfire on — dev and prod</h2>
+  <p style="color:var(--muted);margin-bottom:18px;max-width:72ch">No code changes anywhere. Compose already
+  forwards the variable and Terraform already plumbs the secret ARN into both App Runner services — the
+  value is the only missing piece. I can't do this part for you: it needs a token minted under your own
+  Logfire account, and the prod half needs an SSO login only you can complete.</p>
+
+  <div class="steps">
+
+    <div class="step">
+      <h3>Local</h3>
+      <p class="sub">~5 minutes</p>
+      <ol>
+        <li>At <a href="https://logfire.pydantic.dev">logfire.pydantic.dev</a>, create a project and
+        generate a <b>write token</b> (Settings → Write tokens). A read token will not work.</li>
+        <li>Put it in <code>.env</code> — the key already exists at line 12, currently empty:</li>
+      </ol>
+      <pre class="sh"><span class="c"># .env:12</span>
+LOGFIRE_TOKEN=<span class="v">&lt;your-write-token&gt;</span></pre>
+      <ol start="3">
+        <li>Rebuild just the two services that emit spans:</li>
+      </ol>
+      <pre class="sh">docker compose up -d --build --no-deps \
+  backend-api data-agent</pre>
+      <ol start="4">
+        <li>Ask a question in the app, then open the Logfire UI. You should see
+        <b>one trace spanning both services</b> — the backend forwards a W3C <code>traceparent</code> on the
+        agent hop, so the chat is a single linked waterfall rather than two orphans.</li>
+      </ol>
+      <div class="callout"><b>Verify it took:</b> <code>docker exec data-qa-agent-data-agent-1 printenv
+      LOGFIRE_TOKEN</code> should echo the token. That exact check is how the audit proved it was empty.</div>
+    </div>
+
+    <div class="step">
+      <h3>Prod (AWS)</h3>
+      <p class="sub">~10 minutes · needs your SSO session</p>
+      <ol>
+        <li>Refresh SSO — I hit an expired session trying to read the secret, so this is confirmed
+        necessary:</li>
+      </ol>
+      <pre class="sh">aws sso login --profile data-qa</pre>
+      <ol start="2">
+        <li>Overwrite the Terraform placeholder. It currently holds the literal string
+        <code>REPLACE_ME_VIA_CLI</code>, and <code>ignore_changes</code> means your real value survives
+        future <code>terraform apply</code> runs:</li>
+      </ol>
+      <pre class="sh">aws secretsmanager put-secret-value \
+  --profile data-qa --region ap-southeast-2 \
+  --secret-id data-qa/logfire-token \
+  --secret-string <span class="v">'&lt;your-write-token&gt;'</span></pre>
+      <ol start="3">
+        <li>App Runner reads secrets <b>at instance launch</b>, so force a redeploy of <b>both</b>
+        services — backend-api and data-agent:</li>
+      </ol>
+      <pre class="sh">aws apprunner start-deployment \
+  --profile data-qa --region ap-southeast-2 \
+  --service-arn <span class="v">&lt;service-arn&gt;</span></pre>
+      <div class="callout"><b>Same token, or two?</b> One project keeps both services in one trace, which is
+      the whole point of the <code>traceparent</code> plumbing. Use the same token for both.</div>
+    </div>
+
+  </div>
+
+  <p class="cap">Full procedure is already written up in <code>docs/runbook.md</code> § "Turning tracing on
+  (first-time setup)" — the audit confirmed the commands there are correct.</p>
+</section>
+
+<section>
+  <h2>The rest of the plan</h2>
+  <div class="rank">
+
+    <div class="item">
+      <span class="tier t0">P0 · rest of the hour</span>
+      <div>
+        <h3>Two more switches, same category</h3>
+        <ul>
+          <li><b>Confirm the SNS email subscriptions</b> — three CloudWatch alarms exist and are wired, but
+          the subscriptions were never confirmed, so they page nobody. s07's own proof bar is literally
+          <em>"alerts that page you."</em></li>
+          <li><b>Fix the doc drift</b> — <code>AGENTS.md:894</code> says streaming was deferred (it shipped,
+          as SSE), and both AGENTS.md and the README point at <code>agent/llm_agent.py</code>, which
+          <strong>does not exist</strong>; the live path is <code>sandbox_agent.py</code>. A reviewer reads
+          docs first — being wrong about your own headline feature is the same class of landmine as the
+          90%-vs-77.7% one you already caught.</li>
+        </ul>
+        <div class="meta"><span class="tag win">5/8 JDs screen for observability</span><span class="tag">zero new code</span></div>
+      </div>
+    </div>
+
+    <div class="item">
+      <span class="tier t1">P1 · ~3–5 days</span>
+      <div>
+        <h3>Service-account auth → all three non-UI surfaces</h3>
+        <p>You want all three, and that's the right call — they're one auth change plus three thin
+        adapters, not three projects. Build the identity mapping once, then climb the ladder; each rung
+        adds exactly one new concept, so each is independently demoable if you stop early.</p>
+
+        <div class="ladder">
+          <div class="rung"><span class="n">0</span>
+            <span class="what"><b>Service-account auth</b> <span>— map a non-human caller to an
+            <code>app.users</code> row; extend <code>_user_from_credentials</code>, mirroring the existing
+            JIT-provisioning pattern. RLS then scopes it for free.</span></span>
+            <span class="eff">~0.5–1 d</span></div>
+          <div class="rung"><span class="n">1</span>
+            <span class="what"><b>Webhook</b> <span>— inbound question, answer POSTed to a callback URL.
+            Adds: HMAC signature verification + the async ack pattern. Simplest proof the auth works.</span></span>
+            <span class="eff">~0.5 d</span></div>
+          <div class="rung"><span class="n">2</span>
+            <span class="what"><b>Slack bot</b> <span>— slash command → governed answer. Adds: Slack's
+            signing-secret scheme and the 3-second ack with a <code>response_url</code> follow-up
+            (<code>/ask</code> can legitimately take 120s).</span></span>
+            <span class="eff">~1 d</span></div>
+          <div class="rung"><span class="n">3</span>
+            <span class="what"><b>MCP server</b> <span>— FastMCP over
+            <code>list_datasets / describe_schema / run_governed_query / get_audit</code>. Adds: tool-surface
+            design and OAuth 2.1 scopes. Your s06 estimated ~90% is already shipped code.</span></span>
+            <span class="eff">~1–2 d</span></div>
+        </div>
+
+        <ul>
+          <li><b>Scope honestly:</b> rendering the rich <code>pages</code> objects outside the browser is
+          real net-new work — nothing but React/visx renders them today. All three surfaces should ship the
+          plain-text <code>answer</code> field first; charts are a later, separate decision.</li>
+          <li><b>Raise the cap</b> — a shared machine identity hits the same 5/day free-tier counter as a
+          human. Exempt it or give it its own tier.</li>
+          <li><b>Keep the boundary honest</b> — data-agent trusts the <code>user.id</code> in the request
+          body (it's behind the shared agent token). Whatever identity the adapter asserts must be resolved
+          <em>before</em> that hop, never passed through from the caller.</li>
+        </ul>
+
+        <div class="unlocks"><b>You agreed with the timing argument:</b> Xero is live now and names
+        <em>Slack</em> and <em>webhooks</em> — s11 marks both as unclaimable today. Rungs 1–2 close those.
+        Rung 3 closes <em>"tell me about an MCP server you built"</em>, the question you flagged as
+        <em>"coming for these roles."</em></div>
+        <div class="meta"><span class="tag win">2 Xero-named gaps</span><span class="tag win">the MCP authorship gap</span><span class="tag">one auth change, three surfaces</span></div>
+      </div>
+    </div>
+
+    <div class="item">
+      <span class="tier t2">P2 · 2–3 days</span>
+      <div>
+        <h3>Multi-turn conversation memory</h3>
+        <p>Not a résumé line — a <em>demo-safety</em> fix, and it gets more urgent the moment any of the
+        three surfaces above is in front of someone. A follow-up question is the second thing anyone tries,
+        in Slack even more than in the UI.</p>
+        <div class="meta"><span class="tag">product credibility</span><span class="tag">"chat long term memory" in your own raw notes</span></div>
+      </div>
+    </div>
+
+    <div class="item deferred">
+      <span class="tier t3">deferred · your call</span>
+      <div>
+        <h3>Eval CI gate</h3>
+        <p><b>Deferred until you've authored golden answers</b> — correct sequencing, and it matches how
+        this project already works: the goldens are the training signal, and a gate over 2 real goldens
+        would be theatre. The machinery is built and proven, so this stays cheap whenever you come back to
+        it. Two cleanup items worth doing <em>while</em> you author, so the corpus doesn't rot further:</p>
+        <ul>
+          <li>Delete the 5 junk <code>ready</code> rows — a rent question mistagged <code>nsw_sales</code>,
+          <code>case_key</code> NULL, created 27 Jul while testing the curation flow. They'd score as real
+          goldens.</li>
+          <li>Re-export the pack — the DB and <code>evals/cases/*.yaml</code> have silently diverged.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>Two things you didn't ask about</h2>
+
+  <div class="blind">
+    <h3>The agent cannot hold a conversation</h3>
+    <p>Every <code>/ask</code> runs from a cold start. There is no <code>message_history</code> anywhere in
+    <code>sandbox_agent.py</code>; the payload carries only <code>question</code>, <code>user</code> and
+    <code>dataset_slug</code>. <code>conversation_id</code> groups messages for the sidebar UI and nothing
+    else — prior turns are <strong>never replayed into the model</strong>. The pgvector memory that does
+    persist is long-term <em>preferences</em>, not dialogue.</p>
+    <p>So "now break that down by suburb" doesn't work, in an app whose pitch is a
+    <strong>conversational</strong> data agent. The risk isn't the matrix — it's that this is precisely
+    what someone does thirty seconds into a live demo, and it's the second question they'll ask.</p>
+  </div>
+
+  <div class="blind">
+    <h3>The sandbox default fails open, not closed</h3>
+    <p>The hardened Pyodide/WASM sandbox is what actually runs — but only because
+    <code>docker-compose.yml</code> and <code>apprunner.tf</code> both explicitly set
+    <code>SANDBOX_RUNTIME=pyodide</code>. The bare code default in <code>config.py</code> is the weaker
+    subprocess runner, whose own docstring says it is <em>"NOT a hard isolation boundary against a
+    determined escape."</em></p>
+    <p>Today's deployments are covered, so this isn't urgent. But you talk about containment as a design
+    principle — <em>"the agent physically cannot…"</em> — and security-by-environment-override undercuts
+    that story if an interviewer opens <code>config.py</code>. Flipping the default is a one-line change.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Your call</h2>
+  <div class="decide">
+    <form data-lavish-question="priority" onsubmit="
+      event.preventDefault();
+      var f=new FormData(event.currentTarget);
+      var pick=f.get('priority'); var extra=(f.get('notes')||'').trim();
+      if(!pick){return;}
+      var msg='Start with: '+pick+'.'+(extra?' Notes: '+extra:'');
+      window.lavish.queuePrompt(msg,{tag:'priority',text:'Start: '+pick,element:event.currentTarget,data:{question:'priority',answer:pick,notes:extra}});
+      document.getElementById('sent').textContent='Queued — press Send to Agent.';
+    ">
+      <fieldset>
+        <legend>What should I start on now?</legend>
+        <p class="legend-sub">The order is settled: P0, then service-account auth and the three surfaces.
+        The Logfire token itself is yours to mint — everything below is work I can pick up without it.</p>
+        <div class="opts">
+          <label class="opt"><input type="radio" name="priority" value="Start P1 rung 0 — design and build service-account auth now">
+            <span class="opt-body"><span class="opt-t">Start service-account auth (P1, rung 0)</span>
+            <span class="opt-d">The prerequisite for all three surfaces. I'd plan it first, then build.</span></span></label>
+          <label class="opt"><input type="radio" name="priority" value="Do the P0 items I can do without a token — fix the AGENTS.md/README doc drift — then start service-account auth">
+            <span class="opt-body"><span class="opt-t">Doc-drift fixes first, then the auth</span>
+            <span class="opt-d">I can correct the streaming + <code>llm_agent.py</code> claims right now. ~20 min, then straight on.</span></span></label>
+          <label class="opt"><input type="radio" name="priority" value="Clean up the eval corpus first — delete the 5 junk ready rows and re-export the pack — before anything else">
+            <span class="opt-body"><span class="opt-t">Eval-corpus cleanup first</span>
+            <span class="opt-d">Delete the 5 junk rows, re-sync the pack, so it's clean when you author goldens.</span></span></label>
+          <label class="opt"><input type="radio" name="priority" value="Plan the whole P1 build as a lavish artifact before writing any code">
+            <span class="opt-body"><span class="opt-t">Plan P1 properly first</span>
+            <span class="opt-d">A design artifact for the auth model + three adapters before any code lands.</span></span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Anything to adjust?</legend>
+        <p class="legend-sub">Deadlines, scope cuts, or a surface you'd rather drop.</p>
+        <textarea name="notes" placeholder="e.g. skip the generic webhook, Slack + MCP only — or: Xero closes Friday"></textarea>
+      </fieldset>
+      <button type="submit">Queue my answer</button>
+      <p class="sent" id="sent"></p>
+    </form>
+  </div>
+</section>
+
+<p class="foot">Sources: five parallel code audits of <code>data-qa-agent</code> @ <code>9d3d019</code>
+(Logfire, evals, external-API surface, feature matrix) read against <code>ai-engineer-fit</code>
+(s00 evidence ledger, s07 production-grade plan, s11 resume plan, s12 guardrails, 44 JDs).
+Every capability claim above was verified in code, not taken from project docs — which is how the
+two doc-drift items surfaced. Design system: the app's own Night Flight tokens
+(<code>frontend/src/styles.css</code>).</p>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  var dark = !matchMedia('(prefers-color-scheme: light)').matches ||
+             document.documentElement.getAttribute('data-theme') === 'dark';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      background: '#111522',
+      primaryColor: '#171c2b',
+      primaryTextColor: '#eaecf3',
+      primaryBorderColor: '#333d55',
+      lineColor: '#7a84a0',
+      secondaryColor: '#1e2434',
+      tertiaryColor: '#111522',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '14px'
+    }
+  });
+</script>
+</body>
+</html>

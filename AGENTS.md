@@ -117,7 +117,8 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
 ### Repo layout (as built)
 
 ```
-services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS context, /ask, /events, admin, explore
+services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS context, /ask, /events, admin, explore,
+                        the webhook/Slack front doors and the MCP surface mounted at /mcp (app/mcp_surface.py)
 services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails, Explore grounding
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
@@ -194,6 +195,57 @@ CREATE POLICY tenant_isolation ON insights
   `X-Agent-Token` header; the backend sends it on every agent call. Empty = open (local compose).
 - Role-level `statement_timeout`s (migration 0018: `app_user`/`agent_ro` 15s, `admin_ro` 30s) are a
   database-side backstop against runaway queries on every code path, independent of app-level guards.
+
+### Non-UI surfaces and service accounts (s35)
+
+Three front doors besides the web UI — a webhook, a Slack slash command, and an MCP surface —
+all reach the *same* pipeline. `routers/ask.run_question()` is the single implementation of the daily cap,
+RLS scoping, degraded-mode fallback and the audit write; the adapters authenticate and deliver, and
+reimplement none of it. Four front doors, one security surface. `data-agent` is untouched by all of this.
+
+- A **service account is a user** (`auth_provider='service'`, migration 0032), so grants, RLS, conversations
+  and `query_runs` work unchanged. Keys are `dpk_<key_id>_<secret>`: only a SHA-256 of the secret is stored,
+  and the full key exists exactly once, in the create response. `surface` pins a key to one door.
+- Service accounts are never `role='admin'`. Usage is tiered via `plan='service'` instead, so a leaked key
+  cannot read across users. `app.service_accounts` is granted to `app_user` only — **never `agent_ro`**, since
+  the agent runs model-authored SQL.
+- **The access boundary for Slack is channel membership, and that is a deliberate trade, not an oversight.**
+  v1 answers as a bot identity with its own dataset grants: everyone in the channel sees the same scope, so
+  grant a Slack account only what everyone in that channel should see. Per-user delegation (an act-as header
+  resolved against a default-deny mapping table) is the documented upgrade path, unbuilt until something
+  needs it. Accountability is kept even though authorisation is shared: the asking Slack user, their name
+  and channel are recorded against every run.
+- Slack authenticates differently from the other two: it signs its own requests, so `X-Slack-Signature`
+  (verified over the **raw** body, 5-minute replay window) proves the *request*, while the service account
+  decides what may be *seen*. An unset `SLACK_SIGNING_SECRET` closes the endpoint with a 404 rather than
+  weakening it.
+- **Key management (rung 4)** is an admin-only **Settings → Service accounts** panel
+  (`frontend/src/features/settings/SettingsPage.tsx`) over `/admin/service-accounts*`: mint a key for a
+  surface with a dataset grant, revoke one, see `last_used_at`. The reveal-once view is styled as a warning,
+  not a success state, since the raw key exists exactly once in the mint response and can never be
+  re-displayed — only `key_id` is listed afterward. The dataset picker reads the Explore dataset catalogue
+  (`GET /explore/datasets`), not the admin's own `dataset_access` rows — an admin reads across users by role
+  and has none of their own, so sourcing from `getMyAccess` would leave the picker empty.
+- The MCP surface is **mounted on backend-api at `/mcp`** (s36; s35 shipped it as a separate container).
+  Its tools call the same handlers the UI calls — `run_question`, `run_sql`, `schema_catalog` — so there is
+  still exactly one implementation of the guard, the cap and the audit write. Two consequences of the move,
+  both deliberate: it no longer has the standalone server's "holds no database credentials" isolation, and
+  in exchange the **client** must now present a `dpk_` key pinned to `surface='mcp'` (`ServiceKeyGate`,
+  raw ASGI, in front of the JSON-RPC transport) where the standalone server accepted any client that could
+  reach its port. Auth moved forward; isolation moved back.
+- The MCP transport is mounted **stateless** so each JSON-RPC call runs in its own request task — that is
+  what makes the per-request identity `ContextVar` correct. A session-mode transport would run tool calls in
+  the task that opened the session, i.e. under the wrong identity. The tools fail closed rather than fall
+  back to a surface lookup if that context is ever missing.
+- Because the key gate sits in front of the transport, the SDK's DNS-rebinding host allowlist is
+  defence-in-depth, not the primary control, and is **off unless `MCP_ALLOWED_HOSTS` is set**. Requiring it
+  meant a deployment could not work until a second apply taught it its own hostname (App Runner assigns that
+  at create time and a service cannot reference its own `service_url`).
+- MCP's auth tier is a service key, which does not meet the OAuth-2.1-with-scopes bar for enterprise MCP;
+  that gap is deliberate and staged, not closed.
+- `POST /sql` is capped for `plan='service'` only (`check_daily_query_cap`, s36). A governed SELECT spends no
+  tokens, so human editor use stays uncapped — but a machine key can loop, and the MCP surface hands
+  `run_governed_query` straight to a model. It is a rate bound; the guard applies to every statement anyway.
 
 ---
 
@@ -394,7 +446,8 @@ All capabilities live in one Postgres, all under RLS.
 
 | Table | Group | Purpose | RLS |
 |-------|-------|---------|-----|
-| `users` | Identity | Local mirror of signed-in users (Google or dev-seeded) + role (`admin`/`user`) | self; admin sees all |
+| `users` | Identity | Local mirror of signed-in users (Google, dev-seeded, or `auth_provider='service'`) + role (`admin`/`user`) + `plan` (incl. `service`) | self; admin sees all |
+| `service_accounts` | Identity | Machine identities for non-UI surfaces (s35) — `key_id`/`key_hash` (SHA-256, secret shown once), `surface`, `revoked_at`; FK to a `users` row | granted to `app_user` only, **never `agent_ro`** |
 | `datasets` | Datasets | Registry of ingested datasets the agent can answer over | readable if access granted |
 | `dataset_access` | Datasets | Which users/roles may query which dataset | self; admin manages |
 | `dataset_ordinals` | Datasets | Curator-editable ordinal band order per `(dataset, column)` (e.g. `area_band`) so ordinal chart axes sort naturally, not alphabetically | admin/CI-curated; no RLS |

@@ -200,3 +200,20 @@ resource "aws_secretsmanager_secret_version" "logfire_token" {
     ignore_changes = [secret_string]
   }
 }
+
+# The Slack workspace signing secret. Same story: it comes from Slack's app
+# config, not from Terraform. Empty/placeholder CLOSES the Slack endpoint (404),
+# which is the right default for an environment not wired to a workspace.
+resource "aws_secretsmanager_secret" "slack_signing_secret" {
+  name        = "${local.name}/slack-signing-secret"
+  description = "SLACK_SIGNING_SECRET — verifies X-Slack-Signature. Set via CLI."
+}
+
+resource "aws_secretsmanager_secret_version" "slack_signing_secret" {
+  secret_id     = aws_secretsmanager_secret.slack_signing_secret.id
+  secret_string = "REPLACE_ME_VIA_CLI"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}

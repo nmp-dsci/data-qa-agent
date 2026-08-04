@@ -47,6 +47,16 @@ check "backend auth_mode google" \
 check "backend /me rejects bad token (401)" \
   "401" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer bogus' "$BACKEND_URL/me")"
 
+# 1b. The MCP surface (s36). Credential-free on purpose: the useful signal is
+#     401 vs 404. A 404 means the mount failed and the surface silently is not
+#     there — the exact failure that would otherwise deploy green, since nothing
+#     else in this script would touch it. A 200 would mean it is open to anyone.
+check "backend /mcp mounted and gated (401)" \
+  "401" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' -X POST "$BACKEND_URL/mcp" \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+
 # 2. Agent health + token guard
 check "agent /health ok" \
   "ok" "$(curl -sf -m 30 "$AGENT_URL/health" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"

@@ -104,6 +104,17 @@ services:
       OPS_INGEST_TOKEN: ${OPS_INGEST_TOKEN:-dev-ops-token}
       # Optional — ships backend traces to Logfire Cloud; local-only otherwise.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
+      # s35: Slack's workspace signing secret, used to verify X-Slack-Signature.
+      # A fixed dev value so the signature path is exercisable locally without a
+      # real workspace; empty CLOSES the Slack endpoint (404), which is the
+      # config.py default and the right posture for any env that isn't using it.
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-dev-slack-secret}
+      # s36: the MCP surface is mounted here at /mcp rather than run as its own
+      # service. Clients authenticate with a dpk_ key minted for surface="mcp",
+      # so there is no server-side key to configure. Empty MCP_ALLOWED_HOSTS
+      # leaves the SDK's DNS-rebinding allowlist off — the key gate is the
+      # control; see app/mcp_surface.py.
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
     ports:
       - "8000:8000"
     depends_on:

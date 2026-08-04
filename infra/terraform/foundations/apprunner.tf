@@ -223,6 +223,9 @@ resource "aws_apprunner_service" "backend_api" {
           # s32 W2/W0: traces out, operational outcomes in.
           LOGFIRE_TOKEN    = aws_secretsmanager_secret.logfire_token.arn
           OPS_INGEST_TOKEN = aws_secretsmanager_secret.ops_ingest_token.arn
+          # s35: verifies X-Slack-Signature. Placeholder => the Slack endpoint
+          # 404s, which is the correct posture for an env with no workspace.
+          SLACK_SIGNING_SECRET = aws_secretsmanager_secret.slack_signing_secret.arn
         }
       }
     }

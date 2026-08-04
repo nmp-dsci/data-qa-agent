@@ -1085,6 +1085,60 @@ export async function getMyAccess(): Promise<MyAccess> {
   return resp.json();
 }
 
+// ---- Service accounts (s35) -----------------------------------------------
+// Machine identities for the non-UI surfaces. Note what the list type does NOT
+// carry: there is no `key` field, because the secret half is unrecoverable by
+// design — only the public key_id is ever readable after minting.
+export interface ServiceAccount {
+  id: string;
+  name: string;
+  surface: string;
+  key_id: string;
+  username: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+/** The create response — the ONLY time `key` exists anywhere. */
+export interface ServiceAccountCreated {
+  id: string;
+  name: string;
+  surface: string;
+  key_id: string;
+  username: string;
+  key: string;
+}
+
+export async function listServiceAccounts(): Promise<ServiceAccount[]> {
+  const resp = await apiFetch(`${API}/admin/service-accounts`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`Could not load service accounts (${resp.status})`);
+  return resp.json();
+}
+
+export async function createServiceAccount(input: {
+  name: string;
+  surface: string;
+  dataset_slugs: string[];
+}): Promise<ServiceAccountCreated> {
+  const resp = await apiFetch(`${API}/admin/service-accounts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(input),
+  });
+  if (!resp.ok) throw new Error(`Could not create the key (${resp.status})`);
+  return resp.json();
+}
+
+export async function revokeServiceAccount(id: string): Promise<{ id: string }> {
+  const resp = await apiFetch(`${API}/admin/service-accounts/${id}/revoke`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Could not revoke the key (${resp.status})`);
+  return resp.json();
+}
+
 export async function submitFeedback(input: FeedbackInput): Promise<{ id: string }> {
   const resp = await apiFetch(`${API}/feedback`, {
     method: "POST",

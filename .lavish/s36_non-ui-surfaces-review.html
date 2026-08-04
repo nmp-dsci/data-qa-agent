@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s36 · Non-UI surfaces — what shipped, how to test it, and the topology question</title>
+<style>
+/* Night Flight tokens, lifted from frontend/src/styles.css so this page reads
+   as the same product. Dark is canonical; light mirrors the app's chart-paper. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10); --elev-2:0 8px 24px rgba(50,40,20,.12);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.flex)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,dd,td,th,.badge){overflow-wrap:anywhere}
+:where(img,svg,canvas){max-width:100%}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+
+/* --- the mono-caps instrument voice, straight from the app ---------------- */
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+.lbl.hud{color:var(--hud)}
+
+/* --- header --------------------------------------------------------------- */
+header.hero{padding:56px 0 30px;border-bottom:1px solid var(--border);margin-bottom:34px;
+  position:relative;overflow:hidden}
+header.hero::after{content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+.hero h1{font-size:clamp(30px,4.4vw,46px);line-height:1.08;margin:12px 0 0;
+  font-weight:750;letter-spacing:-.02em;max-width:20ch}
+.hero .kicker{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hero .sub{color:var(--muted);font-size:17px;margin:16px 0 0;max-width:62ch}
+.verdict{margin-top:26px;border:1px solid var(--accent);border-left-width:3px;
+  border-radius:var(--radius-lg);background:linear-gradient(90deg,
+    color-mix(in srgb,var(--accent) 11%,transparent),transparent 70%);
+  padding:16px 18px}
+.verdict p{margin:6px 0 0;color:var(--text);font-size:16px}
+.verdict strong{color:var(--accent-soft)}
+
+/* --- generic section ------------------------------------------------------ */
+section{margin:0 0 52px;scroll-margin-top:16px}
+h2{font-size:24px;letter-spacing:-.01em;margin:0 0 4px;font-weight:700}
+h2 .n{font-family:var(--mono);font-size:13px;color:var(--accent);margin-right:10px;
+  font-weight:700;vertical-align:2px}
+.dek{color:var(--muted);margin:0 0 22px;max-width:76ch}
+h3{font-size:16px;margin:28px 0 10px;font-weight:650}
+p{margin:0 0 12px}
+a{color:var(--accent-2)}
+code{font-family:var(--mono);font-size:.88em;background:var(--panel-3);
+  padding:1px 5px;border-radius:4px;color:var(--accent-soft)}
+
+/* --- cards ---------------------------------------------------------------- */
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(205px,1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px 17px;box-shadow:var(--elev-1)}
+.card h4{margin:8px 0 8px;font-size:15.5px;font-weight:650;letter-spacing:-.005em}
+.card p{margin:0 0 8px;color:var(--muted);font-size:14px}
+.card p:last-child{margin-bottom:0}
+.card p b{color:var(--text);font-weight:600}
+
+/* Q&A answer cards */
+.qa{border-top:2px solid var(--accent)}
+.qa .q{color:var(--faint);font-size:13.5px;font-style:italic;margin:8px 0 10px;
+  padding-left:11px;border-left:2px solid var(--border-2)}
+.ansline{font-weight:650;font-size:15px;margin:0 0 10px;color:var(--text)}
+.ansline .yes{color:var(--good)} .ansline .no{color:var(--bad)}
+
+/* --- stat strip ----------------------------------------------------------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;
+  background:var(--border);border:1px solid var(--border);border-radius:var(--radius-lg);
+  overflow:hidden;margin:0 0 22px}
+.stat{background:var(--panel);padding:13px 15px}
+.stat .v{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent);
+  line-height:1.15}
+.stat .v.ok{color:var(--good)}
+.stat .k{margin-top:3px}
+
+/* --- tables --------------------------------------------------------------- */
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:600px}
+th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--faint);font-weight:700;padding:11px 14px;
+  border-bottom:1px solid var(--border);background:var(--panel-2);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top;
+  color:var(--muted)}
+tr:last-child td{border-bottom:none}
+td strong,td b{color:var(--text);font-weight:600}
+td code{font-size:12px}
+.mono{font-family:var(--mono);font-size:12px;white-space:nowrap}
+
+/* --- badges --------------------------------------------------------------- */
+.badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:5px;
+  border:1px solid var(--border-2);color:var(--muted);white-space:nowrap}
+.badge.ok{color:var(--good);border-color:var(--good-border);
+  background:color-mix(in srgb,var(--good) 12%,transparent)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border);
+  background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border);
+  background:color-mix(in srgb,var(--bad) 12%,transparent)}
+.badge.info{color:var(--info);border-color:var(--info-border);
+  background:color-mix(in srgb,var(--info) 12%,transparent)}
+.badge.gold{color:var(--accent-soft);border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border);
+  background:color-mix(in srgb,var(--purple) 12%,transparent)}
+
+/* --- terminal blocks ------------------------------------------------------ */
+.term{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  margin:0 0 14px;overflow:hidden}
+.term-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:7px 11px;background:var(--panel-2);border-bottom:1px solid var(--border)}
+.term pre{margin:0;padding:13px 14px;overflow-x:auto;font-family:var(--mono);
+  font-size:12.5px;line-height:1.72;color:var(--text)}
+.term pre .c{color:var(--faint)}
+.term pre .p{color:var(--accent);user-select:none}
+.term pre .o{color:var(--good)}
+.copy{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  font-weight:700;background:transparent;border:1px solid var(--border-2);color:var(--muted);
+  padding:4px 9px;border-radius:5px;cursor:pointer}
+.copy:hover{color:var(--accent-soft);border-color:var(--accent)}
+.copy.done{color:var(--good);border-color:var(--good-border)}
+
+/* --- callouts ------------------------------------------------------------- */
+.note{border-radius:var(--radius);padding:13px 15px;margin:0 0 16px;font-size:14px;
+  border:1px solid var(--border);border-left-width:3px;background:var(--panel)}
+.note b{display:block;margin-bottom:4px;font-size:13px}
+.note.warn{border-left-color:var(--warn)} .note.warn b{color:var(--warn)}
+.note.bad{border-left-color:var(--bad)} .note.bad b{color:var(--bad)}
+.note.ok{border-left-color:var(--good)} .note.ok b{color:var(--good)}
+.note.info{border-left-color:var(--info)} .note.info b{color:var(--info)}
+.note p{margin:0;color:var(--muted)}
+.note p + p{margin-top:8px}
+
+/* --- diagram -------------------------------------------------------------- */
+.diagram{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:20px 16px;overflow-x:auto;margin:0 0 12px}
+.diagram .mermaid{display:flex;justify-content:center;min-width:0}
+.cap{font-size:13px;color:var(--faint);margin:0 0 24px;text-align:center}
+
+/* --- option cards --------------------------------------------------------- */
+.opts{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));
+  align-items:start}
+.opt{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  overflow:hidden;display:flex;flex-direction:column}
+.opt.pick{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
+.opt-head{padding:13px 16px;border-bottom:1px solid var(--border);background:var(--panel-2);
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.opt.pick .opt-head{background:color-mix(in srgb,var(--accent) 13%,var(--panel-2))}
+.opt-head h4{margin:0;font-size:15px;font-weight:680}
+.opt-body{padding:14px 16px;flex:1}
+.opt-body p{font-size:13.5px;color:var(--muted);margin:0 0 10px}
+.tl{list-style:none;padding:0;margin:10px 0 0;font-size:13px}
+.tl li{padding:5px 0 5px 20px;position:relative;color:var(--muted)}
+.tl li::before{position:absolute;left:0;font-family:var(--mono);font-weight:700}
+.tl li.p::before{content:"+";color:var(--good)}
+.tl li.m::before{content:"\2212";color:var(--bad)}
+
+/* --- steps ---------------------------------------------------------------- */
+.tier{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  margin:0 0 18px;overflow:hidden}
+.tier-head{display:flex;gap:13px;align-items:baseline;padding:14px 17px;
+  background:var(--panel-2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.tier-head .num{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent-ink);
+  background:var(--accent);border-radius:4px;padding:2px 7px;letter-spacing:.06em}
+.tier-head h3{margin:0;font-size:16px;font-weight:660}
+.tier-head .meta{margin-left:auto;color:var(--faint);font-size:12.5px;font-family:var(--mono)}
+.tier-body{padding:16px 17px}
+.tier-body > p:first-child{margin-top:0}
+
+/* --- code render surface -------------------------------------------------- */
+.codewrap{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;
+  margin:0 0 8px;background:var(--code-bg)}
+.codewrap :where(pre,code){font-size:12.5px}
+
+/* --- decision form -------------------------------------------------------- */
+form.decide{background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:18px 19px;margin:0 0 16px}
+form.decide legend{padding:0}
+fieldset{border:0;padding:0;margin:0 0 16px}
+.q-title{font-weight:650;font-size:15px;margin:0 0 4px}
+.q-sub{color:var(--faint);font-size:13px;margin:0 0 11px}
+.choice{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;margin:0 0 7px;
+  border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+  background:var(--panel-2);transition:border-color .15s,background .15s}
+.choice:hover{border-color:var(--border-2)}
+.choice:has(input:checked){border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 10%,var(--panel-2))}
+.choice input{margin:4px 0 0;accent-color:var(--accent);flex:none}
+.choice .t{font-weight:600;font-size:14px}
+.choice .d{color:var(--muted);font-size:13px;margin-top:2px}
+button.send{font-family:var(--sans);font-size:14px;font-weight:650;background:var(--accent);
+  color:var(--accent-ink);border:0;border-radius:var(--radius);padding:10px 18px;cursor:pointer}
+button.send:hover{background:var(--accent-soft)}
+.hint{color:var(--faint);font-size:12.5px;margin:10px 0 0}
+
+/* --- toc ------------------------------------------------------------------ */
+nav.toc{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 40px}
+nav.toc a{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  font-weight:700;color:var(--muted);text-decoration:none;border:1px solid var(--border);
+  border-radius:20px;padding:6px 13px;background:var(--panel)}
+nav.toc a:hover{color:var(--accent-soft);border-color:var(--accent)}
+footer{border-top:1px solid var(--border);padding-top:20px;color:var(--faint);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">
+    <span class="lbl accent">s36 · review surface</span>
+    <span class="badge gold">branch s35-service-account-auth</span>
+    <span class="badge ok">PR #30 · CI green</span>
+    <span class="badge ok">no-mistakes: 0 findings</span>
+    <span class="badge warn">not merged</span>
+  </div>
+  <h1>Four front doors. One brain.</h1>
+  <p class="sub">What the s35 work actually built, how to test every piece of it, how it is hosted —
+    and a straight answer to “can I have one data-agent service that serves both the app and webhooks?”</p>
+  <div class="verdict">
+    <span class="lbl accent">the short answer</span>
+    <p><strong>You already have exactly that.</strong> There is one pipeline —
+      <code>run_question()</code> in backend-api — and the browser, the webhook, Slack and MCP all
+      enter through it. The MCP server is not a second agent; it is a ~200-line protocol adapter
+      with <em>no database credentials</em> that calls that same pipeline over HTTP.
+      The only genuinely open question is whether that adapter keeps its own container.</p>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#answers">Your questions</a>
+  <a href="#shipped">What shipped</a>
+  <a href="#arch">Architecture</a>
+  <a href="#direction">Who calls whom</a>
+  <a href="#topology">The topology decision</a>
+  <a href="#hosting">Hosting</a>
+  <a href="#test">How to test it</a>
+  <a href="#review">Review of the approach</a>
+  <a href="#decide">Decide</a>
+</nav>
+
+<!-- ===================================================================== -->
+<section id="answers">
+  <h2><span class="n">01</span>Your four questions, answered first</h2>
+  <p class="dek">Each of these is checked against the code on the branch, not against the plan.</p>
+
+  <div class="grid g2">
+    <div class="card qa">
+      <span class="lbl">Q1</span>
+      <p class="q">“I believe you’ve made an MCP server for the data-agent.”</p>
+      <p class="ansline">Yes — but it never touches <code>data-agent</code>.</p>
+      <p>It exposes the data-agent’s <b>capability</b> (ask a question, run governed SQL, list
+        datasets, describe schema, read the audit trail) while talking only to
+        <code>backend-api</code> over HTTP.</p>
+      <p>That is the deliberate bit: <code>services/mcp-server/mcp_server/config.py</code> holds no
+        <code>DATABASE_URL</code> at all. Its only capability is a <code>dpk_</code> key. So the SQL
+        guardrails, RLS scoping, daily cap and audit write exist in <b>one</b> implementation and
+        cannot drift.</p>
+    </div>
+
+    <div class="card qa">
+      <span class="lbl">Q2</span>
+      <p class="q">“Can that MCP server be used to answer questions in the app, or in another
+        surface via a webhook?”</p>
+      <p class="ansline"><span class="no">No</span> — and it shouldn’t be.</p>
+      <p>MCP is <b>inbound only</b>. It is a door <em>into</em> Data Pilot for external MCP clients
+        (Claude Code, Claude Desktop, another agent). Nothing inside the product consumes it.</p>
+      <p>The app already calls <code>run_question()</code> directly, in-process. Routing the UI
+        through MCP would add a network hop, a serialisation round trip and a second auth identity
+        to reach code it can already call. The webhook is a <b>sibling</b> front door on
+        backend-api, not something layered on top of MCP.</p>
+    </div>
+
+    <div class="card qa">
+      <span class="lbl">Q3</span>
+      <p class="q">“How is the server hosted — docker?”</p>
+      <p class="ansline"><span class="yes">Docker locally, App Runner in AWS.</span></p>
+      <p>Local: <code>services/mcp-server/Dockerfile</code> → compose service <code>mcp-server</code>
+        on port <b>8200</b>, already running in your stack.</p>
+      <p>AWS: <code>aws_apprunner_service.mcp_server</code> in
+        <code>infra/terraform/foundations/apprunner.tf</code>, image pushed by
+        <code>scripts/aws_build_push.sh</code> (now five images, not four), key injected from Secrets
+        Manager. <b>Not deployed yet</b> — it lands on the next merge to <code>main</code>.</p>
+    </div>
+
+    <div class="card qa">
+      <span class="lbl">Q4</span>
+      <p class="q">“I want one data-agent service that serves webhooks and the app.”</p>
+      <p class="ansline"><span class="yes">Built.</span> One pipeline, four doors.</p>
+      <p><code>routers/ask.py :: run_question()</code> is the single implementation of cap → agent →
+        persist → respond. <code>/ask</code>, the webhook, Slack and MCP all call it.
+        <code>data-agent</code> itself was <b>not modified at all</b> by s35 — check the diffstat.</p>
+      <p>What is still a choice: the MCP adapter is currently its own container. It could be mounted
+        into backend-api instead. <a href="#topology">That comparison is below.</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="shipped">
+  <h2><span class="n">02</span>What shipped</h2>
+  <p class="dek">Four commits, one per rung, on <code>s35-service-account-auth</code>. Every GitHub
+    check passed, and the local <code>no-mistakes</code> pipeline ran review → test → document →
+    lint → push → PR → CI with zero findings.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="v">34</div><div class="k lbl">files changed</div></div>
+    <div class="stat"><div class="v">+3,315</div><div class="k lbl">lines added</div></div>
+    <div class="stat"><div class="v">4</div><div class="k lbl">front doors</div></div>
+    <div class="stat"><div class="v ok">1</div><div class="k lbl">ask pipeline</div></div>
+    <div class="stat"><div class="v ok">0</div><div class="k lbl">data-agent changes</div></div>
+  </div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Rung</th><th>Commit</th><th>What it does</th><th>Key files</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>0 · Identity</b><br><span class="badge purple">foundation</span></td>
+          <td class="mono">d5d3b55</td>
+          <td>Service-account keys — <b>a machine caller that is still a real user</b>.
+            <code>dpk_&lt;key_id&gt;_&lt;secret&gt;</code>, SHA-256 of a 256-bit CSPRNG secret,
+            constant-time compare. A service account <em>is</em> an <code>app.users</code> row
+            (<code>auth_provider='service'</code>) so RLS, grants and audit work unchanged.
+            <code>surface</code> pins a key to exactly one door.</td>
+          <td class="mono">service_auth.py<br>auth.py<br>0032_service_accounts.py<br>limits.py</td>
+        </tr>
+        <tr>
+          <td><b>1 · Webhook</b><br><span class="badge info">any system</span></td>
+          <td class="mono">be4bc2c</td>
+          <td><code>POST /integrations/webhook/ask</code> → <b>202 Accepted</b>, answers out of band,
+            POSTs a signed result to your <code>callback_url</code>. 202 because a real question takes
+            a minute-plus and no sane caller holds a socket that long.</td>
+          <td class="mono">routers/integrations.py<br>integrations/signing.py</td>
+        </tr>
+        <tr>
+          <td><b>2 · Slack</b><br><span class="badge info">slash command</span></td>
+          <td class="mono">be4bc2c</td>
+          <td><code>POST /integrations/slack/command</code>. HMAC over the <b>raw</b> body, 5-minute
+            replay window, ephemeral ack inside Slack’s 3-second budget, real answer delivered
+            in-channel via <code>response_url</code>. Answers as a single bot identity; the asking
+            human is recorded to <code>app.events</code>.</td>
+          <td class="mono">routers/integrations.py<br>service_accounts.py</td>
+        </tr>
+        <tr>
+          <td><b>3 · MCP</b><br><span class="badge gold">new service</span></td>
+          <td class="mono">0608e3d</td>
+          <td>Standalone MCP server on <b>:8200</b>, streamable HTTP, five tools. Holds no DB
+            credentials. Plus a two-tier test strategy: deterministic protocol conformance, and a
+            live acceptance test that drives a real Claude client.</td>
+          <td class="mono">services/mcp-server/*<br>scripts/mcp_smoke.py<br>apprunner.tf</td>
+        </tr>
+        <tr>
+          <td><b>4 · Operate</b><br><span class="badge">admin UI</span></td>
+          <td class="mono">c7395d2</td>
+          <td>Mint / list / revoke keys from the <b>Settings</b> tab (admin only). The key is shown
+            exactly once, and the UI says so plainly rather than letting anyone assume it can be read
+            back. Plus the access boundary written into <code>AGENTS.md</code>.</td>
+          <td class="mono">SettingsPage.tsx<br>lib/api.ts<br>AGENTS.md</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The five MCP tools</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Tool</th><th>Calls</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">list_datasets</td><td class="mono">GET /explore/datasets</td>
+          <td>The entry point. Returns only what <em>this key</em> is granted, not everything that exists.</td></tr>
+        <tr><td class="mono">describe_schema</td><td class="mono">GET /schema/catalog</td>
+          <td>Real column names, so the model writes SQL against the live schema instead of guessing.</td></tr>
+        <tr><td class="mono">ask_question</td><td class="mono">POST /ask</td>
+          <td>The full agent. Returns answer + the SQL it used + rows (capped at 200) + <code>degraded</code>.</td></tr>
+        <tr><td class="mono">run_governed_query</td><td class="mono">POST /sql</td>
+          <td>Read-only SELECT under the same guard. <b>Raises</b> on the 200-with-error-field
+            contract — otherwise a blocked <code>DELETE</code> reaches the model as an empty success.</td></tr>
+        <tr><td class="mono">get_audit</td><td class="mono">GET /sql/history</td>
+          <td>Reads back what this connection did. RLS-scoped to the service account itself.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="arch">
+  <h2><span class="n">03</span>Architecture — before and after</h2>
+  <p class="dek">The change is entirely in the top-left of the picture. Everything from
+    <code>run_question()</code> downwards is the system you already had.</p>
+
+  <h3>Before s35 — one door</h3>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart LR
+  UI["Browser<br/>React SPA"] -->|session cookie| API["backend-api :8000<br/>run_question()"]
+  API --> AG["data-agent :8100<br/>SQL authoring · sandbox · pages"]
+  API --> DB[("Postgres<br/>RLS")]
+  AG --> DB
+    </pre>
+  </div>
+
+  <h3>After s35 — four doors, same pipeline</h3>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TB
+  subgraph doors["Front doors"]
+    direction LR
+    UI["Browser<br/>React SPA :5230"]
+    WH["Any system<br/>HTTP webhook"]
+    SL["Slack<br/>/datapilot"]
+    MC["MCP client<br/>Claude Code · Desktop · another agent"]
+  end
+
+  MCPS["mcp-server :8200<br/>protocol adapter<br/>NO database credentials"]
+
+  API["backend-api :8000<br/>run_question()<br/>cap · RLS · degrade · audit"]
+  AG["data-agent :8100<br/>the brain — untouched by s35"]
+  DB[("Postgres / Aurora<br/>RLS · app_user · agent_ro")]
+
+  UI -->|session cookie| API
+  WH -->|"Bearer dpk_ · surface=webhook"| API
+  SL -->|"X-Slack-Signature HMAC"| API
+  MC -->|"MCP streamable HTTP"| MCPS
+  MCPS -->|"Bearer dpk_ · surface=mcp"| API
+  API --> AG
+  API --> DB
+  AG --> DB
+
+  style MCPS stroke-dasharray: 5 4
+  style API stroke-width:3px
+    </pre>
+  </div>
+  <p class="cap">The dashed box is the only new <em>process</em>. Everything else is a new
+    <em>route</em> on a service that already existed.</p>
+
+  <h3>What one MCP question actually does</h3>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant C as MCP client (Claude)
+  participant M as mcp-server
+  participant A as backend-api
+  participant G as data-agent
+  participant D as Postgres
+  C->>M: tools/call ask_question
+  M->>A: POST /ask (Bearer dpk_…, X-Client-Channel: mcp)
+  A->>D: verify SHA-256 of secret, load app.users row
+  A->>A: daily cap for plan='service'
+  A->>G: /ask under that user id
+  G->>D: SELECT … with app.current_user_id set (RLS)
+  G-->>A: answer + SQL + rows
+  A->>D: INSERT query_runs (channel='mcp')
+  A-->>M: AskResponse
+  M-->>C: tool result (rows capped at 200)
+    </pre>
+  </div>
+  <p class="cap">Step 4 and step 8 are the point of the whole design — a machine caller hits the same
+    cap and writes the same audit row as a person.</p>
+
+  <h3>The chokepoint, in code</h3>
+  <p>This is the single function that makes “one brain, four doors” true rather than aspirational:</p>
+  <div class="codewrap" id="code-chokepoint"></div>
+  <p class="cap"><code>services/backend-api/app/routers/ask.py</code> — lines 426–463</p>
+</section>
+
+<!-- ===================================================================== -->
+<section id="direction">
+  <h2><span class="n">04</span>Who calls whom — direction matters</h2>
+  <p class="dek">The confusion in “can MCP serve the app or a webhook” is a direction question.
+    Here is every edge in the system, and which way it points.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Caller</th><th>→</th><th>Callee</th><th>Protocol / auth</th><th>Exists?</th></tr></thead>
+      <tbody>
+        <tr><td>Browser SPA</td><td>→</td><td>backend-api</td><td>HTTP + session cookie</td><td><span class="badge ok">yes</span></td></tr>
+        <tr><td>External system</td><td>→</td><td>backend-api</td><td>HTTP + <code>dpk_</code> webhook key</td><td><span class="badge ok">yes</span></td></tr>
+        <tr><td>Slack</td><td>→</td><td>backend-api</td><td>HTTP form + HMAC signature</td><td><span class="badge ok">yes</span></td></tr>
+        <tr><td>MCP client</td><td>→</td><td><b>mcp-server</b></td><td>MCP streamable HTTP</td><td><span class="badge ok">yes</span></td></tr>
+        <tr><td><b>mcp-server</b></td><td>→</td><td>backend-api</td><td>plain HTTP + <code>dpk_</code> mcp key</td><td><span class="badge ok">yes</span></td></tr>
+        <tr><td>backend-api</td><td>→</td><td>data-agent</td><td>HTTP + shared token</td><td><span class="badge ok">yes</span></td></tr>
+        <tr style="background:color-mix(in srgb,var(--bad) 7%,transparent)">
+          <td>Browser SPA</td><td>→</td><td>mcp-server</td><td>—</td><td><span class="badge bad">no · never will</span></td></tr>
+        <tr style="background:color-mix(in srgb,var(--bad) 7%,transparent)">
+          <td>Webhook route</td><td>→</td><td>mcp-server</td><td>—</td><td><span class="badge bad">no · pointless hop</span></td></tr>
+        <tr style="background:color-mix(in srgb,var(--bad) 7%,transparent)">
+          <td>mcp-server</td><td>→</td><td>data-agent / Postgres</td><td>—</td><td><span class="badge bad">no · by design</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note info" style="margin-top:18px">
+    <b>The one thing MCP could plausibly do for the app later</b>
+    <p>MCP’s real leverage is the <em>other</em> direction: letting <b>data-agent</b> become an MCP
+      <em>client</em> and pull in outside tools — an ABS statistics server, a geocoder, a docs
+      server — so the agent can reach data it doesn’t own. That is a genuinely different piece of
+      work and nothing in s35 blocks or presumes it.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="topology">
+  <h2><span class="n">05</span>The topology decision — the only thing still open</h2>
+  <p class="dek">You asked for “ideally one data-agent service that serves webhooks and the app”.
+    You have it. The remaining choice is narrower than it looks: <b>does the MCP protocol adapter
+    run as its own process, or inside backend-api?</b></p>
+
+  <div class="opts">
+    <div class="opt pick">
+      <div class="opt-head">
+        <h4>A · Separate adapter container</h4>
+        <span class="badge gold">shipped</span><span class="badge ok">recommended</span>
+      </div>
+      <div class="opt-body">
+        <p><code>mcp-server</code> is its own image, its own compose service, its own App Runner
+          service. It speaks MCP outward and plain HTTP inward.</p>
+        <ul class="tl">
+          <li class="p">Clean trust boundary — the process that terminates an unauthenticated public
+            protocol holds <b>zero</b> DB credentials.</li>
+          <li class="p">Independent blast radius: a bad MCP transport release cannot take the UI’s API down.</li>
+          <li class="p">Scales and deploys separately; can move to a different host entirely.</li>
+          <li class="p">The MCP SDK’s DNS-rebinding <code>TransportSecuritySettings</code> stay isolated
+            from the app’s CORS and session middleware.</li>
+          <li class="m">One more container. In AWS that is one more App Runner instance to pay for
+            and watch.</li>
+          <li class="m">An extra network hop per tool call (localhost in compose, VPC-internal in AWS).</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <h4>B · Mount MCP inside backend-api</h4>
+        <span class="badge info">feasible — verified</span>
+      </div>
+      <div class="opt-body">
+        <p>Delete the container; mount the MCP ASGI app on backend-api at <code>/mcp</code>. One
+          service, one deploy, one bill.</p>
+        <ul class="tl">
+          <li class="p">One fewer container, image, App Runner service and alarm.</li>
+          <li class="p">No internal hop; no second <code>dpk_</code> key to mint and rotate — it could
+            resolve identity in-process.</li>
+          <li class="m"><b>Real wiring cost.</b> <code>MCPServer.streamable_http_app()</code> returns a
+            Starlette app <em>with its own lifespan</em> that starts the MCP session manager.
+            FastAPI’s <code>Mount</code> does not run a mounted app’s lifespan, so backend-api’s
+            lifespan has to drive it explicitly. Get it wrong and MCP fails at runtime, not at boot.</li>
+          <li class="m">Couples an evolving beta protocol’s transport security to your product API.</li>
+          <li class="m">Loses the “no DB credentials” property — the MCP surface would run in the
+            process that holds them.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <h4>C · Put MCP inside data-agent</h4>
+        <span class="badge bad">rejected</span>
+      </div>
+      <div class="opt-body">
+        <p>“One data-agent service that serves everything”, read literally.</p>
+        <ul class="tl">
+          <li class="m"><code>data-agent</code> holds <code>agent_ro</code> and <code>admin_ro</code>
+            database credentials and runs <b>model-authored SQL</b>. It is the last process that
+            should terminate a public protocol.</li>
+          <li class="m">It implements no auth, no daily cap, no audit write, no conversation
+            persistence — all of that is backend-api’s. You would be rebuilding the security surface
+            in a second place.</li>
+          <li class="m">Four front doors would become two security surfaces. That is the exact
+            failure the s35 design exists to prevent.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="note ok" style="margin-top:20px">
+    <b>Recommendation: keep A, and don’t conflate “one agent” with “one process”</b>
+    <p>“One data-agent service” is already true in the sense that matters — there is a single
+      implementation of the ask pipeline, a single security surface, and a single audit trail. The
+      MCP container is an <em>adapter</em>, the same way a load balancer or a TLS terminator is: it
+      adds a protocol, not a brain.</p>
+    <p>Option B is a legitimate cost optimisation and it is genuinely feasible (I checked the SDK —
+      <code>streamable_http_app()</code> exists and returns a Starlette app). Take it only if the
+      extra App Runner instance is the thing you want to cut. It buys ~$15–25/month and costs you
+      the isolation property.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="hosting">
+  <h2><span class="n">06</span>Hosting — local and AWS</h2>
+
+  <div class="grid g2">
+    <div class="card">
+      <span class="lbl accent">local · docker compose</span>
+      <h4>Already running in your stack</h4>
+      <p>Built from <code>services/mcp-server/Dockerfile</code> (uv on
+        <code>python3.12-bookworm-slim</code>), published on <b>:8200</b>, endpoint
+        <code>http://localhost:8200/mcp</code>. <code>depends_on: backend-api</code>.</p>
+      <p>Config is two env vars: <code>BACKEND_URL</code> and <code>MCP_SERVICE_KEY</code>. An unset
+        key does not half-work — every tool reports plainly that it has no key.</p>
+    </div>
+    <div class="card">
+      <span class="lbl accent">aws · app runner</span>
+      <h4>Defined, not yet deployed</h4>
+      <p><code>aws_apprunner_service.mcp_server</code> — ECR image
+        <code>data-qa/mcp-server</code>, port 8200, key from Secrets Manager
+        (<code>data-qa/mcp-service-key</code>), <b>no instance IAM role</b> because it talks to
+        nothing but backend-api.</p>
+      <p>The image is now part of <code>scripts/aws_build_push.sh</code>, which the deploy workflow
+        runs — so it ships automatically on the next merge to <code>main</code>.</p>
+    </div>
+  </div>
+
+  <div class="note warn" style="margin-top:16px">
+    <b>Deployment gotcha you will hit exactly once: ALLOWED_HOSTS needs two applies</b>
+    <p>The MCP SDK ships DNS-rebinding protection that matches the <code>Host</code> header
+      <em>including the port</em>. There is no allow-everything value, and the wildcard form is
+      <code>host:*</code> — a bare <code>*</code> never matches. App Runner only assigns the
+      hostname at create time and a service cannot reference its own <code>service_url</code>, so
+      the value cannot be derived in Terraform.</p>
+    <p>Result: after the first apply, every remote MCP request returns <b>421</b> until you set
+      <code>var.mcp_allowed_hosts</code> from the <code>mcp_allowed_hosts_hint</code> output and
+      apply again. Both outputs exist to make this a two-step you can see rather than a mystery.</p>
+  </div>
+
+  <h3>The compose service, verbatim</h3>
+  <div class="codewrap" id="code-compose"></div>
+  <p class="cap"><code>docker-compose.yml</code> — the <code>mcp-server</code> block</p>
+</section>
+
+<!-- ===================================================================== -->
+<section id="test">
+  <h2><span class="n">07</span>How to test it</h2>
+  <p class="dek">Four tiers, cheapest first. Tier 0 needs nothing; tier 3 needs a Slack workspace.
+    Your stack is already up, so you can start at tier 1 right now.</p>
+
+  <div class="note bad">
+    <b>Do this first, or nothing below works</b>
+    <p>Migration <code>0032</code> creates <code>app.service_accounts</code> and widens the plan
+      check to admit <code>'service'</code>. The migrate image must be <b>rebuilt</b> before it is
+      run — a stale image reports “Migration complete” while applying absolutely nothing, which is
+      how you lose twenty minutes.</p>
+  </div>
+
+  <!-- Tier 0 -->
+  <div class="tier">
+    <div class="tier-head">
+      <span class="num">TIER 0</span><h3>Deterministic — no stack, no LLM, no cost</h3>
+      <span class="meta">~20s</span>
+    </div>
+    <div class="tier-body">
+      <p>These already run on every push in CI. Run them locally to check the branch compiles and the
+        crypto behaves.</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">key hashing · surface pinning · Slack signature</span>
+          <button class="copy">copy</button></div>
+<pre><span class="c"># service-key mint/split/verify + Slack HMAC replay-window tests</span>
+uv run --directory services/backend-api pytest -q
+
+<span class="c"># MCP protocol conformance — self-skips if no server is listening</span>
+make mcp-test</pre>
+      </div>
+      <p style="color:var(--faint);font-size:13px;margin:0">What tier 0 proves: a wrong secret and an
+        unknown <code>key_id</code> are indistinguishable to a caller; a key minted for
+        <code>webhook</code> is rejected on <code>mcp</code>; a signature outside the 5-minute window
+        fails in <em>both</em> directions.</p>
+    </div>
+  </div>
+
+  <!-- Tier 1 -->
+  <div class="tier">
+    <div class="tier-head">
+      <span class="num">TIER 1</span><h3>Local stack — mint a key, drive the webhook</h3>
+      <span class="meta">~5 min</span>
+    </div>
+    <div class="tier-body">
+      <p><b>1 · Apply the migration and bring the stack up.</b></p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">migrate then up</span><button class="copy">copy</button></div>
+<pre><span class="c"># the build is not optional — see the warning above</span>
+docker compose build migrate
+docker compose run --rm migrate
+docker compose up -d --build backend-api mcp-server</pre>
+      </div>
+
+      <p><b>2 · Mint a webhook key.</b> Open <a href="http://localhost:5230">http://localhost:5230</a>
+        → <b>Settings</b> → <b>Service accounts</b> (admin only). Name it, pick surface
+        <code>webhook</code>, tick the datasets it may read, hit <b>Mint key</b>.
+        <span style="color:var(--warn)">The key is shown once and never again</span> — only its
+        SHA-256 is stored.</p>
+
+      <p><b>3 · Ask a question through the webhook.</b> Grab a throwaway callback URL from
+        <a href="https://webhook.site">webhook.site</a> so you can watch the answer land.</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">POST /integrations/webhook/ask</span><button class="copy">copy</button></div>
+<pre>KEY=<span class="o">dpk_paste_yours_here</span>
+CB=<span class="o">https://webhook.site/your-uuid</span>
+
+curl -sS -X POST http://localhost:8000/integrations/webhook/ask \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d "{\"question\":\"median rent in postcode 2077\",\"callback_url\":\"$CB\",\"reference\":\"t1\"}"
+
+<span class="c"># → {"status":"accepted","reference":"t1"}   (202, immediately)</span>
+<span class="c"># → a minute later, the answer POSTs to $CB carrying</span>
+<span class="c">#   X-DataPilot-Signature and X-DataPilot-Timestamp</span></pre>
+      </div>
+
+      <p><b>4 · Prove the guardrails, not just the happy path.</b> A door that only ever gets tested
+        while open tells you nothing.</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">negative cases — all four should fail</span><button class="copy">copy</button></div>
+<pre><span class="c"># wrong surface: an mcp key on the webhook door → 401</span>
+curl -si -X POST http://localhost:8000/integrations/webhook/ask \
+  -H "Authorization: Bearer $MCP_KEY" -H 'Content-Type: application/json' \
+  -d '{"question":"hi"}' | head -1
+
+<span class="c"># garbage key → 401, and indistinguishable from a wrong secret</span>
+curl -si -X POST http://localhost:8000/integrations/webhook/ask \
+  -H "Authorization: Bearer dpk_deadbeef_nope" -H 'Content-Type: application/json' \
+  -d '{"question":"hi"}' | head -1
+
+<span class="c"># revoked key (revoke it in Settings first) → 401</span>
+<span class="c"># no dataset grants → the answer comes back empty, NOT an error:</span>
+<span class="c">#   that is RLS doing its job, and it is the behaviour to expect</span></pre>
+      </div>
+
+      <p><b>5 · Check the audit trail.</b> Every call is a real row against a real user.</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">query_runs.channel</span><button class="copy">copy</button></div>
+<pre>docker compose exec db psql -U postgres -d dataqa -c \
+  "SELECT channel, status, left(question,44) AS q, created_at
+     FROM app.query_runs ORDER BY created_at DESC LIMIT 8;"</pre>
+      </div>
+      <div class="note info" style="margin-top:4px">
+        <b>If that returns zero rows, it is probably RLS, not a missing write</b>
+        <p>Query as <code>postgres</code> (as above), not as <code>app_user</code>. A psql session
+          with no <code>app.current_user_id</code> set sees nothing — which is the policy working
+          correctly and looks exactly like a bug.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tier 2 -->
+  <div class="tier">
+    <div class="tier-head">
+      <span class="num">TIER 2</span><h3>MCP — including a real Claude client</h3>
+      <span class="meta">~5 min · costs tokens</span>
+    </div>
+    <div class="tier-body">
+      <p><b>1 · Give the server a key.</b> Mint one with surface <code>mcp</code> in Settings, put it
+        in <code>.env</code>, recreate the container.</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">.env + recreate</span><button class="copy">copy</button></div>
+<pre>echo "MCP_SERVICE_KEY=dpk_paste_yours_here" &gt;&gt; .env
+docker compose up -d --force-recreate mcp-server
+docker compose logs --tail 20 mcp-server</pre>
+      </div>
+
+      <p><b>2 · Protocol conformance.</b> Deterministic, no model involved — it connects a real MCP
+        client, lists the tools and checks the schemas.</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">make mcp-test</span><button class="copy">copy</button></div>
+<pre>make mcp-test</pre>
+      </div>
+
+      <p><b>3 · The acceptance test that actually matters.</b> This drives the real
+        <code>claude</code> CLI headless against your server and checks two things
+        <em>in order</em>.</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">make mcp-smoke</span><button class="copy">copy</button></div>
+<pre><span class="c"># tool-use check only</span>
+make mcp-smoke
+
+<span class="c"># tool-use check AND ground-truth figure check</span>
+make mcp-smoke EXPECT=15217
+
+<span class="c"># or point it at a deployed server</span>
+make mcp-smoke MCP_URL=https://&lt;host&gt;/mcp</pre>
+      </div>
+      <div class="note ok">
+        <b>Why the ordering is the whole design</b>
+        <p>Claude knows roughly what Sydney property costs. Point it at a <em>dead</em> MCP server and
+          it will happily produce a plausible-looking number from memory — so a test that only looked
+          for a figure in the output would go green while the server was completely broken.</p>
+        <p><code>mcp_smoke.py</code> therefore parses the streamed events and <b>fails unless it sees
+          an actual <code>mcp__datapilot__*</code> tool_use block</b>, and only then checks the
+          number. I verified both branches: server down → exit 1 with “answered WITHOUT calling any
+          MCP tool”; server up → exit 0.</p>
+      </div>
+
+      <p><b>4 · Drive it by hand from Claude Code.</b> Same config the smoke test writes:</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">interactive session</span><button class="copy">copy</button></div>
+<pre>cat &gt; /tmp/datapilot-mcp.json &lt;&lt;'JSON'
+{"mcpServers":{"datapilot":{"type":"http","url":"http://localhost:8200/mcp"}}}
+JSON
+
+claude --mcp-config /tmp/datapilot-mcp.json
+
+<span class="c"># then ask, in the session:</span>
+<span class="c">#   "Use the Data Pilot tools: which postcode had the highest median rent in 2024?"</span>
+<span class="c"># run `claude mcp add --help` to wire it in permanently instead</span></pre>
+      </div>
+      <p style="color:var(--faint);font-size:13px;margin:0">Getting a <b>421</b>? That is the
+        DNS-rebinding guard, not a crash. Add the exact <code>host:port</code> you are calling to
+        <code>MCP_ALLOWED_HOSTS</code>.</p>
+    </div>
+  </div>
+
+  <!-- Tier 3 -->
+  <div class="tier">
+    <div class="tier-head">
+      <span class="num">TIER 3</span><h3>Slack — locally by hand, then for real</h3>
+      <span class="meta">~15 min</span>
+    </div>
+    <div class="tier-body">
+      <p><b>Locally, without a workspace.</b> Mint a key with surface <code>slack</code> first — the
+        endpoint returns <b>503</b> until one exists, since it looks the identity up by surface and
+        never takes it from the request. Then sign a request the way Slack would:</p>
+      <div class="term">
+        <div class="term-bar"><span class="lbl">hand-signed slash command</span><button class="copy">copy</button></div>
+<pre>SECRET=dev-slack-secret          <span class="c"># the compose default</span>
+TS=$(date +%s)
+BODY='text=median+rent+in+2077&amp;response_url=https%3A%2F%2Fwebhook.site%2Fyour-uuid&amp;user_id=U01&amp;user_name=nathan&amp;channel_id=C01'
+SIG="v0=$(printf 'v0:%s:%s' "$TS" "$BODY" \
+  | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)"
+
+curl -sS -X POST http://localhost:8000/integrations/slack/command \
+  -H "X-Slack-Request-Timestamp: $TS" \
+  -H "X-Slack-Signature: $SIG" \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data "$BODY"
+
+<span class="c"># → {"response_type":"ephemeral","text":"Working on it — median rent in 2077"}</span>
+<span class="c"># → the real answer POSTs to the response_url a minute later</span></pre>
+      </div>
+      <p>Tamper with one character of <code>$BODY</code> after signing, or set <code>TS</code> ten
+        minutes in the past, and both must return <b>401</b>.</p>
+
+      <p><b>For real.</b> Slack needs a public HTTPS URL, so this is a post-deploy step:</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Step</th><th>Where</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>1 · Create the app</td><td>api.slack.com/apps</td><td>Add a slash command,
+              e.g. <code>/datapilot</code></td></tr>
+            <tr><td>2 · Request URL</td><td>Slash command config</td>
+              <td class="mono">https://&lt;backend-api&gt;/integrations/slack/command</td></tr>
+            <tr><td>3 · Signing secret</td><td>Secrets Manager</td>
+              <td class="mono">data-qa/slack-signing-secret</td></tr>
+            <tr><td>4 · Bot identity</td><td>Settings → Service accounts</td>
+              <td>Mint surface <code>slack</code>, grant <b>only</b> what everyone in that channel
+                should see</td></tr>
+            <tr><td>5 · Verify</td><td>The channel</td>
+              <td>Ack inside 3s, answer in-channel, and an <code>app.events</code> row naming the
+                asking human</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn" style="margin-top:14px">
+        <b>Understand the Slack access model before you invite anyone</b>
+        <p>v1 answers as <b>one bot identity with its own dataset grants</b>. Channel membership
+          <em>is</em> the access boundary. Everyone in that channel sees the same scope, so grant a
+          Slack account only what the whole channel should see. Per-user delegation is designed and
+          documented in <code>AGENTS.md</code>, and deliberately unbuilt.</p>
+        <p>Authorisation is shared; accountability is not — the asking user’s id, name and channel
+          are written to <code>app.events</code> against every run.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="review">
+  <h2><span class="n">08</span>Review of the approach</h2>
+  <p class="dek">What I think holds up, and what I would flag to a reviewer before this goes anywhere
+    public. The gaps are stated as gaps, not as future work I’m confident you’ll never need.</p>
+
+  <h3>What holds up</h3>
+  <div class="grid g3">
+    <div class="card">
+      <span class="lbl hud">strong</span>
+      <h4>One pipeline, not four</h4>
+      <p>Every door funnels into <code>run_question()</code>. Four adapters that each reimplemented
+        the cap and the audit write would be four chances to get it wrong, and they <em>would</em>
+        drift. This is the single best property of the design.</p>
+    </div>
+    <div class="card">
+      <span class="lbl hud">strong</span>
+      <h4>A machine that is still a user</h4>
+      <p>Because a service account is an <code>app.users</code> row, RLS, grants, conversations and
+        <code>query_runs</code> all work with <b>no special-casing</b>. No “machine bypass” path was
+        added, which is where this normally goes wrong.</p>
+    </div>
+    <div class="card">
+      <span class="lbl hud">strong</span>
+      <h4>Never admin</h4>
+      <p>Machine callers are tiered with <code>plan='service'</code>, not exempted by role. A leaked
+        key cannot read across users. <code>app.service_accounts</code> is granted to
+        <code>app_user</code> only — <b>never</b> <code>agent_ro</code>, which runs model-authored
+        SQL. I verified that grant rather than assuming it.</p>
+    </div>
+    <div class="card">
+      <span class="lbl hud">strong</span>
+      <h4>Hash, not KDF — on purpose</h4>
+      <p>SHA-256 rather than bcrypt/argon2 is correct here: the secret is 256 bits of CSPRNG output,
+        so there is no dictionary to attack, and a KDF would only add latency to every request.
+        Compared with <code>secrets.compare_digest</code>.</p>
+    </div>
+    <div class="card">
+      <span class="lbl hud">strong</span>
+      <h4>Tests that can actually fail</h4>
+      <p>The MCP smoke test asserts <b>tool_use before figures</b>, and the <code>/sql</code> wrapper
+        raises on the 200-with-error-field contract — a real bug I hit, where a blocked
+        <code>DELETE</code> reached the model as an empty success.</p>
+    </div>
+    <div class="card">
+      <span class="lbl hud">strong</span>
+      <h4>Unconfigured means closed</h4>
+      <p>No <code>SLACK_SIGNING_SECRET</code> → the endpoint 404s rather than existing in a weakened
+        form. No <code>MCP_SERVICE_KEY</code> → tools say so plainly instead of half-working.</p>
+    </div>
+  </div>
+
+  <h3>Gaps — honest list</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Gap</th><th>Severity</th><th>Why it is like that</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>MCP auth is a static bearer key</b><br><span class="mono">mcp_server/config.py</span></td>
+          <td><span class="badge warn">blocks public use</span></td>
+          <td>The MCP spec’s auth story is OAuth 2.1 with scopes and dynamic client registration. A
+            shared key does not meet that bar. Fine for a private deployment where you control every
+            client; not fine for anything published.</td>
+          <td>OAuth 2.1 resource server, or keep it behind a private network. Already written down in
+            <code>AGENTS.md</code> as a deliberate, staged gap.</td>
+        </tr>
+        <tr>
+          <td><b><code>run_governed_query</code> has no daily cap</b><br><span class="mono">routers/sql.py:47</span></td>
+          <td><span class="badge warn">cost / abuse</span></td>
+          <td><code>check_daily_llm_cap</code> guards <code>/ask</code> and <code>/sql/ai</code> but
+            not raw <code>POST /sql</code>. So an MCP client can run unlimited governed SELECTs. It
+            is not a data leak — SELECT-only, allowlisted, RLS-scoped, 15s statement timeout,
+            audited — but it is an unbounded query rate.</td>
+          <td>Either extend the cap to <code>/sql</code> for <code>plan='service'</code>, or add a
+            per-key rate limit. Small change; worth doing before prod exposure.</td>
+        </tr>
+        <tr>
+          <td><b>Callbacks signed with the agent shared token</b><br><span class="mono">integrations.py:104</span></td>
+          <td><span class="badge warn">shortcut</span></td>
+          <td>We only store a hash of the caller’s secret, so it cannot be used to sign. The agent
+            shared token is the one secret both ends can hold — so every webhook caller’s callbacks
+            are signed with the <em>same</em> key.</td>
+          <td>Store a separate per-account signing secret at mint time, returned once alongside the
+            key.</td>
+        </tr>
+        <tr>
+          <td><b>Slack = one shared identity</b><br><span class="mono">integrations.py:177</span></td>
+          <td><span class="badge info">your decision</span></td>
+          <td>You chose this deliberately over per-user act-as delegation, and for property data it
+            is the right call — I had over-engineered the alternative.</td>
+          <td>Nothing, unless a channel needs mixed scopes. The delegation path is documented.</td>
+        </tr>
+        <tr>
+          <td><b>MCP not in the cloud smoke test</b><br><span class="mono">scripts/cloud_smoke.sh</span></td>
+          <td><span class="badge warn">deploy risk</span></td>
+          <td>The post-deploy smoke checks backend-api and the frontend. A broken MCP service would
+            deploy green and nobody would notice — and the <code>ALLOWED_HOSTS</code> two-apply dance
+            makes “broken after deploy” the <em>expected</em> first state.</td>
+          <td>Add a <code>tools/list</code> assertion against the App Runner URL to the smoke script.</td>
+        </tr>
+        <tr>
+          <td><b><code>describe_schema</code> filters by substring</b><br><span class="mono">main.py:107</span></td>
+          <td><span class="badge">minor</span></td>
+          <td><code>dataset_slug in str(t.get("dataset", …))</code> is loose matching — it can
+            over-return on a slug that is a prefix of another.</td>
+          <td>Exact match against the dataset registry.</td>
+        </tr>
+        <tr>
+          <td><b>A DB round trip per authenticated call</b><br><span class="mono">auth.py</span></td>
+          <td><span class="badge">minor</span></td>
+          <td>Every key verification hits Postgres. Cheap normally — but on Aurora Serverless cold
+            resume it joins the known class of “hangs rather than erroring”.</td>
+          <td>Short-TTL cache on <code>key_id</code>, invalidated on revoke. Only worth it if you see
+            it.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note info" style="margin-top:18px">
+    <b>Where this lands against the portfolio matrix from s34</b>
+    <p>This closes <b>P0 (service-account auth)</b> and <b>P2 (the Slack/webhook surface)</b> from the
+      prioritisation, and adds an MCP server that was not in the original list. What it does
+      <em>not</em> touch is the item you flagged as the real gap: <b>evals</b>. The agent still has 2
+      of 41 goldens curated, and Logfire is still coded-but-token-empty — one env var and a rebuild
+      away, in <code>.env</code> and <code>data-qa/logfire-token</code>.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="decide">
+  <h2><span class="n">09</span>Decide</h2>
+  <p class="dek">Pick an answer to each and hit the button — it queues a prompt back to me. Or just
+    annotate anything above and send that instead.</p>
+
+  <form class="decide" data-lavish-question="topology" onsubmit="
+    event.preventDefault();
+    const f = new FormData(event.currentTarget);
+    const parts = ['topology','merge','next'].map(k => f.get(k)).filter(Boolean);
+    if (!parts.length) return;
+    window.lavish.queuePrompt(
+      'From the s36 review page — my decisions: ' + parts.join(' | '),
+      { tag:'decision', text: parts.join(' · '), element: event.currentTarget,
+        data: Object.fromEntries(f.entries()) });
+  ">
+    <fieldset>
+      <p class="q-title">MCP topology</p>
+      <p class="q-sub">Keep the adapter as its own process, or fold it into backend-api?</p>
+      <label class="choice"><input type="radio" name="topology"
+        value="keep the MCP server as its own container (option A)">
+        <span><span class="t">A · Keep the separate container</span>
+        <span class="d">Recommended. Clean trust boundary, independent blast radius, costs one App
+          Runner instance.</span></span></label>
+      <label class="choice"><input type="radio" name="topology"
+        value="fold the MCP server into backend-api as a mounted ASGI app (option B) — do the lifespan wiring">
+        <span><span class="t">B · Mount it into backend-api</span>
+        <span class="d">One fewer service. Needs the session-manager lifespan wired explicitly into
+          backend-api’s lifespan.</span></span></label>
+      <label class="choice"><input type="radio" name="topology"
+        value="park the topology decision for now and leave it as built">
+        <span><span class="t">Park it</span>
+        <span class="d">Leave as built and revisit if the AWS bill or the ops surface bothers
+          you.</span></span></label>
+    </fieldset>
+
+    <fieldset>
+      <p class="q-title">PR #30</p>
+      <p class="q-sub">It is green and clean, sitting unmerged on <code>s35-service-account-auth</code>.</p>
+      <label class="choice"><input type="radio" name="merge"
+        value="merge PR #30 as-is">
+        <span><span class="t">Merge as-is</span>
+        <span class="d">Ships the MCP App Runner service too — remember the ALLOWED_HOSTS second
+          apply.</span></span></label>
+      <label class="choice"><input type="radio" name="merge"
+        value="fix the two flagged gaps (cap on /sql for service plans, MCP in cloud smoke) before merging PR #30">
+        <span><span class="t">Close two gaps first</span>
+        <span class="d">Add the cap to <code>/sql</code> for service plans, and put MCP in the cloud
+          smoke test. Both small.</span></span></label>
+      <label class="choice"><input type="radio" name="merge"
+        value="hold PR #30 unmerged for now">
+        <span><span class="t">Hold</span>
+        <span class="d">Leave it open; nothing reaches prod.</span></span></label>
+    </fieldset>
+
+    <fieldset>
+      <p class="q-title">What next</p>
+      <p class="q-sub">After this lands.</p>
+      <label class="choice"><input type="radio" name="next"
+        value="next: build the eval loop / curate goldens — the real portfolio gap">
+        <span><span class="t">Evals</span>
+        <span class="d">The gap s34 named and this work didn’t touch. 2 of 41 goldens are
+          curated.</span></span></label>
+      <label class="choice"><input type="radio" name="next"
+        value="next: turn on Logfire properly and show me the traces from all four channels">
+        <span><span class="t">Logfire</span>
+        <span class="d">One env var plus a rebuild — then all four channels’ traces in one
+          place.</span></span></label>
+      <label class="choice"><input type="radio" name="next"
+        value="next: stand the Slack app up for real in a workspace">
+        <span><span class="t">Real Slack app</span>
+        <span class="d">Needs prod deployed first, then the workspace config in tier 3.</span></span></label>
+      <label class="choice"><input type="radio" name="next"
+        value="next: make data-agent an MCP client so it can pull in outside tools">
+        <span><span class="t">MCP the other way</span>
+        <span class="d">Let the agent consume external MCP servers — outside data it doesn’t
+          own.</span></span></label>
+    </fieldset>
+
+    <button class="send" type="submit">Queue these answers</button>
+    <p class="hint">Queued prompts don’t send until you press <b>Send to Agent</b>.</p>
+  </form>
+</section>
+
+<footer>
+  <span class="lbl">s36 · non-ui surfaces review</span>
+  <p style="margin:8px 0 0">Branch <code>s35-service-account-auth</code> · PR #30 · 4 commits ·
+    34 files · verified against the working tree on 2026-08-04. Styled with the app’s own Night
+    Flight design tokens from <code>frontend/src/styles.css</code>.</p>
+</footer>
+
+</div>
+
+<!-- code contents, kept out of JS string literals to avoid escaping hazards -->
+<script type="text/plain" id="src-chokepoint">async def run_question(
+    user: CurrentUser,
+    raw_question: str,
+    channel: str,
+    conversation_id: str | None = None,
+) -> AskResponse:
+    """The whole ask pipeline: cap -> agent -> persist -> response.
+
+    Shared by /ask and the s35 integration surfaces (Slack, webhook, MCP) so a
+    machine caller goes through the *same* cap, RLS scoping, degraded-mode
+    fallback and audit write as the web UI. Any new front door that reimplements
+    this is a second security surface; there should only ever be one.
+    """
+    question = _clean_question(raw_question)
+    await check_daily_llm_cap(user)
+
+    conv_id, plan = await _open_conversation(user, conversation_id, question)
+    started = time.perf_counter()
+    try:
+        result = await ask_agent(
+            question=question,
+            user_id=user.id,
+            role=user.role,
+            plan=plan,
+            dataset_slug=DATASET_SLUG,
+        )
+    except httpx.HTTPError as exc:
+        async with rls_connection(user.id) as conn:
+            await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
+        result = _degraded_result(f"agent unavailable: {exc}")
+    latency_ms = int((time.perf_counter() - started) * 1000)
+
+    message_id, run_id = await _persist_answer(user, channel, conv_id, question, result, latency_ms)
+    return _build_response(conv_id, message_id, run_id, result, latency_ms, user.role == "admin")
+</script>
+
+<script type="text/plain" id="src-compose">  # s35 rung 3: the MCP front door. Holds NO database credentials by design —
+  # it calls backend-api over HTTP with its own dpk_ service key, so guardrails,
+  # RLS, the daily cap and the audit trail stay in one implementation.
+  # MCP_SERVICE_KEY must be minted first: POST /admin/service-accounts with
+  # surface="mcp" (or the Settings tab). Unset = the tools report that plainly
+  # rather than half-working.
+  mcp-server:
+    build: ./services/mcp-server
+    environment:
+      BACKEND_URL: http://backend-api:8000
+      MCP_SERVICE_KEY: ${MCP_SERVICE_KEY:-}
+      # The SDK's DNS-rebinding guard matches Host INCLUDING the port, so the
+      # wildcard form is "host:*". Add your own hostname when deploying.
+      ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*,mcp-server:*,localhost,127.0.0.1,mcp-server}
+    ports:
+      - "8200:8200"
+    depends_on:
+      - backend-api
+</script>
+
+<script type="module">
+import { File } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+
+function isDark(){
+  const bg = getComputedStyle(document.body).backgroundColor;
+  const m = bg.match(/\d+/g);
+  if(!m) return true;
+  const [r,g,b] = m.map(Number);
+  return (0.2126*r + 0.7152*g + 0.0722*b)/255 < 0.5;
+}
+
+function renderCode(){
+  const dark = isDark();
+  const options = {
+    theme:{ light:"github-light", dark:"github-dark" },
+    themeType: dark ? "dark" : "light",
+    overflow:"wrap",
+  };
+  const files = [
+    { mount:"#code-chokepoint", src:"src-chokepoint", name:"services/backend-api/app/routers/ask.py" },
+    { mount:"#code-compose",    src:"src-compose",    name:"docker-compose.yml" },
+  ];
+  for(const f of files){
+    const host = document.querySelector(f.mount);
+    if(!host) continue;
+    host.innerHTML = "";
+    try{
+      new File(options).render({
+        containerWrapper: host,
+        file: { name: f.name, contents: document.getElementById(f.src).textContent },
+      });
+    }catch(err){ console.error("code render failed", f.name, err); }
+  }
+}
+if(document.readyState === "complete") renderCode();
+else window.addEventListener("load", renderCode, { once:true });
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderCode);
+</script>
+
+<script>
+// copy buttons on the terminal blocks
+document.querySelectorAll(".term .copy").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const pre = btn.closest(".term").querySelector("pre");
+    navigator.clipboard?.writeText(pre.innerText).then(() => {
+      btn.textContent = "copied";
+      btn.classList.add("done");
+      setTimeout(() => { btn.textContent = "copy"; btn.classList.remove("done"); }, 1600);
+    });
+  });
+});
+</script>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(foreground, background) {
+    const fa = foreground[3] / 255, ba = background[3] / 255;
+    const alpha = fa + ba * (1 - fa);
+    if (alpha === 0) return [0, 0, 0, 0];
+    return [
+      (foreground[0]*fa + background[0]*ba*(1-fa)) / alpha,
+      (foreground[1]*fa + background[1]*ba*(1-fa)) / alpha,
+      (foreground[2]*fa + background[2]*ba*(1-fa)) / alpha,
+      alpha * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBackground = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBackground = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0,0,0,0];
+    const [r, g, b, a] = compositeRgba(bodyBackground, rootBackground);
+    if (a > 0) return (0.2126*r + 0.7152*g + 0.0722*b) / 255 < 0.5;
+    const cs = getComputedStyle(root).colorScheme;
+    if (cs.includes("dark") && !cs.includes("light")) return true;
+    if (cs.includes("light") && !cs.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied, rendering = false, queued = false;
+  function queueRender() { queued = true; if (rendering) return; void render(); }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({ startOnLoad: false, theme, securityLevel: "strict" });
+        for (const { el, src } of diagrams) { el.removeAttribute("data-processed"); el.textContent = src; }
+        try { await mermaid.run({ nodes: diagrams.map((d) => d.el) }); }
+        catch (error) { console.error("Mermaid diagram render failed:", error); return; }
+        applied = theme;
+      }
+    } finally { rendering = false; if (queued) queueRender(); }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const themeObserver = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    themeObserver.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  darkQuery.addEventListener("change", queueRender);
+</script>
+
+</body>
+</html>

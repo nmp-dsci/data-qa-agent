@@ -242,20 +242,27 @@ footer{border-top:1px solid var(--border);padding-top:20px;color:var(--faint);fo
   <div class="kicker">
     <span class="lbl accent">s36 · review surface</span>
     <span class="badge gold">branch s35-service-account-auth</span>
-    <span class="badge ok">PR #30 · CI green</span>
-    <span class="badge ok">no-mistakes: 0 findings</span>
+    <span class="badge ok">PR #30 · CI green (6/6)</span>
+    <span class="badge ok">option B shipped</span>
+    <span class="badge ok">both gaps closed</span>
     <span class="badge warn">not merged</span>
   </div>
-  <h1>Four front doors. One brain.</h1>
-  <p class="sub">What the s35 work actually built, how to test every piece of it, how it is hosted —
-    and a straight answer to “can I have one data-agent service that serves both the app and webhooks?”</p>
+  <h1>Four front doors. One brain. Now one process.</h1>
+  <p class="sub">What the s35 work built, how to test every piece of it, how it is hosted — and a
+    straight answer to “can I have one data-agent service that serves both the app and webhooks?”
+    <b>Updated after your decisions: the MCP server was folded into backend-api and both flagged
+    gaps were fixed.</b></p>
   <div class="verdict">
-    <span class="lbl accent">the short answer</span>
-    <p><strong>You already have exactly that.</strong> There is one pipeline —
+    <span class="lbl accent">the short answer, and what changed since</span>
+    <p><strong>You already had exactly that.</strong> There is one pipeline —
       <code>run_question()</code> in backend-api — and the browser, the webhook, Slack and MCP all
-      enter through it. The MCP server is not a second agent; it is a ~200-line protocol adapter
-      with <em>no database credentials</em> that calls that same pipeline over HTTP.
-      The only genuinely open question is whether that adapter keeps its own container.</p>
+      enter through it. The MCP server was never a second agent, only a protocol adapter.</p>
+    <p style="margin-top:10px">You chose to <strong>fold that adapter in</strong> rather than keep it
+      as a container. Done: the separate service, image, App Runner service, ECR repo and key secret
+      are all deleted, and the surface now lives at <code>/mcp</code> on the API. Two things came out
+      better than the plan predicted — client auth got <em>stronger</em>, and the two-pass deploy
+      trap disappeared entirely. One thing came out exactly as flagged: the “no database
+      credentials” isolation is genuinely gone.</p>
   </div>
 </header>
 
@@ -267,8 +274,9 @@ footer{border-top:1px solid var(--border);padding-top:20px;color:var(--faint);fo
   <a href="#topology">The topology decision</a>
   <a href="#hosting">Hosting</a>
   <a href="#test">How to test it</a>
+  <a href="#consumers">Where webhooks go</a>
   <a href="#review">Review of the approach</a>
-  <a href="#decide">Decide</a>
+  <a href="#decide">Decisions</a>
 </nav>
 
 <!-- ===================================================================== -->
@@ -306,13 +314,13 @@ footer{border-top:1px solid var(--border);padding-top:20px;color:var(--faint);fo
     <div class="card qa">
       <span class="lbl">Q3</span>
       <p class="q">“How is the server hosted — docker?”</p>
-      <p class="ansline"><span class="yes">Docker locally, App Runner in AWS.</span></p>
-      <p>Local: <code>services/mcp-server/Dockerfile</code> → compose service <code>mcp-server</code>
-        on port <b>8200</b>, already running in your stack.</p>
-      <p>AWS: <code>aws_apprunner_service.mcp_server</code> in
-        <code>infra/terraform/foundations/apprunner.tf</code>, image pushed by
-        <code>scripts/aws_build_push.sh</code> (now five images, not four), key injected from Secrets
-        Manager. <b>Not deployed yet</b> — it lands on the next merge to <code>main</code>.</p>
+      <p class="ansline"><span class="yes">It no longer needs its own hosting at all.</span></p>
+      <p><s style="opacity:.6">Docker locally on :8200, App Runner in AWS.</s> That was true when you
+        asked. After your <b>option B</b> decision the surface is mounted on backend-api, so it is
+        hosted <em>wherever backend-api already is</em> — compose locally, App Runner in AWS.</p>
+      <p>Deleted outright: <code>services/mcp-server/</code>, its Dockerfile and image, the compose
+        service, <code>aws_apprunner_service.mcp_server</code>, the ECR repo (back to four images)
+        and the <code>data-qa/mcp-service-key</code> secret.</p>
     </div>
 
     <div class="card qa">
@@ -321,9 +329,10 @@ footer{border-top:1px solid var(--border);padding-top:20px;color:var(--faint);fo
       <p class="ansline"><span class="yes">Built.</span> One pipeline, four doors.</p>
       <p><code>routers/ask.py :: run_question()</code> is the single implementation of cap → agent →
         persist → respond. <code>/ask</code>, the webhook, Slack and MCP all call it.
-        <code>data-agent</code> itself was <b>not modified at all</b> by s35 — check the diffstat.</p>
-      <p>What is still a choice: the MCP adapter is currently its own container. It could be mounted
-        into backend-api instead. <a href="#topology">That comparison is below.</a></p>
+        <code>data-agent</code> itself was <b>not modified at all</b> by s35 or s36.</p>
+      <p><b>Resolved.</b> You picked option B, so the last separate piece is gone too: the MCP tools
+        now call those handlers <em>in process</em>. Four front doors, one pipeline, one deployable
+        API. <a href="#topology">The comparison, and what it actually cost, is below.</a></p>
     </div>
   </div>
 </section>
@@ -432,7 +441,24 @@ flowchart LR
     </pre>
   </div>
 
-  <h3>After s35 — four doors, same pipeline</h3>
+  <h3>After s35 — four doors, but a fifth process</h3>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart LR
+  MC["MCP client"] -->|"MCP streamable HTTP<br/>no client auth"| MCPS
+  MCPS["mcp-server :8200<br/>protocol adapter<br/>NO database credentials"]
+  MCPS -->|"Bearer dpk_ · surface=mcp"| API["backend-api :8000<br/>run_question()"]
+  UI["Browser"] --> API
+  WH["Webhook"] --> API
+  SL["Slack"] --> API
+  API --> AG["data-agent :8100"]
+  style MCPS stroke-dasharray: 5 4
+    </pre>
+  </div>
+  <p class="cap">Superseded. Note what this shape hides: the MCP client authenticated with
+    <em>nothing</em> — reaching the port was the whole credential.</p>
+
+  <h3>After s36 — four doors, four processes, one API</h3>
   <div class="diagram">
     <pre class="mermaid">
 flowchart TB
@@ -444,27 +470,29 @@ flowchart TB
     MC["MCP client<br/>Claude Code · Desktop · another agent"]
   end
 
-  MCPS["mcp-server :8200<br/>protocol adapter<br/>NO database credentials"]
+  subgraph api["backend-api :8000"]
+    direction TB
+    GATE["/mcp · ServiceKeyGate<br/>raw ASGI, ahead of JSON-RPC"]
+    RQ["run_question()<br/>cap · RLS · degrade · audit"]
+    GATE --> RQ
+  end
 
-  API["backend-api :8000<br/>run_question()<br/>cap · RLS · degrade · audit"]
-  AG["data-agent :8100<br/>the brain — untouched by s35"]
+  AG["data-agent :8100<br/>the brain — untouched by s35 and s36"]
   DB[("Postgres / Aurora<br/>RLS · app_user · agent_ro")]
 
-  UI -->|session cookie| API
-  WH -->|"Bearer dpk_ · surface=webhook"| API
-  SL -->|"X-Slack-Signature HMAC"| API
-  MC -->|"MCP streamable HTTP"| MCPS
-  MCPS -->|"Bearer dpk_ · surface=mcp"| API
-  API --> AG
-  API --> DB
+  UI -->|session cookie| RQ
+  WH -->|"Bearer dpk_ · surface=webhook"| RQ
+  SL -->|"X-Slack-Signature HMAC"| RQ
+  MC -->|"Bearer dpk_ · surface=mcp"| GATE
+  RQ --> AG
+  RQ --> DB
   AG --> DB
 
-  style MCPS stroke-dasharray: 5 4
-  style API stroke-width:3px
+  style GATE stroke-width:3px
     </pre>
   </div>
-  <p class="cap">The dashed box is the only new <em>process</em>. Everything else is a new
-    <em>route</em> on a service that already existed.</p>
+  <p class="cap">No new process at all — four doors are now four <em>routes</em> on the API that
+    already existed. The MCP client gained a credential it never had.</p>
 
   <h3>What one MCP question actually does</h3>
   <div class="diagram">
@@ -534,16 +562,17 @@ sequenceDiagram
 
 <!-- ===================================================================== -->
 <section id="topology">
-  <h2><span class="n">05</span>The topology decision — the only thing still open</h2>
+  <h2><span class="n">05</span>The topology decision — <span style="color:var(--good)">resolved</span></h2>
   <p class="dek">You asked for “ideally one data-agent service that serves webhooks and the app”.
-    You have it. The remaining choice is narrower than it looks: <b>does the MCP protocol adapter
-    run as its own process, or inside backend-api?</b></p>
+    The choice was narrower than it looked: <b>does the MCP protocol adapter run as its own process,
+    or inside backend-api?</b> <b style="color:var(--accent-soft)">You picked B.</b> Both cards are
+    kept as the record of the trade that was made.</p>
 
   <div class="opts">
-    <div class="opt pick">
+    <div class="opt">
       <div class="opt-head">
         <h4>A · Separate adapter container</h4>
-        <span class="badge gold">shipped</span><span class="badge ok">recommended</span>
+        <span class="badge">was shipped in s35</span><span class="badge bad">superseded</span>
       </div>
       <div class="opt-body">
         <p><code>mcp-server</code> is its own image, its own compose service, its own App Runner
@@ -562,25 +591,35 @@ sequenceDiagram
       </div>
     </div>
 
-    <div class="opt">
+    <div class="opt pick">
       <div class="opt-head">
         <h4>B · Mount MCP inside backend-api</h4>
-        <span class="badge info">feasible — verified</span>
+        <span class="badge gold">your choice</span><span class="badge ok">shipped · verified live</span>
       </div>
       <div class="opt-body">
-        <p>Delete the container; mount the MCP ASGI app on backend-api at <code>/mcp</code>. One
-          service, one deploy, one bill.</p>
+        <p>The container is deleted; the MCP ASGI app is mounted on backend-api at <code>/mcp</code>.
+          One service, one deploy, one bill.</p>
         <ul class="tl">
-          <li class="p">One fewer container, image, App Runner service and alarm.</li>
-          <li class="p">No internal hop; no second <code>dpk_</code> key to mint and rotate — it could
-            resolve identity in-process.</li>
-          <li class="m"><b>Real wiring cost.</b> <code>MCPServer.streamable_http_app()</code> returns a
-            Starlette app <em>with its own lifespan</em> that starts the MCP session manager.
-            FastAPI’s <code>Mount</code> does not run a mounted app’s lifespan, so backend-api’s
-            lifespan has to drive it explicitly. Get it wrong and MCP fails at runtime, not at boot.</li>
-          <li class="m">Couples an evolving beta protocol’s transport security to your product API.</li>
-          <li class="m">Loses the “no DB credentials” property — the MCP surface would run in the
-            process that holds them.</li>
+          <li class="p">One fewer container, image, App Runner service, ECR repo and secret.</li>
+          <li class="p">No internal hop, and no server-side key at all — identity now resolves
+            per request from the <em>client’s</em> key.</li>
+          <li class="p"><b>Unplanned win: auth got stronger.</b> The old container accepted any client
+            that could reach :8200 and used its key only for the hop inward. Now the client must
+            present a <code>dpk_</code> key pinned to <code>surface='mcp'</code>, checked in raw ASGI
+            <em>ahead of</em> the JSON-RPC transport — an anonymous caller cannot even open a session.</li>
+          <li class="p"><b>Unplanned win: the two-apply deploy trap is gone.</b> With a key gate in
+            front, the DNS-rebinding allowlist is defence-in-depth rather than the control, so it is
+            off unless configured — no more “every remote request 421s until a second apply”.</li>
+          <li class="m"><b>The wiring cost was real, exactly as flagged.</b>
+            <code>streamable_http_app()</code> creates the session manager lazily and Starlette does
+            not run a mounted app’s lifespan — mounting alone gives a surface that imports fine,
+            boots fine, then dies on the first tool call. backend-api’s lifespan drives it explicitly.</li>
+          <li class="m"><b>Isolation is genuinely lost.</b> The MCP surface now runs in the process
+            holding the database credentials. Nothing in it touches the DB directly, but the property
+            is gone and is written down as gone.</li>
+          <li class="m">A wart that had to be fixed: Starlette compiles <code>Mount("/mcp")</code> to
+            <code>^/mcp/(.*)$</code>, so a bare <code>/mcp</code> 307-redirected. A path normalizer
+            makes the obvious URL the working one.</li>
         </ul>
       </div>
     </div>
@@ -607,15 +646,19 @@ sequenceDiagram
   </div>
 
   <div class="note ok" style="margin-top:20px">
-    <b>Recommendation: keep A, and don’t conflate “one agent” with “one process”</b>
-    <p>“One data-agent service” is already true in the sense that matters — there is a single
-      implementation of the ask pipeline, a single security surface, and a single audit trail. The
-      MCP container is an <em>adapter</em>, the same way a load balancer or a TLS terminator is: it
-      adds a protocol, not a brain.</p>
-    <p>Option B is a legitimate cost optimisation and it is genuinely feasible (I checked the SDK —
-      <code>streamable_http_app()</code> exists and returns a Starlette app). Take it only if the
-      extra App Runner instance is the thing you want to cut. It buys ~$15–25/month and costs you
-      the isolation property.</p>
+    <b>Outcome — I recommended A, you chose B, and B turned out better than I priced it</b>
+    <p>My case for A rested on the isolation property. That cost is real and was paid: the MCP
+      surface now runs in the process holding the database credentials.</p>
+    <p>What I under-weighted is that folding it in <em>forced</em> a client-auth gate. As a separate
+      service, MCP had no client authentication at all — anyone who could reach :8200 got the full
+      grants of the mcp service account. Mounting it on the public API made that untenable, so the
+      key moved to the client. The surface ends up <b>more</b> locked down than the design I
+      recommended, not less, and a whole class of deploy failure (the 421 two-apply dance)
+      disappeared with it.</p>
+    <p>Verified end to end rather than assumed: a real Claude CLI session called
+      <code>list_datasets</code> then <code>ask_question</code> through the mount and returned the
+      ground-truth <b>15,217</b>; anonymous gets 401; a webhook-surface key gets 403; a blocked
+      <code>DELETE</code> still surfaces as a tool error rather than an empty success.</p>
   </div>
 </section>
 
@@ -626,40 +669,38 @@ sequenceDiagram
   <div class="grid g2">
     <div class="card">
       <span class="lbl accent">local · docker compose</span>
-      <h4>Already running in your stack</h4>
-      <p>Built from <code>services/mcp-server/Dockerfile</code> (uv on
-        <code>python3.12-bookworm-slim</code>), published on <b>:8200</b>, endpoint
-        <code>http://localhost:8200/mcp</code>. <code>depends_on: backend-api</code>.</p>
-      <p>Config is two env vars: <code>BACKEND_URL</code> and <code>MCP_SERVICE_KEY</code>. An unset
-        key does not half-work — every tool reports plainly that it has no key.</p>
+      <h4>Nothing of its own to run</h4>
+      <p>The surface is part of backend-api, so <code>make up</code> is all there is. Endpoint:
+        <code>http://localhost:8000/mcp</code>.</p>
+      <p>No <code>BACKEND_URL</code>, no server-side <code>MCP_SERVICE_KEY</code> — the client brings
+        the key. The one optional knob is <code>MCP_ALLOWED_HOSTS</code>, unset by default.</p>
     </div>
     <div class="card">
       <span class="lbl accent">aws · app runner</span>
-      <h4>Defined, not yet deployed</h4>
-      <p><code>aws_apprunner_service.mcp_server</code> — ECR image
-        <code>data-qa/mcp-server</code>, port 8200, key from Secrets Manager
-        (<code>data-qa/mcp-service-key</code>), <b>no instance IAM role</b> because it talks to
-        nothing but backend-api.</p>
-      <p>The image is now part of <code>scripts/aws_build_push.sh</code>, which the deploy workflow
-        runs — so it ships automatically on the next merge to <code>main</code>.</p>
+      <h4>Ships with backend-api</h4>
+      <p>No dedicated service. <code>aws_apprunner_service.mcp_server</code>, the
+        <code>data-qa/mcp-server</code> ECR repo and the <code>data-qa/mcp-service-key</code> secret
+        are all deleted; <code>aws_build_push.sh</code> is back to four images.</p>
+      <p>Endpoint after deploy: <code>https://&lt;backend-api&gt;/mcp</code>. Mint a key for
+        <code>surface='mcp'</code> and hand it to whoever runs the client.</p>
     </div>
   </div>
 
-  <div class="note warn" style="margin-top:16px">
-    <b>Deployment gotcha you will hit exactly once: ALLOWED_HOSTS needs two applies</b>
-    <p>The MCP SDK ships DNS-rebinding protection that matches the <code>Host</code> header
-      <em>including the port</em>. There is no allow-everything value, and the wildcard form is
-      <code>host:*</code> — a bare <code>*</code> never matches. App Runner only assigns the
-      hostname at create time and a service cannot reference its own <code>service_url</code>, so
-      the value cannot be derived in Terraform.</p>
-    <p>Result: after the first apply, every remote MCP request returns <b>421</b> until you set
-      <code>var.mcp_allowed_hosts</code> from the <code>mcp_allowed_hosts_hint</code> output and
-      apply again. Both outputs exist to make this a two-step you can see rather than a mystery.</p>
+  <div class="note ok" style="margin-top:16px">
+    <b>The ALLOWED_HOSTS two-apply trap is gone — and it is worth knowing why</b>
+    <p>The MCP SDK’s DNS-rebinding protection matches the <code>Host</code> header <em>including the
+      port</em>, with no allow-everything value. App Runner assigns a hostname at create time and a
+      service cannot reference its own <code>service_url</code>, so the allowlist could not be
+      derived in Terraform — every remote request returned <b>421</b> until a second apply.</p>
+    <p>Rebinding protection exists to defend <em>unauthenticated</em> servers reachable from a
+      browser. Now that a <code>dpk_</code> key is required in front of the transport, there is no
+      anonymous path for such an attack to reach, so the allowlist is defence-in-depth and defaults
+      to off. The deploy works first time.</p>
   </div>
 
-  <h3>The compose service, verbatim</h3>
+  <h3>The mount and its lifespan, verbatim</h3>
   <div class="codewrap" id="code-compose"></div>
-  <p class="cap"><code>docker-compose.yml</code> — the <code>mcp-server</code> block</p>
+  <p class="cap"><code>services/backend-api/app/main.py</code> — the part that makes it work</p>
 </section>
 
 <!-- ===================================================================== -->
@@ -782,20 +823,23 @@ curl -si -X POST http://localhost:8000/integrations/webhook/ask \
       <span class="meta">~5 min · costs tokens</span>
     </div>
     <div class="tier-body">
-      <p><b>1 · Give the server a key.</b> Mint one with surface <code>mcp</code> in Settings, put it
-        in <code>.env</code>, recreate the container.</p>
+      <p><b>1 · Mint a key for the client.</b> Settings → Service accounts, surface
+        <code>mcp</code>. There is no server-side key any more — the client carries it, so nothing
+        needs recreating.</p>
       <div class="term">
-        <div class="term-bar"><span class="lbl">.env + recreate</span><button class="copy">copy</button></div>
-<pre>echo "MCP_SERVICE_KEY=dpk_paste_yours_here" &gt;&gt; .env
-docker compose up -d --force-recreate mcp-server
-docker compose logs --tail 20 mcp-server</pre>
+        <div class="term-bar"><span class="lbl">confirm the surface is mounted and gated</span><button class="copy">copy</button></div>
+<pre><span class="c"># 401 = mounted and gated. 404 would mean the mount failed.</span>
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'</pre>
       </div>
 
       <p><b>2 · Protocol conformance.</b> Deterministic, no model involved — it connects a real MCP
         client, lists the tools and checks the schemas.</p>
       <div class="term">
         <div class="term-bar"><span class="lbl">make mcp-test</span><button class="copy">copy</button></div>
-<pre>make mcp-test</pre>
+<pre>make mcp-test MCP_SERVICE_KEY=$KEY</pre>
       </div>
 
       <p><b>3 · The acceptance test that actually matters.</b> This drives the real
@@ -803,14 +847,16 @@ docker compose logs --tail 20 mcp-server</pre>
         <em>in order</em>.</p>
       <div class="term">
         <div class="term-bar"><span class="lbl">make mcp-smoke</span><button class="copy">copy</button></div>
-<pre><span class="c"># tool-use check only</span>
-make mcp-smoke
+<pre>KEY=<span class="o">dpk_paste_yours_here</span>
+
+<span class="c"># tool-use check only</span>
+make mcp-smoke MCP_SERVICE_KEY=$KEY
 
 <span class="c"># tool-use check AND ground-truth figure check</span>
-make mcp-smoke EXPECT=15217
+make mcp-smoke MCP_SERVICE_KEY=$KEY EXPECT=15217
 
-<span class="c"># or point it at a deployed server</span>
-make mcp-smoke MCP_URL=https://&lt;host&gt;/mcp</pre>
+<span class="c"># or point it at the deployed API</span>
+make mcp-smoke MCP_SERVICE_KEY=$KEY MCP_URL=https://&lt;backend-api&gt;/mcp</pre>
       </div>
       <div class="note ok">
         <b>Why the ordering is the whole design</b>
@@ -826,8 +872,9 @@ make mcp-smoke MCP_URL=https://&lt;host&gt;/mcp</pre>
       <p><b>4 · Drive it by hand from Claude Code.</b> Same config the smoke test writes:</p>
       <div class="term">
         <div class="term-bar"><span class="lbl">interactive session</span><button class="copy">copy</button></div>
-<pre>cat &gt; /tmp/datapilot-mcp.json &lt;&lt;'JSON'
-{"mcpServers":{"datapilot":{"type":"http","url":"http://localhost:8200/mcp"}}}
+<pre>cat &gt; /tmp/datapilot-mcp.json &lt;&lt;JSON
+{"mcpServers":{"datapilot":{"type":"http","url":"http://localhost:8000/mcp",
+  "headers":{"Authorization":"Bearer $KEY"}}}}
 JSON
 
 claude --mcp-config /tmp/datapilot-mcp.json
@@ -836,9 +883,10 @@ claude --mcp-config /tmp/datapilot-mcp.json
 <span class="c">#   "Use the Data Pilot tools: which postcode had the highest median rent in 2024?"</span>
 <span class="c"># run `claude mcp add --help` to wire it in permanently instead</span></pre>
       </div>
-      <p style="color:var(--faint);font-size:13px;margin:0">Getting a <b>421</b>? That is the
-        DNS-rebinding guard, not a crash. Add the exact <code>host:port</code> you are calling to
-        <code>MCP_ALLOWED_HOSTS</code>.</p>
+      <p style="color:var(--faint);font-size:13px;margin:0">Getting <b>401</b>? The key is missing,
+        wrong or revoked. <b>403</b>? It is a real key minted for a different surface — pinning
+        working as intended. <b>421</b> only happens if you have opted into
+        <code>MCP_ALLOWED_HOSTS</code> and left your host out of it.</p>
     </div>
   </div>
 
@@ -906,8 +954,142 @@ curl -sS -X POST http://localhost:8000/integrations/slack/command \
 </section>
 
 <!-- ===================================================================== -->
+<section id="consumers">
+  <h2><span class="n">08</span>Where the webhook actually goes</h2>
+  <p class="dek">You have a generic front door. The question is what to plug into it — and where to
+    test it before anything real is on the other end. Ranked for <em>this</em> product: a governed
+    property-data agent, built as a portfolio piece.</p>
+
+  <div class="note ok">
+    <b>The highest-leverage single integration is not an app — it's an automation platform</b>
+    <p>Zapier, Make or n8n each speak “generic HTTP webhook” natively and each fans out to thousands
+      of downstream apps. Wiring <em>one</em> of them means you have technically integrated with
+      Salesforce, Sheets, Notion, Airtable and the rest without writing a line for any of them.
+      For a portfolio, that is the best ratio of demonstrated reach to work done — and n8n is the one
+      that reads most as “AI engineer” right now, because it is where agent workflows are being
+      built.</p>
+  </div>
+
+  <h3>Who wants a data webhook, ranked for property data</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Consumer</th><th>Why it fits</th><th>Shape of the integration</th><th>Effort</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Slack</b><br><span class="badge ok">built</span></td>
+          <td>By far the most common home for “ask the data a question” inside a business. Answers
+            land where the conversation already is.</td>
+          <td>Slash command → in-channel answer. Already shipped.</td>
+          <td><span class="badge ok">done</span></td>
+        </tr>
+        <tr>
+          <td><b>n8n / Make / Zapier</b><br><span class="badge gold">best next move</span></td>
+          <td>One integration, thousands of downstream apps. n8n self-hosts and is the current
+            default for agent workflows; Zapier is the one non-technical stakeholders recognise.</td>
+          <td>Their “Webhook” node calls <code>/integrations/webhook/ask</code>; your
+            <code>callback_url</code> points at their inbound webhook URL. Both directions already
+            exist.</td>
+          <td><span class="badge ok">~1 hour</span></td>
+        </tr>
+        <tr>
+          <td><b>Microsoft Teams</b></td>
+          <td>The enterprise counterpart to Slack, and materially more common in Australian
+            corporates and government — which is exactly the buyer for NSW property data.</td>
+          <td>Outgoing webhook or a Bot Framework app. HMAC signature verification, same shape as
+            Slack — the signing code largely transfers.</td>
+          <td><span class="badge warn">~half a day</span></td>
+        </tr>
+        <tr>
+          <td><b>CRM — Salesforce / HubSpot</b></td>
+          <td>The strongest <em>commercial</em> story: enrich a lead or property record with live
+            market context at the moment someone opens it.</td>
+          <td>Outbound message / workflow action → your webhook → callback writes back to the record.</td>
+          <td><span class="badge warn">~a day</span></td>
+        </tr>
+        <tr>
+          <td><b>Google Sheets</b></td>
+          <td>Where analysts actually live. Unglamorous and consistently the most-used thing you can
+            ship.</td>
+          <td>Apps Script <code>UrlFetchApp</code> → webhook → rows written back. Or via the
+            automation platform above, for free.</td>
+          <td><span class="badge ok">~2 hours</span></td>
+        </tr>
+        <tr>
+          <td><b>Notion / Confluence</b></td>
+          <td>Scheduled market summaries that keep a page current without anyone maintaining it.</td>
+          <td>Cron → webhook → callback posts a block. Pairs naturally with your goldens as the
+            question set.</td>
+          <td><span class="badge ok">~2 hours</span></td>
+        </tr>
+        <tr>
+          <td><b>Email digest</b></td>
+          <td>The lowest-tech demo that non-technical people immediately understand.</td>
+          <td>Cron → webhook → callback → Postmark/SendGrid.</td>
+          <td><span class="badge ok">~2 hours</span></td>
+        </tr>
+        <tr style="opacity:.72">
+          <td>Power BI / Tableau</td>
+          <td>Weak fit — BI tools <em>pull</em> from a warehouse, they do not want to be pushed to.
+            Point them at the marts directly instead.</td>
+          <td>Not a webhook problem.</td>
+          <td><span class="badge">skip</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Where to test — and the direction that trips people up</h3>
+  <p>There are <b>two</b> flows here and they need different tools. Your webhook is both a server and
+    a client: something calls <em>you</em>, then you call <em>them</em> back.</p>
+
+  <div class="grid g2">
+    <div class="card" style="border-top:2px solid var(--accent-2)">
+      <span class="lbl">direction 1 · inbound</span>
+      <h4>Something calls your webhook</h4>
+      <p>Locally this needs no tooling at all — <code>curl</code> or Postman against
+        <code>localhost:8000</code> is the whole test, and it is what tier 1 above does.</p>
+      <p>It only gets interesting when a <b>real SaaS</b> must reach you, because Slack and Zapier
+        cannot see your laptop. Two options:</p>
+      <ul class="tl">
+        <li class="p"><b>ngrok</b> or <b>Cloudflare Tunnel</b> — a public HTTPS URL pointed at
+          localhost. Best while iterating, since you keep your debugger.</li>
+        <li class="p"><b>Just deploy.</b> Once PR #30 merges you have a real App Runner HTTPS URL and
+          need no tunnel at all. For Slack this is the simpler path.</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top:2px solid var(--accent)">
+      <span class="lbl">direction 2 · outbound</span>
+      <h4>You call their <code>callback_url</code></h4>
+      <p>This is the half people forget, and it is where your signed delivery needs proving. You need
+        a URL that catches a POST and shows you exactly what arrived.</p>
+      <ul class="tl">
+        <li class="p"><b>webhook.site</b> — instant URL, zero signup, shows headers and body. Best
+          for confirming <code>X-DataPilot-Signature</code> is actually present.</li>
+        <li class="p"><b>Pipedream RequestBin</b> — same, plus you can run JS on the payload, so you
+          can verify the HMAC right there.</li>
+        <li class="p"><b>Beeceptor</b> — adds mock responses, useful for testing how you behave when
+          a callback returns 500.</li>
+        <li class="p"><b>Hookdeck</b> — production-grade: retries, replay, delivery history. Worth
+          knowing about; overkill today.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="note info" style="margin-top:16px">
+    <b>The failure case worth testing deliberately</b>
+    <p>Point <code>callback_url</code> at a URL that returns <b>500</b>, or at a dead host, and
+      confirm the run still lands in <code>query_runs</code>. It should: delivery failure is logged
+      and swallowed on purpose, because the answer is already persisted and a dead callback is the
+      caller's problem to notice — not a reason to lose the run. That is a design decision worth
+      being able to demonstrate rather than just assert.</p>
+    <p>There is no retry queue. If you want one, Hookdeck in front of your callbacks is the
+      buy-not-build answer.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
 <section id="review">
-  <h2><span class="n">08</span>Review of the approach</h2>
+  <h2><span class="n">09</span>Review of the approach</h2>
   <p class="dek">What I think holds up, and what I would flag to a reviewer before this goes anywhere
     public. The gaps are stated as gaps, not as future work I’m confident you’ll never need.</p>
 
@@ -964,22 +1146,25 @@ curl -sS -X POST http://localhost:8000/integrations/slack/command \
       <tbody>
         <tr>
           <td><b>MCP auth is a static bearer key</b><br><span class="mono">mcp_server/config.py</span></td>
-          <td><span class="badge warn">blocks public use</span></td>
+          <td><span class="badge warn">improved, not closed</span></td>
           <td>The MCP spec’s auth story is OAuth 2.1 with scopes and dynamic client registration. A
-            shared key does not meet that bar. Fine for a private deployment where you control every
-            client; not fine for anything published.</td>
+            shared key does not meet that bar. <b>It did get better in s36</b>: the surface went from
+            “anyone who can reach the port” to “must present a surface-pinned key”. Still fine only
+            for a deployment where you control every client.</td>
           <td>OAuth 2.1 resource server, or keep it behind a private network. Already written down in
             <code>AGENTS.md</code> as a deliberate, staged gap.</td>
         </tr>
-        <tr>
+        <tr style="background:color-mix(in srgb,var(--good) 8%,transparent)">
           <td><b><code>run_governed_query</code> has no daily cap</b><br><span class="mono">routers/sql.py:47</span></td>
-          <td><span class="badge warn">cost / abuse</span></td>
+          <td><span class="badge ok">FIXED</span></td>
           <td><code>check_daily_llm_cap</code> guards <code>/ask</code> and <code>/sql/ai</code> but
             not raw <code>POST /sql</code>. So an MCP client can run unlimited governed SELECTs. It
             is not a data leak — SELECT-only, allowlisted, RLS-scoped, 15s statement timeout,
             audited — but it is an unbounded query rate.</td>
-          <td>Either extend the cap to <code>/sql</code> for <code>plan='service'</code>, or add a
-            per-key rate limit. Small change; worth doing before prod exposure.</td>
+          <td><b>Done.</b> <code>check_daily_query_cap</code> bounds <code>plan='service'</code> at
+            500/day on <code>POST /sql</code>. Human editor use stays uncapped — a governed SELECT
+            spends no tokens. Reuses the <code>llm_cap_reached</code> event so the ops deck counts it
+            without learning a second type.</td>
         </tr>
         <tr>
           <td><b>Callbacks signed with the agent shared token</b><br><span class="mono">integrations.py:104</span></td>
@@ -997,20 +1182,22 @@ curl -sS -X POST http://localhost:8000/integrations/slack/command \
             is the right call — I had over-engineered the alternative.</td>
           <td>Nothing, unless a channel needs mixed scopes. The delegation path is documented.</td>
         </tr>
-        <tr>
+        <tr style="background:color-mix(in srgb,var(--good) 8%,transparent)">
           <td><b>MCP not in the cloud smoke test</b><br><span class="mono">scripts/cloud_smoke.sh</span></td>
-          <td><span class="badge warn">deploy risk</span></td>
+          <td><span class="badge ok">FIXED</span></td>
           <td>The post-deploy smoke checks backend-api and the frontend. A broken MCP service would
             deploy green and nobody would notice — and the <code>ALLOWED_HOSTS</code> two-apply dance
             makes “broken after deploy” the <em>expected</em> first state.</td>
-          <td>Add a <code>tools/list</code> assertion against the App Runner URL to the smoke script.</td>
+          <td><b>Done.</b> Credential-free check on <code>&lt;backend&gt;/mcp</code>: the signal is
+            <b>401 vs 404</b> — 404 means the mount silently is not there, 200 would mean it is open
+            to anyone. Neither needs a key to detect.</td>
         </tr>
         <tr>
           <td><b><code>describe_schema</code> filters by substring</b><br><span class="mono">main.py:107</span></td>
-          <td><span class="badge">minor</span></td>
-          <td><code>dataset_slug in str(t.get("dataset", …))</code> is loose matching — it can
+          <td><span class="badge ok">FIXED</span></td>
+          <td><code>dataset_slug in str(t.get("dataset", …))</code> was loose matching — it could
             over-return on a slug that is a prefix of another.</td>
-          <td>Exact match against the dataset registry.</td>
+          <td><b>Done</b> in passing during the move: exact match now.</td>
         </tr>
         <tr>
           <td><b>A DB round trip per authenticated call</b><br><span class="mono">auth.py</span></td>
@@ -1036,86 +1223,55 @@ curl -sS -X POST http://localhost:8000/integrations/slack/command \
 
 <!-- ===================================================================== -->
 <section id="decide">
-  <h2><span class="n">09</span>Decide</h2>
-  <p class="dek">Pick an answer to each and hit the button — it queues a prompt back to me. Or just
-    annotate anything above and send that instead.</p>
+  <h2><span class="n">10</span>Decisions — recorded</h2>
+  <p class="dek">All three answered and actioned. Kept here as the record of what was chosen and
+    what it led to.</p>
 
-  <form class="decide" data-lavish-question="topology" onsubmit="
-    event.preventDefault();
-    const f = new FormData(event.currentTarget);
-    const parts = ['topology','merge','next'].map(k => f.get(k)).filter(Boolean);
-    if (!parts.length) return;
-    window.lavish.queuePrompt(
-      'From the s36 review page — my decisions: ' + parts.join(' | '),
-      { tag:'decision', text: parts.join(' · '), element: event.currentTarget,
-        data: Object.fromEntries(f.entries()) });
-  ">
-    <fieldset>
-      <p class="q-title">MCP topology</p>
-      <p class="q-sub">Keep the adapter as its own process, or fold it into backend-api?</p>
-      <label class="choice"><input type="radio" name="topology"
-        value="keep the MCP server as its own container (option A)">
-        <span><span class="t">A · Keep the separate container</span>
-        <span class="d">Recommended. Clean trust boundary, independent blast radius, costs one App
-          Runner instance.</span></span></label>
-      <label class="choice"><input type="radio" name="topology"
-        value="fold the MCP server into backend-api as a mounted ASGI app (option B) — do the lifespan wiring">
-        <span><span class="t">B · Mount it into backend-api</span>
-        <span class="d">One fewer service. Needs the session-manager lifespan wired explicitly into
-          backend-api’s lifespan.</span></span></label>
-      <label class="choice"><input type="radio" name="topology"
-        value="park the topology decision for now and leave it as built">
-        <span><span class="t">Park it</span>
-        <span class="d">Leave as built and revisit if the AWS bill or the ops surface bothers
-          you.</span></span></label>
-    </fieldset>
+  <div class="grid g3">
+    <div class="card" style="border-top:2px solid var(--good)">
+      <span class="lbl hud">answered · done</span>
+      <h4>MCP topology</h4>
+      <p><b>“Fold it into backend-api (option B) — do the lifespan wiring.”</b></p>
+      <p>Shipped in <code>b7a3fb8</code>. The lifespan wiring was exactly the cost predicted; the
+        client-auth gate and the loss of the two-apply trap were not predicted, and both landed in
+        your favour.</p>
+    </div>
+    <div class="card" style="border-top:2px solid var(--good)">
+      <span class="lbl hud">answered · done</span>
+      <h4>PR #30</h4>
+      <p><b>“Fix the two flagged gaps before merging.”</b></p>
+      <p>Shipped in <code>cb1f40d</code>: the service-plan cap on <code>POST /sql</code>, and the
+        MCP check in <code>cloud_smoke.sh</code>. A third gap
+        (<code>describe_schema</code> substring matching) got fixed in passing. PR is green,
+        6/6 jobs, still unmerged.</p>
+    </div>
+    <div class="card" style="border-top:2px solid var(--accent)">
+      <span class="lbl accent">answered · queued</span>
+      <h4>What next</h4>
+      <p><b>“Stand the Slack app up for real”</b> — and, in chat, <b>Logfire too</b>.</p>
+      <p>Both are blocked on the same thing: a deployed prod URL. Slack needs a public HTTPS request
+        URL for the slash command; Logfire needs the token set and a rebuild. Merge unblocks both.</p>
+    </div>
+  </div>
 
-    <fieldset>
-      <p class="q-title">PR #30</p>
-      <p class="q-sub">It is green and clean, sitting unmerged on <code>s35-service-account-auth</code>.</p>
-      <label class="choice"><input type="radio" name="merge"
-        value="merge PR #30 as-is">
-        <span><span class="t">Merge as-is</span>
-        <span class="d">Ships the MCP App Runner service too — remember the ALLOWED_HOSTS second
-          apply.</span></span></label>
-      <label class="choice"><input type="radio" name="merge"
-        value="fix the two flagged gaps (cap on /sql for service plans, MCP in cloud smoke) before merging PR #30">
-        <span><span class="t">Close two gaps first</span>
-        <span class="d">Add the cap to <code>/sql</code> for service plans, and put MCP in the cloud
-          smoke test. Both small.</span></span></label>
-      <label class="choice"><input type="radio" name="merge"
-        value="hold PR #30 unmerged for now">
-        <span><span class="t">Hold</span>
-        <span class="d">Leave it open; nothing reaches prod.</span></span></label>
-    </fieldset>
+  <div class="note warn" style="margin-top:20px">
+    <b>Two things to weigh before you merge</b>
+    <p><b>The gate has not seen this work.</b> <code>/no-mistakes</code> passed on the <em>previous</em>
+      head. GitHub CI covers lint, types, tests, terraform and a full-stack smoke on the current head
+      — but the gate's review step, the one that reads the diff against intent, has not looked at a
+      change that deletes a service and moves an auth boundary.</p>
+    <p><b>The terraform plan will show destroys</b> — the MCP App Runner service, its ECR repo and the
+      unused key secret. None were ever applied, so it is clean; it will just read as destructive in
+      the PR comment.</p>
+  </div>
 
-    <fieldset>
-      <p class="q-title">What next</p>
-      <p class="q-sub">After this lands.</p>
-      <label class="choice"><input type="radio" name="next"
-        value="next: build the eval loop / curate goldens — the real portfolio gap">
-        <span><span class="t">Evals</span>
-        <span class="d">The gap s34 named and this work didn’t touch. 2 of 41 goldens are
-          curated.</span></span></label>
-      <label class="choice"><input type="radio" name="next"
-        value="next: turn on Logfire properly and show me the traces from all four channels">
-        <span><span class="t">Logfire</span>
-        <span class="d">One env var plus a rebuild — then all four channels’ traces in one
-          place.</span></span></label>
-      <label class="choice"><input type="radio" name="next"
-        value="next: stand the Slack app up for real in a workspace">
-        <span><span class="t">Real Slack app</span>
-        <span class="d">Needs prod deployed first, then the workspace config in tier 3.</span></span></label>
-      <label class="choice"><input type="radio" name="next"
-        value="next: make data-agent an MCP client so it can pull in outside tools">
-        <span><span class="t">MCP the other way</span>
-        <span class="d">Let the agent consume external MCP servers — outside data it doesn’t
-          own.</span></span></label>
-    </fieldset>
-
-    <button class="send" type="submit">Queue these answers</button>
-    <p class="hint">Queued prompts don’t send until you press <b>Send to Agent</b>.</p>
-  </form>
+  <div class="note info">
+    <b>Not fixed, and deliberately so</b>
+    <p>Three repo-root journey tests fail: empty <code>insights</code> on a report, and a 0-row
+      rental-yield answer. Both are produced by <b>data-agent</b> — a container running unmodified
+      code that was never rebuilt in this work, so the change cannot have caused them. That is agent
+      output quality, which you correct by authoring goldens, not something to chase here.</p>
+  </div>
 </section>
 
 <footer>
@@ -1164,24 +1320,32 @@ curl -sS -X POST http://localhost:8000/integrations/slack/command \
     return _build_response(conv_id, message_id, run_id, result, latency_ms, user.role == "admin")
 </script>
 
-<script type="text/plain" id="src-compose">  # s35 rung 3: the MCP front door. Holds NO database credentials by design —
-  # it calls backend-api over HTTP with its own dpk_ service key, so guardrails,
-  # RLS, the daily cap and the audit trail stay in one implementation.
-  # MCP_SERVICE_KEY must be minted first: POST /admin/service-accounts with
-  # surface="mcp" (or the Settings tab). Unset = the tools report that plainly
-  # rather than half-working.
-  mcp-server:
-    build: ./services/mcp-server
-    environment:
-      BACKEND_URL: http://backend-api:8000
-      MCP_SERVICE_KEY: ${MCP_SERVICE_KEY:-}
-      # The SDK's DNS-rebinding guard matches Host INCLUDING the port, so the
-      # wildcard form is "host:*". Add your own hostname when deploying.
-      ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*,mcp-server:*,localhost,127.0.0.1,mcp-server}
-    ports:
-      - "8200:8200"
-    depends_on:
-      - backend-api
+<script type="text/plain" id="src-compose"># Built at import time, before the lifespan runs: streamable_http_app() is what
+# lazily creates the session manager, so the manager cannot be started until
+# after this call has happened (s36).
+_mcp_inner, mcp_gate = build_mcp_app()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    ...
+    # Starlette does NOT run a mounted app's lifespan, and the MCP transport's
+    # session manager lives in exactly that lifespan — so mounting alone gives a
+    # surface that imports fine, starts fine, and then fails on the first tool
+    # call. Driving it from here is the whole cost of folding this service in.
+    async with _mcp_inner.router.lifespan_context(_mcp_inner):
+        yield
+    await engine.dispose()
+
+
+# s36: outermost, so /mcp is rewritten to the mount's path before routing ever
+# reaches redirect_slashes. See McpPathNormalizer.
+app.add_middleware(McpPathNormalizer)
+
+# s36: the MCP front door, mounted rather than run as its own service. The gate
+# wrapper authenticates a dpk_ key pinned to surface='mcp' before the JSON-RPC
+# transport sees anything, so /mcp has no anonymous path.
+app.mount("/mcp", mcp_gate)
 </script>
 
 <script type="module">

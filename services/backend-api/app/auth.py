@@ -281,6 +281,21 @@ async def _user_from_credentials(
     return None
 
 
+async def service_account_from_header(authorization: str | None, surface: str) -> CurrentUser:
+    """Resolve a ``dpk_`` key from a raw Authorization header, or raise.
+
+    The ASGI-level twin of ``service_key_user`` (s36). The MCP surface is mounted
+    as an ASGI sub-application rather than a FastAPI route, so it has to
+    authenticate before Starlette ever builds a Request and cannot use a
+    dependency. Same verification, same surface pinning, same failure modes.
+    """
+    token = _bearer_token(authorization)
+    parsed = split_service_key(token) if token is not None else None
+    if parsed is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Service key required")
+    return await _service_account_user(parsed[0], parsed[1], surface)
+
+
 def service_key_user(surface: str) -> Any:
     """A dependency that accepts ONLY a ``dpk_`` key pinned to ``surface``.
 

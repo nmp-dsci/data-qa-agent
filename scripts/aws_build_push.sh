@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the five service images for linux/amd64 and push them to ECR.
+# Build the four service images for linux/amd64 and push them to ECR.
 # Frontend is NOT here — it's a static Vite build served from S3/CloudFront
 # (see scripts/deploy_frontend.sh).
 #
@@ -39,6 +39,5 @@ build_push backend-api   services/backend-api  services/backend-api/Dockerfile
 build_push data-agent    services/data-agent   services/data-agent/Dockerfile
 build_push data-pipeline .                     services/data-pipeline/Dockerfile
 build_push db-migrate    .                     services/db-migrate/Dockerfile
-build_push mcp-server    services/mcp-server   services/mcp-server/Dockerfile
 
-echo "==> pushed all five images at tag: ${TAG}"
+echo "==> pushed all four images at tag: ${TAG}"

@@ -50,12 +50,36 @@ class Settings(BaseSettings):
     # role-based exemption. Still capped: a leaked key must not be able to run
     # up an unbounded bill. 0 disables the cap.
     ask_daily_limit_service: int = 200
+    # Governed SELECTs per UTC day, service accounts only (s36). A raw query
+    # costs no tokens, so human editor use stays uncapped — but a service key is
+    # a credential handed to a machine that can loop, and the MCP surface hands
+    # run_governed_query straight to a model. The guardrails apply to every
+    # statement regardless; this is a rate bound, not a security control.
+    sql_daily_limit_service: int = 500
 
     # ---- Integrations (s35) ------------------------------------------------
     # Slack signs its own requests; this is the workspace signing secret used to
     # verify X-Slack-Signature. Empty (the default) closes the Slack path
     # entirely, mirroring how ops_ingest_token gates the ingest endpoints.
     slack_signing_secret: str = ""
+
+    # ---- MCP surface (s36) -------------------------------------------------
+    # The SDK's DNS-rebinding host allowlist. Empty (the default) turns the check
+    # OFF, which is deliberate: the surface is gated by a dpk_ service key, so
+    # there is no anonymous path for a rebinding attack to reach, and requiring
+    # an allowlist meant a deployment could not work until a second apply taught
+    # it its own hostname. Set it to add defence in depth; the wildcard form is
+    # "host:*" (the Host header includes the port), never a bare "*".
+    mcp_allowed_hosts: str = ""
+    mcp_allowed_origins: str = "*"
+
+    @property
+    def mcp_allowed_host_list(self) -> list[str]:
+        return [h.strip() for h in self.mcp_allowed_hosts.split(",") if h.strip()]
+
+    @property
+    def mcp_allowed_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.mcp_allowed_origins.split(",") if o.strip()]
 
     # ---- Observability (s32 W2) --------------------------------------------
     # Optional — ships backend traces to Logfire Cloud when set; local-only

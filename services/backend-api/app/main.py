@@ -23,6 +23,7 @@ configure_tracing()
 from .config import settings  # noqa: E402 — after configure_tracing, by design
 from .db import engine, rls_connection  # noqa: E402
 from .explore.manifest import ManifestError, validate_manifest  # noqa: E402
+from .mcp_surface import McpPathNormalizer, build_mcp_app  # noqa: E402
 from .routers import (  # noqa: E402
     admin_config,
     ask,
@@ -42,6 +43,11 @@ from .waking import is_db_waking  # noqa: E402
 
 log = logging.getLogger("uvicorn.error")
 
+# Built at import time, before the lifespan runs: streamable_http_app() is what
+# lazily creates the session manager, so the manager cannot be started until
+# after this call has happened (s36).
+_mcp_inner, mcp_gate = build_mcp_app()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -56,7 +62,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise
     except Exception as exc:  # noqa: BLE001 - DB not reachable yet; don't block startup
         log.warning("explore manifest validation skipped: %s", exc)
-    yield
+    # Starlette does NOT run a mounted app's lifespan, and the MCP transport's
+    # session manager lives in exactly that lifespan — so mounting alone gives a
+    # surface that imports fine, starts fine, and then fails on the first tool
+    # call. Driving it from here is the whole cost of folding this service in.
+    async with _mcp_inner.router.lifespan_context(_mcp_inner):
+        yield
     await engine.dispose()
 
 
@@ -73,6 +84,9 @@ app.add_middleware(
 # is on. Added last, so it is the outermost layer and the header is set on every
 # response including CORS preflights and error responses.
 app.add_middleware(RequestIdMiddleware)
+# s36: outermost, so /mcp is rewritten to the mount's path before routing ever
+# reaches redirect_slashes. See McpPathNormalizer.
+app.add_middleware(McpPathNormalizer)
 
 
 @app.exception_handler(Exception)
@@ -126,6 +140,11 @@ app.include_router(evals.router)
 app.include_router(ops.router)
 app.include_router(integrations.router)
 app.include_router(service_accounts.router)
+
+# s36: the MCP front door, mounted rather than run as its own service. The gate
+# wrapper authenticates a dpk_ key pinned to surface='mcp' before the JSON-RPC
+# transport sees anything, so /mcp has no anonymous path.
+app.mount("/mcp", mcp_gate)
 
 # Instrumented once every route is registered, so spans carry route templates
 # (/conversations/{conversation_id}) rather than raw paths — otherwise

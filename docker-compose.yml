@@ -109,6 +109,12 @@ services:
       # real workspace; empty CLOSES the Slack endpoint (404), which is the
       # config.py default and the right posture for any env that isn't using it.
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-dev-slack-secret}
+      # s36: the MCP surface is mounted here at /mcp rather than run as its own
+      # service. Clients authenticate with a dpk_ key minted for surface="mcp",
+      # so there is no server-side key to configure. Empty MCP_ALLOWED_HOSTS
+      # leaves the SDK's DNS-rebinding allowlist off — the key gate is the
+      # control; see app/mcp_surface.py.
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -143,25 +149,6 @@ services:
     depends_on:
       pipeline:
         condition: service_completed_successfully
-
-  # s35 rung 3: the MCP front door. Holds NO database credentials by design —
-  # it calls backend-api over HTTP with its own dpk_ service key, so guardrails,
-  # RLS, the daily cap and the audit trail stay in one implementation.
-  # MCP_SERVICE_KEY must be minted first: POST /admin/service-accounts with
-  # surface="mcp" (or the Settings tab). Unset = the tools report that plainly
-  # rather than half-working.
-  mcp-server:
-    build: ./services/mcp-server
-    environment:
-      BACKEND_URL: http://backend-api:8000
-      MCP_SERVICE_KEY: ${MCP_SERVICE_KEY:-}
-      # The SDK's DNS-rebinding guard matches Host INCLUDING the port, so the
-      # wildcard form is "host:*". Add your own hostname when deploying.
-      ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*,mcp-server:*,localhost,127.0.0.1,mcp-server}
-    ports:
-      - "8200:8200"
-    depends_on:
-      - backend-api
 
   frontend:
     image: node:22-bookworm-slim

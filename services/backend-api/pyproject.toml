@@ -15,6 +15,9 @@ dependencies = [
     # extended to this service so a chat request is one linked trace across both.
     # Local/no-token runs configure to a no-op, so this is safe by default.
     "logfire[fastapi,httpx]>=4.37.0",
+    # s36: the MCP front door is mounted here rather than run as its own
+    # service, so the protocol SDK is a dependency of this API.
+    "mcp>=1.2",
 ]
 
 [project.optional-dependencies]
@@ -25,7 +28,13 @@ dependencies = [
 ops = ["boto3>=1.35"]
 
 [dependency-groups]
-dev = ["mypy>=1.11", "pytest>=8.3.3", "ruff>=0.14.2"]
+dev = ["mypy>=1.11", "pytest>=8.3.3", "pytest-asyncio>=0.24", "ruff>=0.14.2"]
+
+# s36: the MCP protocol suite drives a real async client. asyncio_mode=auto
+# came across with it from the standalone service, where it was the whole
+# suite's setting; the existing sync tests are unaffected.
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.uv]
 package = false

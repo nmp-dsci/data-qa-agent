@@ -18,7 +18,11 @@ credentials. Note the gate is the CLI's *presence*, not ANTHROPIC_API_KEY: the
 `claude` CLI authenticates by subscription too, so keying the skip on that env
 var would silently skip forever on a perfectly working machine.
 
-Usage:  uv run python scripts/mcp_smoke.py [--url http://localhost:8200/mcp]
+Since s36 the surface is mounted on backend-api at /mcp and requires a dpk_ key
+minted for surface='mcp' — pass it as MCP_SERVICE_KEY.
+
+Usage:  MCP_SERVICE_KEY=dpk_... uv run python scripts/mcp_smoke.py
+        [--url http://localhost:8000/mcp]
 """
 
 from __future__ import annotations
@@ -45,7 +49,7 @@ def _log(msg: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default=os.environ.get("MCP_URL", "http://localhost:8200/mcp"))
+    parser.add_argument("--url", default=os.environ.get("MCP_URL", "http://localhost:8000/mcp"))
     parser.add_argument(
         "--expect",
         type=int,
@@ -61,7 +65,23 @@ def main() -> int:
         _log("SKIP: the `claude` CLI is not on PATH — no live client to drive.")
         return 0
 
-    config = {"mcpServers": {"datapilot": {"type": "http", "url": args.url}}}
+    key = os.environ.get("MCP_SERVICE_KEY", "")
+    if not key:
+        # A missing key is a setup gap, not a broken integration: without it the
+        # gate returns 401 and the run would fail for a reason that has nothing
+        # to say about whether the surface works.
+        _log("SKIP: MCP_SERVICE_KEY is not set — mint one for surface='mcp' in Settings.")
+        return 0
+
+    config = {
+        "mcpServers": {
+            "datapilot": {
+                "type": "http",
+                "url": args.url,
+                "headers": {"Authorization": f"Bearer {key}"},
+            }
+        }
+    }
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
         json.dump(config, fh)
         config_path = fh.name

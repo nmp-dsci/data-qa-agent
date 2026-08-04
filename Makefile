@@ -111,23 +111,30 @@ e2e-ops:
 	cd frontend && npx playwright test ops
 
 # ---------------------------------------------------------------------------
-# MCP server (s35 rung 3) — two tiers, deliberately
+# MCP surface (s35 rung 3, mounted into backend-api in s36) — two tiers
 # ---------------------------------------------------------------------------
 # mcp-test is deterministic protocol conformance: it connects a real MCP client,
-# checks the tool surface and that the guardrails still refuse a write. No LLM,
-# so it can gate every merge, and it catches a renamed or malformed tool before
-# a model ever sees one.
+# checks the tool surface, that an anonymous client is refused, and that the
+# guardrails still reject a write. No LLM, so it can gate every merge, and it
+# catches a renamed or malformed tool before a model ever sees one.
+# Needs a key: mint one for surface="mcp" in Settings, then
+#   make mcp-test MCP_SERVICE_KEY=dpk_...
+# @ so make does not echo the recipe: it would print the key to the terminal
+# and into any CI log that ran it.
 mcp-test:
-	uv run --directory services/mcp-server pytest tests -q
+	@MCP_SERVICE_KEY=$(MCP_SERVICE_KEY) uv run --directory services/backend-api \
+		pytest tests/test_mcp_protocol.py -q
 
 # mcp-smoke drives a REAL Claude client and asserts it actually invoked an
 # mcp__datapilot__* tool BEFORE trusting any figure in the answer. That ordering
 # is the whole test: Claude knows roughly what Sydney property costs, so pointed
 # at a dead server it produces a plausible number from memory and a naive check
 # goes green. Verified to exit 1 against an unreachable server.
-#   make mcp-smoke EXPECT=15217          make mcp-smoke MCP_URL=https://<host>/mcp
+#   make mcp-smoke MCP_SERVICE_KEY=dpk_... EXPECT=15217
+#   make mcp-smoke MCP_SERVICE_KEY=dpk_... MCP_URL=https://<host>/mcp
 mcp-smoke:
-	uv run python scripts/mcp_smoke.py $(if $(EXPECT),--expect $(EXPECT)) $(if $(MCP_URL),--url $(MCP_URL))
+	@MCP_SERVICE_KEY=$(MCP_SERVICE_KEY) uv run python scripts/mcp_smoke.py \
+		$(if $(EXPECT),--expect $(EXPECT)) $(if $(MCP_URL),--url $(MCP_URL))
 
 # ---------------------------------------------------------------------------
 # Operations (s32 Track A)

@@ -5,7 +5,7 @@ the Azure Bicep in `../` stays as a reference and is **not** touched by this.
 
 - **Account:** `089783391188`  ·  **Region:** `ap-southeast-2` (Sydney)  ·  **Profile:** `data-qa`
 - **Database:** Aurora Serverless v2 (PostgreSQL 16, scale-to-zero)
-- **Compute:** App Runner (backend-api + data-agent + mcp-server) + ECS Fargate one-shot jobs (migrate, pipeline)
+- **Compute:** App Runner (backend-api + data-agent) + ECS Fargate one-shot jobs (migrate, pipeline)
 - **Frontend:** static Vite build in S3 behind CloudFront  ·  **Images:** ECR  ·  **Secrets:** Secrets Manager
 
 ## Layout
@@ -79,36 +79,29 @@ VITE_API_URL=$(terraform -chdir=infra/terraform/foundations output -raw backend_
 ./scripts/cloud_smoke.sh        # health, auth, token guard, governed SQL, frontend
 ```
 
-Pushing `:latest` auto-deploys all three App Runner services (backend-api,
-data-agent, mcp-server). The pipeline job reads the full CSVs from the
+Pushing `:latest` auto-deploys both App Runner services (backend-api,
+data-agent). The pipeline job reads the full CSVs from the
 `data-qa-source-data-*` S3 bucket (`DATA_S3_BUCKET`) instead of local disk.
 
-### MCP server (s35 rung 3)
+### MCP surface (s35 rung 3, mounted in s36)
 
-`aws_apprunner_service.mcp_server` is a third, deliberately least-privileged App
-Runner service — no instance role, no database access, only an HTTP call to
-backend-api carrying its own service key. Two things need a manual step because
-Terraform can't do them safely:
+There is no separate MCP service to deploy. The surface is mounted on
+backend-api at `/mcp`, and the **client** authenticates with a `dpk_` key minted
+for `surface='mcp'` — so there is no server-side key for Terraform to hold, and
+nothing here to configure. Mint a key via the admin API (`POST
+/admin/service-accounts`, or the Settings tab) and hand it to whoever runs the
+client.
 
-- **`MCP_SERVICE_KEY`** is not Terraform-generated — a `dpk_` key only exists
-  once, at mint time, and its secret half is never stored anywhere (only a
-  SHA-256). Mint one via the admin API (`POST /admin/service-accounts` with
-  `surface="mcp"`, or the Settings tab) and push it to the placeholder secret
-  Terraform creates:
-  ```bash
-  aws secretsmanager put-secret-value --profile data-qa \
-    --secret-id data-qa/mcp-service-key --secret-string 'dpk_...'
-  ```
-- **`var.mcp_allowed_hosts`** is a two-step apply. The MCP SDK's DNS-rebinding
-  guard matches the `Host` header exactly (or by a `host:*` prefix) with no
-  allow-all form, and App Runner only assigns this service's hostname at create
-  time — so the first `apply` can't reference it. Apply once, read the
-  `mcp_allowed_hosts_hint` output, set `-var mcp_allowed_hosts=<that value>`,
-  and apply again. Until the second apply, the server only answers on
-  `localhost` and every remote request is a `421`.
+`var.mcp_allowed_hosts` is gone with it. The SDK's DNS-rebinding host allowlist
+is now defence-in-depth rather than the primary control (the key gate sits in
+front of the transport), and it is off unless `MCP_ALLOWED_HOSTS` is set on
+backend-api. That removes the two-step apply the standalone service needed: App
+Runner assigns a hostname at create time and a service cannot reference its own
+`service_url`, so the allowlist could not be derived here and every remote
+request `421`'d until a second apply.
 
-`SLACK_SIGNING_SECRET` follows the same "placeholder, set by hand" pattern as
-`MCP_SERVICE_KEY` — it comes from a Slack app's config, not from Terraform.
+`SLACK_SIGNING_SECRET` follows a "placeholder, set by hand" pattern — it comes
+from a Slack app's config, not from Terraform.
 Unset/placeholder closes the Slack endpoint with a 404, the correct default
 for an environment not wired to a workspace.
 
@@ -124,10 +117,11 @@ for an environment not wired to a workspace.
     --secret-string 'sk-...' \
     --profile data-qa --region ap-southeast-2
   ```
-  and, since s35, `data-qa/mcp-service-key` and `data-qa/slack-signing-secret`
-  (see "MCP server (s35 rung 3)" above) — all three for the same reason: the
-  value either can't be generated safely (a `dpk_` key's secret half is never
-  stored anywhere) or comes from a third party (Slack). DB password +
+  and, since s35, `data-qa/slack-signing-secret` — both for the same reason:
+  the value either can't be generated safely or comes from a third party
+  (Slack). The MCP service key secret is gone as of s36: the surface is mounted
+  on backend-api and the *client* carries the key, so there is nothing
+  server-side to store. DB password +
   `JWT_SECRET` are Terraform-generated into Secrets Manager.
 - **Alarms (Phase E):** CloudWatch alarms (billing > `billing_alarm_usd` USD in
   us-east-1; backend/agent ≥ 5 5xx per 5 min) notify `alert_email` via SNS. The

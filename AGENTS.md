@@ -117,12 +117,11 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
 ### Repo layout (as built)
 
 ```
-services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS context, /ask, /events, admin, explore
+services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS context, /ask, /events, admin, explore,
+                        the webhook/Slack front doors and the MCP surface mounted at /mcp (app/mcp_surface.py)
 services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails, Explore grounding
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
-services/mcp-server/    Standalone MCP front door (s35 rung 3) — no DB credentials, calls backend-api
-                        over HTTP with its own service key; `make mcp-test`/`make mcp-smoke`
 frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore tab + event tracking
 frontend/public/geo/    pre-built choropleth paths (poa_nsw.paths.json — see scripts/build_topojson.md)
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
@@ -199,7 +198,7 @@ CREATE POLICY tenant_isolation ON insights
 
 ### Non-UI surfaces and service accounts (s35)
 
-Three front doors besides the web UI — a webhook, a Slack slash command, and a standalone MCP server —
+Three front doors besides the web UI — a webhook, a Slack slash command, and an MCP surface —
 all reach the *same* pipeline. `routers/ask.run_question()` is the single implementation of the daily cap,
 RLS scoping, degraded-mode fallback and the audit write; the adapters authenticate and deliver, and
 reimplement none of it. Four front doors, one security surface. `data-agent` is untouched by all of this.

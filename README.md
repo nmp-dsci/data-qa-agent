@@ -96,9 +96,9 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 | Service | URL | Notes |
 |---------|-----|-------|
 | Frontend | http://localhost:5230 | React + Vite dev server |
-| Backend API | http://localhost:8000 | `/health`, `/health/db`, `/auth/config`, `/auth/dev-login`, `/auth/logout`, `/me`, `/ask`, `/events`, `/admin/*` (incl. `/admin/eval-runs*`, `/admin/service-accounts*`), `/explore/*`, `/integrations/webhook/ask`, `/integrations/slack/command` |
+| Backend API | http://localhost:8000 | `/health`, `/health/db`, `/auth/config`, `/auth/dev-login`, `/auth/logout`, `/me`, `/ask`, `/events`, `/admin/*` (incl. `/admin/eval-runs*`, `/admin/service-accounts*`), `/explore/*`, `/integrations/webhook/ask`, `/integrations/slack/command`, `/mcp` |
 | Data agent | http://localhost:8100 | `/health`, `/agent/config`, `/agent/version`, `/agent/ask(/stream)`, `/agent/sql(/assist)`, `/agent/title`, `/agent/analysis*`, `/agent/skills*`, `/agent/eval/grade`, `/agent/schema` |
-| MCP server | http://localhost:8200 | `/mcp` (streamable HTTP) — `list_datasets`, `describe_schema`, `ask_question`, `run_governed_query`, `get_audit`; holds no DB credentials, calls backend-api with its own service key |
+| MCP surface | http://localhost:8000/mcp | Mounted on the backend API (streamable HTTP) — `list_datasets`, `describe_schema`, `ask_question`, `run_governed_query`, `get_audit`; requires a `dpk_` key minted for `surface='mcp'` |
 | Postgres | `localhost:5434` | user `postgres` / `postgres`, db `dataqa` (5432/5433 were in use) |
 
 ## Project structure
@@ -107,15 +107,14 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 services/backend-api/   FastAPI: dev-auth (+ dev-mode session cookie), RLS context, /ask, /events,
                         admin + /admin/eval-goldens + read-only /admin/eval-runs endpoints;
                         /admin/service-accounts (mint/list/revoke dpk_ keys) + the webhook/Slack
-                        front doors (app/routers/integrations.py, app/service_auth.py)
+                        front doors (app/routers/integrations.py, app/service_auth.py) + the MCP
+                        surface mounted at /mcp (app/mcp_surface.py); `make mcp-test` / `make
+                        mcp-smoke` are its two test tiers (see "Non-UI surfaces" below)
 services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails; eval
                         graders + LLM-as-judge (agent/eval_graders.py, agent/eval_judge.py); build
                         fingerprint (agent/version.py, GET /agent/version)
 services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
-services/mcp-server/    Standalone MCP front door (FastMCP, streamable HTTP, :8200) — no DB
-                        credentials, calls backend-api with its own service key; `make mcp-test` /
-                        `make mcp-smoke` are its two test tiers (see "Non-UI surfaces" below)
 frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore + golden authoring
                         + Evaluations (admin, read-only) + Settings (incl. admin key management) + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
@@ -129,7 +128,7 @@ scripts/                make_samples.py, smoke_test.py, build_poa_paths.py (Expl
                         eval_compare.py, eval_diagnose.py — the eval loop's DB<->pack, runner, gate, and
                         read-only diagnosis tools (`make eval*`); ops_ingest.py (records load/red-team/
                         deploy/pipeline outcomes for the Ops deck), ops_judge_sample.py, rollback_apprunner.sh;
-                        mcp_smoke.py — drives a real Claude client against the MCP server (`make mcp-smoke`)
+                        mcp_smoke.py — drives a real Claude client against the MCP surface (`make mcp-smoke`)
 load/k6/                k6 load scripts (`make loadtest`) — the app's only load harness
 security/promptfoo/     red-team config for the governed boundary (`make redteam`)
 docs/runbook.md         production runbook, keyed off the Ops deck's lamps
@@ -185,7 +184,7 @@ latency, and engine.
 ## Non-UI surfaces: webhook, Slack, MCP (s35)
 
 Besides the web chat, three front doors reach the same governed pipeline: a generic webhook, a Slack slash
-command, and a standalone MCP server. All three go through the exact same `run_question()` used by `/ask` —
+command, and an MCP surface mounted on the API. All three go through the exact same `run_question()` used by `/ask` —
 same daily cap, same RLS scoping, same degraded-mode fallback, same audit write — so there is one security
 surface, not four. See `AGENTS.md` → "Non-UI surfaces and service accounts (s35)" for the full design
 (why Slack authenticates by signature rather than a bearer key, why service accounts are never `role='admin'`,
@@ -212,17 +211,24 @@ the access policy for the surface); revoke any time from the same panel. Service
   so grant that account only what everyone in the channel should see. Set `SLACK_SIGNING_SECRET` in `.env`
   (unset closes the endpoint with a 404); the asking Slack user/name/channel are recorded on every run for
   accountability even though they don't change what's readable.
-- **MCP server** — a standalone service (`services/mcp-server/`, port `8200`) exposing five tools
-  (`list_datasets`, `describe_schema`, `ask_question`, `run_governed_query`, `get_audit`) over streamable
-  HTTP for any MCP client (Claude Code, a desktop client, another agent). It holds **no database
-  credentials** — every tool call is an HTTP request to backend-api carrying its own `MCP_SERVICE_KEY`
-  (a key minted for the `mcp` surface), so guardrails/RLS/cap/audit stay in backend-api alone. `make up`
-  starts it if `MCP_SERVICE_KEY` is set in `.env`; unset, it starts fine and every tool reports plainly that
-  it has no key rather than half-working. Two test tiers, deliberately: `make mcp-test` is deterministic
-  protocol conformance (a real MCP client, no LLM — gates CI) and `make mcp-smoke` drives an actual Claude
-  CLI session and asserts a real `mcp__datapilot__*` tool-use block appears **before** trusting any number in
-  the answer (Claude knows roughly what Sydney property costs, so a naive "is there a number" check would
-  pass even against a dead server).
+- **MCP surface** — mounted on backend-api at **`/mcp`** (s36; s35 shipped it as its own container on
+  `:8200`), exposing five tools (`list_datasets`, `describe_schema`, `ask_question`,
+  `run_governed_query`, `get_audit`) over streamable HTTP for any MCP client (Claude Code, a desktop
+  client, another agent). Each tool calls the same in-process handler the web UI calls, so
+  guardrails/RLS/cap/audit stay in one implementation. **The client must present a `dpk_` key minted for
+  the `mcp` surface** — `ServiceKeyGate` authenticates in raw ASGI ahead of the JSON-RPC transport, so an
+  anonymous caller cannot even open a session. Point a client at it with:
+
+  ```json
+  {"mcpServers": {"datapilot": {"type": "http", "url": "http://localhost:8000/mcp",
+    "headers": {"Authorization": "Bearer dpk_..."}}}}
+  ```
+
+  Two test tiers, deliberately: `make mcp-test MCP_SERVICE_KEY=dpk_...` is deterministic protocol
+  conformance (a real MCP client, no LLM — gates CI) and `make mcp-smoke MCP_SERVICE_KEY=dpk_...` drives an
+  actual Claude CLI session and asserts a real `mcp__datapilot__*` tool-use block appears **before**
+  trusting any number in the answer (Claude knows roughly what Sydney property costs, so a naive "is there a
+  number" check would pass even against a dead server).
 
 ## Operations (the flight deck)
 

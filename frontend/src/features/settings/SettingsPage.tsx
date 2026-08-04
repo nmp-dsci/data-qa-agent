@@ -270,6 +270,7 @@ function ServiceAccountsSection() {
           <div className="key-reveal-row">
             <code>{minted.key}</code>
             <button
+              className="btn-quiet"
               onClick={() => {
                 navigator.clipboard?.writeText(minted.key);
                 setCopied(true);
@@ -277,13 +278,16 @@ function ServiceAccountsSection() {
             >
               {copied ? "Copied" : "Copy"}
             </button>
-            <button onClick={() => setMinted(null)}>Done</button>
+            <button className="btn-quiet" onClick={() => setMinted(null)}>
+              Done
+            </button>
           </div>
         </div>
       )}
 
-      <div className="settings-row" style={{ flexWrap: "wrap", gap: 8 }}>
+      <div className="sa-form">
         <input
+          type="text"
           placeholder="Name (e.g. property channel bot)"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -310,10 +314,19 @@ function ServiceAccountsSection() {
             </button>
           ))}
         </span>
-        <button onClick={create} disabled={busy || !name.trim()}>
+        <button className="btn-mint" onClick={create} disabled={busy || !name.trim()}>
           {busy ? "Minting…" : "Mint key"}
         </button>
       </div>
+      {/* Both of these exist because the button is otherwise silent. An empty
+          name disables it, and a key with no datasets mints happily and then
+          reads nothing — neither said so, so both looked like "it's broken". */}
+      {!name.trim() && <p className="sa-hint">Give the key a name to mint it.</p>}
+      {name.trim() && datasets.length === 0 && (
+        <p className="sa-hint warn">
+          No datasets selected — this key will authenticate but read nothing. Pick at least one.
+        </p>
+      )}
       {error && <p className="error-text">{error}</p>}
 
       {q.data && q.data.length > 0 && (
@@ -340,7 +353,11 @@ function ServiceAccountsSection() {
                   <td>{a.last_used_at ? formatTime(a.last_used_at) : "never"}</td>
                   <td>{a.revoked_at ? "revoked" : "active"}</td>
                   <td>
-                    {!a.revoked_at && <button onClick={() => revoke(a.id)}>Revoke</button>}
+                    {!a.revoked_at && (
+                      <button className="btn-quiet" onClick={() => revoke(a.id)}>
+                        Revoke
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

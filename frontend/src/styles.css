@@ -1242,6 +1242,33 @@ a:focus-visible, [role="option"]:focus-visible {
   font-family: var(--mono); font-size: 12.5px;
 }
 .error-text { color: var(--error-text); font-size: 13px; margin: 0; }
+/* s36: the service-account minting form. These are bare <input>/<select>/<button>
+   elements, and styles.css styles none of them — so the whole row rendered as
+   unstyled plain text: "Mint key" did not look like a control, and its disabled
+   state (a name is required) was invisible. Clicking it did nothing and said
+   nothing, which is exactly how it reads as broken. */
+.sa-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sa-form input[type="text"], .sa-form select {
+  background: var(--panel-2); color: var(--text); font: inherit; font-size: 13.5px;
+  border: 1px solid var(--border-2); border-radius: var(--radius-sm); padding: 7px 10px; }
+.sa-form input[type="text"] { flex: 1 1 220px; min-width: 0; }
+.sa-form input[type="text"]::placeholder { color: var(--faint); }
+.sa-form select { cursor: pointer; }
+.btn-mint { background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 13.5px;
+  font-weight: 650; border: 1px solid var(--accent); border-radius: var(--radius-sm);
+  padding: 7px 16px; cursor: pointer; white-space: nowrap; }
+.btn-mint:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent-soft); }
+/* A disabled control must LOOK disabled — otherwise the only feedback for a
+   missing name is nothing at all. */
+.btn-mint:disabled { background: transparent; color: var(--faint);
+  border-color: var(--border-2); cursor: not-allowed; font-weight: 600; }
+.btn-quiet { background: var(--panel-2); color: var(--text); font: inherit; font-size: 12.5px;
+  border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  padding: 5px 12px; cursor: pointer; white-space: nowrap; }
+.btn-quiet:hover { border-color: var(--accent); color: var(--accent-soft); }
+/* Says why the button is inert, so a disabled state is never a dead end. */
+.sa-hint { font-size: 12.5px; color: var(--faint); margin: 0; }
+.sa-hint.warn { color: var(--warn); }
 /* Remembered preferences as cards (issue #13): each memory gets its learned/used
    context and a quiet "forget" — the login's memory promise, made visible. */
 .mem-list { display: grid; gap: 8px; }

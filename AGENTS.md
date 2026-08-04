@@ -220,9 +220,6 @@ reimplement none of it. Four front doors, one security surface. `data-agent` is 
   (verified over the **raw** body, 5-minute replay window) proves the *request*, while the service account
   decides what may be *seen*. An unset `SLACK_SIGNING_SECRET` closes the endpoint with a 404 rather than
   weakening it.
-- The MCP server holds **no database credentials at all** — it calls backend-api over HTTP with its own key.
-  Its auth tier is a service key, which does not meet the OAuth-2.1-with-scopes bar for enterprise MCP; that
-  gap is deliberate and staged, not closed.
 - **Key management (rung 4)** is an admin-only **Settings → Service accounts** panel
   (`frontend/src/features/settings/SettingsPage.tsx`) over `/admin/service-accounts*`: mint a key for a
   surface with a dataset grant, revoke one, see `last_used_at`. The reveal-once view is styled as a warning,
@@ -230,6 +227,26 @@ reimplement none of it. Four front doors, one security surface. `data-agent` is 
   re-displayed — only `key_id` is listed afterward. The dataset picker reads the Explore dataset catalogue
   (`GET /explore/datasets`), not the admin's own `dataset_access` rows — an admin reads across users by role
   and has none of their own, so sourcing from `getMyAccess` would leave the picker empty.
+- The MCP surface is **mounted on backend-api at `/mcp`** (s36; s35 shipped it as a separate container).
+  Its tools call the same handlers the UI calls — `run_question`, `run_sql`, `schema_catalog` — so there is
+  still exactly one implementation of the guard, the cap and the audit write. Two consequences of the move,
+  both deliberate: it no longer has the standalone server's "holds no database credentials" isolation, and
+  in exchange the **client** must now present a `dpk_` key pinned to `surface='mcp'` (`ServiceKeyGate`,
+  raw ASGI, in front of the JSON-RPC transport) where the standalone server accepted any client that could
+  reach its port. Auth moved forward; isolation moved back.
+- The MCP transport is mounted **stateless** so each JSON-RPC call runs in its own request task — that is
+  what makes the per-request identity `ContextVar` correct. A session-mode transport would run tool calls in
+  the task that opened the session, i.e. under the wrong identity. The tools fail closed rather than fall
+  back to a surface lookup if that context is ever missing.
+- Because the key gate sits in front of the transport, the SDK's DNS-rebinding host allowlist is
+  defence-in-depth, not the primary control, and is **off unless `MCP_ALLOWED_HOSTS` is set**. Requiring it
+  meant a deployment could not work until a second apply taught it its own hostname (App Runner assigns that
+  at create time and a service cannot reference its own `service_url`).
+- MCP's auth tier is a service key, which does not meet the OAuth-2.1-with-scopes bar for enterprise MCP;
+  that gap is deliberate and staged, not closed.
+- `POST /sql` is capped for `plan='service'` only (`check_daily_query_cap`, s36). A governed SELECT spends no
+  tokens, so human editor use stays uncapped — but a machine key can loop, and the MCP surface hands
+  `run_governed_query` straight to a model. It is a rate bound; the guard applies to every statement anyway.
 
 ---
 

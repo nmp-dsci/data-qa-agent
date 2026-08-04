@@ -81,3 +81,61 @@ async def check_daily_llm_cap(user: CurrentUser) -> None:
                 "It resets at midnight UTC."
             ),
         )
+
+
+async def check_daily_query_cap(user: CurrentUser) -> None:
+    """Bound governed SELECTs per day — service accounts only (s36).
+
+    ``check_daily_llm_cap`` guards every path that spends tokens. A raw governed
+    query spends none, which is why a human's SQL-editor use is deliberately
+    uncapped and stays that way.
+
+    A service key is a different risk. It is a credential handed to a machine
+    that can loop, and the MCP surface exposes ``run_governed_query`` directly to
+    a model that will retry a failing query as readily as a person will not.
+    Every statement still passes the full guard — SELECT-only, single statement,
+    allowlisted tables, RLS-scoped, role ``statement_timeout`` — so this is a
+    rate bound on a caller that cannot get tired, not a security control.
+
+    Counts the account's own ``sql_editor`` runs today; RLS scopes the read to
+    the account itself. A limit of 0 disables the cap.
+    """
+    if user.role == "admin":
+        return
+    limit = settings.sql_daily_limit_service
+    if limit <= 0:
+        return
+    async with rls_connection(user.id) as conn:
+        plan = (
+            await conn.execute(text("SELECT plan FROM app.users WHERE id = :uid"), {"uid": user.id})
+        ).scalar() or "free"
+        if plan != "service":
+            return
+        used = (
+            await conn.execute(
+                text(
+                    "SELECT count(*) FROM app.query_runs "
+                    "WHERE user_id = CAST(:uid AS uuid) AND source = 'sql_editor' "
+                    "AND created_at >= date_trunc('day', now() AT TIME ZONE 'utc')"
+                ),
+                {"uid": user.id},
+            )
+        ).scalar_one()
+        if used >= limit:
+            # Same signal shape as the LLM cap so the ops deck's saturation panel
+            # counts both without a second event type to teach it.
+            await conn.execute(
+                text(
+                    "INSERT INTO app.events (user_id, event_type, payload) "
+                    "VALUES (:uid, 'llm_cap_reached', CAST(:payload AS jsonb))"
+                ),
+                {"uid": user.id, "payload": json.dumps({"tier": "service_sql", "limit": limit})},
+            )
+    if used >= limit:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Daily governed-query limit reached for this service account "
+                f"({limit}/day). It resets at midnight UTC."
+            ),
+        )

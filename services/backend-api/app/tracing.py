@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -67,13 +68,48 @@ def configure() -> None:
         log.info("logfire not installed; backend tracing disabled")
         return
     try:
-        logfire.configure(service_name="backend-api", send_to_logfire="if-token-present")
+        logfire.configure(
+            service_name="backend-api",
+            send_to_logfire="if-token-present",
+            additional_span_processors=_otlp_processors(),
+        )
         # capture_all is deliberately off: the outbound calls this service makes
         # carry whole questions and answers, and a span attribute is a copy of
         # that payload outside the database.
         logfire.instrument_httpx()
     except Exception as exc:  # noqa: BLE001 — never fail startup over telemetry
         log.warning("backend tracing setup skipped: %s", exc)
+
+
+def _otlp_processors() -> list[Any]:
+    """Export to a self-hosted OTLP collector when one is configured (s37).
+
+    Logfire is an OpenTelemetry SDK, so the instrumentation is backend-agnostic:
+    the FastAPI/httpx/pydantic-ai spans are ordinary OTel spans and only their
+    destination is a choice. Setting ``OTLP_ENDPOINT`` adds an exporter pointed
+    at whatever you run — locally that is the Jaeger container in
+    docker-compose. Unset, this returns nothing and behaviour is exactly as
+    before.
+
+    HTTP rather than gRPC on purpose: logfire already ships the
+    proto-http exporter, so this needs no new dependency, and Jaeger accepts
+    OTLP/HTTP on 4318.
+
+    This is additive, not exclusive — with both a Logfire token and an OTLP
+    endpoint set, spans go to both. That makes switching backends a
+    side-by-side comparison rather than a cutover.
+    """
+    endpoint = settings.otlp_endpoint.strip()
+    if not endpoint:
+        return []
+    try:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError:  # pragma: no cover — ships with logfire
+        log.warning("OTLP exporter unavailable; self-hosted tracing disabled")
+        return []
+    log.info("exporting traces to %s", endpoint)
+    return [BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces"))]
 
 
 def instrument_app(app: FastAPI) -> None:

@@ -99,6 +99,7 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 | Backend API | http://localhost:8000 | `/health`, `/health/db`, `/auth/config`, `/auth/dev-login`, `/auth/logout`, `/me`, `/ask`, `/events`, `/admin/*` (incl. `/admin/eval-runs*`, `/admin/service-accounts*`), `/explore/*`, `/integrations/webhook/ask`, `/integrations/slack/command`, `/mcp` |
 | Data agent | http://localhost:8100 | `/health`, `/agent/config`, `/agent/version`, `/agent/ask(/stream)`, `/agent/sql(/assist)`, `/agent/title`, `/agent/analysis*`, `/agent/skills*`, `/agent/eval/grade`, `/agent/schema` |
 | MCP surface | http://localhost:8000/mcp | Mounted on the backend API (streamable HTTP) — `list_datasets`, `describe_schema`, `ask_question`, `run_governed_query`, `get_audit`; requires a `dpk_` key minted for `surface='mcp'` |
+| Jaeger (traces) | http://localhost:16686 | Self-hosted span waterfalls for both services. Started by `make up`; OTLP/HTTP in on `:4318` |
 | Postgres | `localhost:5434` | user `postgres` / `postgres`, db `dataqa` (5432/5433 were in use) |
 
 ## Project structure

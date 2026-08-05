@@ -12,10 +12,17 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from .otlp import otlp_processors
+
 # Configured before importing sandbox_agent: agent_common (pulled in by that
 # module) instruments pydantic-ai/httpx at import time, which needs
 # logfire.configure() to have already run.
-logfire.configure(service_name="data-agent", send_to_logfire="if-token-present")
+logfire.configure(
+    service_name="data-agent",
+    send_to_logfire="if-token-present",
+    # s37: also export to a self-hosted collector when OTLP_ENDPOINT is set.
+    additional_span_processors=otlp_processors(),
+)
 
 from . import analytics  # noqa: E402
 from .chart import trend_overlay_encoding, validate_chart_spec  # noqa: E402

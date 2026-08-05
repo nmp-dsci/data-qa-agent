@@ -104,6 +104,10 @@ services:
       OPS_INGEST_TOKEN: ${OPS_INGEST_TOKEN:-dev-ops-token}
       # Optional — ships backend traces to Logfire Cloud; local-only otherwise.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
+      # s37: self-hosted traces to the jaeger container. Defaulted ON locally so
+      # `make up` gives you a trace UI with no extra step; set OTLP_ENDPOINT=
+      # (empty) to turn it off.
+      OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://jaeger:4318}
       # s35: Slack's workspace signing secret, used to verify X-Slack-Signature.
       # A fixed dev value so the signature path is exercisable locally without a
       # real workspace; empty CLOSES the Slack endpoint (404), which is the
@@ -142,6 +146,8 @@ services:
       SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-pyodide}
       # Optional — ships agent traces to Logfire Cloud; empty = local-only tracing.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
+      # s37: self-hosted traces to the jaeger container (see backend-api).
+      OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://jaeger:4318}
     volumes:
       - dbt_target:/dbt-target:ro
     ports:
@@ -149,6 +155,21 @@ services:
     depends_on:
       pipeline:
         condition: service_completed_successfully
+
+  # s37: self-hosted tracing. Logfire is an OpenTelemetry SDK, so the same
+  # instrumentation both services already carry can export anywhere — this is
+  # the "run it yourself" alternative to shipping spans to Logfire Cloud.
+  # Jaeger all-in-one is one container with no external storage: traces live in
+  # memory and vanish on restart, which is right for local development and is
+  # exactly why this is not the production answer.
+  #   UI: http://localhost:16686
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # web UI
+      - "4318:4318" # OTLP/HTTP — the port both services export to
 
   frontend:
     image: node:22-bookworm-slim

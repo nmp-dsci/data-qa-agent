@@ -196,6 +196,30 @@ CREATE POLICY tenant_isolation ON insights
 - Role-level `statement_timeout`s (migration 0018: `app_user`/`agent_ro` 15s, `admin_ro` 30s) are a
   database-side backstop against runaway queries on every code path, independent of app-level guards.
 
+### Tracing: self-hosted by default (s37)
+
+Logfire is an **OpenTelemetry SDK**, not a lock-in — the FastAPI, httpx and pydantic-ai instrumentation
+both services carry emits ordinary OTel spans, and only the *destination* is a choice. That makes the
+backend swappable for the cost of one endpoint.
+
+- `OTLP_ENDPOINT` adds an exporter via `additional_span_processors`. Locally it defaults to the Jaeger
+  container (`http://jaeger:4318`), so `make up` gives a trace UI on **:16686** with no extra step.
+- **Additive, not exclusive.** With both `LOGFIRE_TOKEN` and `OTLP_ENDPOINT` set, spans go to both —
+  so evaluating a different backend is a side-by-side comparison, never a cutover.
+- OTLP over **HTTP**, not gRPC: logfire already ships the proto-http exporter, so self-hosting costs no
+  new dependency. Jaeger accepts OTLP/HTTP on 4318.
+- The agent reads the env var directly (`agent/otlp.py`) rather than through `agent.config`, because
+  `main` must call `logfire.configure()` before importing config — `agent_common` instruments
+  pydantic-ai at import time and needs configure to have run first. A telemetry setting is not a good
+  reason to reorder that.
+- **Jaeger all-in-one keeps traces in memory**: they vanish on restart. That is right for local
+  development and is exactly why it is not wired into production, where the ops deck's CloudWatch-backed
+  telemetry remains the answer. Self-hosting traces in prod means an always-on service, persistent
+  storage, a retention policy and auth on a UI that holds user question text — a real ops commitment,
+  deliberately not taken on.
+- `app.query_runs.otel_trace_id` carries the trace id, so a slow row on the ops deck is one lookup from
+  its span waterfall in whichever backend is receiving spans.
+
 ### Non-UI surfaces and service accounts (s35)
 
 Three front doors besides the web UI — a webhook, a Slack slash command, and an MCP surface —

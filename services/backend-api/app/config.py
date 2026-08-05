@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     # Optional — ships backend traces to Logfire Cloud when set; local-only
     # (console/no-op) otherwise, exactly like the data-agent's LOGFIRE_TOKEN.
     logfire_token: str | None = None
+    # s37: self-hosted tracing. Logfire is an OpenTelemetry SDK, so the same
+    # instrumentation can export anywhere — set this to an OTLP/HTTP collector
+    # (locally the Jaeger container, http://jaeger:4318) and spans go there
+    # instead of, or as well as, Logfire Cloud. Empty = off, which is the
+    # default and matches the previous behaviour exactly.
+    otlp_endpoint: str = ""
 
     # ---- Ops deck (s32 W0/W2/W4) ------------------------------------------
     # Machine token for POST /ops/ingest/* — the k6, promptfoo and deploy

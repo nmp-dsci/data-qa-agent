@@ -93,14 +93,55 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 
 ## Ports
 
-| Service | URL | Notes |
-|---------|-----|-------|
-| Frontend | http://localhost:5230 | React + Vite dev server |
-| Backend API | http://localhost:8000 | `/health`, `/health/db`, `/auth/config`, `/auth/dev-login`, `/auth/logout`, `/me`, `/ask`, `/events`, `/admin/*` (incl. `/admin/eval-runs*`, `/admin/service-accounts*`), `/explore/*`, `/integrations/webhook/ask`, `/integrations/slack/command`, `/mcp` |
-| Data agent | http://localhost:8100 | `/health`, `/agent/config`, `/agent/version`, `/agent/ask(/stream)`, `/agent/sql(/assist)`, `/agent/title`, `/agent/analysis*`, `/agent/skills*`, `/agent/eval/grade`, `/agent/schema` |
-| MCP surface | http://localhost:8000/mcp | Mounted on the backend API (streamable HTTP) — `list_datasets`, `describe_schema`, `ask_question`, `run_governed_query`, `get_audit`; requires a `dpk_` key minted for `surface='mcp'` |
-| Jaeger (traces) | http://localhost:16686 | Self-hosted span waterfalls for both services. Started by `make up`; OTLP/HTTP in on `:4318` |
-| Postgres | `localhost:5434` | user `postgres` / `postgres`, db `dataqa` (5432/5433 were in use) |
+Everything the local stack publishes to your machine. `make up` starts the **always-on** rows; the
+rest are started on demand by the command shown.
+
+| # | What | Open | Container port | Started by |
+|---|------|------|----------------|------------|
+| **5230** | **Frontend** — React + Vite dev server, hot-reloading | <http://localhost:5230> | 5230 | `make up` |
+| **8000** | **Backend API** — auth, RLS, orchestration, admin, integrations | <http://localhost:8000/health> | 8000 | `make up` |
+| **8100** | **Data agent** — NL→SQL, sandbox, page building | <http://localhost:8100/health> | 8100 | `make up` |
+| **16686** | **Jaeger UI** — span waterfalls across both services | <http://localhost:16686> | 16686 | `make up` |
+| **4318** | **Jaeger OTLP/HTTP** — where both services send spans | not a UI | 4318 | `make up` |
+| **5434** | **Postgres** — `postgres`/`postgres`, db `dataqa` | `psql -h localhost -p 5434 -U postgres dataqa` | **5432** | `make up` |
+| **8180** | **dbt docs** — lineage graph, model SQL, column docs | <http://localhost:8180> | 8080 | `make pipeline-docs` |
+
+Two services run and exit rather than listening: **`migrate`** (Alembic) and **`pipeline`** (dlt + dbt).
+They publish no ports; `make up` waits for them to finish before the API starts.
+
+### Application surfaces on the backend API
+
+All on `:8000`, so they need no port of their own:
+
+| Surface | Path | Auth |
+|---------|------|------|
+| Web app API | `/me`, `/ask`, `/conversations*`, `/events`, `/explore/*`, `/sql*`, `/schema/*`, `/profile*`, `/feedback*`, `/admin/*` (incl. `/admin/eval-goldens*`, `/admin/eval-runs*`, `/admin/service-accounts*`), `/ops*` | Session cookie or bearer (dev stub / Google) |
+| Webhook | `POST /integrations/webhook/ask` | `dpk_` key, `surface='webhook'` |
+| Slack | `POST /integrations/slack/command` | Slack HMAC over the raw body |
+| MCP | `/mcp` (streamable HTTP) — `list_datasets`, `describe_schema`, `ask_question`, `run_governed_query`, `get_audit` | `dpk_` key, `surface='mcp'` |
+| Health | `/health`, `/health/db` | none |
+
+The data agent's own routes (`:8100`) are internal — `/agent/ask(/stream)`, `/agent/sql(/assist)`,
+`/agent/analysis*`, `/agent/skills*`, `/agent/schema`, `/agent/eval/grade`, `/agent/config`,
+`/agent/version`. Everything except `/health` requires `X-Agent-Token`; nothing should call them
+directly except backend-api.
+
+### Host port ≠ container port
+
+Inside the compose network, services address each other by **service name and container port**, which
+is not always the port you use from your laptop:
+
+| From your machine | From another container |
+|-------------------|------------------------|
+| `localhost:5434` | `db:5432` ← the one that catches people out |
+| `localhost:8000` | `backend-api:8000` |
+| `localhost:8100` | `data-agent:8100` |
+| `localhost:4318` | `jaeger:4318` |
+| `localhost:8180` | `pipeline-docs:8080` |
+
+Port already in use? Every mapping lives in `docker-compose.yml` — change the **left** number only.
+If you move the frontend off 5230, add the new origin to `EXTRA_CORS_ORIGINS` — the API's
+`cors_origins` default only covers `http://localhost:5230` and `http://127.0.0.1:5230`.
 
 ## Project structure
 

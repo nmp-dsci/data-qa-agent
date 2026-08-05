@@ -388,8 +388,10 @@ an offline heuristic. Retitle pre-existing conversations with
 `docker compose exec backend-api python -m app.backfill_titles` (`--all` / `--dry-run`).
 
 Every agent run is traced with **Logfire** — tool calls, model requests, and (with `capture_all=True`) the raw
-HTTP payloads sent to the provider. Set `LOGFIRE_TOKEN` in `.env` to ship traces to Logfire Cloud; leave it
-empty to trace locally with no extra configuration.
+HTTP payloads sent to the provider. Set `LOGFIRE_TOKEN` in `.env` to ship traces to Logfire Cloud, or leave it
+empty and use the self-hosted **Jaeger** UI at http://localhost:16686 instead — `make up` sends spans there by
+default via `OTLP_ENDPOINT` (see Ports above), no external account needed. Set both to send spans to both
+backends at once.
 
 ## Troubleshooting
 
@@ -400,7 +402,8 @@ empty to trace locally with no extra configuration.
   `make pipeline-full` (real data), or `make reset` then `make up` for a clean slate (wipes the volume so
   migrations + pipeline re-run).
 - **Frontend can't reach the API** — CORS allows `http://localhost:5230`; if you change the frontend port,
-  update `cors_origins` in `services/backend-api/app/config.py` and rebuild backend-api.
+  add the new origin to `EXTRA_CORS_ORIGINS` in `.env` (comma-separated) rather than editing
+  `cors_origins` in `services/backend-api/app/config.py`.
 
 ## Deploy to AWS (live)
 

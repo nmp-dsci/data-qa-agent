@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s37 · Data Pilot in Slack — setup &amp; test guide</title>
+<style>
+/* Night Flight tokens, lifted from frontend/src/styles.css so this page reads
+   as the same product. Dark is canonical; light mirrors the app's chart-paper. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10); --elev-2:0 8px 24px rgba(50,40,20,.12);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.flex,.steps)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,dd,td,th,.badge){overflow-wrap:anywhere}
+:where(img,svg,canvas){max-width:100%}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+.lbl.hud{color:var(--hud)}
+
+header.hero{padding:56px 0 30px;border-bottom:1px solid var(--border);margin-bottom:34px;
+  position:relative;overflow:hidden}
+header.hero::after{content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+.hero h1{font-size:clamp(30px,4.4vw,46px);line-height:1.08;margin:12px 0 0;
+  font-weight:750;letter-spacing:-.02em;max-width:22ch}
+.hero .kicker{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hero .sub{color:var(--muted);font-size:17px;margin:16px 0 0;max-width:66ch}
+.verdict{margin-top:26px;border:1px solid var(--accent);border-left-width:3px;
+  border-radius:var(--radius-lg);background:linear-gradient(90deg,
+    color-mix(in srgb,var(--accent) 11%,transparent),transparent 70%);
+  padding:16px 18px}
+.verdict p{margin:6px 0 0;color:var(--text);font-size:16px}
+.verdict strong{color:var(--accent-soft)}
+
+section{margin:0 0 52px;scroll-margin-top:16px}
+h2{font-size:24px;letter-spacing:-.01em;margin:0 0 4px;font-weight:700}
+h2 .n{font-family:var(--mono);font-size:13px;color:var(--accent);margin-right:10px;
+  font-weight:700;vertical-align:2px}
+.dek{color:var(--muted);margin:0 0 22px;max-width:76ch}
+h3{font-size:16px;margin:28px 0 10px;font-weight:650}
+p{margin:0 0 12px}
+a{color:var(--accent-2)}
+code{font-family:var(--mono);font-size:.88em;background:var(--panel-3);
+  padding:1px 5px;border-radius:4px;color:var(--accent-soft)}
+
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px 17px;box-shadow:var(--elev-1)}
+.card h4{margin:8px 0 8px;font-size:15.5px;font-weight:650;letter-spacing:-.005em}
+.card p{margin:0 0 8px;color:var(--muted);font-size:14px}
+.card p:last-child{margin-bottom:0}
+.card p b{color:var(--text);font-weight:600}
+.card ul{margin:0;padding-left:18px;color:var(--muted);font-size:14px}
+.card li{margin:0 0 6px}
+.card li b{color:var(--text);font-weight:600}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;
+  background:var(--border);border:1px solid var(--border);border-radius:var(--radius-lg);
+  overflow:hidden;margin:0 0 22px}
+.stat{background:var(--panel);padding:13px 15px}
+.stat .v{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent);
+  line-height:1.15}
+.stat .v.ok{color:var(--good)}
+.stat .k{margin-top:3px}
+
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:600px}
+th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--faint);font-weight:700;padding:11px 14px;
+  border-bottom:1px solid var(--border);background:var(--panel-2);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top;
+  color:var(--muted)}
+tr:last-child td{border-bottom:none}
+td strong,td b{color:var(--text);font-weight:600}
+td code{font-size:12px}
+.mono{font-family:var(--mono);font-size:12px;white-space:nowrap}
+
+.badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:5px;
+  border:1px solid var(--border-2);color:var(--muted);white-space:nowrap}
+.badge.ok{color:var(--good);border-color:var(--good-border);
+  background:color-mix(in srgb,var(--good) 12%,transparent)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border);
+  background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border);
+  background:color-mix(in srgb,var(--bad) 12%,transparent)}
+.badge.info{color:var(--info);border-color:var(--info-border);
+  background:color-mix(in srgb,var(--info) 12%,transparent)}
+.badge.accent{color:var(--accent-soft);border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 12%,transparent)}
+
+pre.code{background:var(--code-bg);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:13px 15px;overflow-x:auto;
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--text);margin:10px 0 14px}
+pre.code .c{color:var(--faint)}
+pre.code .k{color:var(--accent-soft)}
+pre.code .s{color:var(--good)}
+
+/* --- setup steps ----------------------------------------------------------- */
+.steps{counter-reset:step;display:grid;gap:14px;margin:18px 0 0}
+.step{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 19px 15px;box-shadow:var(--elev-1);position:relative;
+  border-left:3px solid var(--border-2)}
+.step.you{border-left-color:var(--accent)}
+.step.done{border-left-color:var(--good)}
+.step h4{margin:0 0 4px;font-size:16px;font-weight:670;display:flex;gap:12px;
+  align-items:baseline;flex-wrap:wrap}
+.step h4::before{counter-increment:step;content:"0" counter(step);
+  font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700}
+.step .where{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:auto}
+.step p{color:var(--muted);font-size:14px;margin:6px 0 8px}
+.step p b{color:var(--text);font-weight:600}
+.step ul{margin:4px 0 10px;padding-left:20px;color:var(--muted);font-size:14px}
+.step li{margin:0 0 5px}
+.step li b{color:var(--text);font-weight:600}
+
+.callout{border:1px solid var(--border-2);border-left:3px solid var(--info);
+  border-radius:var(--radius);background:color-mix(in srgb,var(--info) 6%,transparent);
+  padding:11px 14px;font-size:13.5px;color:var(--muted);margin:10px 0 8px}
+.callout b{color:var(--text)}
+.callout.warn{border-left-color:var(--warn);
+  background:color-mix(in srgb,var(--warn) 7%,transparent)}
+.callout.good{border-left-color:var(--good);
+  background:color-mix(in srgb,var(--good) 7%,transparent)}
+
+/* --- diagram --------------------------------------------------------------- */
+.diagram{background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:18px;overflow-x:auto;margin:0 0 14px}
+.diagram .mermaid{display:flex;justify-content:center;min-width:0}
+.diagram .cap{font-size:13px;color:var(--faint);margin:12px 0 0;text-align:center}
+
+/* --- slack message mock ---------------------------------------------------- */
+.slackmock{background:#1a1d21;border:1px solid #3a3d42;border-radius:var(--radius-lg);
+  padding:16px 18px;font-size:14px;color:#d1d2d3;max-width:640px;margin:12px 0}
+@media (prefers-color-scheme: light){
+  .slackmock{background:#fff;border-color:#ddd;color:#1d1c1d}
+}
+.slackmock .m{display:flex;gap:10px;margin:0 0 14px}
+.slackmock .m:last-child{margin-bottom:0}
+.slackmock .av{width:36px;height:36px;border-radius:6px;flex:none;
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
+.slackmock .av.dp{background:#d9a84e;color:#1a1204}
+.slackmock .av.you{background:#4a154b;color:#fff}
+.slackmock .who{font-weight:800;font-size:14px}
+.slackmock .who .app{font-size:9.5px;font-weight:700;background:#616061;color:#fff;
+  border-radius:3px;padding:1px 4px;margin-left:5px;vertical-align:1px}
+.slackmock .who .t{color:#9a9b9c;font-weight:400;font-size:12px;margin-left:6px}
+.slackmock .body{margin-top:1px}
+.slackmock .eph{color:#9a9b9c;font-size:12px;font-style:italic}
+.slackmock .cmd{font-family:var(--mono);font-size:13px;color:#1264a3;
+  background:rgba(29,155,209,.1);border-radius:3px;padding:0 3px}
+@media (prefers-color-scheme: dark){ .slackmock .cmd{color:#7dcfff} }
+
+/* --- decision forms -------------------------------------------------------- */
+.qform{background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:16px 18px;box-shadow:var(--elev-1)}
+.qform h4{margin:6px 0 10px;font-size:15.5px;font-weight:650}
+.qform label{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;margin:0 0 6px;
+  border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+  font-size:14px;color:var(--muted)}
+.qform label:hover{border-color:var(--border-2);background:var(--panel-2)}
+.qform label b{color:var(--text);font-weight:600}
+.qform input[type=radio]{margin-top:3px;accent-color:var(--accent)}
+.qform .note{font-size:12.5px;color:var(--faint);margin:2px 0 10px}
+.qform button{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--accent-ink);background:var(--accent);
+  border:1px solid var(--accent);border-radius:6px;padding:7px 14px;cursor:pointer}
+.qform button:hover{background:var(--accent-soft)}
+.qform .queued{display:none;font-size:12.5px;color:var(--good);margin-top:8px}
+.qform.is-queued .queued{display:block}
+
+.decided{border:1px solid var(--good-border);border-left:3px solid var(--good);
+  border-radius:var(--radius-lg);background:color-mix(in srgb,var(--good) 6%,transparent);
+  padding:14px 17px}
+.decided h4{margin:6px 0 6px;font-size:15.5px;font-weight:650}
+.decided p{color:var(--muted);font-size:14px;margin:0}
+.decided p b{color:var(--text)}
+
+footer{border-top:1px solid var(--border);padding-top:18px;color:var(--faint);
+  font-size:12.5px}
+footer .mono{white-space:normal}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">
+    <span class="lbl accent">s37 · slack-test branch</span>
+    <span class="badge ok">Feature already shipped (s35)</span>
+    <span class="badge accent">Prod-only — nothing runs on your machine</span>
+  </div>
+  <h1>Data Pilot in Slack — prod setup &amp; test guide</h1>
+  <p class="sub">Goal: type <code>/datapilot median rent in 2077</code> in your
+    <b>data-pilot</b> workspace and get a governed answer back in the channel —
+    served by the <b>production</b> backend on AWS, the same pipeline as prod web chat.</p>
+  <div class="verdict">
+    <span class="lbl accent">Verdict</span>
+    <p><strong>Yes — loop it in and it answers, straight off prod.</strong> The Slack surface
+    is already deployed: <code>POST /integrations/slack/command</code> on the App Runner backend
+    verifies Slack's signature, acks inside 3&nbsp;seconds, runs the question through the exact
+    <code>/ask</code> pipeline (caps, RLS, audit), and posts the answer back to the channel.
+    s35 even pre-provisioned the AWS secret for the signing key — it sits at a placeholder that
+    keeps the endpoint closed until you fill it. <strong>4 steps, ~15 minutes, zero code, zero
+    Terraform.</strong> One shape note: v1 is a <strong>slash command</strong>, not an @mention
+    bot — it doesn't read messages, you invoke it.</p>
+  </div>
+</header>
+
+<!-- ======================================================================= -->
+<section id="how">
+  <h2><span class="n">01</span>How it answers</h2>
+  <p class="dek">Two separate jobs that make the design safe: Slack's <b>signature proves the
+  request</b> is genuinely from your workspace, and a single <b>service account decides what may
+  be seen</b>. Nothing in the request can change which identity answers.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="v">4</div><div class="k lbl">setup steps</div></div>
+    <div class="stat"><div class="v">3s</div><div class="k lbl">ack deadline (met)</div></div>
+    <div class="stat"><div class="v">5 min</div><div class="k lbl">replay window</div></div>
+    <div class="stat"><div class="v">200/day</div><div class="k lbl">question cap</div></div>
+    <div class="stat"><div class="v">3,000</div><div class="k lbl">answer char cap</div></div>
+  </div>
+
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor N as nathan in #35;new-channel
+    participant S as Slack
+    participant B as prod backend-api (App Runner)<br/>/integrations/slack/command
+    participant P as run_question pipeline<br/>(caps · RLS · audit · Aurora)
+
+    N->>S: /datapilot median rent in 2077
+    S->>B: POST (signed, X-Slack-Signature)
+    B->>B: verify HMAC over raw body<br/>(SLACK_SIGNING_SECRET, ±5 min)
+    B-->>S: ack &lt;3s: "Working on it…" (ephemeral)
+    B->>P: question as the 'slack' service account
+    P-->>P: same path as prod web chat:<br/>SQL, sandbox, answer, query_runs row
+    B->>S: POST answer to response_url (in_channel)
+    S-->>N: answer appears in the channel
+    </pre>
+    <p class="cap">The ack and the answer are decoupled — a 90-second agent run never fights
+    Slack's 3-second timeout. Code: <code>services/backend-api/app/routers/integrations.py</code></p>
+  </div>
+
+  <div class="grid g3">
+    <div class="card">
+      <span class="lbl">Identity</span>
+      <h4>One bot, its own grants</h4>
+      <p>The earliest active service account with <code>surface = 'slack'</code> answers every
+      question. <b>Channel membership is the access boundary</b> — grant that account only the
+      datasets everyone in the channel should see.</p>
+    </div>
+    <div class="card">
+      <span class="lbl">Accountability</span>
+      <h4>The asker is still recorded</h4>
+      <p>Authorisation is the bot's; accountability is the human's. Every question writes a
+      <code>slack_question</code> event with the Slack user, name, channel and
+      <code>run_id</code> — "who asked this" stays answerable.</p>
+    </div>
+    <div class="card">
+      <span class="lbl">No bearer key in Slack</span>
+      <h4>Signature, not secret-sharing</h4>
+      <p>Slack can't hold a <code>dpk_</code> key safely, so it doesn't get one. It signs its own
+      requests; the backend verifies the HMAC over the <b>raw body</b> against the app's signing
+      secret. Placeholder secret = the endpoint 404s out of existence.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="setup">
+  <h2><span class="n">02</span>The setup — 4 steps, all prod</h2>
+  <p class="dek">Verified against the deployed stack: the backend URL below is the live App
+  Runner service, the Secrets Manager secret <code>data-qa/slack-signing-secret</code> already
+  exists (Terraform created it with a <code>REPLACE_ME_VIA_CLI</code> placeholder), and App
+  Runner already injects it as <code>SLACK_SIGNING_SECRET</code>. Nothing to deploy.</p>
+
+  <div class="steps">
+
+    <div class="step you">
+      <h4>Mint the Slack service account — in prod <span class="where">prod app → Settings</span></h4>
+      <p>Open <a href="https://deqfc8b0u8s64.cloudfront.net">deqfc8b0u8s64.cloudfront.net</a> and
+      sign in with Google (your admin email) → <b>Settings → Service accounts</b>:</p>
+      <ul>
+        <li>Name it <b>slack-bot</b>, keep surface = <b>slack</b> (the default)</li>
+        <li><b>Tick the datasets</b> the whole channel may see — an account with zero grants
+        mints fine but answers nothing (the form warns you)</li>
+        <li>Press <b>Mint key</b></li>
+      </ul>
+      <div class="callout"><b>You can ignore the <code>dpk_</code> key it shows.</b> Slack never
+      sends it — the signature authenticates requests. What matters is that an <i>active account
+      with surface = slack exists in the prod database</i>. A local mint doesn't count: prod has
+      its own DB. No account = the channel gets a 503 "No active Slack service account is
+      configured".</div>
+    </div>
+
+    <div class="step you">
+      <h4>Create the Slack app + slash command <span class="where">api.slack.com/apps</span></h4>
+      <ul>
+        <li>Go to <a href="https://api.slack.com/apps">api.slack.com/apps</a> →
+          <b>Create New App → From scratch</b></li>
+        <li>Name: <b>Data Pilot</b> · Workspace: <b>data-pilot</b></li>
+        <li>In the app's sidebar: <b>Slash Commands → Create New Command</b>
+          <ul>
+            <li>Command: <code>/datapilot</code></li>
+            <li>Request URL: <code>https://hzxtrasvdp.ap-southeast-2.awsapprunner.com/integrations/slack/command</code></li>
+            <li>Short description: <i>Ask the governed property data a question</i></li>
+            <li>Usage hint: <i>median rent in 2077</i></li>
+            <li>Leave "Escape channels, users…" unticked → Save</li>
+          </ul>
+        </li>
+      </ul>
+      <div class="callout warn"><b>Seeing "Socket Mode is enabled. You won't need to specify a
+      Request URL"?</b> Turn it off first: app sidebar → <b>Settings → Socket Mode</b> → toggle
+      <b>Enable Socket Mode</b> off. Socket Mode is Slack's WebSocket transport for apps with
+      no public endpoint — with it on, Slack never calls a URL, so it would never reach the
+      backend. Data Pilot <i>has</i> a public endpoint and authenticates via the signing
+      secret, so it uses the Request URL path. Once Socket Mode is off, the Request URL field
+      appears on the slash command form — paste the URL above.</div>
+      <div class="callout">That Request URL is the live prod backend (App Runner URLs are stable
+      across deploys). If it ever looks wrong, the source of truth is
+      <code>terraform output backend_api_url</code> in <code>infra/terraform/foundations</code>.</div>
+    </div>
+
+    <div class="step you">
+      <h4>Fill the signing secret in AWS + roll the backend <span class="where">terminal</span></h4>
+      <p>App page → <b>Settings → Basic Information → App Credentials → Signing Secret</b>
+      (press Show, copy). Then:</p>
+      <pre class="code"><span class="c"># 1. refresh credentials — your data-qa profile is AWS SSO; this opens the browser,</span>
+<span class="c">#    approve the sign-in there, then the terminal continues on its own</span>
+aws sso login --profile data-qa
+aws sts get-caller-identity --profile data-qa   <span class="c"># sanity check: Account = 089783391188</span>
+
+<span class="c"># 2. put the signing secret into the pre-provisioned slot.
+#    The value comes FROM SLACK: api.slack.com/apps → your "Data Pilot" app →
+#    Settings → Basic Information → App Credentials → "Signing Secret" → Show → copy.
+#    (Not the Client Secret sitting next to it — see the warning below.)</span>
+aws secretsmanager put-secret-value \
+  --secret-id data-qa/slack-signing-secret \
+  --secret-string '<span class="s">&lt;the Signing Secret you copied from Slack&gt;</span>' \
+  --profile data-qa --region ap-southeast-2
+
+<span class="c"># 3. App Runner resolves secrets at deploy time — roll the backend to pick it up:</span>
+ARN=$(aws apprunner list-services --profile data-qa --region ap-southeast-2 \
+  --query "ServiceSummaryList[?contains(ServiceName,'backend')].ServiceArn" --output text)
+aws apprunner start-deployment --service-arn "$ARN" --profile data-qa --region ap-southeast-2</pre>
+      <div class="callout warn"><b>Classic mistake:</b> copying the <i>Client Secret</i> instead
+      of the <i>Signing Secret</i>. They sit near each other on the same page; only the Signing
+      Secret verifies <code>X-Slack-Signature</code>. Wrong one = every command 401s — and after
+      correcting it you must roll the deployment again.</div>
+    </div>
+
+    <div class="step you">
+      <h4>Install the app to the workspace <span class="where">api.slack.com/apps</span></h4>
+      <p>App page → <b>Settings → Install App → Install to data-pilot</b> → Allow. Creating the
+      slash command already granted the only scope it needs (<code>commands</code>). Slash
+      commands work in <b>every channel and DM</b> once installed — no need to invite a bot
+      user for v1.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="test">
+  <h2><span class="n">03</span>Test it</h2>
+  <p class="dek">Verify from the outside in: first that the prod endpoint is open, then the real
+  thing in a channel. The status code tells you exactly which step is missing.</p>
+
+  <h3>Pre-flight: watch the door open</h3>
+  <pre class="code">curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  https://hzxtrasvdp.ap-southeast-2.awsapprunner.com/integrations/slack/command -d 'text=ping'
+<span class="c"># 404 = secret still at placeholder → step 03 not done (or deployment not rolled yet)</span>
+<span class="c"># 401 = perfect: endpoint open, signature enforced (curl isn't Slack) → go test in Slack</span></pre>
+
+  <h3>The real test — in <span class="mono">#new-channel</span></h3>
+  <p>Any channel works; <b>#new-channel</b> keeps the noise out of #all-data-pilot. Type:</p>
+
+  <div class="slackmock">
+    <div class="m">
+      <div class="av you">N</div>
+      <div>
+        <div class="who">nathan phillips <span class="t">2:14 PM</span></div>
+        <div class="body"><span class="cmd">/datapilot median rent in 2077</span></div>
+      </div>
+    </div>
+    <div class="m">
+      <div class="av dp">DP</div>
+      <div>
+        <div class="who">Data Pilot <span class="app">APP</span> <span class="t">2:14 PM</span></div>
+        <div class="body eph">Only visible to you — Working on it — <i>median rent in 2077</i></div>
+      </div>
+    </div>
+    <div class="m">
+      <div class="av dp">DP</div>
+      <div>
+        <div class="who">Data Pilot <span class="app">APP</span> <span class="t">2:16 PM</span></div>
+        <div class="body">The median weekly rent in postcode 2077 was $580, based on 1,204 bond
+        lodgements — up 6.4% on the prior year.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="dek" style="margin-top:6px">Expect <b>~1.5–2 minutes</b> between the ephemeral ack
+  and the real answer — that's the prod agent run over the full ~3.2M-row marts, same latency as
+  prod web chat. The answer posts <b>in_channel</b>, visible to everyone present.</p>
+
+  <h3>More questions worth trying</h3>
+  <div class="grid g3">
+    <div class="card"><p><code>/datapilot which postcode had the highest rent growth over the last year</code></p></div>
+    <div class="card"><p><code>/datapilot how many bonds were lodged in 2000 vs 2010 last quarter</code></p></div>
+    <div class="card"><p><code>/datapilot</code> <b>(empty)</b> — returns the ephemeral usage hint instantly, a free smoke test of the whole round trip</p></div>
+  </div>
+
+  <h3>Prove the governance trail</h3>
+  <p>Every Slack answer is a first-class prod run. In the prod app's <b>SQL editor</b> (as
+  admin):</p>
+  <pre class="code"><span class="c">-- the runs Slack produced</span>
+SELECT id, created_at FROM app.query_runs WHERE channel = 'slack' ORDER BY created_at DESC LIMIT 5;
+
+<span class="c">-- who asked each one (Slack user, name, channel, run_id)</span>
+SELECT payload FROM app.events WHERE event_type = 'slack_question';</pre>
+  <p>The Flight Deck (<code>/ops</code> in the prod app) shows the runs land in the activity
+  telemetry too.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="trouble">
+  <h2><span class="n">04</span>When it doesn't work</h2>
+  <p class="dek">Each symptom has exactly one usual cause. Work top to bottom.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Symptom (in Slack)</th><th>Meaning</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>dispatch_failed</b> / "command failed"</td>
+          <td>Slack couldn't reach the Request URL inside 3s</td>
+          <td>Check the Request URL matches the backend exactly (path
+          <code>/integrations/slack/command</code>); curl it — anything but 401 means the
+          backend side isn't ready</td>
+        </tr>
+        <tr>
+          <td>Slash command form has no Request URL field ("Socket Mode is enabled…")</td>
+          <td>Socket Mode is on — Slack expects a WebSocket client instead of calling a URL,
+          so the backend would never be reached</td>
+          <td>App sidebar → <b>Settings → Socket Mode</b> → toggle off, then edit the slash
+          command and paste the Request URL</td>
+        </tr>
+        <tr>
+          <td>Nothing at all, curl says <b>404</b></td>
+          <td>Endpoint deliberately closed: secret still at placeholder, the deployment wasn't
+          rolled after setting it — <b>or the roll is still in progress</b> (a deployment takes
+          ~4–5 min; old instances keep serving 404 until it finishes)</td>
+          <td><code>put-secret-value</code> then <code>start-deployment</code> (step 03), then
+          wait for the operation to report SUCCEEDED before re-checking</td>
+        </tr>
+        <tr>
+          <td>Every command errors, logs show <b>401 Bad Slack signature</b></td>
+          <td>Wrong secret — usually the Client Secret was copied</td>
+          <td>Re-copy <b>Signing Secret</b> from Basic Information, re-run step 03 including
+          the deployment roll</td>
+        </tr>
+        <tr>
+          <td>Ack arrives, then <b>"Couldn't answer that: No active Slack service account…"</b></td>
+          <td>Step 01 missed, done on <b>local</b> instead of prod, or the account was revoked</td>
+          <td>Mint a service account with surface = <b>slack</b> in the <b>prod</b> app's Settings</td>
+        </tr>
+        <tr>
+          <td>First question after a quiet spell is slow or fails once</td>
+          <td>Aurora auto-paused (1h idle) and takes ~15s to resume; the ack still lands
+          because the signature check touches no database</td>
+          <td>Ask again — the second run answers. Same cold-start behaviour as prod login (s29)</td>
+        </tr>
+        <tr>
+          <td>Ack arrives, answer never does</td>
+          <td>The background run failed after the ack</td>
+          <td>CloudWatch logs for the backend App Runner service — look for
+          <code>slack question failed</code> / <code>response_url delivery failed</code>; the
+          run row in <code>query_runs</code> still tells the story</td>
+        </tr>
+        <tr>
+          <td>Answers are empty-ish / "no data"</td>
+          <td>The bot account has no (or the wrong) dataset grants</td>
+          <td>Re-mint in prod with the datasets ticked — grants are set at mint time</td>
+        </tr>
+        <tr>
+          <td>"Couldn't answer that: …daily limit…"</td>
+          <td>Service-account cap hit (200 questions/UTC day)</td>
+          <td>It resets at midnight UTC — the cap is the leaked-key blast-radius bound, leave
+          it in place for prod</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="limits">
+  <h2><span class="n">05</span>Known edges of v1</h2>
+  <div class="grid g3">
+    <div class="card">
+      <span class="lbl warn" style="color:var(--warn)">By design</span>
+      <h4>Text only, one message</h4>
+      <p>Slack gets the <b>answer sentence</b> (capped at 3,000 chars) — no charts, no report
+      pages. The full report exists in the app; richer Block Kit answers are the decision below.</p>
+    </div>
+    <div class="card">
+      <span class="lbl warn" style="color:var(--warn)">By design</span>
+      <h4>Invoked, not listening</h4>
+      <p>A slash command only fires when typed. Data Pilot doesn't read the channel and won't
+      respond to <code>@Data Pilot</code> mentions — that's the Events API, also in the
+      decision below.</p>
+    </div>
+    <div class="card">
+      <span class="lbl warn" style="color:var(--warn)">Prod reality</span>
+      <h4>Cold starts &amp; real spend</h4>
+      <p>Aurora auto-pauses after 1h idle — the first answer after a quiet spell can be slow or
+      fail once (~15s resume; ask again). And every question is real LLM spend on the prod key,
+      bounded by the 200/day cap.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="decide">
+  <h2><span class="n">06</span>Decisions</h2>
+  <p class="dek">One recorded, one open. The open one doesn't block today's test.</p>
+
+  <div class="grid g2">
+    <div class="decided">
+      <span class="lbl hud">Recorded — your annotation</span>
+      <h4>Home: production</h4>
+      <p>The Slack surface runs off the <b>prod App Runner backend</b> — nothing in this guide
+      touches your machine. A laptop-tunnel rig was considered and dropped per your feedback.</p>
+    </div>
+
+    <form class="qform" data-lavish-question="slack-next"
+      onsubmit="event.preventDefault();
+        const c=new FormData(event.currentTarget).get('next');
+        if(!c) return;
+        window.lavish.queuePrompt('Slack next step decision: '+c,
+          {tag:'choice', text:'Next: '+c, element:event.currentTarget,
+           data:{question:'slack-next', answer:c}});
+        event.currentTarget.classList.add('is-queued');">
+      <span class="lbl accent">Open — Decision A</span>
+      <h4>Where does the Slack surface go next?</h4>
+      <p class="note">v1 slash command is deliberately minimal. The natural upgrades, in effort order:</p>
+      <label><input type="radio" name="next" value="keep slash-only for now">
+        <span><b>Stay slash-only.</b> Prove the loop, park upgrades. Zero work.</span></label>
+      <label><input type="radio" name="next" value="add @mention answers via the Events API">
+        <span><b>@mention bot.</b> <code>@Data Pilot</code> in a thread answers — Events API +
+        bot token + one new endpoint. Feels like a teammate. ~half a day.</span></label>
+      <label><input type="radio" name="next" value="richer Block Kit answers with a link back to the full report in the app">
+        <span><b>Richer answers.</b> Block Kit formatting + a deep link to the full report/chart
+        in the app. Bridges Slack's text-only limit. ~half a day.</span></label>
+      <button type="submit">Queue answer</button>
+      <div class="queued">✓ Queued — press Send to Agent when ready</div>
+    </form>
+  </div>
+</section>
+
+<footer>
+  <span class="lbl">Provenance</span>
+  <p class="mono" style="margin-top:8px">Verified against: services/backend-api/app/routers/integrations.py ·
+  app/integrations/signing.py · app/config.py · infra/terraform/foundations (secrets.tf
+  slack_signing_secret placeholder + apprunner.tf SLACK_SIGNING_SECRET injection) · prod URLs
+  from the deployed stack · your data-pilot workspace (signed in; #all-data-pilot /
+  #new-channel / #social). Branch: slack-test @ latest main.</p>
+</footer>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(foreground, background) {
+    const fa = foreground[3] / 255, ba = background[3] / 255;
+    const alpha = fa + ba * (1 - fa);
+    if (alpha === 0) return [0, 0, 0, 0];
+    return [
+      (foreground[0]*fa + background[0]*ba*(1-fa)) / alpha,
+      (foreground[1]*fa + background[1]*ba*(1-fa)) / alpha,
+      (foreground[2]*fa + background[2]*ba*(1-fa)) / alpha,
+      alpha * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBackground = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBackground = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0,0,0,0];
+    const [r, g, b, a] = compositeRgba(bodyBackground, rootBackground);
+    if (a > 0) return (0.2126*r + 0.7152*g + 0.0722*b) / 255 < 0.5;
+    const cs = getComputedStyle(root).colorScheme;
+    if (cs.includes("dark") && !cs.includes("light")) return true;
+    if (cs.includes("light") && !cs.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied, rendering = false, queued = false;
+  function queueRender() { queued = true; if (rendering) return; void render(); }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({ startOnLoad: false, theme, securityLevel: "strict" });
+        for (const { el, src } of diagrams) { el.removeAttribute("data-processed"); el.textContent = src; }
+        try { await mermaid.run({ nodes: diagrams.map((d) => d.el) }); }
+        catch (error) { console.error("Mermaid diagram render failed:", error); return; }
+        applied = theme;
+      }
+    } finally { rendering = false; if (queued) queueRender(); }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const themeObserver = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    themeObserver.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  darkQuery.addEventListener("change", queueRender);
+</script>
+
+</body>
+</html>

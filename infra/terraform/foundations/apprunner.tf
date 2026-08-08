@@ -64,6 +64,9 @@ data "aws_iam_policy_document" "apprunner_secrets" {
       # whole UpdateService silently rolls back (exactly what happened on the
       # 2026-08-05 deploy, leaving prod without SLACK_SIGNING_SECRET at all).
       aws_secretsmanager_secret.slack_signing_secret.arn,
+      # s37: the @mention surface's bot token. Every env secret needs its line
+      # here IN THE SAME COMMIT — see the s35 note above for what happens if not.
+      aws_secretsmanager_secret.slack_bot_token.arn,
     ]
   }
 }
@@ -232,6 +235,7 @@ resource "aws_apprunner_service" "backend_api" {
           # s35: verifies X-Slack-Signature. Placeholder => the Slack endpoint
           # 404s, which is the correct posture for an env with no workspace.
           SLACK_SIGNING_SECRET = aws_secretsmanager_secret.slack_signing_secret.arn
+          SLACK_BOT_TOKEN      = aws_secretsmanager_secret.slack_bot_token.arn
         }
       }
     }

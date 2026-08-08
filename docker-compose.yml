@@ -113,6 +113,9 @@ services:
       # real workspace; empty CLOSES the Slack endpoint (404), which is the
       # config.py default and the right posture for any env that isn't using it.
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-dev-slack-secret}
+      # s37: bot token for the @mention surface (Events API). Empty = mention
+      # events are acked and dropped; the slash command works without it.
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       # s36: the MCP surface is mounted here at /mcp rather than run as its own
       # service. Clients authenticate with a dpk_ key minted for surface="mcp",
       # so there is no server-side key to configure. Empty MCP_ALLOWED_HOSTS

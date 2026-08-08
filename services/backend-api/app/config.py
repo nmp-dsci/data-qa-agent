@@ -62,6 +62,23 @@ class Settings(BaseSettings):
     # verify X-Slack-Signature. Empty (the default) closes the Slack path
     # entirely, mirroring how ops_ingest_token gates the ingest endpoints.
     slack_signing_secret: str = ""
+    # s37: bot token (xoxb-) for the @mention surface. The slash command needs
+    # no token — Slack hands it a capability-scoped response_url — but reading
+    # a thread (conversations.replies) and replying inside one
+    # (chat.postMessage) are real Web API calls that need a bot identity.
+    slack_bot_token: str = ""
+
+    @property
+    def slack_bot_token_active(self) -> str:
+        """The bot token, or "" when the mention surface should stay inert.
+
+        The Secrets Manager slot ships as REPLACE_ME_VIA_CLI so Terraform can
+        wire the env var before a human supplies the value — that placeholder
+        must read as "unset", not as a token, or every mention would burn a
+        failed Web API call.
+        """
+        token = self.slack_bot_token.strip()
+        return "" if not token or token.startswith("REPLACE_ME") else token
 
     # ---- MCP surface (s36) -------------------------------------------------
     # The SDK's DNS-rebinding host allowlist. Empty (the default) turns the check

@@ -217,3 +217,21 @@ resource "aws_secretsmanager_secret_version" "slack_signing_secret" {
     ignore_changes = [secret_string]
   }
 }
+
+# s37: the bot token (xoxb-) for the @mention surface. Same story again: it
+# comes from Slack's app config (OAuth install), not from Terraform. The
+# backend treats the placeholder as "unset", which keeps mention events inert
+# until a human fills the value — the slash command works without it.
+resource "aws_secretsmanager_secret" "slack_bot_token" {
+  name        = "${local.name}/slack-bot-token"
+  description = "SLACK_BOT_TOKEN — bot identity for @mention thread reads/replies. Set via CLI."
+}
+
+resource "aws_secretsmanager_secret_version" "slack_bot_token" {
+  secret_id     = aws_secretsmanager_secret.slack_bot_token.id
+  secret_string = "REPLACE_ME_VIA_CLI"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}

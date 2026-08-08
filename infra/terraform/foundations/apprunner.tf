@@ -58,6 +58,15 @@ data "aws_iam_policy_document" "apprunner_secrets" {
       # s32: tracing export + the ops ingest token.
       aws_secretsmanager_secret.logfire_token.arn,
       aws_secretsmanager_secret.ops_ingest_token.arn,
+      # s35: referenced by the backend's env since the Slack surface shipped, but
+      # missing here until s37 — without this grant App Runner instances cannot
+      # fetch the secret they are told to inject, provisioning fails, and the
+      # whole UpdateService silently rolls back (exactly what happened on the
+      # 2026-08-05 deploy, leaving prod without SLACK_SIGNING_SECRET at all).
+      aws_secretsmanager_secret.slack_signing_secret.arn,
+      # s37: the @mention surface's bot token. Every env secret needs its line
+      # here IN THE SAME COMMIT — see the s35 note above for what happens if not.
+      aws_secretsmanager_secret.slack_bot_token.arn,
     ]
   }
 }
@@ -180,6 +189,8 @@ resource "aws_apprunner_service" "backend_api" {
     aws_secretsmanager_secret_version.agent_shared_token,
     aws_secretsmanager_secret_version.logfire_token,
     aws_secretsmanager_secret_version.ops_ingest_token,
+    aws_secretsmanager_secret_version.slack_signing_secret,
+    aws_secretsmanager_secret_version.slack_bot_token,
   ]
 
   source_configuration {
@@ -226,6 +237,7 @@ resource "aws_apprunner_service" "backend_api" {
           # s35: verifies X-Slack-Signature. Placeholder => the Slack endpoint
           # 404s, which is the correct posture for an env with no workspace.
           SLACK_SIGNING_SECRET = aws_secretsmanager_secret.slack_signing_secret.arn
+          SLACK_BOT_TOKEN      = aws_secretsmanager_secret.slack_bot_token.arn
         }
       }
     }

@@ -559,8 +559,9 @@ SELECT payload FROM app.events WHERE event_type = 'slack_question';</pre>
 
 <!-- ======================================================================= -->
 <section id="decide">
-  <h2><span class="n">06</span>Decisions</h2>
-  <p class="dek">One recorded, one open. The open one doesn't block today's test.</p>
+  <h2><span class="n">06</span>Decisions — both recorded</h2>
+  <p class="dek">Locked from your annotations. Below them: honest scoping of the two questions
+  you asked about the @mention upgrade.</p>
 
   <div class="grid g2">
     <div class="decided">
@@ -569,30 +570,116 @@ SELECT payload FROM app.events WHERE event_type = 'slack_question';</pre>
       <p>The Slack surface runs off the <b>prod App Runner backend</b> — nothing in this guide
       touches your machine. A laptop-tunnel rig was considered and dropped per your feedback.</p>
     </div>
-
-    <form class="qform" data-lavish-question="slack-next"
-      onsubmit="event.preventDefault();
-        const c=new FormData(event.currentTarget).get('next');
-        if(!c) return;
-        window.lavish.queuePrompt('Slack next step decision: '+c,
-          {tag:'choice', text:'Next: '+c, element:event.currentTarget,
-           data:{question:'slack-next', answer:c}});
-        event.currentTarget.classList.add('is-queued');">
-      <span class="lbl accent">Open — Decision A</span>
-      <h4>Where does the Slack surface go next?</h4>
-      <p class="note">v1 slash command is deliberately minimal. The natural upgrades, in effort order:</p>
-      <label><input type="radio" name="next" value="keep slash-only for now">
-        <span><b>Stay slash-only.</b> Prove the loop, park upgrades. Zero work.</span></label>
-      <label><input type="radio" name="next" value="add @mention answers via the Events API">
-        <span><b>@mention bot.</b> <code>@Data Pilot</code> in a thread answers — Events API +
-        bot token + one new endpoint. Feels like a teammate. ~half a day.</span></label>
-      <label><input type="radio" name="next" value="richer Block Kit answers with a link back to the full report in the app">
-        <span><b>Richer answers.</b> Block Kit formatting + a deep link to the full report/chart
-        in the app. Bridges Slack's text-only limit. ~half a day.</span></label>
-      <button type="submit">Queue answer</button>
-      <div class="queued">✓ Queued — press Send to Agent when ready</div>
-    </form>
+    <div class="decided">
+      <span class="lbl hud">Recorded — your annotation</span>
+      <h4>Next: @mention bot via the Events API</h4>
+      <p><code>@Data Pilot</code> in a channel or thread answers like a teammate — chosen over
+      staying slash-only or Block-Kit-first. <b>Built on this branch</b> (commit
+      <code>fc27c98</code>, 18 tests green) — §07 below is how you switch it on.</p>
+    </div>
   </div>
+
+  <h3>Your questions about that upgrade, answered</h3>
+  <div class="grid g3">
+    <div class="card">
+      <span class="lbl hud">Yes — the core of the upgrade</span>
+      <h4>Read the whole thread?</h4>
+      <p>Slack's <code>app_mention</code> event carries the thread it happened in; with a bot
+      token (<code>channels:history</code> scope) the backend calls
+      <code>conversations.replies</code> and hands the <b>entire thread</b> to the agent as
+      conversation context — the pipeline already supports multi-turn conversations, so a
+      Slack thread maps cleanly onto one. ~a day: new <code>/integrations/slack/events</code>
+      endpoint (same signature check + Slack's one-time URL-verification challenge) + bot token
+      in Secrets Manager.</p>
+      <p><b>One deliberate choice first:</b> thread-reading means channel members' messages are
+      sent to the LLM. Fine for your workspace — worth naming before it's on.</p>
+    </div>
+    <div class="card">
+      <span class="lbl hud">Yes — the light half of "visuals"</span>
+      <h4>URL to the full report?</h4>
+      <p>Every Slack answer already persists as a first-class run (<code>query_runs</code>:
+      id, trace, <b>full report</b>). What's missing is only an app route that renders a stored
+      run's report — then every Slack answer ends with <i>"Full report → link"</i> and the
+      charts live where they render best. Small build; needs <b>one auth decision</b>: who may
+      open a bot-run's report link (admin-only, or any signed-in user whose grants cover the
+      datasets).</p>
+    </div>
+    <div class="card">
+      <span class="lbl warn" style="color:var(--warn)">Possible but heavy — parked</span>
+      <h4>Charts inline in Slack?</h4>
+      <p>Slack renders images fine — the cost is on our side: charts are visx React components
+      drawn in the browser, so inline images need server-side rendering (headless browser) plus
+      image hosting. The report-link card gets you the visuals for a fraction of the effort;
+      revisit only if the link friction proves real.</p>
+    </div>
+    <div class="card">
+      <span class="lbl hud">Yes — cheap, unlike charts</span>
+      <h4>Tables in Slack?</h4>
+      <p>Tables are just text, and Slack renders monospace code blocks cleanly. Today the Slack
+      surfaces send only the answer sentence — but the run's report already contains
+      <b>first-class table objects</b> (s20). Appending the report's first table as an aligned
+      code block (capped ~10 rows to stay readable on mobile, inside the 3,000-char limit) is a
+      small change to the shared delivery path — it would land in slash answers and @mention
+      thread replies alike. Say the word.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="mention">
+  <h2><span class="n">07</span>Switching on the @mention bot</h2>
+  <p class="dek">The code is written, tested and deploying to prod (my side). What remains is
+  Slack app config plus one token — your side, in this order. <b>Wait for my confirmation that
+  the deploy is live before step 2</b>: Slack verifies the Request URL by calling it.</p>
+
+  <div class="steps">
+    <div class="step you">
+      <h4>Add the bot scopes <span class="where">api.slack.com/apps</span></h4>
+      <p>Your app → <b>Features → OAuth &amp; Permissions → Scopes → Bot Token Scopes</b> — add:</p>
+      <ul>
+        <li><code>app_mentions:read</code> — receive the mention events</li>
+        <li><code>chat:write</code> — reply in the thread</li>
+        <li><code>channels:history</code> — read the thread for context (add
+        <code>groups:history</code> too if you'll use it in private channels)</li>
+      </ul>
+    </div>
+    <div class="step you">
+      <h4>Subscribe to mention events <span class="where">api.slack.com/apps</span></h4>
+      <ul>
+        <li><b>Features → Event Subscriptions</b> → toggle <b>On</b></li>
+        <li>Request URL:
+        <code>https://hzxtrasvdp.ap-southeast-2.awsapprunner.com/integrations/slack/events</code>
+        — Slack sends a one-time challenge; the endpoint echoes it and the field shows
+        <b>Verified ✓</b></li>
+        <li><b>Subscribe to bot events</b> → Add → <code>app_mention</code> → <b>Save Changes</b></li>
+      </ul>
+    </div>
+    <div class="step you">
+      <h4>Reinstall + copy the bot token <span class="where">api.slack.com/apps</span></h4>
+      <p>Scope changes trigger a <i>"reinstall your app"</i> banner — click it, Allow. Then on
+      <b>OAuth &amp; Permissions</b>, copy the <b>Bot User OAuth Token</b> (starts
+      <code>xoxb-</code>).</p>
+    </div>
+    <div class="step you">
+      <h4>Token into AWS, then say the word <span class="where">terminal</span></h4>
+      <pre class="code">aws secretsmanager put-secret-value \
+  --secret-id data-qa/slack-bot-token \
+  --secret-string '<span class="s">&lt;the xoxb- Bot User OAuth Token&gt;</span>' \
+  --profile data-qa --region ap-southeast-2</pre>
+      <p>Then tell me — I'll roll the deployment and verify. (Until the token is filled,
+      mentions are deliberately acked-and-dropped; the slash command is unaffected.)</p>
+    </div>
+    <div class="step you">
+      <h4>Invite the bot, then mention it <span class="where">Slack</span></h4>
+      <p>In #new-channel: <code>/invite @Data Pilot</code>, then try
+      <code>@Data Pilot median rent in 2077</code> — the answer lands <b>in a thread</b> under
+      your mention. In an existing thread, it reads the discussion above as context.</p>
+    </div>
+  </div>
+
+  <div class="callout"><b>Privacy posture, recorded:</b> with thread-reading on, messages in a
+  thread where the bot is mentioned are sent to the LLM as context. The bot only sees channels
+  it's invited to — invite it deliberately.</div>
 </section>
 
 <footer>

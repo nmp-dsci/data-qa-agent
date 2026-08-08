@@ -189,6 +189,8 @@ resource "aws_apprunner_service" "backend_api" {
     aws_secretsmanager_secret_version.agent_shared_token,
     aws_secretsmanager_secret_version.logfire_token,
     aws_secretsmanager_secret_version.ops_ingest_token,
+    aws_secretsmanager_secret_version.slack_signing_secret,
+    aws_secretsmanager_secret_version.slack_bot_token,
   ]
 
   source_configuration {

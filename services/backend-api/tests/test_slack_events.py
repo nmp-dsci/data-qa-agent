@@ -174,6 +174,53 @@ async def test_unconfigured_token_drops_the_mention_without_posting(
     assert posted == []  # inert by design until the token secret is filled
 
 
+async def test_thread_context_pages_through_to_the_newest_replies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A long thread's freshest replies survive; the oldest page gets trimmed."""
+    pages = [
+        {
+            "ok": True,
+            "messages": [
+                {"user": f"U{i}", "ts": f"1.{i:04d}", "text": f"stale early chatter {i}" * 4}
+                for i in range(200)
+            ],
+            "has_more": True,
+            "response_metadata": {"next_cursor": "cursor-2"},
+        },
+        {
+            "ok": True,
+            "messages": [{"user": "U9", "ts": "2.0001", "text": "the freshest reply"}],
+            "has_more": False,
+        },
+    ]
+    calls: list[dict[str, Any]] = []
+
+    class _FakeResp:
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    class _FakeClient:
+        async def __aenter__(self) -> _FakeClient:
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            return None
+
+        async def get(self, url: str, params: dict[str, Any], headers: dict[str, str]) -> _FakeResp:
+            calls.append(params)
+            return _FakeResp(pages[1] if params.get("cursor") else pages[0])
+
+    monkeypatch.setattr("app.routers.integrations.httpx.AsyncClient", lambda **_kw: _FakeClient())
+    context = await integrations._thread_context("xoxb-test", "C1", "1.0000", "9.9999")
+    assert [p.get("cursor") for p in calls] == [None, "cursor-2"]
+    assert "the freshest reply" in context
+    assert len(context) <= integrations.THREAD_CONTEXT_MAX_CHARS
+
+
 async def test_mention_acks_before_answering_and_still_reports_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

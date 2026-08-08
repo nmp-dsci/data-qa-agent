@@ -247,6 +247,7 @@ async def _audit_slack_asker(user: CurrentUser, asker: dict[str, str], run_id: s
 SLACK_API = "https://slack.com/api"
 # A thread can be arbitrarily long; the agent needs recency, not completeness.
 THREAD_CONTEXT_MAX_CHARS = 4_000
+THREAD_CONTEXT_MAX_PAGES = 10
 _MENTION_TOKEN = re.compile(r"<@[^>]+>")
 
 
@@ -371,25 +372,44 @@ async def _thread_context(token: str, channel: str, thread_ts: str, event_ts: st
     """
     if not thread_ts or thread_ts == event_ts:
         return ""  # top-level mention — no thread to read
+    # Slack pages replies oldest-first, so the newest messages — the ones the
+    # mention is actually about — live on the *last* page. Walk the cursor to
+    # the end, keeping only a tail of messages (the char trim below can't use
+    # more anyway).
+    messages: list[dict[str, Any]] = []
+    cursor = ""
     try:
         async with httpx.AsyncClient(timeout=CALLBACK_TIMEOUT_S) as client:
-            resp = await client.get(
-                f"{SLACK_API}/conversations.replies",
-                params={"channel": channel, "ts": thread_ts, "limit": 200},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        data = resp.json()
+            for _ in range(THREAD_CONTEXT_MAX_PAGES):
+                params: dict[str, Any] = {"channel": channel, "ts": thread_ts, "limit": 200}
+                if cursor:
+                    params["cursor"] = cursor
+                resp = await client.get(
+                    f"{SLACK_API}/conversations.replies",
+                    params=params,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                data = resp.json()
+                if not data.get("ok"):
+                    log.warning("conversations.replies error: %s", data.get("error"))
+                    return ""
+                messages = (messages + data.get("messages", []))[-200:]
+                cursor = (data.get("response_metadata") or {}).get("next_cursor") or ""
+                if not (data.get("has_more") and cursor):
+                    break
+            else:
+                log.warning(
+                    "thread longer than %d pages; context may miss the newest replies",
+                    THREAD_CONTEXT_MAX_PAGES,
+                )
     except (httpx.HTTPError, ValueError):
         log.warning("conversations.replies failed; answering without thread context")
-        return ""
-    if not data.get("ok"):
-        log.warning("conversations.replies error: %s", data.get("error"))
         return ""
 
     lines = [
         f"{message.get('user') or message.get('bot_id') or 'unknown'}: "
         f"{_MENTION_TOKEN.sub('', message.get('text') or '').strip()}"
-        for message in data.get("messages", [])
+        for message in messages
         if message.get("ts") != event_ts and (message.get("text") or "").strip()
     ]
     # Trim oldest-first: with a long thread, recency beats completeness.

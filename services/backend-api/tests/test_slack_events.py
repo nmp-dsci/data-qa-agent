@@ -172,3 +172,34 @@ async def test_unconfigured_token_drops_the_mention_without_posting(
     monkeypatch.setattr(integrations, "_post_thread", _fake_post)
     await integrations._deliver_mention("C1", "1.0", "1.0", "<@UBOT> hi", {})
     assert posted == []  # inert by design until the token secret is filled
+
+
+async def test_mention_acks_before_answering_and_still_reports_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The asker hears "working on it" immediately, then the outcome — in order."""
+    monkeypatch.setattr(settings, "slack_bot_token", "xoxb-test")
+    timeline: list[tuple[str, str]] = []
+
+    async def _fake_ephemeral(_t: str, _c: str, user_id: str, _ts: str, text: str) -> None:
+        timeline.append(("ack:" + user_id, text))
+
+    async def _fake_thread(_t: str, _c: str, _ts: str, text: str) -> None:
+        timeline.append(("thread", text))
+
+    async def _no_account() -> None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail="No active Slack service account")
+
+    monkeypatch.setattr(integrations, "_post_ephemeral", _fake_ephemeral)
+    monkeypatch.setattr(integrations, "_post_thread", _fake_thread)
+    monkeypatch.setattr(integrations, "_slack_service_account", _no_account)
+
+    await integrations._deliver_mention(
+        "C1", "1.0", "1.0", "<@UBOT> median rent", {"user_id": "U123"}
+    )
+    assert [kind for kind, _ in timeline] == ["ack:U123", "thread"]
+    assert "Working on it" in timeline[0][1]
+    assert "median rent" in timeline[0][1]
+    assert "Couldn't answer that" in timeline[1][1]

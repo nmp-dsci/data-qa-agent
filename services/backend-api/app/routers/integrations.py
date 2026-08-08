@@ -333,6 +333,13 @@ async def _deliver_mention(
         )
         return
 
+    # Same courtesy the slash command's 3-second ack gives: the asker learns
+    # immediately that the mention landed, without leaving a permanent second
+    # bot message in the thread once the real answer arrives.
+    await _post_ephemeral(
+        token, channel, asker.get("user_id", ""), thread_ts, f"Working on it — _{question}_"
+    )
+
     try:
         user = await _slack_service_account()
         context = await _thread_context(token, channel, thread_ts, event_ts)
@@ -389,6 +396,31 @@ async def _thread_context(token: str, channel: str, thread_ts: str, event_ts: st
     while lines and sum(len(line) + 1 for line in lines) > THREAD_CONTEXT_MAX_CHARS:
         lines.pop(0)
     return "\n".join(lines)
+
+
+async def _post_ephemeral(
+    token: str, channel: str, user_id: str, thread_ts: str, text_out: str
+) -> None:
+    """An "only visible to you" ack in the thread. Best-effort by design.
+
+    A failed ack must never cost the real answer, so errors are logged and
+    swallowed — this is UX, not delivery.
+    """
+    if not user_id:
+        return
+    body = {"channel": channel, "user": user_id, "text": text_out, "thread_ts": thread_ts}
+    try:
+        async with httpx.AsyncClient(timeout=CALLBACK_TIMEOUT_S) as client:
+            resp = await client.post(
+                f"{SLACK_API}/chat.postEphemeral",
+                json=body,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        data = resp.json()
+        if not data.get("ok"):
+            log.warning("chat.postEphemeral error: %s", data.get("error"))
+    except (httpx.HTTPError, ValueError):
+        log.warning("chat.postEphemeral delivery failed")
 
 
 async def _post_thread(token: str, channel: str, thread_ts: str, text_out: str) -> None:

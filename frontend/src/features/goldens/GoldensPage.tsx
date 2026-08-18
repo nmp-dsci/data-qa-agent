@@ -2885,31 +2885,36 @@ export function GoldensPage({
             </div>
             )}
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                data-testid="builder-build"
-                style={{
-                  ...btn(busy !== "build" && !buildBlocker),
-                  background: "rgba(120,160,255,0.22)",
-                  borderColor: "rgba(120,160,255,0.6)",
-                  fontWeight: 600,
-                }}
-                onClick={() => void buildObject()}
-                disabled={busy === "build" || !!buildBlocker}
-                title={
-                  previewEditId
-                    ? "Rebuild this object from the options above and update the same card in place"
-                    : "Build the object and place it at the chosen page/column"
-                }
-              >
-                {busy === "build"
-                  ? previewEditId
-                    ? "Updating…"
-                    : "Building…"
-                  : previewEditId
-                    ? "↻ Update object"
-                    : "＋ Build object"}
-              </button>
+              {/* Build runs agent_client.build_object — an LLM call, blocked
+                  server-side with 501 not_available_demo in demo mode. Flag,
+                  don't hide (s38), same as the AI bar and "Draft with agent". */}
+              <DemoGate>
+                <button
+                  type="button"
+                  data-testid="builder-build"
+                  style={{
+                    ...btn(busy !== "build" && !buildBlocker),
+                    background: "rgba(120,160,255,0.22)",
+                    borderColor: "rgba(120,160,255,0.6)",
+                    fontWeight: 600,
+                  }}
+                  onClick={() => void buildObject()}
+                  disabled={busy === "build" || !!buildBlocker}
+                  title={
+                    previewEditId
+                      ? "Rebuild this object from the options above and update the same card in place"
+                      : "Build the object and place it at the chosen page/column"
+                  }
+                >
+                  {busy === "build"
+                    ? previewEditId
+                      ? "Updating…"
+                      : "Building…"
+                    : previewEditId
+                      ? "↻ Update object"
+                      : "＋ Build object"}
+                </button>
+              </DemoGate>
               {/* Placement: editing updates the same card in place; a new object
                   lands exactly where the curator picks (not a fixed slot). */}
               {previewEditId ? (

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
@@ -460,7 +461,10 @@ async def run_question(
     if settings.demo_mode:
         # s38: replay the recorded run (or an honest miss). Persistence below is
         # identical to a live answer, so audit + analytics count demo traffic.
-        result = demo_replay.result_for(question)
+        # Off the event loop: cheap at today's pack size, but the fuzzy
+        # scan is O(pack size) and file parsing (lru_cache'd, so only ever
+        # once) shouldn't block concurrent demo visitors either way.
+        result = await asyncio.to_thread(demo_replay.result_for, question)
     else:
         # Delegate to the agent (its own connection enforces the same RLS).
         try:
@@ -549,7 +553,7 @@ async def ask_stream(
         # it is what SLO-B grades (s32 W2).
         ttfp_ms: int | None = None
         if settings.demo_mode:
-            result = demo_replay.result_for(question)
+            result = await asyncio.to_thread(demo_replay.result_for, question)
             async for ev in demo_replay.replay_events(result):
                 name = ev["event"]
                 if name == "page" and ttfp_ms is None and ev["data"].get("status") == "complete":

@@ -28,6 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACK_DIR = REPO_ROOT / "services" / "backend-api" / "app" / "demo_pack"
@@ -92,7 +93,13 @@ def cmd_list(_args: argparse.Namespace) -> None:
 
 def cmd_export(args: argparse.Namespace) -> None:
     if args.runs:
-        ids = ",".join(f"'{r.strip()}'" for r in args.runs.split(","))
+        # query_runs.id is a uuid column; validating each token as one before
+        # interpolating rules out SQL injection via a crafted --runs value.
+        try:
+            run_ids = [str(UUID(r.strip())) for r in args.runs.split(",")]
+        except ValueError as exc:
+            sys.exit(f"--runs must be comma-separated UUIDs: {exc}")
+        ids = ",".join(f"'{r}'" for r in run_ids)
         rows = _fetch_runs(f"AND qr.id IN ({ids})")
     elif args.latest:
         rows = _fetch_runs("")[: args.latest]

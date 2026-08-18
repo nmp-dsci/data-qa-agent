@@ -25,11 +25,17 @@ _ip_windows: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
 
 def client_ip(request: Request) -> str:
-    """Best-effort caller IP: first X-Forwarded-For hop (CloudFront/App Runner
-    append the chain) falling back to the socket peer."""
+    """Best-effort caller IP: the LAST X-Forwarded-For hop, not the first.
+
+    App Runner terminates the connection and appends the socket peer's real
+    address to the end of the chain; anything earlier in the header is
+    whatever the client itself chose to send and is not trustworthy — a
+    caller can set X-Forwarded-For to a fabricated, rotating value to defeat
+    a first-hop-based rate limit. Falls back to the socket peer if the header
+    is absent entirely."""
     fwd = request.headers.get("x-forwarded-for", "")
     if fwd:
-        return fwd.split(",")[0].strip()
+        return fwd.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 

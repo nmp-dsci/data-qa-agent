@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from ..auth import CurrentUser, require_admin
-from ..db import admin_ro_engine, jsonable
+from ..db import admin_ro_connection, jsonable
 
 router = APIRouter(tags=["analytics"])
 
@@ -57,7 +57,7 @@ async def analytics_summary(
     days: int = 14, admin: CurrentUser = Depends(require_admin)
 ) -> dict[str, Any]:
     days = max(1, min(days, 90))
-    async with admin_ro_engine.connect() as conn:
+    async with admin_ro_connection() as conn:
         window = "created_at >= now() - make_interval(days => :days)"
 
         total_visitors = await _one(

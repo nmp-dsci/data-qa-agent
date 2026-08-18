@@ -189,6 +189,7 @@ resource "aws_apprunner_service" "backend_api" {
   depends_on = [
     aws_secretsmanager_secret_version.backend_db_url,
     aws_secretsmanager_secret_version.admin_ro_db_url,
+    aws_secretsmanager_secret_version.agent_db_url,
     aws_secretsmanager_secret_version.jwt,
     aws_secretsmanager_secret_version.agent_shared_token,
     aws_secretsmanager_secret_version.logfire_token,
@@ -241,6 +242,11 @@ resource "aws_apprunner_service" "backend_api" {
           # s32 W0: the ops rollup's cross-user read. SELECT-only + BYPASSRLS,
           # never reachable from a request handler.
           ADMIN_RO_DATABASE_URL = aws_secretsmanager_secret.admin_ro_db_url.arn
+          # s38: the demo mode SQL editor/schema-catalog executor, ported into
+          # backend-api so the data-agent service can be dropped entirely in
+          # demo deployments. Same agent_ro credential the (possibly absent)
+          # data-agent service uses.
+          AGENT_RO_DATABASE_URL = aws_secretsmanager_secret.agent_db_url.arn
           # s32 W2/W0: traces out, operational outcomes in.
           LOGFIRE_TOKEN    = aws_secretsmanager_secret.logfire_token.arn
           OPS_INGEST_TOKEN = aws_secretsmanager_secret.ops_ingest_token.arn

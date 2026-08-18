@@ -30,7 +30,7 @@ import secrets
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -38,6 +38,7 @@ from .. import ops_rollup
 from ..auth import CurrentUser, admin_or_demo_read, require_admin
 from ..config import settings
 from ..db import rls_connection
+from ..limits import check_demo_ip_rate
 
 router = APIRouter(tags=["ops"])
 log = logging.getLogger("uvicorn.error")
@@ -62,6 +63,7 @@ async def _refresh_in_background(window_key: str) -> None:
 
 @router.get("/admin/ops/summary")
 async def ops_summary(
+    request: Request,
     window: str = ops_rollup.DEFAULT_WINDOW,
     admin: CurrentUser = Depends(admin_or_demo_read),
 ) -> dict[str, Any]:
@@ -73,6 +75,7 @@ async def ops_summary(
     The first ever load therefore renders empty panels rather than hanging on a
     3M-row percentile scan.
     """
+    check_demo_ip_rate(request, "admin_read", settings.demo_rate_admin_read_per_min)
     key = window if window in ops_rollup.WINDOWS else ops_rollup.DEFAULT_WINDOW
     async with rls_connection(admin.id) as conn:
         row = (
@@ -124,6 +127,7 @@ async def ops_refresh(admin: CurrentUser = Depends(require_admin)) -> dict[str, 
 
 @router.get("/admin/ops/runs")
 async def ops_runs(
+    request: Request,
     limit: int = 25,
     admin: CurrentUser = Depends(admin_or_demo_read),
 ) -> list[dict[str, Any]]:
@@ -134,6 +138,7 @@ async def ops_runs(
     latency rather than time because "what was slow" is the question this panel
     exists to answer.
     """
+    check_demo_ip_rate(request, "admin_read", settings.demo_rate_admin_read_per_min)
     async with rls_connection(admin.id) as conn:
         rows = (
             (

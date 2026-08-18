@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import text
 
 from .tracing import RequestIdMiddleware, instrument_app
@@ -22,6 +22,7 @@ from .tracing import configure as configure_tracing
 # ahead of it. instrument_fastapi comes later, once the routes exist.
 configure_tracing()
 
+from . import demo_replay  # noqa: E402
 from .config import settings  # noqa: E402 — after configure_tracing, by design
 from .db import engine, rls_connection  # noqa: E402
 from .explore.manifest import ManifestError, validate_manifest  # noqa: E402
@@ -106,6 +107,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # session manager lives in exactly that lifespan — so mounting alone gives a
     # surface that imports fine, starts fine, and then fails on the first tool
     # call. Driving it from here is the whole cost of folding this service in.
+    if settings.demo_mode:
+        # Parse the pack once, off the event loop, before the first request
+        # rather than lazily on it — load_pack() is lru_cache'd so this is the
+        # only disk read that will ever happen, but doing it here means even
+        # the very first /ask never pays that cost inline.
+        await asyncio.to_thread(demo_replay.load_pack)
     reset_task = asyncio.create_task(_demo_reset_loop()) if settings.demo_mode else None
     async with _mcp_inner.router.lifespan_context(_mcp_inner):
         yield
@@ -141,13 +148,44 @@ app.add_middleware(McpPathNormalizer)
 # fixed number instead of an autoscaling one. Health and static-config paths
 # are exempt so monitoring never queues behind visitors.
 #
-# Origin cloaking — when ORIGIN_VERIFY_SECRET is set (Terraform generates it
-# and teaches CloudFront to send it), any request that didn't come through
-# CloudFront is refused, closing the public App Runner URL as a bypass route.
+# Origin cloaking — when ORIGIN_VERIFY_SECRET is set, any request that didn't
+# carry the matching X-Origin-Verify header is refused, closing the public
+# App Runner URL as a bypass route around a fronting CDN. NOT WIRED YET
+# (ultrareview, s38): CloudFront in this stack (frontend.tf) only fronts the
+# static frontend bucket, not this API's App Runner service, and no Terraform
+# resource ever generates/sets this secret — it is permanently empty today, so
+# this check is a no-op and the raw App Runner URL is directly reachable. Real
+# origin-cloaking needs an App Runner-backed CloudFront distribution in front
+# of the API first (tracked: s29 P1-B); until then, the demo's abuse ceiling
+# is the per-IP rate limits + concurrency gate below, not this header.
 # "/health" stays open for App Runner's own health checks.
 # ---------------------------------------------------------------------------
 _GATED_PREFIXES = ("/ask", "/sql", "/explore", "/profile", "/demo")
-_demo_gate = asyncio.Semaphore(settings.demo_max_concurrency)
+# A hand-rolled counter (not asyncio.Semaphore) for two reasons: (1) the
+# check-then-acquire has to be atomic under an asyncio.Lock, whereas
+# Semaphore.locked() followed by a separate acquire() is two steps with a gap
+# a burst of concurrent requests can slip through — they'd see locked()==False
+# and then queue on acquire() instead of getting the intended fast 503; and
+# (2) the slot must stay held for the lifetime of a StreamingResponse body
+# (the flagship /ask/stream surface), not just until call_next() returns the
+# initial response, or SSE streams pile up past demo_max_concurrency invisibly.
+_demo_lock = asyncio.Lock()
+_demo_inflight = 0
+
+
+async def _try_acquire_demo_slot() -> bool:
+    global _demo_inflight
+    async with _demo_lock:
+        if _demo_inflight >= settings.demo_max_concurrency:
+            return False
+        _demo_inflight += 1
+        return True
+
+
+async def _release_demo_slot() -> None:
+    global _demo_inflight
+    async with _demo_lock:
+        _demo_inflight -= 1
 
 
 @app.middleware("http")
@@ -157,14 +195,39 @@ async def _demo_guards(request: Request, call_next: Callable[[Request], Awaitabl
             return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     if not settings.demo_mode or not request.url.path.startswith(_GATED_PREFIXES):
         return await call_next(request)
-    if _demo_gate.locked():
+    if not await _try_acquire_demo_slot():
         return JSONResponse(
             status_code=503,
             content={"detail": "demo_full"},
             headers={"Retry-After": "15"},
         )
-    async with _demo_gate:
-        return await call_next(request)
+    released = False
+
+    async def _release_once() -> None:
+        nonlocal released
+        if not released:
+            released = True
+            await _release_demo_slot()
+
+    try:
+        response = await call_next(request)
+    except BaseException:
+        await _release_once()
+        raise
+    if isinstance(response, StreamingResponse):
+        original_iterator = response.body_iterator
+
+        async def _tracked_body() -> Any:
+            try:
+                async for chunk in original_iterator:
+                    yield chunk
+            finally:
+                await _release_once()
+
+        response.body_iterator = _tracked_body()
+        return response
+    await _release_once()
+    return response
 
 
 @app.exception_handler(Exception)

@@ -151,6 +151,10 @@ class Settings(BaseSettings):
     demo_rate_ask_per_min: int = 10
     demo_rate_sql_per_min: int = 10
     demo_rate_events_per_min: int = 60
+    # The admin_or_demo_read static exhibits (goldens/evals/ops/events/query-runs
+    # history) — cheap reads individually, but query_runs and ops hit the
+    # cross-user BYPASSRLS admin_ro engine, so they still need a ceiling.
+    demo_rate_admin_read_per_min: int = 60
     # Demo SQL editor guardrails: tighter than the agent's own (5s / 500 rows)
     # because the caller is anonymous.
     demo_sql_statement_timeout_ms: int = 5_000

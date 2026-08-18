@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -134,7 +135,7 @@ def test_unrelated_question_misses_honestly(small_pack: None) -> None:
 def test_replay_events_stream_pages_and_progress(small_pack: None) -> None:
     result = demo_replay.result_for("Which suburbs had the fastest rent growth last year?")
 
-    async def collect() -> list[dict]:
+    async def collect() -> list[dict[str, Any]]:
         return [ev async for ev in demo_replay.replay_events(result)]
 
     events = asyncio.run(collect())
@@ -195,3 +196,25 @@ def test_demo_login_404_when_off() -> None:
     with pytest.raises(HTTPException) as exc:
         asyncio.run(demo_login(Response()))
     assert exc.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Contract sync — sql_guardrails.py is duplicated (not shared) between this
+# service and the data-agent, since the two are independently built/deployed
+# Docker images with no shared-package plumbing yet. A guardrail fix (e.g. the
+# s32 W3 set_config/RLS-bypass fix) is easy to land in only one copy, leaving
+# the other silently stale. This test fails CI the moment they drift so that
+# never happens quietly; when it fires, copy the newer file over the older one.
+# ---------------------------------------------------------------------------
+def test_sql_guardrails_matches_data_agent_copy() -> None:
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    backend_copy = repo_root / "services" / "backend-api" / "app" / "sql_guardrails.py"
+    agent_copy = repo_root / "services" / "data-agent" / "agent" / "sql_guardrails.py"
+    if not agent_copy.exists():
+        pytest.skip("data-agent source not on disk (e.g. inside the service container)")
+    assert backend_copy.read_text() == agent_copy.read_text(), (
+        "services/backend-api/app/sql_guardrails.py has drifted from "
+        "services/data-agent/agent/sql_guardrails.py — sync the two copies"
+    )

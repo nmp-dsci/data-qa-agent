@@ -1621,7 +1621,11 @@ table.dt .dt-num { font-variant-numeric: tabular-nums; }
    it. The control stays VISIBLE — flag, don't hide (s38): visitors should see
    the full product surface; the server 501s regardless. */
 .demo-gate { position: relative; display: inline-flex; align-items: center; gap: 8px; }
-.demo-gate > .demo-gate-body { opacity: .45; pointer-events: none; filter: saturate(.6); }
+/* .demo-gate-body is a <fieldset disabled> (see DemoGate.tsx) — real HTML
+   disabled semantics for keyboard/screen-reader users, not just a CSS/pointer
+   trick, so it needs its fieldset chrome reset back to an inline wrapper. */
+.demo-gate > .demo-gate-body { opacity: .45; filter: saturate(.6);
+  border: 0; margin: 0; padding: 0; min-width: 0; display: inline-flex; align-items: center; }
 .demo-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
   border: 1px solid var(--purple-border); border-radius: 999px;
   font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .09em;

@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from .. import ops_rollup
-from ..auth import CurrentUser, require_admin
+from ..auth import CurrentUser, admin_or_demo_read, require_admin
 from ..config import settings
 from ..db import rls_connection
 
@@ -63,7 +63,7 @@ async def _refresh_in_background(window_key: str) -> None:
 @router.get("/admin/ops/summary")
 async def ops_summary(
     window: str = ops_rollup.DEFAULT_WINDOW,
-    admin: CurrentUser = Depends(require_admin),
+    admin: CurrentUser = Depends(admin_or_demo_read),
 ) -> dict[str, Any]:
     """One window of deck metrics, served from the rollup.
 
@@ -125,7 +125,7 @@ async def ops_refresh(admin: CurrentUser = Depends(require_admin)) -> dict[str, 
 @router.get("/admin/ops/runs")
 async def ops_runs(
     limit: int = 25,
-    admin: CurrentUser = Depends(require_admin),
+    admin: CurrentUser = Depends(admin_or_demo_read),
 ) -> list[dict[str, Any]]:
     """The slowest recent asks, each deep-linked to its Logfire trace.
 

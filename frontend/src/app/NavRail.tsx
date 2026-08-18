@@ -15,6 +15,7 @@
 // over the now-visible text, so the accessible name is exactly the label.
 import { ReactElement } from "react";
 import {
+  BarChart3,
   Compass,
   Gauge,
   LogOut,
@@ -32,13 +33,30 @@ import { setTheme, Theme, useTheme } from "../lib/theme";
 import { BrandMark } from "../ui/icons";
 
 export type View =
-  | "chat" | "explore" | "sql" | "goldens" | "evals" | "ops" | "admin" | "settings";
+  | "chat"
+  | "explore"
+  | "sql"
+  | "goldens"
+  | "evals"
+  | "ops"
+  | "admin"
+  | "analytics"
+  | "settings";
 
 /** One size/weight for every rail glyph — lucide defaults to 24/2, which reads
  *  a step heavier than the cockpit's own line work. */
 const GLYPH = { size: 20, strokeWidth: 1.8 } as const;
 
-const ITEMS: { view: View; label: string; icon: () => ReactElement; adminOnly?: boolean }[] = [
+// adminOnly tabs open to demo visitors as read-only static exhibits (s38, D4);
+// adminStrict tabs never do — Analytics is ABOUT the visitors, so only the
+// owner (through the /login owner door) ever sees it.
+const ITEMS: {
+  view: View;
+  label: string;
+  icon: () => ReactElement;
+  adminOnly?: boolean;
+  adminStrict?: boolean;
+}[] = [
   { view: "chat", label: "Chat", icon: () => <MessageSquare {...GLYPH} /> },
   { view: "explore", label: "Explore", icon: () => <Compass {...GLYPH} /> },
   { view: "sql", label: "SQL Editor", icon: () => <SquareTerminal {...GLYPH} /> },
@@ -52,11 +70,21 @@ const ITEMS: { view: View; label: string; icon: () => ReactElement; adminOnly?: 
   // abbreviation that saved nothing was the only one in the list.
   { view: "ops", label: "Operations", icon: () => <Radar {...GLYPH} />, adminOnly: true },
   { view: "admin", label: "Admin", icon: () => <ShieldCheck {...GLYPH} />, adminOnly: true },
+  // s38 P2.5: first-party visitor analytics — uniques, funnel, top questions.
+  {
+    view: "analytics",
+    label: "Analytics",
+    icon: () => <BarChart3 {...GLYPH} />,
+    adminOnly: true,
+    adminStrict: true,
+  },
   { view: "settings", label: "Settings", icon: () => <Settings {...GLYPH} /> },
 ];
 
-export function navItems(isAdmin: boolean) {
-  return ITEMS.filter((i) => !i.adminOnly || isAdmin);
+export function navItems(isAdmin: boolean, demo = false) {
+  return ITEMS.filter(
+    (i) => (!i.adminOnly || isAdmin || (demo && !i.adminStrict)) && (!i.adminStrict || isAdmin),
+  );
 }
 
 function initials(name: string): string {
@@ -85,11 +113,13 @@ export function NavRail({
   setView,
   user,
   onSignOut,
+  demo = false,
 }: {
   view: View;
   setView: (v: View) => void;
   user: User;
   onSignOut: () => void;
+  demo?: boolean;
 }) {
   return (
     <nav className="rail">
@@ -106,7 +136,7 @@ export function NavRail({
           aria-orientation="vertical"
           aria-label="App sections"
         >
-          {navItems(user.role === "admin").map((item) => (
+          {navItems(user.role === "admin", demo).map((item) => (
             <button
               key={item.view}
               role="tab"

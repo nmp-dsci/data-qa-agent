@@ -16,6 +16,7 @@ import {
   PageFrame,
   PagePlanSlot,
   User,
+  track,
 } from "../../lib/api";
 import { useStickToBottom } from "../../lib/useStickToBottom";
 import { PageLayout } from "../../report-engine/PageLayout";
@@ -33,6 +34,12 @@ export interface ChatMsg {
 /** The flight plan (s25): the four opening questions, numbered as waypoints on
  *  a route rather than scattered as cards. Each row keeps the full question
  *  visible — the point of a flight plan is that you can read the legs. */
+/** A chip's short bold label, derived from its question (demo rail). */
+function chipTitle(question: string): string {
+  const words = question.replace(/[?.]/g, "").split(/\s+/);
+  return words.slice(0, 3).join(" ");
+}
+
 const SUGGESTIONS: { title: string; q: string }[] = [
   {
     title: "Price trend",
@@ -401,6 +408,7 @@ export function ChatPage({
   conversationId,
   onOpenConversation,
   onNewConversation,
+  demoQuestions,
 }: {
   user: User;
   messages: ChatMsg[];
@@ -423,6 +431,10 @@ export function ChatPage({
   conversationId: string | null;
   onOpenConversation: (id: string) => void;
   onNewConversation: () => void;
+  /** s38 demo mode: the recorded questions chat can replay — when present they
+   *  REPLACE the static flight-plan suggestions, since anything else would be
+   *  a suggestion the demo cannot actually answer. */
+  demoQuestions?: { id: string; question: string }[];
 }) {
   // The thread follows the stream while the user is at the bottom; scrolling up
   // pauses following and shows the jump pill. Sending or opening a conversation
@@ -466,8 +478,18 @@ export function ChatPage({
                   Flight plan
                 </InstrumentLabel>
                 <div className="sugs">
-                  {SUGGESTIONS.map((s, i) => (
-                    <button key={s.title} className="sug" onClick={() => onSend(s.q)}>
+                  {(demoQuestions?.length
+                    ? demoQuestions.map((d) => ({ title: chipTitle(d.question), q: d.question }))
+                    : SUGGESTIONS
+                  ).map((s, i) => (
+                    <button
+                      key={s.q}
+                      className="sug"
+                      onClick={() => {
+                        if (demoQuestions?.length) track("chip_click", { question: s.q });
+                        onSend(s.q);
+                      }}
+                    >
                       <span className="sug-n">{String(i + 1).padStart(2, "0")}</span>
                       <span className="sug-text">
                         <b>{s.title}</b>
@@ -499,6 +521,14 @@ export function ChatPage({
                     }`}
                   >
                     <AnswerHead />
+                    {m.result?.demo_matched_question && (
+                      <div className="demo-match-note">
+                        <span>
+                          Closest recorded answer — this demo replays{" "}
+                          <b>“{m.result.demo_matched_question}”</b>
+                        </span>
+                      </div>
+                    )}
                     <div className="content">{m.content}</div>
                     {m.result?.degraded && (
                       <DegradedNote

@@ -100,6 +100,19 @@ variable "billing_alarm_usd" {
   default     = 50
 }
 
+# ---- Demo mode (s38) -------------------------------------------------------
+# One flag turns the deployment into the walk-in portfolio demo: the data-agent
+# service (and its LLM secret wiring) is not created at all, the backend runs
+# DEMO_MODE=1 (replayed chat, local governed SQL executor, demo door), and the
+# biggest idle line item (~$25-35/mo of mostly-idle 2vCPU/4GB App Runner) goes
+# to zero. AUTH_MODE stays google — that IS the owner door for admin_emails.
+# Pair with db_max_acu = 1 in tfvars for the full demo cost profile.
+variable "demo_mode" {
+  description = "Deploy as the zero-LLM walk-in demo: no data-agent service, DEMO_MODE=1 on the backend."
+  type        = bool
+  default     = false
+}
+
 variable "llm_provider" {
   description = "LLM provider the agent uses (deepseek | anthropic). The data-qa/llm-api-key secret feeds the matching *_API_KEY."
   type        = string

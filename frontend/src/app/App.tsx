@@ -9,13 +9,21 @@ import {
   AskResult,
   askStream,
   ConversationMessage,
+  DemoQuestion,
   getConversationMessages,
+  getDemoQuestions,
   PageFrame,
   PagePlanSlot,
   track,
   User,
 } from "../lib/api";
-import { loadAuthConfig, loginDev, logout as authLogout, resumeSession } from "../lib/auth";
+import {
+  loadAuthConfig,
+  loginDemo,
+  loginDev,
+  logout as authLogout,
+  resumeSession,
+} from "../lib/auth";
 import { getTheme, setTheme } from "../lib/theme";
 import { MOBILE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { ChatMsg, ChatPage, ConversationList } from "../features/chat/ChatPage";
@@ -39,6 +47,10 @@ const ExplorePage = lazy(() =>
 // The Ops deck (s32) is admin-only and rarely the landing tab, so it code-splits
 // as well — its chart wrappers only load when an admin opens it.
 const OpsPage = lazy(() => import("../features/ops/OpsPage").then((m) => ({ default: m.OpsPage })));
+// s38 P2.5: the visitor-analytics dashboard — admin-only, code-split like Ops.
+const AnalyticsPage = lazy(() =>
+  import("../features/analytics/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })),
+);
 import { Command, CommandPalette } from "../ui/CommandPalette";
 import { ChartSqlContext } from "../ui/charts/sqlLink";
 import { Canopy } from "../ui/Canopy";
@@ -78,8 +90,22 @@ function messageToChat(m: ConversationMessage): ChatMsg {
 /** Every deep-linkable tab route, in match order (no prefix collides with
  *  another, so first-match is exact enough). "chat" is the fallback, not a
  *  member — an unknown path normalises to it. */
-const ROUTES: View[] = ["chat", "explore", "sql", "goldens", "evals", "ops", "admin", "settings"];
-const ADMIN_ROUTES: View[] = ["goldens", "evals", "ops", "admin"];
+const ROUTES: View[] = [
+  "chat",
+  "explore",
+  "sql",
+  "goldens",
+  "evals",
+  "ops",
+  "admin",
+  "analytics",
+  "settings",
+];
+const ADMIN_ROUTES: View[] = ["goldens", "evals", "ops", "admin", "analytics"];
+// s38: demo visitors may open the admin tabs as read-only static exhibits
+// (D4) — every mutation 403s server-side — but never Analytics, which is
+// about them, not for them.
+const DEMO_BLOCKED_ROUTES: View[] = ["analytics"];
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -87,8 +113,10 @@ export default function App() {
   // (dev-mode's httpOnly cookie) is not masked by a flash of the login screen
   // while we find out it exists.
   const [resuming, setResuming] = useState(true);
-  const [authMode, setAuthMode] = useState<"dev" | "google">("dev");
+  const [authMode, setAuthMode] = useState<"dev" | "google" | "demo">("dev");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  // s38: the demo chip rail — the recorded questions chat can replay.
+  const [demoQuestions, setDemoQuestions] = useState<DemoQuestion[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -140,10 +168,20 @@ export default function App() {
     const matched = ROUTES.find((r) => location.pathname.startsWith(`/${r}`));
     if (!matched) {
       navigate("/chat", { replace: true });
-    } else if (user && ADMIN_ROUTES.includes(matched) && user.role !== "admin") {
+    } else if (
+      user &&
+      ADMIN_ROUTES.includes(matched) &&
+      user.role !== "admin" &&
+      !(authMode === "demo" && !DEMO_BLOCKED_ROUTES.includes(matched))
+    ) {
       navigate("/chat", { replace: true });
     }
-  }, [location.pathname, user, navigate]);
+  }, [location.pathname, user, authMode, navigate]);
+
+  // s38 analytics: one event per tab visit, for the per-surface activity split.
+  useEffect(() => {
+    if (user) track("page_view", { tab: view });
+  }, [view, user]);
 
   function openInSqlEditor(sqlText: string) {
     setSqlSeed({ sql: sqlText, nonce: Date.now() });
@@ -191,6 +229,26 @@ export default function App() {
     setMessages([]);
     setConversationId(null);
     track("home_view", { username: u.username });
+  }
+
+  // The chip rail loads once a demo session exists (the endpoint 404s outside
+  // demo mode, and getDemoQuestions maps any failure to an empty list).
+  useEffect(() => {
+    if (user && authMode === "demo") {
+      getDemoQuestions().then(setDemoQuestions).catch(() => {});
+    }
+  }, [user, authMode]);
+
+  async function handleDemoLogin() {
+    setError(null);
+    try {
+      const u = await loginDemo();
+      track("demo_enter_success", { username: u.username });
+      enterApp(u);
+    } catch (e) {
+      track("demo_enter_failure", { reason: (e as Error).message });
+      setError((e as Error).message);
+    }
   }
 
   async function handleDevLogin(username: string) {
@@ -369,6 +427,7 @@ export default function App() {
         authMode={authMode}
         error={error}
         onDevLogin={handleDevLogin}
+        onDemoLogin={() => void handleDemoLogin()}
         onUser={handleGoogleUser}
         onError={handleGoogleError}
       />
@@ -385,7 +444,13 @@ export default function App() {
     <div className="app">
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
       {!isMobile && (
-        <NavRail view={view} setView={setView} user={user} onSignOut={() => void logout()} />
+        <NavRail
+          view={view}
+          setView={setView}
+          user={user}
+          onSignOut={() => void logout()}
+          demo={authMode === "demo"}
+        />
       )}
       <div className="app-body">
         {isMobile && (
@@ -421,6 +486,18 @@ export default function App() {
               }
             >
               <OpsPage />
+            </Suspense>
+          )}
+          {view === "analytics" && (
+            <Suspense
+              fallback={
+                <main aria-busy="true">
+                  <div className="skel" style={{ height: 40, marginBottom: 10 }} />
+                  <div className="skel" style={{ height: 280 }} />
+                </main>
+              }
+            >
+              <AnalyticsPage />
             </Suspense>
           )}
           {view === "settings" && <SettingsPage user={user} />}
@@ -477,11 +554,17 @@ export default function App() {
               conversationId={conversationId}
               onOpenConversation={openConversation}
               onNewConversation={newConversation}
+              demoQuestions={authMode === "demo" ? demoQuestions : undefined}
             />
           )}
         </div>
         {isMobile && (
-          <BottomNav view={view} setView={setView} isAdmin={user.role === "admin"} />
+          <BottomNav
+            view={view}
+            setView={setView}
+            isAdmin={user.role === "admin"}
+            demo={authMode === "demo"}
+          />
         )}
       </div>
       {isMobile && (

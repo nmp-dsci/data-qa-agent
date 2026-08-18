@@ -4,12 +4,14 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..auth import CurrentUser, get_optional_user, require_admin
+from ..auth import CurrentUser, admin_or_demo_read, get_optional_user
+from ..config import settings
 from ..db import jsonable, rls_connection
+from ..limits import check_demo_ip_rate
 
 router = APIRouter(tags=["events"])
 
@@ -22,9 +24,15 @@ class EventIn(BaseModel):
 
 @router.post("/events", status_code=201)
 async def track_event(
-    body: EventIn, user: CurrentUser | None = Depends(get_optional_user)
+    body: EventIn, request: Request, user: CurrentUser | None = Depends(get_optional_user)
 ) -> dict[str, str]:
     """Frontend product-analytics sink. Accepts pre-login events (no user)."""
+    # s38 P3: anonymous visitors can write here (that's the analytics beacon),
+    # so in demo mode the path is rate-limited per IP and the one free-text
+    # surface (payload) is size-capped — a storage flood becomes a 4xx.
+    check_demo_ip_rate(request, "events", settings.demo_rate_events_per_min)
+    if settings.demo_mode and len(json.dumps(body.payload)) > 2048:
+        raise HTTPException(status_code=413, detail="Event payload too large")
     user_id = user.id if user else None
     async with rls_connection(user_id) as conn:
         await conn.execute(
@@ -44,7 +52,7 @@ async def track_event(
 
 @router.get("/admin/events")
 async def list_events(
-    limit: int = 50, since: datetime | None = None, admin: CurrentUser = Depends(require_admin)
+    limit: int = 50, since: datetime | None = None, admin: CurrentUser = Depends(admin_or_demo_read)
 ) -> list[dict[str, Any]]:
     """``since`` (ISO timestamp) filters to events at/after that time — used by the
     admin dashboard's 7d metric so the headline count + sparkline reflect the
@@ -70,7 +78,7 @@ async def list_events(
 
 
 @router.get("/admin/users")
-async def list_users(admin: CurrentUser = Depends(require_admin)) -> list[dict[str, Any]]:
+async def list_users(admin: CurrentUser = Depends(admin_or_demo_read)) -> list[dict[str, Any]]:
     async with rls_connection(admin.id) as conn:
         rows = (
             (
@@ -90,7 +98,7 @@ async def list_users(admin: CurrentUser = Depends(require_admin)) -> list[dict[s
 
 
 @router.get("/admin/datasets")
-async def list_datasets(admin: CurrentUser = Depends(require_admin)) -> list[dict[str, Any]]:
+async def list_datasets(admin: CurrentUser = Depends(admin_or_demo_read)) -> list[dict[str, Any]]:
     async with rls_connection(admin.id) as conn:
         rows = (
             (
@@ -111,7 +119,7 @@ async def list_datasets(admin: CurrentUser = Depends(require_admin)) -> list[dic
 
 @router.get("/admin/query-runs")
 async def list_query_runs(
-    limit: int = 50, since: datetime | None = None, admin: CurrentUser = Depends(require_admin)
+    limit: int = 50, since: datetime | None = None, admin: CurrentUser = Depends(admin_or_demo_read)
 ) -> list[dict[str, Any]]:
     """``since`` (ISO timestamp) filters to runs at/after that time — see
     list_events for why the admin dashboard's 7d metric needs this."""

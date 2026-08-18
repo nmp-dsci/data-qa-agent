@@ -18,6 +18,9 @@ dependencies = [
     # s36: the MCP front door is mounted here rather than run as its own
     # service, so the protocol SDK is a dependency of this API.
     "mcp>=1.2",
+    # s38 demo mode: the local governed SQL executor (app/sql_exec.py) carries
+    # the agent's AST guardrail layer, which needs sqlglot. Cheap and pure.
+    "sqlglot>=25.0",
 ]
 
 [project.optional-dependencies]

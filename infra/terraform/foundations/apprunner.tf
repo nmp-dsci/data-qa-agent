@@ -115,7 +115,11 @@ locals {
 }
 
 # ---- data-agent (created first: the backend needs its URL) ----------------
+# Not created at all in demo mode (s38): chat replays the recorded pack and the
+# SQL editor runs through the backend's local governed executor, so nothing
+# calls this service — and its idle memory was the deployment's biggest line.
 resource "aws_apprunner_service" "data_agent" {
+  count                          = var.demo_mode ? 0 : 1
   service_name                   = "${local.name}-data-agent"
   auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.single.arn
 
@@ -204,12 +208,18 @@ resource "aws_apprunner_service" "backend_api" {
       image_configuration {
         port = "8000"
         runtime_environment_variables = {
-          APP_ENV            = "prod"
-          AUTH_MODE          = "google"
-          GOOGLE_CLIENT_ID   = var.google_client_id
-          ADMIN_EMAILS       = var.admin_emails
-          DB_SSL             = "require"
-          AGENT_URL          = "https://${aws_apprunner_service.data_agent.service_url}"
+          APP_ENV = "prod"
+          # In demo mode google stays on as the OWNER DOOR: /auth/config
+          # reports "demo" (the walk-in button) while admin_emails can still
+          # sign in with Google on the non-advertised /login route.
+          AUTH_MODE        = "google"
+          DEMO_MODE        = var.demo_mode ? "1" : "0"
+          GOOGLE_CLIENT_ID = var.google_client_id
+          ADMIN_EMAILS     = var.admin_emails
+          DB_SSL           = "require"
+          # Empty in demo mode: nothing may call the (nonexistent) agent, and
+          # the agent_client choke point 501s LLM functions before any dial.
+          AGENT_URL          = var.demo_mode ? "" : "https://${one(aws_apprunner_service.data_agent[*].service_url)}"
           EXTRA_CORS_ORIGINS = local.frontend_url
           # ---- Ops deck (s32) --------------------------------------------
           # Tier-2 saturation. Off unless ops_cloudwatch_enabled, in which case
@@ -218,7 +228,7 @@ resource "aws_apprunner_service" "backend_api" {
           OPS_CLOUDWATCH_ENABLED         = var.ops_cloudwatch_enabled ? "1" : "0"
           OPS_CLOUDWATCH_REGION          = var.aws_region
           OPS_APPRUNNER_BACKEND_SERVICE  = "${local.name}-backend-api"
-          OPS_APPRUNNER_AGENT_SERVICE    = aws_apprunner_service.data_agent.service_name
+          OPS_APPRUNNER_AGENT_SERVICE    = var.demo_mode ? "" : one(aws_apprunner_service.data_agent[*].service_name)
           OPS_APPRUNNER_MAX_CONCURRENCY  = tostring(aws_apprunner_auto_scaling_configuration_version.single.max_concurrency)
           OPS_AURORA_CLUSTER_ID          = aws_rds_cluster.main.cluster_identifier
           OPS_CLOUDFRONT_DISTRIBUTION_ID = aws_cloudfront_distribution.frontend.id

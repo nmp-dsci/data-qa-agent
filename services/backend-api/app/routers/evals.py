@@ -22,7 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 
-from ..auth import CurrentUser, require_admin
+from ..auth import CurrentUser, admin_or_demo_read
 from ..db import rls_connection
 
 router = APIRouter()
@@ -69,7 +69,7 @@ _RUN_SELECT = (
 
 @router.get("/admin/eval-runs")
 async def list_eval_runs(
-    limit: int = _RUN_LIMIT, admin: CurrentUser = Depends(require_admin)
+    limit: int = _RUN_LIMIT, admin: CurrentUser = Depends(admin_or_demo_read)
 ) -> list[dict[str, Any]]:
     """Every run, newest first — the trend view's data."""
     async with rls_connection(admin.id) as conn:
@@ -81,7 +81,9 @@ async def list_eval_runs(
 
 
 @router.get("/admin/eval-runs/{run_id}")
-async def get_eval_run(run_id: str, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
+async def get_eval_run(
+    run_id: str, admin: CurrentUser = Depends(admin_or_demo_read)
+) -> dict[str, Any]:
     """One run, its per-case results, and — when it is an experiment — the
     baseline it argues against, already diffed.
 

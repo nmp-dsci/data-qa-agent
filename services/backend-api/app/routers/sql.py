@@ -5,15 +5,18 @@ import time
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from .. import sql_exec
 from ..agent_client import assist_sql_on_agent, fetch_catalog, run_sql_on_agent
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
+from ..config import settings
 from ..db import jsonable, rls_connection
-from ..limits import check_daily_llm_cap, check_daily_query_cap
+from ..limits import check_daily_llm_cap, check_daily_query_cap, check_demo_ip_rate
+from ..sql_guardrails import UnsafeSQLError
 
 router = APIRouter(tags=["sql"])
 
@@ -47,8 +50,21 @@ async def _log_event(
 @router.post("/sql", response_model=SqlResponse)
 async def run_sql(
     body: SqlRequest,
+    request: Request,
     user: CurrentUser = Depends(get_current_user),
     channel: str = Depends(get_channel),
+) -> SqlResponse:
+    return await execute_editor_sql(body, user=user, channel=channel, request=request)
+
+
+async def execute_editor_sql(
+    body: SqlRequest,
+    *,
+    user: CurrentUser,
+    channel: str,
+    # None for internal callers with no HTTP request (the MCP surface, s36) —
+    # those are dpk_-key-gated, so the per-IP demo limit doesn't apply to them.
+    request: Request | None = None,
 ) -> SqlResponse:
     """Run user-authored SQL through the data-agent's governed read-only executor.
 
@@ -69,13 +85,29 @@ async def run_sql(
     async with rls_connection(user.id) as conn:
         await _log_event(conn, user.id, "sql_query_submitted", {"length": len(sql)})
 
+    check_demo_ip_rate(request, "sql", settings.demo_rate_sql_per_min)
+
     started = time.perf_counter()
-    try:
-        result = await run_sql_on_agent(sql=sql, user_id=user.id, role=user.role)
-    except httpx.HTTPError as exc:
-        async with rls_connection(user.id) as conn:
-            await _log_event(conn, user.id, "sql_query_failed", {"error": str(exc)})
-        raise HTTPException(status_code=502, detail=f"Agent unavailable: {exc}") from exc
+    if settings.demo_mode:
+        # s38 P4: the data-agent service doesn't exist in a demo deployment, so
+        # the SAME governed executor runs locally (app/sql_exec.py) — identical
+        # guardrails, tighter timeout/row cap, still fully live SQL. The result
+        # dict is shaped exactly like the agent's SqlResult.
+        try:
+            result = await sql_exec.run_select(
+                sql, user_id=user.id, as_admin=(user.role == "admin")
+            )
+        except UnsafeSQLError as exc:
+            result = {"sql": sql, "error": str(exc), "denied": True}
+        except Exception as exc:  # noqa: BLE001 — surface DB errors (syntax, timeout)
+            result = {"sql": sql, "error": str(exc)}
+    else:
+        try:
+            result = await run_sql_on_agent(sql=sql, user_id=user.id, role=user.role)
+        except httpx.HTTPError as exc:
+            async with rls_connection(user.id) as conn:
+                await _log_event(conn, user.id, "sql_query_failed", {"error": str(exc)})
+            raise HTTPException(status_code=502, detail=f"Agent unavailable: {exc}") from exc
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     error = result.get("error")
@@ -184,6 +216,10 @@ async def sql_ai(
     Counts against the same per-user daily LLM cap as /ask (s12) — the
     sql_ai_requested event logged below is what the cap tallies.
     """
+    if settings.demo_mode:
+        # The chip on the button says it: "Not available — demo only". The
+        # server refuses before the cap/events so nothing half-records (s38 P2).
+        raise HTTPException(status_code=501, detail="not_available_demo")
     action = body.action.strip().lower()
     if action not in {"generate", "explain", "fix", "optimize"}:
         raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
@@ -228,6 +264,8 @@ async def sql_ai(
 @router.get("/schema/catalog")
 async def schema_catalog(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     """Structured schema for the SQL editor's browser (proxied from the agent)."""
+    if settings.demo_mode:
+        return await sql_exec.load_catalog(role=user.role)
     try:
         return await fetch_catalog(role=user.role)
     except httpx.HTTPError as exc:

@@ -45,6 +45,7 @@ import {
 } from "../../lib/api";
 import { ObjectBody } from "../../report-engine/PageLayout";
 import { Annunciator, Annunciators } from "../../ui/flightdeck";
+import { DemoGate } from "../../ui/DemoGate";
 import { BuilderFilter } from "./BuilderFilter";
 import { GraderEditor } from "./GraderEditor";
 import { graderColumns, graderIssue, pruneGrader } from "./graderSpec";
@@ -3123,19 +3124,21 @@ export function GoldensPage({
           <div
             style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
           >
-            <button
-              type="button"
-              style={{
-                ...btn(busy !== "draft"),
-                background: "rgba(120,160,255,0.18)",
-                borderColor: "rgba(120,160,255,0.6)",
-                fontWeight: 600,
-              }}
-              onClick={() => void draftWithAgent()}
-              disabled={busy === "draft"}
-            >
-              {busy === "draft" ? "Drafting…" : "✨ Draft with agent (first pass)"}
-            </button>
+            <DemoGate>
+              <button
+                type="button"
+                style={{
+                  ...btn(busy !== "draft"),
+                  background: "rgba(120,160,255,0.18)",
+                  borderColor: "rgba(120,160,255,0.6)",
+                  fontWeight: 600,
+                }}
+                onClick={() => void draftWithAgent()}
+                disabled={busy === "draft"}
+              >
+                {busy === "draft" ? "Drafting…" : "✨ Draft with agent (first pass)"}
+              </button>
+            </DemoGate>
             <span style={busy === "draft" ? { ...label, opacity: 0.95 } : label}>
               {busy === "draft"
                 ? `▷ ${draftStatus || "working…"}`

@@ -20,6 +20,7 @@ import {
 import { Sparkles } from "lucide-react";
 import { KitSelect } from "@/components/kit/KitSelect";
 import { SpecChart } from "../../ui/SpecChart";
+import { DemoGate } from "../../ui/DemoGate";
 import { Annunciator, Annunciators } from "../../ui/flightdeck";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cssVar } from "../../ui/charts/tokens";
@@ -779,34 +780,38 @@ export function SqlEditor({
           </button>
         </div>
 
-        {/* AI assist bar */}
-        <div className="ai-bar">
-          <span className="ai-spark" aria-hidden="true"><Sparkles size={14} /></span>
-          <input
-            className="ai-input"
-            value={aiPrompt}
-            placeholder="Ask AI to write SQL — e.g. top 10 suburbs by rent growth"
-            onChange={(e) => setAiPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                askAi("generate");
-              }
-            }}
-          />
-          <button className="btn-ai" onClick={() => askAi("generate")} disabled={!!aiBusy}>
-            {aiBusy === "generate" ? "…" : "Ask AI"}
-          </button>
-          <button className="btn-ghost" onClick={() => askAi("explain")} disabled={!!aiBusy}>
-            {aiBusy === "explain" ? "…" : "Explain"}
-          </button>
-          <button className="btn-ghost" onClick={() => askAi("fix")} disabled={!!aiBusy}>
-            {aiBusy === "fix" ? "…" : "Fix"}
-          </button>
-          <button className="btn-ghost" onClick={() => askAi("optimize")} disabled={!!aiBusy}>
-            {aiBusy === "optimize" ? "…" : "Optimize"}
-          </button>
-        </div>
+        {/* AI assist bar. In demo mode the whole bar stays visible but inert
+            behind the ◆ "Not available — demo only" chip (s38: flag, don't
+            hide) — running SQL below stays fully live either way. */}
+        <DemoGate>
+          <div className="ai-bar">
+            <span className="ai-spark" aria-hidden="true"><Sparkles size={14} /></span>
+            <input
+              className="ai-input"
+              value={aiPrompt}
+              placeholder="Ask AI to write SQL — e.g. top 10 suburbs by rent growth"
+              onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  askAi("generate");
+                }
+              }}
+            />
+            <button className="btn-ai" onClick={() => askAi("generate")} disabled={!!aiBusy}>
+              {aiBusy === "generate" ? "…" : "Ask AI"}
+            </button>
+            <button className="btn-ghost" onClick={() => askAi("explain")} disabled={!!aiBusy}>
+              {aiBusy === "explain" ? "…" : "Explain"}
+            </button>
+            <button className="btn-ghost" onClick={() => askAi("fix")} disabled={!!aiBusy}>
+              {aiBusy === "fix" ? "…" : "Fix"}
+            </button>
+            <button className="btn-ghost" onClick={() => askAi("optimize")} disabled={!!aiBusy}>
+              {aiBusy === "optimize" ? "…" : "Optimize"}
+            </button>
+          </div>
+        </DemoGate>
 
         <div className="sqled-bar">
           {/* s25: the guarantees become cockpit lamps, the shortcut a HUD key. */}

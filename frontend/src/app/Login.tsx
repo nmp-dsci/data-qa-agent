@@ -230,12 +230,15 @@ export function Login({
   authMode,
   error,
   onDevLogin,
+  onDemoLogin,
   onUser,
   onError,
 }: {
-  authMode: "dev" | "google";
+  authMode: "dev" | "google" | "demo";
   error: string | null;
   onDevLogin: (username: string) => void;
+  /** s38: the walk-in demo door — one click, no account. */
+  onDemoLogin?: () => void;
   onUser: (user: User) => void;
   onError: (message: string) => void;
 }) {
@@ -247,6 +250,37 @@ export function Login({
   // resume, ~30s) was pixel-identical to a dead button, and users answered
   // the silence by signing in 4-5 times. Cleared on any terminal outcome.
   const [signing, setSigning] = useState<LoginStatus | null>(null);
+  // s38: the owner door — reveals the Google button on the demo card for the
+  // deployment owner (admin_emails). Discreet by design; visitors never need it.
+  const [ownerOpen, setOwnerOpen] = useState(false);
+  const ownerRef = useRef<HTMLDivElement>(null);
+
+  // s38: the landing card doubles as the Aurora pre-warm (the s29 trick, free):
+  // by the time a visitor has read the pitch and clicked ENTER DEMO, the
+  // database is most of the way through its resume, so Explore/SQL feel warm.
+  useEffect(() => {
+    if (authMode !== "demo") return;
+    wakeDb();
+    track("demo_landing_view");
+  }, [authMode]);
+
+  useEffect(() => {
+    if (authMode !== "demo" || !ownerOpen || !ownerRef.current) return;
+    const fail = (e: Error) => {
+      setSigning(null);
+      onError(e.message);
+    };
+    renderGoogleButton(
+      ownerRef.current,
+      (u) => {
+        setSigning(null);
+        onUser(u);
+      },
+      fail,
+      setSigning,
+    ).catch((e) => fail(e as Error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authMode, ownerOpen]);
 
   useEffect(() => {
     if (authMode !== "google" || !btnRef.current) return;
@@ -290,7 +324,57 @@ export function Login({
           </h1>
           <p className="login-tagline">Cleared for insight.</p>
 
-          {authMode === "google" ? (
+          {authMode === "demo" ? (
+            <>
+              <div className="login-div">portfolio demo</div>
+              <div className="demo-chips" aria-hidden="true">
+                <span className="annunciator on">warehouse live</span>
+                <span className="annunciator demo">agent replays recorded runs</span>
+                <span className="annunciator on">no account needed</span>
+              </div>
+              <button
+                className="demo-enter"
+                onClick={() => {
+                  track("demo_enter_click");
+                  onDemoLogin?.();
+                }}
+              >
+                Enter demo&ensp;→
+              </button>
+              <p className="demo-fine">
+                Explore &amp; the SQL editor run live against the warehouse; chat answers were
+                recorded from the full LLM build. Anonymous usage analytics only.{" "}
+                <button type="button" className="owner-door" onClick={() => setOwnerOpen((o) => !o)}>
+                  owner sign-in
+                </button>
+              </p>
+              {ownerOpen && (
+                <>
+                  <div className={signing ? "users google signing" : "users google"} ref={ownerRef} />
+                  {signing && (
+                    <div className="login-signing" role="status">
+                      <span className="login-signing-title">Signing you in…</span>
+                      {signing.phase === "warming" && (
+                        <span className="annunciator warn">
+                          Waking warehouse · {signing.waitedS}s
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+              <div className="annunciators login-preflight">
+                <span className="annunciator on">No sign-up</span>
+                <span className="annunciator on">RLS</span>
+                <span className="annunciator on">Audited</span>
+              </div>
+            </>
+          ) : authMode === "google" ? (
             <>
               <div className="login-div">sign in</div>
               {/* The GIS iframe stays mounted while hidden — display:none via

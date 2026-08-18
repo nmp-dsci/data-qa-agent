@@ -49,7 +49,7 @@ from .auth import CurrentUser, service_account_from_header
 from .config import settings
 from .routers.ask import run_question
 from .routers.explore import list_datasets as explore_list_datasets
-from .routers.sql import SqlRequest, run_sql, schema_catalog, sql_history
+from .routers.sql import SqlRequest, execute_editor_sql, schema_catalog, sql_history
 
 log = logging.getLogger(__name__)
 
@@ -187,7 +187,7 @@ async def run_governed_query(sql: str) -> dict[str, Any]:
     Use describe_schema first to get real column names.
     """
     try:
-        result = await run_sql(SqlRequest(sql=sql), user=_user(), channel=CHANNEL)
+        result = await execute_editor_sql(SqlRequest(sql=sql), user=_user(), channel=CHANNEL)
     except HTTPException as exc:
         raise _translate(exc) from exc
     # The SQL editor's contract is 200-with-an-error-field, not a 4xx, so the UI

@@ -64,6 +64,20 @@ ps:
 smoke:
 	python3 scripts/smoke_test.py
 
+# s38 demo mode: run the local stack as the walk-in demo, and its smoke.
+#   make demo-up    -> backend serves DEMO_MODE=1 (chat replays the pack,
+#                      LLM endpoints 501, SQL runs through the local executor)
+#   make demo-smoke -> end-to-end demo checks against it
+#   make dev-up     -> flip the backend back to full dev behaviour
+demo-up:
+	DEMO_MODE=1 docker compose up -d --no-deps backend-api
+
+dev-up:
+	DEMO_MODE=0 docker compose up -d --no-deps backend-api
+
+demo-smoke:
+	python3 scripts/demo_smoke.py
+
 # Golden examples move between the database and the version-controlled pack
 # (s24). The repo is the source of truth; the DB is a working surface.
 eval-export:

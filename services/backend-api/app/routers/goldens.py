@@ -31,7 +31,7 @@ from ..agent_client import (
     prep_golden,
     scaffold_skills,
 )
-from ..auth import CurrentUser, require_admin
+from ..auth import CurrentUser, admin_or_demo_read, require_admin
 from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["goldens"])
@@ -126,7 +126,7 @@ def _jsonb_param(value: Any) -> str | None:
 
 @router.get("/admin/eval-goldens")
 async def list_goldens(
-    dataset: str | None = None, admin: CurrentUser = Depends(require_admin)
+    dataset: str | None = None, admin: CurrentUser = Depends(admin_or_demo_read)
 ) -> list[dict[str, Any]]:
     """List authored goldens, newest first; optionally scoped to one dataset."""
     clause = "WHERE source = 'authored'"
@@ -152,7 +152,7 @@ async def list_goldens(
 
 # Declared before /{golden_id} so "skills" isn't captured as a golden id.
 @router.get("/admin/eval-goldens/skills")
-async def skills(admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
+async def skills(admin: CurrentUser = Depends(admin_or_demo_read)) -> dict[str, Any]:
     """Sandbox skill catalog for the Golden Examples tab (available skills)."""
     return await fetch_skills()
 
@@ -166,7 +166,7 @@ class OrdinalIn(BaseModel):
 # Declared before /{golden_id} so "ordinals" isn't captured as a golden id.
 @router.get("/admin/eval-goldens/ordinals")
 async def list_ordinals(
-    dataset: str, admin: CurrentUser = Depends(require_admin)
+    dataset: str, admin: CurrentUser = Depends(admin_or_demo_read)
 ) -> list[dict[str, Any]]:
     """Ordinal band orders for a dataset (s23 data-knowledge panel). Each row is a
     ``(column, ordered_values)`` the chart lift sorts an ordinal x-axis by."""
@@ -210,7 +210,9 @@ async def upsert_ordinal(
 
 
 @router.get("/admin/eval-goldens/{golden_id}")
-async def get_golden(golden_id: str, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
+async def get_golden(
+    golden_id: str, admin: CurrentUser = Depends(admin_or_demo_read)
+) -> dict[str, Any]:
     """Full golden incl. all three stages, for the Builder / Evaluations tabs."""
     async with rls_connection(admin.id) as conn:
         row = (

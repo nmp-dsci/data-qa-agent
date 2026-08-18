@@ -68,13 +68,14 @@ resource "aws_cloudwatch_metric_alarm" "backend_5xx" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "agent_5xx" {
+  count             = var.demo_mode ? 0 : 1
   alarm_name        = "${local.name}-data-agent-5xx"
   alarm_description = "data-agent returned 5 or more 5xx responses in 5 minutes."
   namespace         = "AWS/AppRunner"
   metric_name       = "5xxStatusResponses"
   dimensions = {
-    ServiceName = aws_apprunner_service.data_agent.service_name
-    ServiceID   = aws_apprunner_service.data_agent.service_id
+    ServiceName = one(aws_apprunner_service.data_agent[*].service_name)
+    ServiceID   = one(aws_apprunner_service.data_agent[*].service_id)
   }
   statistic           = "Sum"
   period              = 300

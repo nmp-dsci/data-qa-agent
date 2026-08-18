@@ -1596,3 +1596,69 @@ table.dt .dt-num { font-variant-numeric: tabular-nums; }
   padding: 46px 20px; text-align: center; }
 .ex-empty-glyph { color: var(--accent); opacity: .32; }
 .ex-empty .ex-hint { margin: 0; max-width: 44ch; }
+
+/* ── s38 · demo mode ─────────────────────────────────────────────────────────
+   The walk-in portfolio demo: the landing card's ENTER DEMO door, the
+   ◆ "Not available — demo only" chip on LLM controls (DemoGate), and the
+   "closest recorded answer" note on fuzzy-matched chat replies. */
+.annunciator.demo { color: var(--purple); border-color: var(--purple-border); }
+.annunciator.demo::before { background: var(--purple);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--purple) 70%, transparent); }
+
+.demo-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 10px 0 14px; }
+
+.demo-enter { width: 100%; padding: 13px 0; border: none; border-radius: 9px; cursor: pointer;
+  background: linear-gradient(180deg, var(--accent-soft), var(--accent)); color: var(--accent-ink);
+  font-family: var(--mono); font-size: 13px; font-weight: 800; letter-spacing: .12em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 28%, transparent);
+  transition: transform var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease); }
+.demo-enter:hover { transform: translateY(-1px);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 38%, transparent); }
+.demo-fine { color: var(--faint); font-size: 11.5px; line-height: 1.55; margin: 12px 0 14px; }
+
+/* DemoGate: a wrapper that renders its control inert with the demo chip beside
+   it. The control stays VISIBLE — flag, don't hide (s38): visitors should see
+   the full product surface; the server 501s regardless. */
+.demo-gate { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+/* .demo-gate-body is a <fieldset disabled> (see DemoGate.tsx) — real HTML
+   disabled semantics for keyboard/screen-reader users, not just a CSS/pointer
+   trick, so it needs its fieldset chrome reset back to an inline wrapper. */
+.demo-gate > .demo-gate-body { opacity: .45; filter: saturate(.6);
+  border: 0; margin: 0; padding: 0; min-width: 0; display: inline-flex; align-items: center; }
+.demo-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  border: 1px solid var(--purple-border); border-radius: 999px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--purple); white-space: nowrap; cursor: help; }
+.demo-chip::before { content: "◆"; font-size: 8px; }
+
+/* The chat bubble's fuzzy-match note (D1): honest about which recorded
+   question was actually answered. */
+.demo-match-note { display: flex; gap: 8px; align-items: baseline; margin: 6px 0 10px;
+  padding: 7px 10px; border: 1px solid var(--purple-border); border-left-width: 3px;
+  border-radius: var(--r-1, 8px); background: color-mix(in srgb, var(--purple) 7%, var(--panel));
+  color: var(--muted); font-size: 12.5px; }
+.demo-match-note b { color: var(--text); font-weight: 600; }
+
+/* Analytics tab (s38 P2.5) */
+.ana-funnel { display: grid; gap: 6px; max-width: 640px; }
+.ana-funnel-row { display: grid; grid-template-columns: 180px minmax(0,1fr) 48px;
+  gap: 10px; align-items: center; }
+.ana-funnel-label { font-size: 12.5px; color: var(--muted); }
+.ana-funnel-track { height: 14px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 4px; overflow: hidden; }
+.ana-funnel-bar { display: block; height: 100%;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent)); }
+.ana-funnel-n { font-family: var(--mono); font-size: 12px; text-align: right; }
+.ana-daily { display: flex; gap: 4px; align-items: flex-end; height: 120px; max-width: 720px; }
+.ana-day { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; height: 100%; justify-content: flex-end; }
+.ana-day-bar { width: 100%; max-width: 26px; border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--accent) 70%, var(--panel-3));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-bottom: none; }
+.ana-day-label { font-family: var(--mono); font-size: 8.5px; color: var(--faint); }
+.ana-etypes { font-size: 11px; color: var(--muted); max-width: 380px; }
+.owner-door { background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--faint); font-size: 11px; text-decoration: underline dotted;
+  text-underline-offset: 2px; }
+.owner-door:hover { color: var(--muted); }

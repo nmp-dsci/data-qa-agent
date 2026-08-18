@@ -86,9 +86,13 @@ async def admin_ro_connection() -> AsyncIterator[AsyncConnection]:
     """Yield a read-only, RLS-bypassing connection for cross-user aggregates.
 
     SELECT-only by role grant, so nothing reached through here can write —
-    including by accident. Deliberately NOT exposed to request handlers: the only
-    caller is the ops rollup refresh, and every user-facing read stays on
-    rls_connection so isolation is enforced by the database as usual.
+    including by accident. Reserved for the small, deliberate set of surfaces
+    that legitimately need to see across every user (the ops rollup refresh,
+    the admin-only Analytics summary): every ordinary user-facing read stays
+    on rls_connection so isolation is enforced by the database as usual. Any
+    new caller of this connection must sit behind require_admin (never a
+    demo-mode bypass) — this is the one connection where RLS isn't the
+    backstop.
     """
     async with admin_ro_engine.connect() as conn:
         yield conn

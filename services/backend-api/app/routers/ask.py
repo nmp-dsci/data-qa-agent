@@ -1,23 +1,26 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from starlette.background import BackgroundTask
 
+from .. import demo_replay
 from ..agent_client import ask_agent, ask_agent_stream, title_agent
 from ..agent_version import current_agent_version_id
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
+from ..config import settings
 from ..db import jsonable, rls_connection
-from ..limits import check_daily_llm_cap
+from ..limits import check_daily_llm_cap, check_demo_ip_rate
 from ..scrub import scrub_text
 from ..tracing import current_trace_id
 
@@ -67,6 +70,10 @@ class AskResponse(BaseModel):
     # frontend's template registry renders with visx. Also embedded in the
     # stored report (messages.report.pages) so history reopen restores them.
     pages: list[dict[str, Any]] | None = None
+    # s38 demo mode: when free text fuzzy-matched a recorded question rather
+    # than hitting it exactly, this carries the question actually answered so
+    # the chat bubble can say "closest recorded answer". None on exact/live.
+    demo_matched_question: str | None = None
 
 
 async def _log_event(
@@ -336,6 +343,8 @@ async def _retitle_conversation(user: CurrentUser, conversation_id: str, questio
     """Replace a new conversation's raw-question placeholder title with a short
     agent-generated summary (s17 E1). Best-effort and off the answer's critical
     path (runs as a background task) — any failure just keeps the fallback title."""
+    if settings.demo_mode:
+        return  # titling is an LLM call; the question-prefix fallback title stands
     try:
         title = (await title_agent(question)).strip()
     except Exception as exc:  # noqa: BLE001 — titling is cosmetic, never surface it
@@ -380,6 +389,7 @@ def _build_response(
         steps=(result.get("steps") or []) if is_admin else [],
         report=result.get("report"),
         pages=result.get("pages"),
+        demo_matched_question=result.get("demo_matched_question"),
     )
 
 
@@ -440,23 +450,35 @@ async def run_question(
     integrations have no sidebar.
     """
     question = _clean_question(raw_question)
-    await check_daily_llm_cap(user)
+    # Demo mode has no LLM to meter — the per-IP rate limit (s38 P3) does the
+    # bounding instead, and the shared demo user would exhaust a per-user cap
+    # in minutes anyway.
+    if not settings.demo_mode:
+        await check_daily_llm_cap(user)
 
     conv_id, plan = await _open_conversation(user, conversation_id, question)
-    # Delegate to the agent (its own connection enforces the same RLS).
     started = time.perf_counter()
-    try:
-        result = await ask_agent(
-            question=question,
-            user_id=user.id,
-            role=user.role,
-            plan=plan,
-            dataset_slug=DATASET_SLUG,
-        )
-    except httpx.HTTPError as exc:  # noqa: BLE001
-        async with rls_connection(user.id) as conn:
-            await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
-        result = _degraded_result(f"agent unavailable: {exc}")
+    if settings.demo_mode:
+        # s38: replay the recorded run (or an honest miss). Persistence below is
+        # identical to a live answer, so audit + analytics count demo traffic.
+        # Off the event loop: cheap at today's pack size, but the fuzzy
+        # scan is O(pack size) and file parsing (lru_cache'd, so only ever
+        # once) shouldn't block concurrent demo visitors either way.
+        result = await asyncio.to_thread(demo_replay.result_for, question)
+    else:
+        # Delegate to the agent (its own connection enforces the same RLS).
+        try:
+            result = await ask_agent(
+                question=question,
+                user_id=user.id,
+                role=user.role,
+                plan=plan,
+                dataset_slug=DATASET_SLUG,
+            )
+        except httpx.HTTPError as exc:  # noqa: BLE001
+            async with rls_connection(user.id) as conn:
+                await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
+            result = _degraded_result(f"agent unavailable: {exc}")
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     message_id, run_id = await _persist_answer(user, channel, conv_id, question, result, latency_ms)
@@ -467,9 +489,11 @@ async def run_question(
 async def ask(
     body: AskRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     user: CurrentUser = Depends(get_current_user),
     channel: str = Depends(get_channel),
 ) -> AskResponse:
+    check_demo_ip_rate(request, "ask", settings.demo_rate_ask_per_min)
     is_new = body.conversation_id is None
     response = await run_question(user, body.question, channel, body.conversation_id)
     # Summarise the first question into a short sidebar title after the response
@@ -489,6 +513,7 @@ def _sse(event: str, data: dict[str, Any] | str) -> str:
 @router.post("/ask/stream")
 async def ask_stream(
     body: AskRequest,
+    request: Request,
     user: CurrentUser = Depends(get_current_user),
     channel: str = Depends(get_channel),
 ) -> StreamingResponse:
@@ -496,9 +521,16 @@ async def ask_stream(
     frames) as it works, then persists the answer and emits one ``result`` frame.
     Same auth, persistence and payload as /ask — the frontend shows a running
     step list instead of a silent spinner. ``status`` frames are heartbeats.
+
+    Demo mode (s38): the same frames come from ``demo_replay`` instead of the
+    agent — recorded progress steps, the page plan, each stored page — paced so
+    the visitor watches the answer assemble, then the identical persist + result
+    path. The frontend cannot tell the difference, which is the point.
     """
+    check_demo_ip_rate(request, "ask", settings.demo_rate_ask_per_min)
     # Enforce the cap before the stream opens so the client gets a clean 429.
-    await check_daily_llm_cap(user)
+    if not settings.demo_mode:
+        await check_daily_llm_cap(user)
 
     # Populated by gen() for a new conversation; the background task below retitles
     # it once the stream has closed (never delays the streamed answer, s17 E1).
@@ -520,6 +552,22 @@ async def ask_stream(
         # actually renders, rather than inferred from the agent's own timings —
         # it is what SLO-B grades (s32 W2).
         ttfp_ms: int | None = None
+        if settings.demo_mode:
+            result = await asyncio.to_thread(demo_replay.result_for, question)
+            async for ev in demo_replay.replay_events(result):
+                name = ev["event"]
+                if name == "page" and ttfp_ms is None and ev["data"].get("status") == "complete":
+                    ttfp_ms = int((time.perf_counter() - started) * 1000)
+                yield _sse(name, ev["data"])
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            message_id, run_id = await _persist_answer(
+                user, channel, conversation_id, question, result, latency_ms, ttfp_ms
+            )
+            response = _build_response(
+                conversation_id, message_id, run_id, result, latency_ms, user.role == "admin"
+            )
+            yield _sse("result", response.model_dump_json())
+            return
         try:
             async for ev in ask_agent_stream(
                 question=question,
@@ -588,3 +636,16 @@ async def ask_stream(
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         background=BackgroundTask(_bg_retitle),
     )
+
+
+@router.get("/demo/questions")
+async def demo_questions() -> list[dict[str, str]]:
+    """The demo chip rail: every recorded question a visitor can ask (s38 P1).
+
+    404 outside demo mode so the endpoint doesn't advertise the pack on live
+    deployments. Unauthenticated by design — it serves the landing page too,
+    and it exposes nothing but the questions the demo openly answers.
+    """
+    if not settings.demo_mode:
+        raise HTTPException(status_code=404, detail="Not found")
+    return demo_replay.pack_index()

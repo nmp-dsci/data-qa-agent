@@ -82,7 +82,14 @@ services:
       # AUTH_MODE=dev uses the local dev-auth stub. Set AUTH_MODE=google plus
       # GOOGLE_CLIENT_ID + ADMIN_EMAILS (in .env) to switch to real Google Sign-in.
       AUTH_MODE: ${AUTH_MODE:-dev}
+      # s38: flip DEMO_MODE=1 (in .env or the shell) to run the local stack as
+      # the walk-in demo — replayed chat, local governed SQL executor, LLM
+      # controls flagged. Default 0 keeps dev fully live.
+      DEMO_MODE: ${DEMO_MODE:-0}
       DATABASE_URL: postgresql+asyncpg://app_user:app_pw@db:5432/dataqa
+      # Read-only executor role for demo mode's local SQL path (s38 P4) —
+      # same role the data-agent connects as.
+      AGENT_RO_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa
       # Elevated read-only role (BYPASSRLS, SELECT-only; migration 0012). Used by
       # exactly one thing here: the /ops rollup, which aggregates across ALL users
       # and so cannot run under any single user's RLS context (an empty context
@@ -123,7 +130,9 @@ services:
       # control; see app/mcp_surface.py.
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
     ports:
-      - "8000:8000"
+      # Host port is overridable (API_HOST_PORT in .env) so a local dev machine
+      # that already has something on 8000 can move the app instead of it.
+      - "${API_HOST_PORT:-8000}:8000"
     depends_on:
       pipeline:
         condition: service_completed_successfully
@@ -179,7 +188,7 @@ services:
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: http://localhost:${API_HOST_PORT:-8000}
     volumes:
       - ./frontend:/app
       - /app/node_modules

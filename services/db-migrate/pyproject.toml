@@ -7,6 +7,8 @@ dependencies = [
     "alembic>=1.14",
     "sqlalchemy>=2.0",
     "psycopg[binary]>=3.2",
+    # s38: seed_goldens.py reads the evals/cases pack.
+    "pyyaml>=6.0",
 ]
 
 [tool.uv]

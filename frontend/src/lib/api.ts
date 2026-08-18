@@ -88,7 +88,7 @@ export interface User {
 }
 
 export interface AuthConfig {
-  auth_mode: "dev" | "google";
+  auth_mode: "dev" | "google" | "demo";
   client_id?: string | null;
   scopes: string[];
 }
@@ -248,6 +248,9 @@ export interface AskResult {
   steps: AgentStep[];
   report: InsightReport | null;
   pages: Page[] | null;
+  /** s38 demo mode: free text fuzzy-matched this recorded question rather than
+   *  hitting it exactly — the bubble shows a "closest recorded answer" note. */
+  demo_matched_question?: string | null;
 }
 
 export interface FeedbackInput {
@@ -409,6 +412,30 @@ export interface CatalogTable {
 let token: string | null = null;
 let sessionId = Math.random().toString(36).slice(2);
 
+// s38 analytics: a random, anonymous browser identity. localStorage survives
+// for months, which is exactly what makes "returning visitor" countable; it
+// identifies a browser, never a person (no fingerprinting — a cleared store or
+// an incognito window is simply a new visitor). Falls back to a per-load id
+// where storage is blocked, so that visit counts as unique-but-unrepeatable.
+const VISITOR_KEY = "dp_visitor_id";
+let visitorIdCache: string | null = null;
+
+function visitorId(): string {
+  if (visitorIdCache) return visitorIdCache;
+  let id: string | null = null;
+  try {
+    id = localStorage.getItem(VISITOR_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(VISITOR_KEY, id);
+    }
+  } catch {
+    id = Math.random().toString(36).slice(2);
+  }
+  visitorIdCache = id;
+  return id;
+}
+
 export function setToken(t: string | null) {
   token = t;
 }
@@ -437,6 +464,29 @@ export async function devLogin(username: string): Promise<{ access_token: string
     body: JSON.stringify({ username }),
   });
   if (!resp.ok) throw new Error(`Login failed (${resp.status})`);
+  return resp.json();
+}
+
+/** s38: the walk-in demo door — no body, no account; the backend mints the
+ *  seeded demo user's session. 404s outside demo mode. */
+export async function demoLogin(): Promise<{ access_token: string; user: User }> {
+  const resp = await apiFetch(`${API}/auth/demo-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!resp.ok) throw new Error(`Could not enter the demo (${resp.status})`);
+  return resp.json();
+}
+
+export interface DemoQuestion {
+  id: string;
+  question: string;
+}
+
+/** The recorded questions the demo can answer — feeds the chat chip rail. */
+export async function getDemoQuestions(): Promise<DemoQuestion[]> {
+  const resp = await apiFetch(`${API}/demo/questions`);
+  if (!resp.ok) return [];
   return resp.json();
 }
 
@@ -520,6 +570,20 @@ function withCeiling(signal: AbortSignal | undefined, ms: number) {
   };
 }
 
+/** s38: stable backend detail strings -> sentences a visitor should read. */
+export function friendlyDetail(detail: string | null, fallback: string): string {
+  switch (detail) {
+    case "demo_full":
+      return "The demo is at capacity right now — try again in a few seconds.";
+    case "demo_rate_limited":
+      return "Easy on the throttle — the demo rate-limits requests. Try again shortly.";
+    case "not_available_demo":
+      return "Not available in this demo — it runs a live LLM in the full build.";
+    default:
+      return fallback;
+  }
+}
+
 function ceilingError(): ApiError {
   return new ApiError(
     `That took longer than ${Math.round(ASK_CEILING_MS / 1000)}s with no answer. ` +
@@ -544,7 +608,11 @@ export async function ask(
     });
     if (!resp.ok) {
       const detail = (await errorDetail(resp)) ?? `HTTP ${resp.status}`;
-      throw new ApiError(`Ask failed (${resp.status}): ${detail}`, resp.status, detail);
+      throw new ApiError(
+        friendlyDetail(detail, `Ask failed (${resp.status}): ${detail}`),
+        resp.status,
+        detail,
+      );
     }
     return resp.json();
   } catch (e) {
@@ -957,6 +1025,36 @@ async function adminGet<T>(path: string): Promise<T> {
   const resp = await apiFetch(`${API}${path}`, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Admin request failed (${resp.status})`);
   return resp.json();
+}
+
+/* ---------------------------------------------------------------------------
+ * Visitor analytics (s38 P2.5) — the admin-only Analytics tab's data.
+ * ------------------------------------------------------------------------- */
+
+export interface AnalyticsSummary {
+  days: number;
+  totals: {
+    visitors: number;
+    today_visitors: number;
+    sessions: number;
+    events: number;
+    returning_visitors: number;
+  };
+  funnel: { event: string; label: string; visitors: number }[];
+  daily: { day: string; events: number; visitors: number }[];
+  top_events: { event_type: string; count: number }[];
+  top_questions: { question: string; count: number; engine: string | null }[];
+  recent_sessions: {
+    session_id: string;
+    started: string;
+    last_seen: string;
+    events: number;
+    event_types: string;
+  }[];
+}
+
+export async function getAnalyticsSummary(days = 14): Promise<AnalyticsSummary> {
+  return adminGet<AnalyticsSummary>(`/analytics/summary?days=${days}`);
 }
 
 function adminListQuery(params?: { limit?: number; since?: string }): string {
@@ -1621,11 +1719,16 @@ export function runEvalStaleness(): Promise<{
 }
 
 export function track(eventType: string, payload: Record<string, unknown> = {}) {
-  // Fire-and-forget product analytics.
+  // Fire-and-forget product analytics. Every event carries the anonymous
+  // visitor id (s38) so the Analytics tab can count uniques and returns.
   apiFetch(`${API}/events`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ event_type: eventType, session_id: sessionId, payload }),
+    body: JSON.stringify({
+      event_type: eventType,
+      session_id: sessionId,
+      payload: { visitor_id: visitorId(), ...payload },
+    }),
   }).catch(() => {});
 }
 

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s39 · Demo mode — build walkthrough</title>
+<style>
+/* Night Flight tokens (frontend/src/styles.css) — same as s38. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae; --hud:#35803f;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.flex,.cards)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,dd,td,th,.badge){overflow-wrap:anywhere}
+:where(img,svg){max-width:100%}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+header.hero{padding:52px 0 28px;border-bottom:1px solid var(--border);margin-bottom:32px;
+  position:relative}
+header.hero::after{content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+.hero h1{font-size:clamp(28px,4.2vw,44px);line-height:1.08;margin:12px 0 0;
+  font-weight:750;letter-spacing:-.02em;max-width:26ch}
+.hero .kicker{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hero .sub{color:var(--muted);font-size:16.5px;margin:14px 0 0;max-width:74ch}
+.proof{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.proof span{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  padding:4px 11px;border-radius:999px;border:1px solid var(--good-border);color:var(--good)}
+.proof span.warn{border-color:var(--warn-border);color:var(--warn)}
+section{margin:42px 0}
+h2{font-size:23px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px;
+  display:flex;gap:12px;align-items:baseline}
+h2 .num{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700}
+h3{font-size:15.5px;font-weight:650;margin:20px 0 8px}
+.sec-sub{color:var(--muted);margin:0 0 16px;max-width:76ch}
+.cards{display:grid;gap:14px}
+.cards.c2{grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
+.cards.c3{grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:15px 17px;box-shadow:var(--elev-1)}
+.card h4{margin:0 0 7px;font-size:14px;font-weight:650;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.card p{margin:6px 0;color:var(--muted);font-size:13.5px}
+.card ul{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:13.5px}
+.card li{margin:3px 0}
+.card.good{border-color:var(--good-border)}
+.card.warn{border-color:var(--warn-border)}
+.card.info{border-color:var(--info-border)}
+.badge{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;
+  padding:2px 8px;border-radius:999px;border:1px solid var(--border-2);
+  color:var(--muted);white-space:nowrap}
+.badge.good{color:var(--good);border-color:var(--good-border)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border)}
+.badge.info{color:var(--info);border-color:var(--info-border)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border)}
+.badge.accent{color:var(--accent-soft);border-color:var(--accent)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel);box-shadow:var(--elev-1)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);text-align:left;
+  padding:9px 13px;border-bottom:1px solid var(--border-2);background:var(--panel-2);white-space:nowrap}
+td{padding:9px 13px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text)}
+tr:last-child td{border-bottom:none}
+td .sm{color:var(--muted);font-size:12px;display:block;margin-top:2px}
+code,.mono{font-family:var(--mono);font-size:.9em}
+code{background:var(--code-bg);border:1px solid var(--border);border-radius:5px;
+  padding:1px 6px;color:var(--accent-2)}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:13px 15px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55;
+  color:var(--text);margin:10px 0}
+pre code{background:none;border:none;padding:0;color:inherit}
+.shots{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(460px,100%),1fr))}
+.shot{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  overflow:hidden;box-shadow:var(--elev-1)}
+.shot img{display:block;width:100%}
+.shot figcaption{padding:10px 14px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--border)}
+.shot figcaption b{color:var(--text)}
+.note{border:1px solid var(--info-border);border-left-width:3px;border-radius:var(--radius);
+  background:color-mix(in srgb,var(--info) 6%,var(--panel));padding:10px 14px;margin:14px 0;
+  font-size:13.5px;color:var(--muted)}
+.note b{color:var(--text)}
+.note.okay{border-color:var(--good-border);background:color-mix(in srgb,var(--good) 6%,var(--panel))}
+.note.warn{border-color:var(--warn-border);background:color-mix(in srgb,var(--warn) 6%,var(--panel))}
+footer{margin-top:56px;border-top:1px solid var(--border);padding-top:16px;
+  color:var(--faint);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">
+    <span class="lbl accent">S39 · Build walkthrough</span>
+    <span class="badge">branch: demo-mode</span>
+    <span class="badge purple">s38 P0–P4 built</span>
+  </div>
+  <h1>Demo mode, built end to end</h1>
+  <p class="sub">The s38 plan is now working software on the <code>demo-mode</code> branch: one flag turns
+  a deployment into the walk-in portfolio demo — recorded agent replays, live Explore/SQL, flagged LLM
+  controls, first-party analytics with its own tab, per-IP and concurrency guardrails, a seeded demo
+  identity, a version-controlled demo pack, and a Terraform profile that deletes the data-agent service.
+  Dev keeps every capability. 34 files changed, 13 new, ~1,000 lines.</p>
+  <div class="proof">
+    <span>DEMO SMOKE 21/21 ✓</span>
+    <span>FULL SMOKE (LIVE LLM) ✓</span>
+    <span>UNIT TESTS 64 ✓ (13 new)</span>
+    <span>MYPY STRICT ✓</span>
+    <span>TSC ✓</span>
+    <span>TERRAFORM VALIDATE ✓</span>
+    <span>VERIFIED IN BROWSER ✓</span>
+    <span class="warn">UNCOMMITTED — YOUR GATE</span>
+  </div>
+</header>
+
+<section id="experience">
+  <h2><span class="num">01</span>What a visitor gets (verified live)</h2>
+  <p class="sec-sub">Screenshots from the running local stack in demo mode (<code>make demo-up</code>).</p>
+  <div class="shots">
+    <figure class="shot"><img src="s39_shot_landing.jpeg" alt="Demo landing card">
+      <figcaption><b>The front door.</b> The cockpit card in demo trim: WAREHOUSE LIVE / AGENT REPLAYS
+      RECORDED RUNS / NO ACCOUNT NEEDED chips, the gold ENTER DEMO button, honest fine print, and the
+      discreet <i>owner sign-in</i> link (Google, admin_emails only). Mounting the card pre-warms Aurora,
+      so reading time hides the wake.</figcaption></figure>
+    <figure class="shot"><img src="s39_shot_page2.jpeg" alt="Second replayed page with table and chart">
+      <figcaption><b>A two-page replay's insights page.</b> Ranked table with heat dots, written insights,
+      and the volume chart — streamed page by page after the flight strip's progress steps ("query
+      returned", "building charts") tick past. The whole run replays in ~5s at $0.</figcaption></figure>
+    <figure class="shot"><img src="s39_shot_report.jpeg" alt="Finished replayed report">
+      <figcaption><b>The landed report.</b> KPIs, chart, narrative, QUERY REFERENCES with the real SQL and
+      a working "Open in SQL editor" — engine badge reads <code>DEMO_REPLAY</code>. Every demo answer is
+      persisted to <code>query_runs</code> like real traffic, so audit and analytics count it.</figcaption></figure>
+    <figure class="shot"><img src="s39_shot_sql.jpeg" alt="SQL editor in demo mode">
+      <figcaption><b>Live SQL, flagged AI.</b> 100 real rows in 22ms through the new in-backend governed
+      executor (no data-agent involved); the AI bar sits inert behind ◆ NOT AVAILABLE — DEMO ONLY. Catalog
+      scoped to marts/staging for visitors.</figcaption></figure>
+    <figure class="shot"><img src="s39_shot_analytics.jpeg" alt="Analytics tab">
+      <figcaption><b>The Analytics tab (owner-only).</b> First-party: visitors/returning/sessions/events,
+      the landing→GitHub funnel, events-per-day, top questions — including free-text misses ("write me a
+      poem about kubernetes" ×2), which are literally the recording backlog.</figcaption></figure>
+  </div>
+</section>
+
+<section id="mechanics">
+  <h2><span class="num">02</span>How it works — the five mechanisms</h2>
+  <div class="cards c2">
+    <div class="card good">
+      <h4><span class="badge purple">P1</span> Record → replay</h4>
+      <p><code>app/demo_replay.py</code> loads <code>app/demo_pack/*.json</code> (8 recorded questions,
+      1.8MB, version-controlled, baked into the image) into memory at first use — so chat replay
+      <b>never touches the database</b> and is immune to Aurora cold starts. <code>/ask/stream</code>'s
+      demo branch synthesizes the same SSE frames a live run emits: friendly progress steps derived from
+      the stored trace, the plan frame's ghost slots, one <code>page</code> frame per stored page, then the
+      normal persist + <code>result</code>. Free text resolves by a blended scorer (SequenceMatcher +
+      stop-word-filtered content-word overlap — pure difflib scored unrelated sentences ~0.45, too high);
+      near-matches carry <code>demo_matched_question</code> so the bubble shows "closest recorded answer";
+      genuine misses answer honestly and list the chips.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge purple">P0</span> The demo identity &amp; doors</h4>
+      <p><code>DEMO_MODE=1</code> makes <code>/auth/config</code> report <code>auth_mode:"demo"</code>;
+      the landing card's ENTER DEMO calls <code>POST /auth/demo-login</code>, which mints the standard 8h
+      HS256 session for the seeded <code>demo</code> user (migration 0033: role user, plan pro, read on all
+      datasets — RLS fully applies). The endpoint 404s outside demo mode. In prod the deployment keeps
+      <code>AUTH_MODE=google</code>: the token dispatcher tries the cheap local HS256 decode first and falls
+      through to Google JWKS verification, so the <b>owner door</b> (the "owner sign-in" link on the card)
+      signs in admin_emails with real Google OIDC on the same deployment.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge purple">P2</span> Flag, don't hide + static exhibits</h4>
+      <p>All LLM traffic flows through one module; <code>agent_client.py</code> now opens with a demo guard
+      that 501s <code>not_available_demo</code> from all seven LLM functions — a missed UI gate cannot leak.
+      On top, the <code>DemoGate</code> wrapper renders controls visible-but-inert with the
+      ◆ "Not available — demo only" chip (SQL AI bar, goldens "Draft with agent"). Goldens / Evals / Ops /
+      Admin open read-only for visitors via a new <code>admin_or_demo_read</code> dependency on exactly 12
+      GET endpoints — every write keeps <code>require_admin</code>. The migrate job also gained
+      <code>seed_goldens.py</code>: the version-controlled goldens pack now imports on every deploy and
+      every <code>make up</code> (32 cases), closing the dev→prod content gap you flagged.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge purple">P2.5</span> First-party analytics</h4>
+      <p>The existing <code>track()</code> beacon now stamps every event with an anonymous
+      <code>visitor_id</code> (localStorage <code>crypto.randomUUID()</code>; sessionStorage session id was
+      already there). New events: <code>demo_landing_view</code>, <code>demo_enter_click</code>,
+      <code>page_view {tab}</code>, <code>chip_click</code>. <code>routers/analytics.py</code> aggregates on
+      the admin_ro engine (uniques, returning = ids seen &gt;1 day, funnel, daily, top questions, sessions)
+      for the new admin-only <b>Analytics tab</b> — never visible to visitors, in dev and prod alike.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge purple">P3+P4</span> Guardrails &amp; the infra diet</h4>
+      <p>Per-IP sliding windows (ask/sql 10/min, events 60/min + 2KB payload cap), a global 20-in-flight
+      concurrency gate (503 <code>demo_full</code>), an in-process janitor deleting demo conversations
+      older than 24h (events/query_runs kept — they ARE the analytics), and friendly frontend copy for
+      every limit. The SQL editor's governed executor was <b>ported into backend-api</b>
+      (<code>sql_exec.py</code> + a verbatim copy of the agent's <code>sql_guardrails.py</code>, sqlglot AST
+      layer included, tighter 5s/500-row demo caps) — which is what lets Terraform's new
+      <code>demo_mode</code> variable delete the data-agent service (count 0), blank <code>AGENT_URL</code>,
+      and skip its alarm, while everything else stays intact.</p>
+    </div>
+    <div class="card info">
+      <h4>Dev/prod parity, enforced</h4>
+      <p>Same images, same frontend bundle; demo is a runtime flag read from <code>/auth/config</code>.
+      13 new unit tests pin the contract (choke point 501s, fuzzy resolution, honest misses, rate windows,
+      demo-login 404 when off) and <code>make demo-smoke</code> runs 21 end-to-end checks against a live
+      demo stack. Full <code>make smoke</code> still passes in dev mode — live LLM behaviour unchanged.</p>
+    </div>
+  </div>
+</section>
+
+<section id="files">
+  <h2><span class="num">03</span>Every change, by file</h2>
+  <h3>Backend (services/backend-api)</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td><code>app/demo_replay.py</code> <span class="badge good">NEW</span></td><td>The replay engine: pack loading, blended fuzzy scorer, honest-miss answer, paced SSE frame synthesis.</td></tr>
+      <tr><td><code>app/demo_pack/*.json</code> <span class="badge good">NEW</span></td><td>8 recorded runs (question, answer, SQL, trace, report pages) — version-controlled, ships in the image.</td></tr>
+      <tr><td><code>app/sql_exec.py</code> <span class="badge good">NEW</span></td><td>Governed executor port: agent_ro/admin_ro engines, RLS context, SET LOCAL timeout, row cap, catalog introspection (visitor-scoped to marts/staging).</td></tr>
+      <tr><td><code>app/sql_guardrails.py</code> <span class="badge good">NEW</span></td><td>Verbatim copy of the agent's guardrails (regex + sqlglot AST + forbidden functions); sqlglot added to deps.</td></tr>
+      <tr><td><code>app/routers/analytics.py</code> <span class="badge good">NEW</span></td><td>Admin-only rollups: totals, funnel, daily, top events/questions, recent sessions — on admin_ro.</td></tr>
+      <tr><td><code>app/config.py</code></td><td>Demo settings block: flag, username, fuzzy threshold, concurrency, per-IP limits, demo SQL caps, agent_ro URL, origin-verify secret.</td></tr>
+      <tr><td><code>app/auth.py</code></td><td>Demo token dispatch (HS256 first, Google fallthrough), cookie acceptance in demo, <code>admin_or_demo_read</code>.</td></tr>
+      <tr><td><code>app/routers/auth.py</code></td><td><code>auth_config</code> demo branch (client_id rides along for the owner door); <code>/auth/demo-login</code>; shared <code>_session_for</code> refactor.</td></tr>
+      <tr><td><code>app/routers/ask.py</code></td><td>Demo branches in <code>run_question</code> + <code>/ask/stream</code> (replay, skip LLM cap, skip retitle); <code>demo_matched_question</code> on AskResponse; per-IP limits; <code>GET /demo/questions</code>.</td></tr>
+      <tr><td><code>app/agent_client.py</code></td><td>The choke point: <code>_demo_blocked()</code> at the top of all 7 LLM functions → 501 <code>not_available_demo</code>.</td></tr>
+      <tr><td><code>app/routers/sql.py</code></td><td>Demo: run via local executor, AI assist 501s early, catalog served locally; route/helper split (<code>execute_editor_sql</code>) so the MCP surface keeps its direct call.</td></tr>
+      <tr><td><code>app/limits.py</code></td><td>In-memory per-IP sliding windows (+XFF parsing, idle-window pruning); None-request bypass for key-gated internal callers.</td></tr>
+      <tr><td><code>app/main.py</code></td><td>Concurrency-gate + origin-verify middleware; demo janitor task in lifespan (RLS-context-correct); analytics router registered.</td></tr>
+      <tr><td><code>app/routers/events.py</code></td><td>Per-IP event rate limit + 2KB payload cap in demo; 4 admin list GETs widened to <code>admin_or_demo_read</code>.</td></tr>
+      <tr><td><code>app/routers/goldens.py</code> · <code>evals.py</code> · <code>ops.py</code></td><td>Read endpoints widened to <code>admin_or_demo_read</code> (4+2+2); all writes untouched.</td></tr>
+      <tr><td><code>tests/test_demo_mode.py</code> <span class="badge good">NEW</span></td><td>13 tests: choke point on/off, resolution + misses, replay frames, rate windows, doors.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Frontend</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td><code>src/lib/api.ts</code></td><td>visitor_id minting + on every <code>track()</code>; <code>demoLogin</code>/<code>getDemoQuestions</code>/<code>getAnalyticsSummary</code>; AuthConfig + AskResult types; friendly messages for <code>demo_full</code>/<code>demo_rate_limited</code>/<code>not_available_demo</code>.</td></tr>
+      <tr><td><code>src/lib/auth.ts</code></td><td><code>loginDemo()</code>, <code>isDemoMode()</code>; Google button renders in demo too (the owner door).</td></tr>
+      <tr><td><code>src/app/Login.tsx</code></td><td>Demo card branch: chips, ENTER DEMO, fine print, owner sign-in reveal; landing pre-warm + <code>demo_landing_view</code>.</td></tr>
+      <tr><td><code>src/app/App.tsx</code></td><td>demo auth mode; chip-rail fetch; route guard lets visitors into exhibits but never Analytics; <code>page_view</code> tracking; Analytics route.</td></tr>
+      <tr><td><code>src/app/NavRail.tsx</code> · <code>MobileNav.tsx</code></td><td>Analytics view (adminStrict); nav shows adminOnly exhibits to demo visitors.</td></tr>
+      <tr><td><code>src/features/chat/ChatPage.tsx</code></td><td>Demo chips replace static suggestions (with <code>chip_click</code> events); "closest recorded answer" note on fuzzy matches.</td></tr>
+      <tr><td><code>src/features/sql/SqlEditor.tsx</code> · <code>goldens/GoldensPage.tsx</code></td><td>AI bar and "Draft with agent" wrapped in DemoGate.</td></tr>
+      <tr><td><code>src/ui/DemoGate.tsx</code> <span class="badge good">NEW</span></td><td>"Flag, don't hide": visible-inert wrapper + ◆ chip with the full-sentence tooltip.</td></tr>
+      <tr><td><code>src/features/analytics/AnalyticsPage.tsx</code> <span class="badge good">NEW</span></td><td>The dashboard: HudBox KPI row, funnel bars, daily bars, top questions, recent sessions; 7/14/30d windows, 60s auto-refresh.</td></tr>
+      <tr><td><code>src/styles.css</code></td><td>Demo chips/button/fine-print, DemoGate + match-note, analytics funnel/daily styles.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Data, scripts, infra</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td><code>services/db-migrate/…/0033_demo_user.py</code> <span class="badge good">NEW</span></td><td>Seeds the shared walk-in identity (user, plan pro, read on all datasets). Idempotent.</td></tr>
+      <tr><td><code>services/db-migrate/seed_goldens.py</code> <span class="badge good">NEW</span></td><td>Imports <code>evals/cases/*.yaml</code> into <code>app.eval_cases</code> on every migrate run (32 cases) — the dev→prod content pipeline. Non-fatal by design.</td></tr>
+      <tr><td><code>scripts/demo_pack.py</code> <span class="badge good">NEW</span></td><td>The recorder's other half: <code>list</code> candidate runs, <code>export --runs/--latest</code> into the pack, <code>show</code>.</td></tr>
+      <tr><td><code>scripts/demo_smoke.py</code> <span class="badge good">NEW</span></td><td>21 end-to-end demo checks (door, replay, fuzzy, miss, executor, guard 501s, exhibits, 403s, beacon, 429).</td></tr>
+      <tr><td><code>Makefile</code></td><td><code>make demo-up</code> / <code>make dev-up</code> / <code>make demo-smoke</code>.</td></tr>
+      <tr><td><code>docker-compose.yml</code></td><td><code>DEMO_MODE</code> passthrough + <code>AGENT_RO_DATABASE_URL</code> for the local executor.</td></tr>
+      <tr><td><code>infra/terraform/foundations</code></td><td><code>var.demo_mode</code>: data-agent service count 0, its alarm count 0, <code>AGENT_URL</code> blanked, <code>DEMO_MODE</code> env, output made safe. <code>terraform validate</code> passes.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="howto">
+  <h2><span class="num">04</span>How to drive it</h2>
+  <div class="cards c2">
+    <div class="card">
+      <h4>Local</h4>
+      <pre>make demo-up      # backend flips to demo (frontend unchanged)
+make demo-smoke   # 21 end-to-end checks
+make dev-up       # back to full dev — LLM, agent, everything</pre>
+      <p>The stack is left in <b>dev mode</b> right now. Chat replay, chips, DemoGate, exhibits and the
+      capacity/rate errors are all runtime — no rebuild to flip.</p>
+    </div>
+    <div class="card">
+      <h4>Re-recording the pack</h4>
+      <pre>· ask the questions in dev (any surface, LLM on)
+uv run python scripts/demo_pack.py list
+uv run python scripts/demo_pack.py export --runs id1,id2
+uv run python scripts/demo_pack.py show   # then commit</pre>
+      <p>Free-text misses on the Analytics tab are the shopping list for what to record next.</p>
+    </div>
+    <div class="card warn">
+      <h4>Deploying demo prod (when you choose to)</h4>
+      <pre># infra/terraform/foundations/terraform.tfvars
+demo_mode  = true
+db_max_acu = 1</pre>
+      <p>Merge → the normal deploy runs. First demo deploy destroys the data-agent App Runner service (the
+      ~$25–35/mo idle line). The owner door is Google sign-in via "owner sign-in" on the landing card,
+      restricted to <code>admin_emails</code>. <b>Do a Cost Explorer check a few days after.</b></p>
+    </div>
+    <div class="card">
+      <h4>Verification record</h4>
+      <ul>
+        <li><b>Demo smoke: 21/21</b> against the live demo stack</li>
+        <li><b>Full smoke (dev mode, live DeepSeek): PASSED</b> after the changes — no regression</li>
+        <li><b>Unit: 64 passed</b> (13 new) · mypy strict clean · ruff clean · tsc clean</li>
+        <li><b>terraform validate</b> clean with the demo_mode wiring</li>
+        <li><b>Browser-verified</b>: landing → enter → chip → replay stream → report → SQL run (22ms) →
+        exhibits → Analytics tab (screenshots above)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="deviations">
+  <h2><span class="num">05</span>Deviations from the s38 plan &amp; honest follow-ups</h2>
+  <div class="cards c2">
+    <div class="card">
+      <h4>Deviations (each deliberate)</h4>
+      <ul>
+        <li><b>Nightly reset → in-process janitor.</b> No EventBridge/ECS job: demo pins one instance, so a
+        process task is already a singleton — and dev gets the same behaviour free. Keeps events +
+        query_runs (they are the analytics); deletes only demo conversations &gt;24h.</li>
+        <li><b>Analytics tab is plain React, not report-engine page objects.</b> Faster and clearer for an
+        internal dashboard; the dogfood version remains a nice later polish.</li>
+        <li><b>Origin-verify middleware is built but not wired in Terraform.</b> Verifying origin headers
+        requires CloudFront in front of the API — which this stack doesn't have (browsers call App Runner
+        directly; the s29 P1-B "/api/* behaviour" upgrade is the prerequisite). The middleware activates
+        the moment <code>ORIGIN_VERIFY_SECRET</code> is set.</li>
+        <li><b>Owner door is a reveal on the landing card, not a separate /login route</b> — same effect,
+        less routing surface.</li>
+      </ul>
+    </div>
+    <div class="card warn">
+      <h4>Known follow-ups (not blocking)</h4>
+      <ul>
+        <li><b>Shared sidebar:</b> all visitors share the demo user, so they see each other's (anonymous)
+        conversation titles until the janitor sweeps. Options later: per-session filtering, or embrace it
+        as "what others asked".</li>
+        <li><b>DemoGate coverage:</b> the two prominent LLM controls are chipped; other admin write buttons
+        in the exhibits rely on server 403s and could get chips for polish.</li>
+        <li><b>cloud_smoke.sh</b> needs its demo variant before a demo_mode=true deploy (the current one
+        logs in via Google-mode flows); <code>demo_smoke.py</code> already accepts <code>SMOKE_API_URL</code>
+        so wiring it is small.</li>
+        <li><b>Deploy workflow still builds the agent image</b> in demo mode — harmless, skippable later.</li>
+        <li><b>Playwright e2e</b> not extended with a demo journey yet.</li>
+        <li><b>Pack pages are summary-heavy</b> (recorded runs completed 1–2 pages each); re-record any
+        question after agent improvements and the replay upgrades itself.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note okay"><b>Cost effect when deployed:</b> the demo profile removes the data-agent service
+  (~$25–35/mo), zeroes LLM spend, halves the Aurora ceiling, and bounds the attack worst case at one
+  0.25vCPU instance + 1 ACU — the ~$36–66 → ~$8–18/mo story from s38, now one tfvars flip away.</div>
+</section>
+
+<footer>
+  <p>s39 · demo-mode build walkthrough · branch <code>demo-mode</code>, uncommitted by design — say the
+  word (or run /no-mistakes) to gate, commit and PR. Plan: <code>.lavish/s38_demo-mode-prod-plan.html</code>.</p>
+</footer>
+
+</div>
+</body>
+</html>

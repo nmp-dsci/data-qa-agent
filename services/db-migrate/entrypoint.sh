@@ -12,4 +12,7 @@ alembic upgrade head
 echo "==> rotating role passwords (if provided)"
 python seed_data.py
 
+echo "==> importing goldens pack (idempotent)"
+python seed_goldens.py
+
 echo "==> Migration complete."

@@ -45,6 +45,7 @@ import {
 } from "../../lib/api";
 import { ObjectBody } from "../../report-engine/PageLayout";
 import { Annunciator, Annunciators } from "../../ui/flightdeck";
+import { DemoGate } from "../../ui/DemoGate";
 import { BuilderFilter } from "./BuilderFilter";
 import { GraderEditor } from "./GraderEditor";
 import { graderColumns, graderIssue, pruneGrader } from "./graderSpec";
@@ -2884,31 +2885,36 @@ export function GoldensPage({
             </div>
             )}
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                data-testid="builder-build"
-                style={{
-                  ...btn(busy !== "build" && !buildBlocker),
-                  background: "rgba(120,160,255,0.22)",
-                  borderColor: "rgba(120,160,255,0.6)",
-                  fontWeight: 600,
-                }}
-                onClick={() => void buildObject()}
-                disabled={busy === "build" || !!buildBlocker}
-                title={
-                  previewEditId
-                    ? "Rebuild this object from the options above and update the same card in place"
-                    : "Build the object and place it at the chosen page/column"
-                }
-              >
-                {busy === "build"
-                  ? previewEditId
-                    ? "Updating…"
-                    : "Building…"
-                  : previewEditId
-                    ? "↻ Update object"
-                    : "＋ Build object"}
-              </button>
+              {/* Build runs agent_client.build_object — an LLM call, blocked
+                  server-side with 501 not_available_demo in demo mode. Flag,
+                  don't hide (s38), same as the AI bar and "Draft with agent". */}
+              <DemoGate>
+                <button
+                  type="button"
+                  data-testid="builder-build"
+                  style={{
+                    ...btn(busy !== "build" && !buildBlocker),
+                    background: "rgba(120,160,255,0.22)",
+                    borderColor: "rgba(120,160,255,0.6)",
+                    fontWeight: 600,
+                  }}
+                  onClick={() => void buildObject()}
+                  disabled={busy === "build" || !!buildBlocker}
+                  title={
+                    previewEditId
+                      ? "Rebuild this object from the options above and update the same card in place"
+                      : "Build the object and place it at the chosen page/column"
+                  }
+                >
+                  {busy === "build"
+                    ? previewEditId
+                      ? "Updating…"
+                      : "Building…"
+                    : previewEditId
+                      ? "↻ Update object"
+                      : "＋ Build object"}
+                </button>
+              </DemoGate>
               {/* Placement: editing updates the same card in place; a new object
                   lands exactly where the curator picks (not a fixed slot). */}
               {previewEditId ? (
@@ -3123,19 +3129,21 @@ export function GoldensPage({
           <div
             style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
           >
-            <button
-              type="button"
-              style={{
-                ...btn(busy !== "draft"),
-                background: "rgba(120,160,255,0.18)",
-                borderColor: "rgba(120,160,255,0.6)",
-                fontWeight: 600,
-              }}
-              onClick={() => void draftWithAgent()}
-              disabled={busy === "draft"}
-            >
-              {busy === "draft" ? "Drafting…" : "✨ Draft with agent (first pass)"}
-            </button>
+            <DemoGate>
+              <button
+                type="button"
+                style={{
+                  ...btn(busy !== "draft"),
+                  background: "rgba(120,160,255,0.18)",
+                  borderColor: "rgba(120,160,255,0.6)",
+                  fontWeight: 600,
+                }}
+                onClick={() => void draftWithAgent()}
+                disabled={busy === "draft"}
+              >
+                {busy === "draft" ? "Drafting…" : "✨ Draft with agent (first pass)"}
+              </button>
+            </DemoGate>
             <span style={busy === "draft" ? { ...label, opacity: 0.95 } : label}>
               {busy === "draft"
                 ? `▷ ${draftStatus || "working…"}`

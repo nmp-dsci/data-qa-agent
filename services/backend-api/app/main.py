@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import text
 
 from .tracing import RequestIdMiddleware, instrument_app
@@ -20,12 +22,14 @@ from .tracing import configure as configure_tracing
 # ahead of it. instrument_fastapi comes later, once the routes exist.
 configure_tracing()
 
+from . import demo_replay  # noqa: E402
 from .config import settings  # noqa: E402 — after configure_tracing, by design
 from .db import engine, rls_connection  # noqa: E402
 from .explore.manifest import ManifestError, validate_manifest  # noqa: E402
 from .mcp_surface import McpPathNormalizer, build_mcp_app  # noqa: E402
 from .routers import (  # noqa: E402
     admin_config,
+    analytics,
     ask,
     auth,
     evals,
@@ -49,6 +53,43 @@ log = logging.getLogger("uvicorn.error")
 _mcp_inner, mcp_gate = build_mcp_app()
 
 
+# s38 P3: the demo janitor. Every visitor shares one demo user, so their chat
+# residue accumulates; this clears conversations/messages older than a day.
+# Events and query_runs are deliberately KEPT — they are the analytics tab's
+# raw material (uniques, funnel, top questions) and are rate/size-capped at
+# write time instead. In-process rather than an EventBridge/ECS job: demo
+# deployments pin one instance, so a process task IS a singleton, and dev gets
+# the same behaviour for free.
+_DEMO_RESET_INTERVAL_S = 6 * 3600
+
+
+async def _demo_reset_loop() -> None:
+    while True:
+        try:
+            # RLS trap: an empty user context sees (and deletes) ZERO rows, so
+            # the janitor must run AS the demo user — look the id up first
+            # (app.users itself has no RLS) and delete inside that context.
+            async with rls_connection(None) as conn:
+                demo_id = (
+                    await conn.execute(
+                        text("SELECT id FROM app.users WHERE username = :u"),
+                        {"u": settings.demo_username},
+                    )
+                ).scalar()
+            if demo_id is not None:
+                async with rls_connection(str(demo_id)) as conn:
+                    await conn.execute(
+                        text(
+                            "DELETE FROM app.conversations WHERE user_id = :uid "
+                            "AND created_at < now() - interval '24 hours'"
+                        ),
+                        {"uid": str(demo_id)},
+                    )
+        except Exception as exc:  # noqa: BLE001 — janitor failure must never kill the app
+            log.warning("demo reset skipped: %s", exc)
+        await asyncio.sleep(_DEMO_RESET_INTERVAL_S)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Explore manifest check: fail loudly if a declared dim/metric drifted from an
@@ -66,8 +107,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # session manager lives in exactly that lifespan — so mounting alone gives a
     # surface that imports fine, starts fine, and then fails on the first tool
     # call. Driving it from here is the whole cost of folding this service in.
+    if settings.demo_mode:
+        # Parse the pack once, off the event loop, before the first request
+        # rather than lazily on it — load_pack() is lru_cache'd so this is the
+        # only disk read that will ever happen, but doing it here means even
+        # the very first /ask never pays that cost inline.
+        await asyncio.to_thread(demo_replay.load_pack)
+    reset_task = asyncio.create_task(_demo_reset_loop()) if settings.demo_mode else None
     async with _mcp_inner.router.lifespan_context(_mcp_inner):
         yield
+    if reset_task is not None:
+        reset_task.cancel()
     await engine.dispose()
 
 
@@ -87,6 +137,97 @@ app.add_middleware(RequestIdMiddleware)
 # s36: outermost, so /mcp is rewritten to the mount's path before routing ever
 # reaches redirect_slashes. See McpPathNormalizer.
 app.add_middleware(McpPathNormalizer)
+
+# ---------------------------------------------------------------------------
+# s38 P3: demo-mode guardrails.
+#
+# Concurrency gate — a global in-flight ceiling on the governed surfaces
+# (ask / sql / explore / profile). The 21st concurrent request gets a clean
+# 503 demo_full the frontend turns into "the demo is at capacity"; combined
+# with App Runner max-instances=1 this makes the worst-case attack bill a
+# fixed number instead of an autoscaling one. Health and static-config paths
+# are exempt so monitoring never queues behind visitors.
+#
+# Origin cloaking — when ORIGIN_VERIFY_SECRET is set, any request that didn't
+# carry the matching X-Origin-Verify header is refused, closing the public
+# App Runner URL as a bypass route around a fronting CDN. NOT WIRED YET
+# (ultrareview, s38): CloudFront in this stack (frontend.tf) only fronts the
+# static frontend bucket, not this API's App Runner service, and no Terraform
+# resource ever generates/sets this secret — it is permanently empty today, so
+# this check is a no-op and the raw App Runner URL is directly reachable. Real
+# origin-cloaking needs an App Runner-backed CloudFront distribution in front
+# of the API first (tracked: s29 P1-B); until then, the demo's abuse ceiling
+# is the per-IP rate limits + concurrency gate below, not this header.
+# "/health" stays open for App Runner's own health checks.
+# ---------------------------------------------------------------------------
+_GATED_PREFIXES = ("/ask", "/sql", "/explore", "/profile", "/demo")
+# A hand-rolled counter (not asyncio.Semaphore) for two reasons: (1) the
+# check-then-acquire has to be atomic under an asyncio.Lock, whereas
+# Semaphore.locked() followed by a separate acquire() is two steps with a gap
+# a burst of concurrent requests can slip through — they'd see locked()==False
+# and then queue on acquire() instead of getting the intended fast 503; and
+# (2) the slot must stay held for the lifetime of a StreamingResponse body
+# (the flagship /ask/stream surface), not just until call_next() returns the
+# initial response, or SSE streams pile up past demo_max_concurrency invisibly.
+_demo_lock = asyncio.Lock()
+_demo_inflight = 0
+
+
+async def _try_acquire_demo_slot() -> bool:
+    global _demo_inflight
+    async with _demo_lock:
+        if _demo_inflight >= settings.demo_max_concurrency:
+            return False
+        _demo_inflight += 1
+        return True
+
+
+async def _release_demo_slot() -> None:
+    global _demo_inflight
+    async with _demo_lock:
+        _demo_inflight -= 1
+
+
+@app.middleware("http")
+async def _demo_guards(request: Request, call_next: Callable[[Request], Awaitable[Any]]) -> Any:
+    if settings.origin_verify_secret and request.url.path != "/health":
+        if request.headers.get("x-origin-verify") != settings.origin_verify_secret:
+            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    if not settings.demo_mode or not request.url.path.startswith(_GATED_PREFIXES):
+        return await call_next(request)
+    if not await _try_acquire_demo_slot():
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "demo_full"},
+            headers={"Retry-After": "15"},
+        )
+    released = False
+
+    async def _release_once() -> None:
+        nonlocal released
+        if not released:
+            released = True
+            await _release_demo_slot()
+
+    try:
+        response = await call_next(request)
+    except BaseException:
+        await _release_once()
+        raise
+    if isinstance(response, StreamingResponse):
+        original_iterator = response.body_iterator
+
+        async def _tracked_body() -> Any:
+            try:
+                async for chunk in original_iterator:
+                    yield chunk
+            finally:
+                await _release_once()
+
+        response.body_iterator = _tracked_body()
+        return response
+    await _release_once()
+    return response
 
 
 @app.exception_handler(Exception)
@@ -140,6 +281,7 @@ app.include_router(evals.router)
 app.include_router(ops.router)
 app.include_router(integrations.router)
 app.include_router(service_accounts.router)
+app.include_router(analytics.router)
 
 # s36: the MCP front door, mounted rather than run as its own service. The gate
 # wrapper authenticates a dpk_ key pinned to surface='mcp' before the JSON-RPC

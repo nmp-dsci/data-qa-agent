@@ -8,10 +8,24 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, cast
 
 import httpx
+from fastapi import HTTPException
 
 from .config import settings
 
 log = logging.getLogger("uvicorn.error")
+
+# s38 demo mode: this module is the single choke point every LLM call flows
+# through, so the demo guard lives here — one place, impossible to route
+# around from a handler. Each LLM-backed function refuses with 501
+# not_available_demo; the two non-LLM functions (run_sql_on_agent's governed
+# executor and fetch_catalog) are NOT guarded — in demo they are served by the
+# local port in app/sql_exec.py and never reach this module at all.
+
+
+def _demo_blocked() -> None:
+    if settings.demo_mode:
+        raise HTTPException(status_code=501, detail="not_available_demo")
+
 
 # s32 W1: the backend→agent hop had no retry at all, so one dropped connection
 # or one App Runner instance replacement turned into a raw 502 in the user's
@@ -112,6 +126,7 @@ async def ask_agent_stream(
     user is watching. The *connect* failure — nothing streamed yet — is retried
     by the caller instead, which owns the SSE frames and can degrade cleanly.
     """
+    _demo_blocked()
     payload = {
         "question": question,
         "user": {"id": user_id, "role": role, "plan": plan},
@@ -149,6 +164,7 @@ async def ask_agent(
     *, question: str, user_id: str, role: str, plan: str, dataset_slug: str
 ) -> dict[str, Any]:
     """Delegate a question to the data-agent service."""
+    _demo_blocked()
     payload = {
         "question": question,
         "user": {"id": user_id, "role": role, "plan": plan},
@@ -174,6 +190,7 @@ async def ask_agent(
 async def title_agent(question: str) -> str:
     """Ask the data-agent for a 3-5 word conversation title (s17 E1). Short call
     with a tight timeout — the caller treats any failure as "keep the fallback"."""
+    _demo_blocked()
     async with httpx.AsyncClient(timeout=20.0, headers=_headers()) as client:
         resp = await client.post(f"{settings.agent_url}/agent/title", json={"question": question})
         resp.raise_for_status()
@@ -195,6 +212,7 @@ async def prep_golden(
     ``objects`` (s18) are named presentation objects recomputed against the same
     extract, so the Golden Sandbox repopulates built objects on load.
     """
+    _demo_blocked()
     payload = {
         "sql": sql,
         "code": code,
@@ -224,6 +242,7 @@ async def build_object(
     object + its generating code + the (possibly revised) SQL. ``name`` may be
     blank on the NL path — the agent derives a slug from the instruction (s22);
     ``dataset`` selects the mart profile for the deterministic builder (s22 P2)."""
+    _demo_blocked()
     payload = {
         "sql": sql,
         "name": name,
@@ -256,6 +275,7 @@ async def author_object(
     extract, runs it, and returns the revised sql + full pages + the lifted target
     so the Builder keeps SQL/sandbox/data/presentation in sync.
     """
+    _demo_blocked()
     payload = {
         "sql": sql,
         "code": code,
@@ -284,6 +304,7 @@ async def assist_sql_on_agent(
     *, action: str, prompt: str | None, sql: str | None, user_id: str, role: str
 ) -> dict[str, Any]:
     """Ask the data-agent to generate/explain/fix/optimize SQL (Phase C AI assist)."""
+    _demo_blocked()
     payload = {
         "action": action,
         "prompt": prompt,

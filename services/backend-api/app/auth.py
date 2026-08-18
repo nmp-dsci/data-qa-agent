@@ -273,10 +273,25 @@ async def _user_from_credentials(
         if parsed is not None:
             return await _service_account_user(parsed[0], parsed[1], surface)
         if settings.auth_mode == "google":
+            # Demo mode (s38): the walk-in session is the same locally signed
+            # HS256 token the dev stub uses, minted by /auth/demo-login — but a
+            # demo deployment keeps auth_mode=google so the owner door (a
+            # non-advertised Google sign-in for ADMIN_EMAILS) still works.
+            # Dispatch by trying the cheap local decode first: a Google RS256
+            # ID token fails it instantly (alg mismatch), our HS256 token
+            # passes, and neither can impersonate the other — HS256 tokens are
+            # signature-checked against jwt_secret, RS256 against Google's JWKS.
+            if settings.demo_mode:
+                try:
+                    return _dev_user(token)
+                except HTTPException:
+                    pass
             claims = await _google_verifier.verify(token)
             return await _provision_google_user(claims)
         return _dev_user(token)
-    if session_cookie is not None and settings.auth_mode == "dev":
+    if session_cookie is not None and (settings.auth_mode == "dev" or settings.demo_mode):
+        # The cookie is only ever set by dev-login / demo-login, each of which
+        # refuses to run outside its mode — mirror that gate here.
         return _dev_user(session_cookie)
     return None
 
@@ -337,3 +352,17 @@ async def require_admin(user: CurrentUser = Depends(get_current_user)) -> Curren
     if not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     return user
+
+
+async def admin_or_demo_read(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    # Admin, or any signed-in user while the deployment runs in demo mode.
+    #
+    # Used ONLY by read endpoints that back the demo static exhibits (goldens
+    # gallery, evals history, ops deck, admin lists — decision D4: visible but
+    # frozen). Write endpoints keep require_admin unchanged, so a demo visitor
+    # can look at everything and change nothing. RLS still applies to each
+    # query underneath: in a demo deployment all traffic belongs to the one
+    # seeded demo user, so a demo-scoped view IS the whole activity.
+    if user.is_admin or settings.demo_mode:
+        return user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")

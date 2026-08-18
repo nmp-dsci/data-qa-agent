@@ -13,7 +13,12 @@ RUN uv sync --no-dev
 COPY services/db-migrate/alembic.ini ./
 COPY services/db-migrate/migrations ./migrations
 COPY services/db-migrate/seed_data.py ./
+COPY services/db-migrate/seed_goldens.py ./
 COPY services/db-migrate/entrypoint.sh ./
+
+# The version-controlled goldens pack (s38 P1): imported after migrations so
+# every environment's gallery converges on the reviewed cases.
+COPY evals/cases ./evals/cases
 
 # Canonical schema DDL applied by the 0001 baseline revision.
 COPY db/init/01_schema.sql db/init/02_rls.sql db/init/03_seed.sql ./migrations/sql/

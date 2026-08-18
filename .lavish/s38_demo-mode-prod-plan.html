@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s38 · Demo-mode prod — showcase deployment plan</title>
+<style>
+/* Night Flight tokens, lifted from frontend/src/styles.css so this page reads
+   as the same product. Dark is canonical; light mirrors the app's chart-paper. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae; --hud:#35803f;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10); --elev-2:0 8px 24px rgba(50,40,20,.12);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.flex,.cards,.steps)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,dd,td,th,.badge,.chip){overflow-wrap:anywhere}
+:where(img,svg,canvas){max-width:100%}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+.lbl.hud{color:var(--hud)}
+.lbl.warn{color:var(--warn)}
+
+header.hero{padding:56px 0 30px;border-bottom:1px solid var(--border);margin-bottom:34px;
+  position:relative;overflow:hidden}
+header.hero::after{content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+.hero h1{font-size:clamp(30px,4.4vw,46px);line-height:1.08;margin:12px 0 0;
+  font-weight:750;letter-spacing:-.02em;max-width:24ch}
+.hero .kicker{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hero .sub{color:var(--muted);font-size:17px;margin:16px 0 0;max-width:72ch}
+.verdict{margin-top:26px;border:1px solid var(--accent);border-left-width:3px;
+  border-radius:var(--radius-lg);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 9%,var(--panel)),var(--panel));
+  padding:16px 20px;box-shadow:var(--elev-1)}
+.verdict p{margin:6px 0 0;color:var(--text)}
+.verdict .lbl{color:var(--accent-soft)}
+
+section{margin:44px 0}
+h2{font-size:24px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px;
+  display:flex;gap:12px;align-items:baseline}
+h2 .num{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700}
+h3{font-size:16px;font-weight:650;margin:22px 0 8px}
+.sec-sub{color:var(--muted);margin:0 0 18px;max-width:76ch}
+
+.cards{display:grid;gap:14px}
+.cards.c2{grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
+.cards.c3{grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px 18px;box-shadow:var(--elev-1)}
+.card h4{margin:0 0 8px;font-size:14px;font-weight:650;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.card p{margin:6px 0;color:var(--muted);font-size:13.5px}
+.card ul{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:13.5px}
+.card li{margin:3px 0}
+.card.good{border-color:var(--good-border)}
+.card.warn{border-color:var(--warn-border)}
+.card.bad{border-color:var(--bad-border)}
+.card.info{border-color:var(--info-border)}
+
+.badge{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;
+  padding:2px 8px;border-radius:999px;border:1px solid var(--border-2);
+  color:var(--muted);white-space:nowrap}
+.badge.good{color:var(--good);border-color:var(--good-border)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border)}
+.badge.info{color:var(--info);border-color:var(--info-border)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border)}
+.badge.accent{color:var(--accent-soft);border-color:var(--accent)}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel);box-shadow:var(--elev-1)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);text-align:left;
+  padding:10px 14px;border-bottom:1px solid var(--border-2);background:var(--panel-2);
+  white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text)}
+tr:last-child td{border-bottom:none}
+td .sm{color:var(--muted);font-size:12.5px;display:block;margin-top:2px}
+td.num,th.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+
+code,.mono{font-family:var(--mono);font-size:.92em}
+code{background:var(--code-bg);border:1px solid var(--border);border-radius:5px;
+  padding:1px 6px;color:var(--accent-2)}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55;
+  color:var(--text);margin:10px 0}
+pre code{background:none;border:none;padding:0;color:inherit}
+
+.mermaid{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px;box-shadow:var(--elev-1);display:flex;justify-content:center;overflow-x:auto}
+.mermaid svg{max-width:100%;height:auto}
+
+.steps{counter-reset:step;display:grid;gap:12px;margin:16px 0 0;padding:0;list-style:none}
+.steps>li{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:14px 16px 14px 54px;position:relative;box-shadow:var(--elev-1)}
+.steps>li::before{counter-increment:step;content:counter(step);
+  position:absolute;left:14px;top:14px;width:26px;height:26px;border-radius:50%;
+  background:var(--panel-3);border:1px solid var(--accent);color:var(--accent-soft);
+  font-family:var(--mono);font-size:12px;font-weight:700;display:flex;
+  align-items:center;justify-content:center}
+.steps b{font-weight:650}
+.steps .sm{color:var(--muted);font-size:13px;display:block;margin-top:3px}
+
+.phase{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  margin:12px 0;box-shadow:var(--elev-1);overflow:hidden}
+.phase>summary{cursor:pointer;padding:14px 18px;display:flex;gap:12px;align-items:center;
+  flex-wrap:wrap;font-weight:650;list-style:none;user-select:none}
+.phase>summary::-webkit-details-marker{display:none}
+.phase>summary::before{content:"▸";color:var(--accent);font-size:13px;transition:transform .15s}
+.phase[open]>summary::before{transform:rotate(90deg)}
+.phase .body{padding:0 18px 16px;border-top:1px solid var(--border)}
+.phase .body p{color:var(--muted);font-size:13.5px}
+.touch{display:grid;gap:6px;margin:10px 0 0}
+.touch>div{display:grid;grid-template-columns:minmax(0,270px) minmax(0,1fr);gap:10px;
+  font-size:13px;padding:7px 10px;background:var(--panel-2);border:1px solid var(--border);
+  border-radius:var(--radius)}
+.touch code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.touch span{color:var(--muted)}
+@media (max-width:640px){.touch>div{grid-template-columns:1fr}}
+
+.decision{background:var(--panel);border:1px solid var(--purple-border);
+  border-left-width:3px;border-radius:var(--radius-lg);padding:16px 18px;margin:14px 0;
+  box-shadow:var(--elev-1)}
+.decision h4{margin:0 0 4px;font-size:15px;font-weight:650}
+.decision .why{color:var(--muted);font-size:13.5px;margin:0 0 12px}
+.decision label.opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;
+  border:1px solid var(--border);border-radius:var(--radius);margin:8px 0;cursor:pointer;
+  transition:border-color .12s, background .12s}
+.decision label.opt:hover{border-color:var(--border-2);background:var(--panel-2)}
+.decision label.opt:has(input:checked){border-color:var(--purple);background:var(--panel-2)}
+.decision input[type=radio],.decision input[type=checkbox]{margin-top:3px;accent-color:var(--purple)}
+.decision .opt b{font-size:13.5px;font-weight:650;display:block}
+.decision .opt .d{color:var(--muted);font-size:12.5px;display:block;margin-top:1px}
+.decision .qbtn{margin-top:10px;font-family:var(--mono);font-size:12px;font-weight:700;
+  background:var(--panel-3);color:var(--purple);border:1px solid var(--purple-border);
+  border-radius:var(--radius);padding:8px 14px;cursor:pointer}
+.decision .qbtn:hover{border-color:var(--purple)}
+.decision .queued{display:none;margin-left:10px;font-family:var(--mono);font-size:11px;color:var(--good)}
+.decision.answered .queued{display:inline}
+.rec{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.1em;
+  color:var(--accent-ink);background:var(--accent);border-radius:4px;padding:1px 6px;
+  text-transform:uppercase;vertical-align:2px;margin-left:6px}
+
+.note{border:1px solid var(--info-border);border-left-width:3px;border-radius:var(--radius);
+  background:color-mix(in srgb,var(--info) 6%,var(--panel));padding:10px 14px;margin:14px 0;
+  font-size:13.5px;color:var(--muted)}
+.note b{color:var(--text)}
+.danger{border-color:var(--bad-border);background:color-mix(in srgb,var(--bad) 6%,var(--panel))}
+.okay{border-color:var(--good-border);background:color-mix(in srgb,var(--good) 6%,var(--panel))}
+
+.delta-good{color:var(--good);font-weight:700;font-family:var(--mono)}
+.delta-bad{color:var(--bad);font-weight:700;font-family:var(--mono)}
+.strike{text-decoration:line-through;color:var(--faint)}
+.mock-stage{margin:16px 0;padding:44px 20px;border:1px solid var(--border);border-radius:var(--radius-xl);
+  background:radial-gradient(ellipse at 50% -20%,#141a2c 0%,#0a0d15 62%);display:flex;justify-content:center;
+  position:relative;overflow:hidden}
+.mock-stage::before{content:"";position:absolute;inset:0;
+  background-image:linear-gradient(#242b3d 1px,transparent 1px),linear-gradient(90deg,#242b3d 1px,transparent 1px);
+  background-size:44px 44px;opacity:.16;pointer-events:none}
+.mock-card{position:relative;width:min(430px,100%);background:#111522;border:1px solid #333d55;
+  border-radius:14px;padding:32px 30px 24px;box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:center}
+.mock-hud{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.22em;color:#9ece6a;margin-bottom:14px}
+.mock-brand{font-size:31px;font-weight:750;letter-spacing:-.02em;color:#eaecf3}
+.mock-tag{color:#9aa4bb;font-size:13.5px;line-height:1.55;margin:10px 0 16px}
+.mock-chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
+.mock-chips span{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.08em;
+  border:1px solid #333d55;border-radius:999px;padding:3px 10px;color:#9aa4bb;white-space:nowrap}
+.mock-chips span.live{color:#9ece6a;border-color:#33502f}
+.mock-chips span.rec{color:#c58fff;border-color:#5a3a6b}
+.mock-cta{width:100%;background:linear-gradient(180deg,#f2ca79,#d9a84e);color:#1a1204;
+  font-family:var(--mono);font-weight:800;font-size:14px;letter-spacing:.12em;border:none;
+  border-radius:9px;padding:13px 0;cursor:default;box-shadow:0 6px 18px rgba(217,168,78,.25)}
+.mock-fine{color:#7a84a0;font-size:11.5px;line-height:1.6;margin:14px 0 0}
+.mock-fine u{color:#7fb0ff;text-decoration-color:#7fb0ff;text-underline-offset:2px}
+footer{margin-top:60px;border-top:1px solid var(--border);padding-top:18px;
+  color:var(--faint);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">
+    <span class="lbl accent">S38 · Deployment plan</span>
+    <span class="badge">Data Pilot</span>
+    <span class="badge info">prod = demo</span>
+    <span class="badge good">dev = full stack</span>
+  </div>
+  <h1>Demo-mode prod: a zero-login, zero-LLM showcase</h1>
+  <p class="sub">Turn the AWS deployment into a walk-in portfolio demo: an employer clicks a link and lands
+  straight in the app — no login, no cold pitch. The agent's answers are <b>recorded in dev and replayed in
+  prod</b>, so the chat feels alive but never touches an LLM. Explore and the SQL editor stay genuinely live
+  (they never needed an LLM). Capped for 10–20 concurrent visitors with a bounded worst-case bill under attack.
+  Then the same pattern rolls out to every other portfolio app.</p>
+  <div class="verdict">
+    <span class="lbl">Verdict — is it cheaper?</span>
+    <p><b>Yes, roughly 60–70% cheaper (~US$36–66/mo → ~$8–18/mo), but not mainly because of the LLM.</b>
+    DeepSeek was already cheap and daily-capped (~$1–5/mo). The real savings: demo mode lets you
+    <b>delete the data-agent App Runner service</b> (2 vCPU / 4 GB — the single biggest idle line at ~$25–35/mo)
+    and drop its secrets. The bigger win is risk, not dollars: a no-login app with a live LLM has an
+    <b>unbounded</b> abuse bill; a cached demo's worst case is a fixed, capped ceiling. No login + live LLM
+    was never a safe combination — caching is what makes "no login" possible at all.</p>
+  </div>
+</header>
+
+<section id="goal">
+  <h2><span class="num">01</span>Goal, current state, target</h2>
+  <div class="cards c3">
+    <div class="card">
+      <h4><span class="badge">Now</span> Live prod, login-gated</h4>
+      <ul>
+        <li>Google-only sign-in (tokens die ~1h, no session persistence) — an employer bounces at the login card</li>
+        <li>data-agent (2 vCPU/4GB) + DeepSeek answer every question live: 95s+ per answer in prod</li>
+        <li>Aurora Serverless v2 min-0: first visitor waits ~30s with zero feedback (s29, unfixed)</li>
+        <li>Per-user daily LLM caps in <code>limits.py</code> guard spend — but only behind auth</li>
+      </ul>
+    </div>
+    <div class="card info">
+      <h4><span class="badge info">Target</span> Demo prod</h4>
+      <ul>
+        <li>Land straight in the app as a seeded read-only demo user — zero clicks to first chart</li>
+        <li>Chat replays curated recorded runs (full agent trace + report pages) — instant, $0, impressive</li>
+        <li>Explore + SQL editor stay <b>live</b> against real marts (~3.2M rows) — no LLM involved</li>
+        <li>Concurrency- and rate-capped; worst-case attack bill is a fixed ceiling</li>
+      </ul>
+    </div>
+    <div class="card good">
+      <h4><span class="badge good">Kept</span> Dev unchanged</h4>
+      <ul>
+        <li><code>make up</code> stays the full stack: real LLM, real agent, all functionality</li>
+        <li>One env var (<code>DEMO_MODE</code>) separates the two — no forked codebase</li>
+        <li>Dev is also where you <b>record</b> the demo pack: ask the showcase questions, export the runs</li>
+        <li>Pattern extracts to a checklist for every other portfolio app</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="mechanic">
+  <h2><span class="num">02</span>The core mechanic: record in dev, replay in prod</h2>
+  <p class="sec-sub">Everything needed already exists. Every <code>/ask</code> persists its full trace and
+  finished report pages to <code>app.query_runs</code> (the same rows <code>scripts/inspect_run.py</code> reads),
+  and the frontend already renders <b>stored page objects</b> through one report engine (s20 — with an
+  object-parity CI gate). So a demo answer is just a recorded run replayed through the pipe the UI already
+  trusts. No new rendering path, no fake screenshots.</p>
+  <pre class="mermaid">
+flowchart LR
+  subgraph DEV["Dev — full stack, LLM on"]
+    direction TB
+    Q["You ask the showcase questions"] --> AG["data-agent + DeepSeek"]
+    AG --> QR[("app.query_runs<br/>full trace + report pages")]
+    QR --> EX["scripts/demo_pack.py export"]
+  end
+  EX --> PACK["demo/pack/*.json<br/>version-controlled"]
+  PACK --> IMG["baked into backend image on deploy"]
+  subgraph PROD["Demo prod — no LLM, no agent"]
+    direction TB
+    IMG --> MEM["loaded into memory at boot"]
+    VIS["Visitor picks a question"] --> STREAM["/ask/stream replays SSE frames, paced"]
+    MEM --> STREAM
+    STREAM --> UI["same report engine renders the pages"]
+  end
+  </pre>
+  <div class="cards c2" style="margin-top:14px">
+    <div class="card">
+      <h4>Replay, not static screenshots</h4>
+      <p>The stored trace contains the agent's plan and page frames. In demo mode <code>/ask/stream</code>
+      re-emits those SSE frames with condensed pacing (~5–10s total instead of 95s), so the visitor
+      <b>watches the agent think</b> — plan appears, ghost placeholders fill in, charts land one by one.
+      That's the product's best moment, and it costs nothing. Each answer keeps its "view SQL" link (s19),
+      so a technical interviewer can open the actual query.</p>
+    </div>
+    <div class="card good">
+      <h4>Cold-start immunity for the flagship surface</h4>
+      <p>Because the pack is loaded into backend memory at boot, <b>chat replay never touches Aurora</b>.
+      A visitor arriving at a scaled-to-zero database still gets instant demo answers while the warehouse
+      wakes in the background for Explore/SQL. The s29 cold-start hang stops being the first impression.</p>
+    </div>
+  </div>
+  <h3>Curation flow (reuses s21/s27 muscle)</h3>
+  <ol class="steps">
+    <li><b>Ask the showcase set in dev</b> — ~10–15 questions across the T1–T7 ladder (growth suburbs, yield by region, rent vs sales combos…). The best of the 30 golden drafts are the natural shortlist.<span class="sm">Full LLM, full agent — the only place tokens are spent.</span></li>
+    <li><b>Tag the keepers</b> — the s21 ★ from-run promotion chip already marks a run as showcase-worthy; <code>demo_pack.py export</code> pulls tagged runs (question, trace frames, pages, SQL) into <code>demo/pack/</code>.<span class="sm">Mirror of <code>eval_pack.py</code> — repo is source of truth, same as goldens.</span></li>
+    <li><b>Commit and deploy</b> — the pack ships inside the backend image; re-record any time the product or data changes.<span class="sm">The s20 object-parity gate already fails CI if stored pages drift from what the engine can render.</span></li>
+  </ol>
+  <div class="note"><b>Yes — this is new plumbing (your annotation is correct):</b> until now, nothing
+  authored in dev shipped to prod except code and the marts pipeline. Curated goldens live in each
+  environment's own DB — the version-controlled eval pack exists, but no deploy step imports it into prod —
+  and recorded answers (<code>app.query_runs</code>) never left dev at all. P1 makes dev-authored content a
+  first-class deploy artifact: the demo pack bakes into the backend image, and the deploy workflow gains a
+  goldens <code>eval-import</code> step so prod's read-only gallery shows the same curated set as dev.</div>
+</section>
+
+<section id="surfaces">
+  <h2><span class="num">03</span>Surface-by-surface: what a visitor gets</h2>
+  <p class="sec-sub">The principle: anything LLM-backed is replayed; anything deterministic stays live —
+  live surfaces are the proof this is a real working app, not a video.</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Surface</th><th>Demo behavior</th><th>Mode</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><b>Chat</b><span class="sm">features/chat</span></td>
+        <td>Suggested-question chips fed from the pack; picked question streams the recorded run. Free text fuzzy-matches to the nearest recorded answer with a small "closest recorded answer" note <span class="badge purple">D1 LOCKED</span>.</td>
+        <td><span class="badge purple">REPLAY</span></td>
+        <td>The LLM surface — the thing being cached.</td></tr>
+      <tr><td><b>Explore</b><span class="sm">features/explore</span></td>
+        <td>Fully live profiling over real marts, all charts → SQL links intact.</td>
+        <td><span class="badge good">LIVE</span></td>
+        <td>Deterministic SQL, no LLM. Already fast post-RLS fix (0.8s).</td></tr>
+      <tr><td><b>SQL editor</b><span class="sm">features/sql</span></td>
+        <td>Live read-only queries under RLS with a 5s statement timeout + row cap; AI-generate stays <b>visible but disabled</b> with a ◆ demo-only chip <span class="badge purple">D2 LOCKED</span>.</td>
+        <td><span class="badge good">LIVE</span></td>
+        <td>Strongest "this is real" signal for technical reviewers; governed role already exists.</td></tr>
+      <tr><td><b>Goldens</b><span class="sm">features/goldens</span></td>
+        <td>Read-only gallery — curated goldens render as reports; builder/curation hidden.</td>
+        <td><span class="badge info">READ-ONLY</span></td>
+        <td>Shows the eval-loop craft without write access.</td></tr>
+      <tr><td><b>Ops deck</b><span class="sm">features/ops</span></td>
+        <td>Read-only — <b>included</b> <span class="badge purple">D4 LOCKED</span>.</td>
+        <td><span class="badge info">READ-ONLY</span></td>
+        <td>A differentiator almost no portfolio has.</td></tr>
+      <tr><td><b>Evals / Admin</b></td>
+        <td>Shown as <b>static read-only exhibits</b>: seeded runs, graders and users render normally; every control is inert with a ◆ demo-only chip; all mutations 403 server-side.</td>
+        <td><span class="badge info">STATIC</span></td>
+        <td>Per your annotation — visible-but-frozen beats hidden: more craft on display, still zero write path.</td></tr>
+      <tr><td><b>Settings</b><span class="sm">features/settings</span></td>
+        <td>Theme switcher only — visitors can flip the three s17 themes; account/config controls inert with the ◆ demo-only chip.</td>
+        <td><span class="badge good">LIVE</span></td>
+        <td><span class="badge purple">D4 LOCKED</span> — fun, harmless, shows design range.</td></tr>
+      <tr><td><b>Slack / MCP / service accounts</b><span class="sm">s35–s37 surfaces</span></td>
+        <td>Untouched — both are key-gated already (<code>dpk_</code> keys), no anonymous path in.</td>
+        <td><span class="badge">KEY-GATED</span></td>
+        <td><b>Cost saving here? Effectively none to capture</b> — they ride the backend service (no dedicated infra), so they cost $0 idle either way. Their only spend was per-answer LLM calls, which the removed DeepSeek key already zeroes. In demo they simply go dormant; keys can stay for your own testing.</td></tr>
+      <tr><td><b>Login card</b><span class="sm">app/Login.tsx</span></td>
+        <td>Becomes the <b>landing page</b>: the cockpit card stays, but its CTA is <b>ENTER DEMO</b> — one click, no account. The card fires <code>/health/db</code> on mount, so Aurora starts waking while the visitor reads the pitch. Mock below.</td>
+        <td><span class="badge purple">LANDING</span></td>
+        <td>Your annotation — a deliberate front door frames the demo, and reading time hides the DB wake (the s29 front-load trick for free).</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note okay"><b>Demo convention — flag, don't hide (your annotation):</b> anywhere the LLM
+  doesn't work in prod, the control stays <b>visible but inert</b>, wearing a small ◆ demo-only chip whose
+  label is exactly <b>"Not available — demo only"</b> (tooltip: "runs a live LLM in the full build — this
+  demo replays recorded answers; everything works in dev"). One shared
+  <code>DemoGate</code> wrapper component in the frontend + server-side 403s underneath. In dev everything
+  works exactly as today — same build, one flag. Side benefit: visitors see the full product surface, not a
+  trimmed one.</div>
+
+  <h3>Dev/prod parity contract — every LLM call site, controlled</h3>
+  <p class="sec-sub">Your question — "same UI as dev, LLM calls say Not available — demo only" — made
+  systematic. All LLM traffic already funnels through <b>one module</b>, <code>agent_client.py</code>; this
+  is its complete function inventory (verified by grep, not memory), each with an explicit demo behavior.
+  Nothing else in the backend can reach an LLM.</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>agent_client fn</th><th>Surface</th><th>LLM?</th><th>Demo behavior</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">ask_agent / ask_agent_stream</td><td>Chat <code>/ask</code>, <code>/ask/stream</code> (+ Slack, MCP)</td><td><span class="badge bad">YES</span></td><td>Replayed from the pack; free text fuzzy-matched (D1). Slack/MCP go dormant.</td></tr>
+      <tr><td class="mono">title_agent</td><td>Conversation titles (+ <code>backfill_titles.py</code>)</td><td><span class="badge bad">YES</span></td><td>Skipped — the pack question is the title verbatim.</td></tr>
+      <tr><td class="mono">assist_sql_on_agent</td><td>SQL editor AI assist (generate/explain/fix/optimize)</td><td><span class="badge bad">YES</span></td><td>◆ demo-only chip; server returns 501 <code>not_available_demo</code>.</td></tr>
+      <tr><td class="mono">prep_golden</td><td>Golden curation analysis</td><td><span class="badge bad">YES</span></td><td>Static exhibit — control inert + chip; 501 underneath.</td></tr>
+      <tr><td class="mono">build_object</td><td>Structured builder preview (s30)</td><td><span class="badge bad">YES</span></td><td>Chip + 501.</td></tr>
+      <tr><td class="mono">author_object</td><td>"New object with AI" (s22)</td><td><span class="badge bad">YES</span></td><td>Chip + 501.</td></tr>
+      <tr><td class="mono">run_sql_on_agent</td><td>SQL editor execute · chart→SQL links</td><td><span class="badge good">NO</span></td><td><b>Stays fully live</b> — it's the governed executor (SELECT-only validation, read-only role, timeout, row cap), no LLM. Ported into backend-api so the agent service can still be deleted (see section 04).</td></tr>
+      <tr><td class="mono">fetch_catalog</td><td>Schema catalog for the editor</td><td><span class="badge good">NO</span></td><td>Stays live — ported alongside the executor.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="cards c3" style="margin-top:14px">
+    <div class="card good">
+      <h4>Layer 1 — identical UI by construction</h4>
+      <p>One frontend build for dev and prod; demo is a <b>runtime flag</b> from <code>/auth/config</code>,
+      not a build variant. Prod's UI is byte-identical to dev's — controls appear in the same places, LLM
+      ones simply carry the chip.</p>
+    </div>
+    <div class="card good">
+      <h4>Layer 2 — one server choke point</h4>
+      <p>A single demo guard at the top of <code>agent_client.py</code> makes every LLM function raise 501
+      <code>not_available_demo</code>. A missed UI gate can't leak: and even past that, <code>agent_url</code>
+      points at nothing and no LLM key exists. Three independent failures required.</p>
+    </div>
+    <div class="card good">
+      <h4>Layer 3 — tested, both directions</h4>
+      <p>The demo smoke asserts each of the six LLM endpoints returns 501-demo <b>and</b> each live surface
+      (Explore, SQL run, replay chat) works — so parity is enforced by CI, not by remembering.</p>
+    </div>
+  </div>
+
+  <h3>The front door — "Enter demo" landing (mock)</h3>
+  <p class="sec-sub">Keeping the s25 cockpit card as the landing page instead of silent auto-login. One
+  deliberate click sets context; the mount-time <code>/health/db</code> ping means the ~15–30s Aurora wake
+  happens while the visitor reads, not after they click.</p>
+  <div class="mock-stage">
+    <div class="mock-card">
+      <div class="mock-hud">◉ FLIGHT DECK · PORTFOLIO DEMO</div>
+      <div class="mock-brand">Data Pilot</div>
+      <p class="mock-tag">A conversational data agent over 3.2M rows of NSW housing data —
+      ask a question, watch it plan, query and chart the answer.</p>
+      <div class="mock-chips">
+        <span class="live">◉ WAREHOUSE LIVE</span>
+        <span class="rec">▸ AGENT REPLAYS RECORDED RUNS</span>
+        <span>NO ACCOUNT NEEDED</span>
+      </div>
+      <button class="mock-cta" type="button">ENTER DEMO&nbsp;&nbsp;→</button>
+      <p class="mock-fine">Built by Nathan Phillips · <u>GitHub</u> · <u>LinkedIn</u><br>
+      Explore &amp; SQL editor run live against the warehouse; chat answers were recorded from the
+      full LLM build.</p>
+    </div>
+  </div>
+</section>
+
+<section id="arch">
+  <h2><span class="num">04</span>Target architecture: what gets deleted</h2>
+  <pre class="mermaid">
+flowchart TB
+  V["Visitor (no login)"] --> CF["CloudFront + S3 frontend<br/>Shield Standard, free DDoS absorption"]
+  CF --> BE["App Runner backend-api<br/>0.25 vCPU / 512MB · max 1 instance<br/>DEMO_MODE=1 · per-IP rate limit · concurrency gate 20"]
+  BE --> MEM["demo pack (in memory)<br/>chat replay — no DB, no cold start"]
+  BE --> DB[("Aurora Serverless v2<br/>min 0 / max 1 ACU<br/>Explore + SQL editor only")]
+  BE -.->|deleted| AGENT["data-agent App Runner 2vCPU/4GB"]
+  AGENT -.->|deleted| LLM["DeepSeek API + secret"]
+  style AGENT opacity:0.5
+  style LLM opacity:0.5
+  </pre>
+  <div class="cards c3" style="margin-top:14px">
+    <div class="card bad">
+      <h4><span class="badge bad">DELETED</span> data-agent service</h4>
+      <p>2 vCPU / 4GB App Runner — ~$25–35/mo mostly-idle. In demo, <code>ask.py</code> never calls
+      <code>agent_url</code>; Terraform simply doesn't create the service. Biggest single saving.
+      <b>One port first:</b> the SQL editor executes through the agent's <code>/agent/sql</code> — a governed,
+      <b>non-LLM</b> executor (SELECT-only validation, read-only role, timeout, row cap). That executor and
+      the schema catalog move into backend-api so live SQL survives the deletion.</p>
+    </div>
+    <div class="card bad">
+      <h4><span class="badge bad">DELETED</span> LLM key in prod</h4>
+      <p>DeepSeek secret removed from Secrets Manager in demo deployments. A secret that doesn't exist
+      can't leak, and there is no endpoint an attacker can coerce into spending tokens.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge good">KEPT</span> Everything else</h4>
+      <p>CloudFront + S3, backend App Runner, Aurora, ECR, pipeline job (marts stay fresh on deploy),
+      CloudWatch alarms. The deploy workflow is unchanged apart from the demo flag.</p>
+    </div>
+  </div>
+</section>
+
+<section id="cost">
+  <h2><span class="num">05</span>Cost: live prod vs demo prod</h2>
+  <p class="sec-sub">Estimates for ap-southeast-2, USD/mo, at portfolio traffic (mostly idle, bursts of
+  visitors). Check Cost Explorer against the "today" column — these are computed from instance sizing, not
+  a bill. The structural point survives any ±: the agent service and the unbounded-LLM risk both go to zero.</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Line item</th><th class="num">Live today</th><th class="num">Demo mode</th><th>What changes</th></tr></thead>
+    <tbody>
+      <tr><td><b>data-agent</b> App Runner (2 vCPU/4GB)</td><td class="num">$25–35</td><td class="num"><span class="delta-good">$0</span></td><td>Service not created. Idle memory alone was ~$26/mo.</td></tr>
+      <tr><td><b>backend-api</b> App Runner (0.25 vCPU/512MB)</td><td class="num">$4–8</td><td class="num">$4–8</td><td>Unchanged; max-instances pinned to 1 (cost ceiling).</td></tr>
+      <tr><td><b>Aurora Serverless v2</b></td><td class="num">$2–12</td><td class="num">$1–6</td><td>Max ACU 2→1. Chat no longer wakes it at all; only Explore/SQL do.</td></tr>
+      <tr><td><b>DeepSeek API</b></td><td class="num">$1–5</td><td class="num"><span class="delta-good">$0</span></td><td>Tokens only ever spent in dev, while recording the pack.</td></tr>
+      <tr><td>Edge &amp; plumbing <span class="sm">CloudFront, S3, ECR, Secrets, CloudWatch</span></td><td class="num">$3–6</td><td class="num">$3–5</td><td>One less secret, one less service's logs/alarms.</td></tr>
+      <tr><td>Optional AWS WAF <span class="sm">rate rule + managed bot list</span></td><td class="num">—</td><td class="num">+$9 <span class="sm">if chosen (D3 note)</span></td><td>App-level limits first; WAF is the paid upgrade.</td></tr>
+      <tr><td><b>Total</b></td><td class="num"><b>$36–66</b></td><td class="num"><b class="delta-good">$8–18</b></td><td><b>≈60–70% lower</b>, and marginal cost per visitor = $0.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="cards c2" style="margin-top:14px">
+    <div class="card warn">
+      <h4>The honest framing on "LLM savings"</h4>
+      <p>Your own memory notes the token bill is cache-dominated and daily-capped — live LLM was
+      <b>$1–5/mo</b>, not the problem. What you could never do before is remove the login. A public
+      <code>/ask</code> backed by a live LLM is a blank cheque: a script hammering it at even 1 req/s is
+      ~86k calls/day on your key. Cached replay converts that worst case from <i>unbounded spend</i> to
+      <i>bounded compute on 1 capped instance</i>. The cost story is really a <b>risk-ceiling</b> story.</p>
+    </div>
+    <div class="card info">
+      <h4>Multi-app end-state (s39+)</h4>
+      <p>Each additional demo app on this shape adds ~$5–10/mo (its own small App Runner + shared edge).
+      If cold-start UX ever justifies it, the alternative is consolidating all demos onto one always-on
+      host (Lightsail 2GB ~$12 or t4g.small ~$12) behind one CloudFront — <b>flat ~$17–25/mo for the whole
+      portfolio</b>, zero cold starts, but a second deploy pattern to maintain. D3 locked against this for now — revisit only if visitor analytics show cold starts hurting.</p>
+    </div>
+  </div>
+</section>
+
+<section id="guardrails">
+  <h2><span class="num">06</span>Abuse &amp; attack: 10–20 visitors, bounded worst case</h2>
+  <p class="sec-sub">Defense in depth, cheapest layer first. The design goal isn't "can't be attacked" —
+  it's "an attack costs you a fixed, small ceiling and degrades to a polite 'demo is full' page, never a bill."</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Threat</th><th>Control</th><th>Where</th><th>Worst case after control</th></tr></thead>
+    <tbody>
+      <tr><td>Scripted <code>/ask</code> flood</td>
+        <td>No LLM exists to burn. Per-IP sliding-window limit (~30 req/min) + global concurrency gate (20, then 503).</td>
+        <td><code>limits.py</code> + middleware in <code>main.py</code></td>
+        <td>CPU on one capped 0.25 vCPU instance. Ceiling ≈ its fixed monthly price.</td></tr>
+      <tr><td>Heavy/hostile SQL in the editor</td>
+        <td>Existing <code>agent_ro</code> read-only role + RLS + keyword guard, plus demo-only <code>statement_timeout=5s</code>, row cap, ~10 queries/min/IP.</td>
+        <td><code>routers/sql.py</code>, DB role</td>
+        <td>Aurora briefly at max 1 ACU (~$0.12/hr). Auto-pauses after.</td></tr>
+      <tr><td>Volumetric DDoS at the edge</td>
+        <td>CloudFront + Shield Standard (free) absorbs; static frontend is cache-served.</td>
+        <td>Edge (already in place)</td>
+        <td>CloudFront egress pennies; origin protected by the next row.</td></tr>
+      <tr><td>Bypassing CloudFront to hit the App Runner URL directly</td>
+        <td>CloudFront injects a secret <code>X-Origin-Verify</code> header; backend 403s requests without it. (URL is public today — worth doing regardless.)</td>
+        <td>CloudFront origin config + middleware</td>
+        <td>Attacker gets 403s from one small instance.</td></tr>
+      <tr><td>Storage flood via demo-user writes <span class="sm">conversations, messages, events</span></td>
+        <td>Per-IP write caps + nightly reset job truncates the demo user's rows and re-seeds.</td>
+        <td>EventBridge → existing ECS one-shot pattern</td>
+        <td>One day of garbage rows, wiped at midnight.</td></tr>
+      <tr><td>Key/secret theft</td>
+        <td>No LLM key exists in demo prod. Demo JWT grants a viewer-role user under RLS; admin routes 403 in demo mode.</td>
+        <td>Secrets Manager diff, <code>auth.py</code></td>
+        <td>A stolen demo token ≡ opening the public demo.</td></tr>
+      <tr><td>Runaway bill anyway</td>
+        <td>AWS Budget alert at ~$15/mo + CloudWatch alarm on request-rate spike → SNS (already wired).</td>
+        <td>Terraform foundations</td>
+        <td>You know within hours, not at invoice time.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note"><b>Why app-level rate limiting first, WAF later:</b> with max-instances=1, an in-memory
+  per-IP limiter is globally correct (no shared store needed) and costs $0. AWS WAF (+~$9/mo) adds managed
+  bot rules and pre-origin blocking — worth it only if logs show real abuse. It's a config flip, not a design
+  change, so deferring is free.</div>
+</section>
+
+<section id="plan">
+  <h2><span class="num">07</span>Build plan</h2>
+  <p class="sec-sub">Six phases, each shippable. P0–P4 is this app's demo (roughly a s-scale PR each, P1
+  the largest); P5 is the portfolio rollout. Deploy flow (~25–35 min incl. pipeline) is untouched.</p>
+
+  <details class="phase" open>
+    <summary>P0 — Demo identity &amp; flag <span class="badge">S</span><span class="badge info">backend + frontend</span></summary>
+    <div class="body">
+      <p>One switch, one seeded user. <code>DEMO_MODE=1</code> makes <code>/auth/config</code> report
+      <code>auth_mode: "demo"</code>; the frontend shows the Enter-demo landing card (mock in section 03),
+      whose CTA calls <code>POST /auth/demo-login</code> → the existing 8h HS256 app JWT for a seeded
+      <code>demo</code> user (viewer role, RLS grants to both datasets). The card pings
+      <code>/health/db</code> on mount to start the Aurora wake early. The endpoint 404s outside demo mode,
+      exactly like <code>dev-login</code> outside dev. Dev and google modes are untouched.</p>
+      <div class="touch">
+        <div><code>services/backend-api/app/config.py</code><span>add <code>demo_mode: bool = False</code></span></div>
+        <div><code>services/backend-api/app/routers/auth.py</code><span>demo branch in <code>auth_config</code>; <code>/auth/demo-login</code> beside <code>dev_login</code></span></div>
+        <div><code>frontend/src/lib/auth.ts</code> · <code>app/Login.tsx</code><span>auth_mode "demo" → landing variant: ENTER DEMO mints the session; /health/db pre-warm on mount</span></div>
+        <div><code>db/</code> migration or seed<span>demo user + dataset grants (idempotent)</span></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase">
+    <summary>P1 — Demo pack: record → replay <span class="badge warn">M</span><span class="badge purple">the heart</span></summary>
+    <div class="body">
+      <p>Export tagged runs from <code>app.query_runs</code> into a version-controlled pack; load it into
+      memory at boot; make <code>/ask</code> + <code>/ask/stream</code> resolve a question to a pack entry
+      and replay its SSE frames with condensed pacing. Chat feature gains suggested-question chips from the
+      pack index. Free text fuzzy-matches to the nearest entry (trigram or embedding, with a
+      below-threshold fallback to the chip rail) — D1 locked. Recorded runs keep their SQL, so chart→SQL
+      links keep working.</p>
+      <div class="touch">
+        <div><code>scripts/demo_pack.py</code> <b>(new)</b><span>export/import, mirroring <code>eval_pack.py</code>; source = ★-tagged runs</span></div>
+        <div><code>demo/pack/*.json</code> <b>(new)</b><span>question, trace frames, report pages, SQL — reviewed like goldens</span></div>
+        <div><code>services/backend-api/app/routers/ask.py</code><span>demo branch: lookup + paced SSE replay; never calls <code>agent_url</code></span></div>
+        <div><code>frontend/src/features/chat</code><span>chips from pack index; empty-state copy for demo</span></div>
+        <div><code>.github/workflows/deploy-aws.yml</code><span>new step: goldens <code>eval-import</code> into prod after migrate (closes the dev→prod content gap)</span></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase">
+    <summary>P2 — Surface trims &amp; demo banner <span class="badge">S</span></summary>
+    <div class="body">
+      <p>Build the shared <code>DemoGate</code> wrapper: every LLM control (AI-generate, curation, admin
+      actions) stays visible but inert with the ◆ demo-only chip; Evals + Admin render as static read-only
+      exhibits; goldens gallery read-only; Settings keeps its theme switcher (D4 locked: goldens, ops, evals,
+      settings all visible). Add the persistent demo
+      banner with GitHub/LinkedIn links — the banner is also your pitch: it says <i>what</i> is recorded and
+      <i>what</i> is live, which reads as confidence.</p>
+      <div class="touch">
+        <div><code>frontend/src/features/sql</code><span>AI-assist wrapped in DemoGate (disabled + ◆ chip); keep run/history</span></div>
+        <div><code>frontend/src/app/NavRail.tsx</code> · <code>MobileNav.tsx</code><span>nav filtered by demo config</span></div>
+        <div><code>services/backend-api/app/routers/*</code><span>403 write/admin routes for the demo role (server-side, not just hidden)</span></div>
+        <div><code>services/backend-api/app/agent_client.py</code><span>demo guard at the choke point: all six LLM functions raise 501 <code>not_available_demo</code></span></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase">
+    <summary>P2.5 — Analytics: beacon + dashboard tab <span class="badge warn">M</span><span class="badge good">first-party, $0</span></summary>
+    <div class="body">
+      <p>Extend the event pipeline the app already has (section 09) instead of adding Google Analytics:
+      a ~40-line <code>lib/analytics.ts</code> beacon posts named events to the existing
+      <code>POST /events</code> with an anonymous visitor id — no migration needed
+      (<code>app.events</code> already carries <code>session_id</code> + <code>payload jsonb</code>).
+      On top of it, a dedicated admin-only <b>Analytics tab</b> (totals, funnel, activity, top questions —
+      spec in section 09) rendered through the app's own report engine, identical in dev and prod.</p>
+      <div class="touch">
+        <div><code>frontend/src/lib/analytics.ts</code> <b>(new)</b><span>visitor/session ids + <code>navigator.sendBeacon</code> wrapper; called from landing, nav, chat, sql, explore</span></div>
+        <div><code>services/backend-api/app/routers/events.py</code><span>accept anonymous demo-visitor events; per-IP write cap shared with P3</span></div>
+        <div><code>services/backend-api/app/routers/analytics.py</code> <b>(new)</b><span>admin-only rollup endpoints: uniques, funnel, activity, top questions — SQL over <code>app.events</code> + <code>query_runs</code>, served as page objects</span></div>
+        <div><code>frontend/src/features/analytics</code> <b>(new)</b><span>the Analytics tab — page-object dashboard via the report engine; admin-only NavRail entry</span></div>
+        <div><code>frontend/src/app/App.tsx</code> · <code>auth.ts</code><span>the owner door: non-advertised <code>/login</code> Google route for <code>admin_emails</code> in demo mode</span></div>
+        <div><code>infra/terraform/foundations</code><span>optional: CloudFront standard logs → S3 as the edge backstop</span></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase">
+    <summary>P3 — Guardrails <span class="badge warn">M</span><span class="badge bad">attack surface</span></summary>
+    <div class="body">
+      <p>Everything in section 06: per-IP limiter + global concurrency gate (frontend shows a friendly
+      "demo is at capacity — try again in a minute" screen on 503), demo SQL timeouts, origin-verify header,
+      nightly reset, budget alert. Reuses the tiered-limits shape already in <code>limits.py</code>.</p>
+      <div class="touch">
+        <div><code>services/backend-api/app/limits.py</code><span>per-IP sliding windows (in-memory; correct at max-instances=1)</span></div>
+        <div><code>services/backend-api/app/main.py</code><span>concurrency semaphore middleware; <code>X-Origin-Verify</code> check</span></div>
+        <div><code>infra/terraform/foundations</code><span>EventBridge nightly reset job; AWS Budget + spike alarm</span></div>
+        <div><code>frontend/src</code><span>503 capacity gate component</span></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase">
+    <summary>P4 — Infra downsizing &amp; cold-start UX <span class="badge warn">M</span><span class="badge good">the savings land here</span></summary>
+    <div class="body">
+      <p>Terraform <code>demo_mode</code> variable: data-agent service count → 0, DeepSeek secret removed,
+      backend env <code>DEMO_MODE=1</code>, max-instances 1, Aurora max 1 ACU. Plus the s29 P0 warming UX
+      (finally, with a real audience): 5s DB connect timeout mapped to 503 <code>db_warming</code>, and
+      Explore/SQL show "Waking the warehouse…" with auto-retry — while chat replay works instantly from memory.</p>
+      <div class="touch">
+        <div><code>infra/terraform/foundations/*.tf</code><span><code>var.demo_mode</code> gates service, secret, sizing</span></div>
+        <div><code>services/backend-api/app/sql_exec.py</code> <b>(new)</b><span>governed <code>run_select</code> + catalog ported from the agent (non-LLM) — live SQL editor without the service</span></div>
+        <div><code>services/backend-api/app/db.py</code> · <code>main.py</code><span>connect timeout → 503 <code>db_warming</code> + Retry-After (s29 P0)</span></div>
+        <div><code>frontend/src/features/explore</code> · <code>sql</code><span>narrated warm-up state instead of a hang</span></div>
+        <div><code>.github/workflows/deploy-aws.yml</code><span>skip agent image build when demo (minor)</span></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase">
+    <summary>P5 — Portfolio rollout template <span class="badge bad">L</span><span class="badge">later, own plan</span></summary>
+    <div class="body">
+      <p>Extract the pattern into a reusable checklist once it's proven here: (1) <code>DEMO_MODE</code> flag,
+      (2) auto demo session, (3) record/replay layer for every LLM endpoint, (4) guardrail middleware,
+      (5) Terraform demo profile. Add a portfolio landing page (static, S3+CloudFront, ~$1/mo) linking every
+      demo with a one-line pitch and a GitHub link. Each app then decides only two things: which surfaces
+      stay live, and what its showcase question set is. Gets its own s-artifact when we start.</p>
+    </div>
+  </details>
+</section>
+
+<section id="risks">
+  <h2><span class="num">08</span>Risks &amp; failure modes</h2>
+  <div class="cards c2">
+    <div class="card warn">
+      <h4>Replay drift</h4>
+      <p>Stored pages vs an evolving report engine. <b>Mitigation:</b> the s20 object-parity CI gate already
+      fails on unrenderable stored objects; add the demo pack to that gate's fixtures. Re-recording is one
+      dev session whenever the product changes meaningfully.</p>
+    </div>
+    <div class="card warn">
+      <h4>Cold start is still the first impression for Explore/SQL</h4>
+      <p>Chat is immune (in-memory), but a visitor's first Explore click on a paused Aurora waits ~15–30s.
+      <b>Mitigation:</b> P4 warming UX; and the demo banner sets expectations. If analytics show it hurts,
+      D3-B (always-on consolidation) is the escape hatch.</p>
+    </div>
+    <div class="card">
+      <h4>Public data exposure</h4>
+      <p>Removing login makes the datasets world-readable. They're public NSW housing datasets — no PII —
+      and the existing scrub layer (<code>scrub.py</code>) stays. Worth a one-time confirm before flipping DNS.</p>
+    </div>
+    <div class="card">
+      <h4>In-memory limits reset on instance recycle</h4>
+      <p>App Runner can recycle the single instance, wiping counters. Acceptable at this scale — an attacker
+      gains a fresh window, still against a capped instance. WAF is the upgrade if it matters.</p>
+    </div>
+    <div class="card">
+      <h4>Two prod personalities to test</h4>
+      <p>Demo vs google mode doubles the prod matrix. <b>Mitigation:</b> <code>make smoke</code> gains a
+      demo-mode variant (chips answer, free-text path, 403 on admin, rate-limit 429) so CI covers both.</p>
+    </div>
+    <div class="card">
+      <h4>Employers might think it's all canned</h4>
+      <p>The inverse risk of caching. <b>Mitigation:</b> the banner's honesty + genuinely live Explore/SQL.
+      "Recorded agent, live warehouse" is a stronger story than pretending everything is live.</p>
+    </div>
+  </div>
+</section>
+
+<section id="analytics">
+  <h2><span class="num">09</span>Visitor analytics: who's using the demo, and how</h2>
+  <p class="sec-sub">Your question — "is it Google Analytics?" — <b>no, and deliberately not.</b> Your demo's
+  audience is engineers and recruiters: the demographic most likely to run ad-blockers, which silently eat
+  GA/GTM (often 30–40% of technical traffic). GA4 also drags in a cookie-consent banner — the exact friction
+  this whole plan removes — and a third-party script into a portfolio piece that's meant to show
+  self-contained craft. You already own a better pipeline.</p>
+  <div class="cards c2">
+    <div class="card good">
+      <h4><span class="badge good">RECOMMENDED</span> Extend your own event log</h4>
+      <p>The app already has first-party analytics plumbing: <code>app.events</code> (with
+      <code>session_id</code> and <code>payload jsonb</code> — no migration), <code>POST /events</code>,
+      an admin events view, and ops rollups. Add a tiny frontend beacon (<code>lib/analytics.ts</code>,
+      <code>navigator.sendBeacon</code>) with an anonymous random <code>visitor_id</code>
+      (localStorage) + <code>session_id</code> (sessionStorage). Same-origin API call —
+      <b>invisible to ad-blockers</b>, no cookies, no consent banner, no PII, $0/mo. And it's a
+      meta-showcase: the demo measures itself with its own event system.</p>
+      <ul>
+        <li><code>demo_landing_view</code> · <code>demo_enter_click</code> — the front-door funnel</li>
+        <li><code>page_view {tab}</code> · <code>chip_click {question}</code> · <code>chat_free_text {matched}</code></li>
+        <li><code>sql_run</code> · <code>explore_dataset_open</code> · <code>golden_open</code> · <code>theme_change</code></li>
+        <li><code>outbound_click {github|linkedin}</code> — the conversion that matters</li>
+      </ul>
+      <p>Surfaced in a dedicated <b>Analytics tab</b> (admin-only nav entry — invisible to demo visitors),
+      identical in dev and prod, each showing its own environment's data. Dashboard spec:</p>
+      <ul>
+        <li><b>KPI row</b> — total visitors, today's uniques, returning %, sessions, avg session length</li>
+        <li><b>Funnel</b> — landing → enter → first question → SQL/Explore touch → GitHub click</li>
+        <li><b>Activity</b> — events/day timeseries split by surface (chat, SQL, Explore, goldens, ops)</li>
+        <li><b>Top questions</b> — chips clicked + free-text asked, including unmatched misses (the recording backlog)</li>
+        <li><b>Recent activity feed</b> — last N sessions as event streams</li>
+      </ul>
+      <p>Built the dogfood way: the tab renders <b>page objects through the app's own report engine</b> —
+      stat tiles, timeseries, tables — so the analytics dashboard is itself a demo of the product's
+      rendering system.</p>
+    </div>
+    <div class="card">
+      <h4>What about the alternatives?</h4>
+      <ul>
+        <li><b>Google Analytics 4</b> — free, but blocked by the audience you care about, consent-banner
+        friction, third-party script, and wildly over-featured for a portfolio funnel.</li>
+        <li><b>Plausible / Fathom (hosted)</b> — privacy-friendly and blocker-resistant, but ~US$9–14/mo —
+        more than half the entire demo budget for less than the event log already gives you.</li>
+        <li><b>Umami / Plausible (self-hosted)</b> — $0 licence but needs an always-on host + its own DB:
+        exactly the infra this plan is deleting.</li>
+      </ul>
+      <h4 style="margin-top:14px">Edge backstop: CloudFront logs</h4>
+      <p>Enable CloudFront standard logs → S3 (pennies/mo). They catch landings that bounce before JS runs
+      and raw attack traffic — query ad-hoc with Athena. This is the "server logs" truth the beacon can't
+      see; between the two you have full coverage.</p>
+      <p style="margin-top:10px"><b>Privacy posture:</b> random ids, no PII, IPs only in edge logs — add one
+      quiet line to the landing card's fine print: "anonymous usage analytics". Good faith, no banner
+      needed.</p>
+    </div>
+  </div>
+  <div class="note"><b>The owner door — reaching an admin tab in a no-login prod:</b> demo mode removes the
+  public login, not the auth system. A non-advertised <code>/login</code> route keeps the Google sign-in for
+  <code>admin_emails</code> only; signing in there yields the normal admin JWT, which unlocks the Analytics
+  tab (plus admin/ops write views) in the same session. Visitors never see the route; the demo JWT's viewer
+  role 403s the analytics endpoints server-side.</div>
+
+  <h3>Identity without login — how an anonymous visitor gets an id, and how repeats are counted</h3>
+  <p class="sec-sub">No login means no account identity — so the beacon mints its own, the same way every
+  analytics tool does it, just first-party. On first load, <code>lib/analytics.ts</code> generates a random
+  <code>crypto.randomUUID()</code> and keeps it in the browser. Two ids, two lifetimes:</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Signal</th><th>Lives in</th><th>Lifetime</th><th>What it answers</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">visitor_id</td><td><code>localStorage</code></td><td>Months — survives tab close, reboot, revisit</td>
+        <td><b>Repeat visitors.</b> Same id arriving on a later day = a return. Daily uniques = distinct ids; returning = ids seen on &gt;1 distinct day.</td></tr>
+      <tr><td class="mono">session_id</td><td><code>sessionStorage</code></td><td>One tab — dies on close</td>
+        <td><b>Visits.</b> New session_id + existing visitor_id = the same browser coming back. Groups a visit's event stream for the funnel.</td></tr>
+      <tr><td class="mono">first_seen / last_seen</td><td>Server — <code>app.events</code></td><td>Forever</td>
+        <td>Derived per visitor_id with plain SQL (<code>min/max(created_at)</code>): new vs returning classification, gap between visits, "came back after the interview" signals.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="cards c2" style="margin-top:14px">
+    <div class="card">
+      <h4>Honest limits (identical to GA's, minus the cookie)</h4>
+      <p>The id identifies a <b>browser</b>, not a person: the same recruiter on phone + laptop counts as two
+      visitors; incognito or cleared storage mints a fresh id; two people on one machine count as one. Every
+      anonymous analytics tool has exactly these limits — GA just uses a cookie where this uses localStorage.
+      At portfolio scale (tens of visitors), this resolution is plenty.</p>
+    </div>
+    <div class="card warn">
+      <h4>What we deliberately don't do</h4>
+      <p>No fingerprinting (canvas/UA hashing) to "improve" repeat detection — it's privacy-hostile,
+      GDPR-gray, and pointless at this scale. If localStorage is blocked (hardened privacy modes),
+      degrade gracefully: sessionStorage only, so that visit counts as unique-but-unrepeatable.
+      CloudFront logs give an IP-based coarse cross-check of uniques — rougher (shared/rotating IPs),
+      fine as a sanity bound.</p>
+    </div>
+  </div>
+  <p class="sec-sub" style="margin-top:14px">Build cost: <b>S</b> — slotted into the build plan as P2.5 above.</p>
+</section>
+
+<section id="decisions">
+  <h2><span class="num">10</span>Decisions — locked</h2>
+  <p class="sec-sub">All five decisions were made in this review (2026-08-18). Recorded here so the plan
+  is self-contained; the body sections above already reflect them.</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Decision</th><th>Choice</th><th>Consequence in the plan</th></tr></thead>
+    <tbody>
+      <tr><td><b>D1</b> · Chat free text</td><td>Chips <b>+ fuzzy match</b> to the nearest recorded answer, with a "closest recorded answer" note</td><td>P1 gains the matcher (trigram/embedding + below-threshold fallback to chips); <code>chat_free_text {matched}</code> analytics event feeds the recording backlog.</td></tr>
+      <tr><td><b>D2</b> · SQL editor</td><td><b>Live, read-only, throttled</b> (5s timeout, row cap, per-IP limit); AI-generate inert behind the ◆ demo-only chip</td><td>Executor port into backend-api (P4) is mandatory; chart→SQL links stay real.</td></tr>
+      <tr><td><b>D3</b> · Cold start</td><td><b>Scale-to-zero + s29 warming UX</b>; consolidation only if visitor data shows it hurts</td><td>Terraform shape unchanged; P4 ships the warming UX; landing-card pre-warm does the rest.</td></tr>
+      <tr><td><b>D4</b> · Visible tabs</td><td><b>All four:</b> Goldens gallery, Ops deck (read-only), Evals (static exhibit), Settings (themes only)</td><td>Fullest showcase surface; P2 renders the static exhibits. The admin-only Analytics tab (P2.5) sits alongside, invisible to visitors.</td></tr>
+      <tr><td><b>D5</b> · Scope</td><td><b>This app first</b> (P0–P4), extract the template in P5 once proven</td><td>P5 stays a separate, later plan informed by real visitor analytics.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note okay"><b>One reconciliation:</b> the D2 option text predated your "flag, don't hide"
+  annotation and said "AI-generate hidden" — the annotation supersedes it: AI-generate is <b>visible but
+  inert</b> with the "Not available — demo only" chip, like every other LLM control.</div>
+</section>
+
+<footer>
+  <p>s38 · Demo-mode prod plan · sources verified in-repo: <code>config.py</code> (auth_mode, agent_url, daily caps),
+  <code>routers/auth.py</code> (dev-login pattern), <code>routers/ask.py</code> (query_runs persistence, agent calls),
+  <code>limits.py</code> (tiered caps), <code>infra/terraform/README.md</code> (App Runner + Aurora topology),
+  plus session memories s12/s20/s21/s25/s29 (sizing, object parity, ★ promotion, cold-start diagnosis).
+  Cost figures are sizing-based estimates — reconcile with Cost Explorer.</p>
+</footer>
+
+</div>
+
+<script>
+function markAnswered(form){form.closest('.decision').classList.add('answered')}
+function queueAnswer(form,q){
+  var v=new FormData(form).get(form.querySelector('input').name);
+  if(!v)return;
+  if(window.lavish&&window.lavish.queuePrompt){
+    window.lavish.queuePrompt('Decision '+q+': '+v,{tag:'choice',text:q+' → '+v,element:form,queueKey:q,data:{question:q,answer:v}});
+  }
+  markAnswered(form);
+}
+function queueAnswerMulti(form,q){
+  var vals=[].slice.call(form.querySelectorAll('input:checked')).map(function(i){return i.value});
+  var v=vals.length?vals.join('; '):'none of the optional tabs';
+  if(window.lavish&&window.lavish.queuePrompt){
+    window.lavish.queuePrompt('Decision '+q+': show '+v,{tag:'choice',text:q+' → '+v,element:form,queueKey:q,data:{question:q,answer:vals}});
+  }
+  markAnswered(form);
+}
+</script>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color){paint.clearRect(0,0,1,1);paint.fillStyle="#000";paint.fillStyle=color;paint.fillRect(0,0,1,1);return paint.getImageData(0,0,1,1).data}
+  function compositeRgba(f,b){const fa=f[3]/255,ba=b[3]/255,a=fa+ba*(1-fa);if(a===0)return[0,0,0,0];
+    return[(f[0]*fa+b[0]*ba*(1-fa))/a,(f[1]*fa+b[1]*ba*(1-fa))/a,(f[2]*fa+b[2]*ba*(1-fa))/a,a*255]}
+  function pageIsDark(){const root=document.documentElement;
+    const rb=toRgba(getComputedStyle(root).backgroundColor);
+    const bb=document.body?toRgba(getComputedStyle(document.body).backgroundColor):[0,0,0,0];
+    const[r,g,b,a]=compositeRgba(bb,rb);
+    if(a>0)return(0.2126*r+0.7152*g+0.0722*b)/255<0.5;
+    const cs=getComputedStyle(root).colorScheme;
+    if(cs.includes("dark")&&!cs.includes("light"))return true;
+    if(cs.includes("light")&&!cs.includes("dark"))return false;
+    return darkQuery.matches}
+  const diagrams=[...document.querySelectorAll(".mermaid")].map((el)=>({el,src:el.textContent}));
+  let applied,rendering=false,queued=false;
+  function queueRender(){queued=true;if(rendering)return;void render()}
+  async function render(){rendering=true;try{while(queued){queued=false;
+    const theme=pageIsDark()?"dark":"default";if(theme===applied)continue;
+    mermaid.initialize({startOnLoad:false,theme,securityLevel:"strict"});
+    for(const{el,src}of diagrams){el.removeAttribute("data-processed");el.textContent=src}
+    try{await mermaid.run({nodes:diagrams.map((d)=>d.el)})}
+    catch(e){console.error("Mermaid diagram render failed:",e);return}
+    applied=theme}}finally{rendering=false;if(queued)queueRender()}}
+  if(document.readyState==="complete")queueRender();
+  else window.addEventListener("load",queueRender,{once:true});
+  const mo=new MutationObserver(queueRender);
+  for(const el of[document.documentElement,document.body]){if(!el)continue;
+    mo.observe(el,{attributes:true,attributeFilter:["data-theme","class","style"]})}
+  document.addEventListener("change",queueRender,true);
+  document.addEventListener("transitionend",({propertyName})=>{if(propertyName==="background-color")queueRender()},true);
+  darkQuery.addEventListener("change",queueRender);
+</script>
+</body>
+</html>

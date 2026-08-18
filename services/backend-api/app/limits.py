@@ -1,13 +1,68 @@
 from __future__ import annotations
 
 import json
+import time
+from collections import defaultdict, deque
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from sqlalchemy import text
 
 from .auth import CurrentUser
 from .config import settings
 from .db import rls_connection
+
+# ---------------------------------------------------------------------------
+# Demo-mode per-IP rate limiting (s38 P3).
+#
+# In-memory sliding windows, one deque of timestamps per (ip, scope). This is
+# deliberately not a distributed limiter: demo deployments pin App Runner to a
+# single instance (the cost ceiling), so process memory IS global state. An
+# instance recycle resets the counters — acceptable; the attacker gains one
+# fresh window against a capped instance. No-op outside demo mode.
+# ---------------------------------------------------------------------------
+_WINDOW_S = 60.0
+_ip_windows: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+
+
+def client_ip(request: Request) -> str:
+    """Best-effort caller IP: the LAST X-Forwarded-For hop, not the first.
+
+    App Runner terminates the connection and appends the socket peer's real
+    address to the end of the chain; anything earlier in the header is
+    whatever the client itself chose to send and is not trustworthy — a
+    caller can set X-Forwarded-For to a fabricated, rotating value to defeat
+    a first-hop-based rate limit. Falls back to the socket peer if the header
+    is absent entirely."""
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def check_demo_ip_rate(request: Request | None, scope: str, per_minute: int) -> None:
+    """429 when this IP exceeded ``per_minute`` calls on ``scope`` in the last
+    minute. The detail string is stable — the frontend maps it to a friendly
+    sentence. 0 disables the scope's limit; outside demo mode, always a no-op.
+    ``request`` is None for internal callers with no HTTP request (the MCP
+    surface) — those are service-key-gated, so the limit does not apply."""
+    if request is None or not settings.demo_mode or per_minute <= 0:
+        return
+    now = time.monotonic()
+    window = _ip_windows[(client_ip(request), scope)]
+    while window and now - window[0] > _WINDOW_S:
+        window.popleft()
+    if len(window) >= per_minute:
+        raise HTTPException(
+            status_code=429,
+            detail="demo_rate_limited",
+            headers={"Retry-After": "30"},
+        )
+    window.append(now)
+    # Opportunistic pruning so a scanning attacker can't grow the dict forever:
+    # drop fully-idle windows once the map gets large.
+    if len(_ip_windows) > 10_000:
+        for key in [k for k, w in _ip_windows.items() if not w or now - w[-1] > _WINDOW_S]:
+            _ip_windows.pop(key, None)
 
 
 async def check_daily_llm_cap(user: CurrentUser) -> None:

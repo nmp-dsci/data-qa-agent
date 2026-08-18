@@ -64,8 +64,8 @@ output "backend_api_url" {
 }
 
 output "data_agent_url" {
-  description = "URL of the data-agent (App Runner; requires X-Agent-Token except /health)."
-  value       = "https://${aws_apprunner_service.data_agent.service_url}"
+  description = "URL of the data-agent (App Runner; requires X-Agent-Token except /health). Empty in demo mode."
+  value       = var.demo_mode ? "" : "https://${one(aws_apprunner_service.data_agent[*].service_url)}"
 }
 
 output "ops_ingest_token_secret_arn" {

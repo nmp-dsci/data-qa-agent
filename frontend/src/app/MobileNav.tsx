@@ -51,14 +51,16 @@ export function BottomNav({
   view,
   setView,
   isAdmin,
+  demo = false,
 }: {
   view: View;
   setView: (v: View) => void;
   isAdmin: boolean;
+  demo?: boolean;
 }) {
   return (
     <nav className="bottom-nav" role="tablist" aria-label="App sections">
-      {navItems(isAdmin).map((item) => (
+      {navItems(isAdmin, demo).map((item) => (
         <button
           key={item.view}
           role="tab"

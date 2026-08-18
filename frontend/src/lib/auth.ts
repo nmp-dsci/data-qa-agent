@@ -5,6 +5,7 @@
 import {
   ApiError,
   AuthConfig,
+  demoLogin,
   devLogin,
   getAuthConfig,
   getMe,
@@ -116,7 +117,12 @@ export async function renderGoogleButton(
   onStatus: (status: LoginStatus) => void,
 ): Promise<void> {
   const config = await loadAuthConfig();
-  if (config.auth_mode !== "google" || !config.client_id) return;
+  // s38: in demo mode the same button is the OWNER DOOR — a demo deployment
+  // keeps google configured for admin_emails, revealed by a discreet link on
+  // the landing card rather than shown to every visitor.
+  const googleCapable =
+    config.auth_mode === "google" || (config.auth_mode === "demo" && !!config.client_id);
+  if (!googleCapable || !config.client_id) return;
   await loadGis();
   const id = window.google?.accounts.id;
   if (!id) throw new Error("Google Sign-in unavailable");
@@ -143,6 +149,20 @@ export async function loginDev(username: string): Promise<User> {
   const { access_token, user } = await devLogin(username);
   setToken(access_token);
   return user;
+}
+
+/** s38: one-click demo entry — the ENTER DEMO button's whole job. */
+export async function loginDemo(): Promise<User> {
+  const { access_token, user } = await demoLogin();
+  setToken(access_token);
+  return user;
+}
+
+/** Whether the loaded auth config says this deployment is the walk-in demo.
+ *  Components use it to render ◆ "Not available — demo only" chips on LLM
+ *  controls; the server enforces the same boundary with 501s regardless. */
+export function isDemoMode(): boolean {
+  return cachedConfig?.auth_mode === "demo";
 }
 
 /**

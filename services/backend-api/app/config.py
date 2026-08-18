@@ -129,6 +129,46 @@ class Settings(BaseSettings):
     # Shown beside 7d spend on the deck so cost has a scale, not just a number.
     ops_monthly_budget_usd: float = 50.0
 
+    # ---- Demo mode (s38) ---------------------------------------------------
+    # One flag turns a deployment into the walk-in portfolio demo: the landing
+    # page gets an "Enter demo" door (no account), chat replays recorded runs
+    # from the baked-in pack instead of calling the agent/LLM, every LLM
+    # function 501s at the agent_client choke point, and the SQL editor runs
+    # through the local governed executor so the data-agent service does not
+    # need to exist. Dev keeps full functionality by leaving this off.
+    demo_mode: bool = False
+    # The seeded walk-in identity every visitor shares. RLS still applies —
+    # it's a normal app.users row with dataset grants (migration 0033).
+    demo_username: str = "demo"
+    # Free-text chat maps to the nearest recorded answer (D1); below this
+    # SequenceMatcher ratio the reply lists the available questions instead.
+    demo_fuzzy_threshold: float = 0.35
+    # Global in-flight request ceiling for the demo's governed surfaces; the
+    # 21st concurrent ask/sql/explore gets a clean 503 demo_full (s38 P3).
+    demo_max_concurrency: int = 20
+    # Per-IP sliding-window limits (per minute). In-memory — correct while the
+    # deployment pins App Runner max instances to 1, which demo mode does.
+    demo_rate_ask_per_min: int = 10
+    demo_rate_sql_per_min: int = 10
+    demo_rate_events_per_min: int = 60
+    # The admin_or_demo_read static exhibits (goldens/evals/ops/events/query-runs
+    # history) — cheap reads individually, but query_runs and ops hit the
+    # cross-user BYPASSRLS admin_ro engine, so they still need a ceiling.
+    demo_rate_admin_read_per_min: int = 60
+    # Demo SQL editor guardrails: tighter than the agent's own (5s / 500 rows)
+    # because the caller is anonymous.
+    demo_sql_statement_timeout_ms: int = 5_000
+    demo_sql_max_rows: int = 500
+    # Read-only role the local governed executor runs as (mirrors the
+    # data-agent's own connection; RLS-scoped, SELECT-only). The admin variant
+    # reuses admin_ro_database_url above.
+    agent_ro_database_url: str = "postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa"
+
+    # CloudFront origin cloaking (s38 P3): when set, every request must carry
+    # X-Origin-Verify with this value or it 403s ("/health" excepted for the
+    # App Runner health check). Empty = off (local dev, direct access).
+    origin_verify_secret: str = ""
+
     cors_origins: list[str] = ["http://localhost:5230", "http://127.0.0.1:5230"]
     # Comma-separated extra origins injected per-deployment (e.g. the cloud frontend URL).
     extra_cors_origins: str = ""

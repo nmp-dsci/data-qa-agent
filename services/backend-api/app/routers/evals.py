@@ -19,11 +19,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
 
-from ..auth import CurrentUser, require_admin
+from ..auth import CurrentUser, admin_or_demo_read
+from ..config import settings
 from ..db import rls_connection
+from ..limits import check_demo_ip_rate
 
 router = APIRouter()
 
@@ -69,9 +71,12 @@ _RUN_SELECT = (
 
 @router.get("/admin/eval-runs")
 async def list_eval_runs(
-    limit: int = _RUN_LIMIT, admin: CurrentUser = Depends(require_admin)
+    request: Request,
+    limit: int = _RUN_LIMIT,
+    admin: CurrentUser = Depends(admin_or_demo_read),
 ) -> list[dict[str, Any]]:
     """Every run, newest first — the trend view's data."""
+    check_demo_ip_rate(request, "admin_read", settings.demo_rate_admin_read_per_min)
     async with rls_connection(admin.id) as conn:
         rows = await conn.execute(
             text(_RUN_SELECT + "ORDER BY r.started_at DESC LIMIT :limit"),
@@ -81,7 +86,11 @@ async def list_eval_runs(
 
 
 @router.get("/admin/eval-runs/{run_id}")
-async def get_eval_run(run_id: str, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
+async def get_eval_run(
+    request: Request,
+    run_id: str,
+    admin: CurrentUser = Depends(admin_or_demo_read),
+) -> dict[str, Any]:
     """One run, its per-case results, and — when it is an experiment — the
     baseline it argues against, already diffed.
 
@@ -89,6 +98,7 @@ async def get_eval_run(run_id: str, admin: CurrentUser = Depends(require_admin))
     ``scripts/eval_compare.py`` cannot disagree about what counts as a
     regression.
     """
+    check_demo_ip_rate(request, "admin_read", settings.demo_rate_admin_read_per_min)
     try:
         UUID(run_id)
     except ValueError as exc:

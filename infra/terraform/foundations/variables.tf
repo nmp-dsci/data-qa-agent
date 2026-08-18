@@ -48,9 +48,9 @@ variable "db_min_acu" {
 }
 
 variable "db_max_acu" {
-  description = "Aurora Serverless v2 maximum capacity (ACUs). Raised 1 → 2 (2026-07-21) for chat latency: the agent's ~6 governed queries per answer ran against full 3.2M-row marts pinned at 1 ACU (~2 GiB), part of a measured 111s prod vs 22s dev gap. min stays 0, so this costs nothing idle — it only doubles the burst ceiling while queries actually run."
+  description = "Aurora Serverless v2 maximum capacity (ACUs). Raised 1 → 2 (2026-07-21) for chat latency: the agent's ~6 governed queries per answer ran against full 3.2M-row marts pinned at 1 ACU (~2 GiB), part of a measured 111s prod vs 22s dev gap. min stays 0, so this costs nothing idle — it only doubles the burst ceiling while queries actually run. Back to 1 (2026-08-18, s38): demo mode's local SQL executor runs simpler, cheaper queries than the live agent's larger extracts, so the 2-ACU burst ceiling this was raised for no longer applies while demo_mode is on."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "db_extra_ingress_cidrs" {
@@ -106,11 +106,17 @@ variable "billing_alarm_usd" {
 # DEMO_MODE=1 (replayed chat, local governed SQL executor, demo door), and the
 # biggest idle line item (~$25-35/mo of mostly-idle 2vCPU/4GB App Runner) goes
 # to zero. AUTH_MODE stays google — that IS the owner door for admin_emails.
-# Pair with db_max_acu = 1 in tfvars for the full demo cost profile.
+# Pair with db_max_acu = 1 for the full demo cost profile.
+#
+# The deploy workflow (.github/workflows/deploy-aws.yml) applies with no
+# -var-file — its `terraform apply` is driven entirely by these `default`
+# values, since terraform.tfvars is gitignored (local-plan convenience only,
+# never reaches CI). Changing the live deployment means changing the default
+# here, not a local tfvars file.
 variable "demo_mode" {
   description = "Deploy as the zero-LLM walk-in demo: no data-agent service, DEMO_MODE=1 on the backend."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "llm_provider" {

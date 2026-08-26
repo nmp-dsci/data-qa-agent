@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     max_deliveries: int = 3
     worker_metrics_port: int = 9100
+    # s40 M2: a pending entry idle longer than this is presumed orphaned (its
+    # worker died) and reclaimed via XAUTOCLAIM. Healthy workers re-claim their
+    # own entry every heartbeat tick (~2s), so 30s only ever fires on the dead.
+    reaper_idle_ms: int = 30000
     # Row cap for a single result set. The marts are already aggregated
     # (monthly, per suburb/property-type), so legitimate time-series easily run
     # past a couple hundred rows — a 2-suburb monthly trend over 2010-2026 is

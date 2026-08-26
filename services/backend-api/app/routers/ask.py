@@ -631,8 +631,9 @@ async def ask_stream(
                     yield _sse(name, ev["data"])
                 elif name == "status":
                     data = ev.get("data")
-                    if isinstance(data, dict) and data.get("state") == "queued":
-                        # s40: the queued-position frame is UX, pass it through.
+                    if isinstance(data, dict) and data.get("state") in ("queued", "restarted"):
+                        # s40: queued-position and mid-answer-restart frames are
+                        # UX — pass them through untouched.
                         yield _sse("status", data)
                     else:
                         yield _sse(

@@ -27,16 +27,21 @@ from prometheus_client import Counter, Histogram, start_http_server
 from .config import settings
 from .queue import (
     CONSUMER_GROUP,
+    DLQ_STREAM,
     JOBS_STREAM,
     cancel_key,
     client,
     ensure_group,
+    frames_stream,
     publish_frame,
 )
 
 CONSUMER = f"consumer-{socket.gethostname()}"
 
 JOBS = Counter("dataqa_worker_jobs_total", "Jobs processed by outcome", ["outcome"])
+REDELIVERIES = Counter(
+    "dataqa_worker_redeliveries_total", "Pending entries reclaimed from dead workers"
+)
 SERVICE_SECONDS = Histogram(
     "dataqa_worker_service_seconds",
     "Wall-clock seconds spent answering one job (excludes queue wait)",
@@ -44,7 +49,16 @@ SERVICE_SECONDS = Histogram(
 )
 
 
-async def process_job(r: Any, entry_id: str, fields: dict[str, str]) -> None:
+async def _finish(r: Any, entry_id: str) -> None:
+    """At-least-once bookkeeping: ack (only after a result/error frame exists),
+    then delete the entry so XLEN stays the admission-control depth."""
+    await r.xack(JOBS_STREAM, CONSUMER_GROUP, entry_id)
+    await r.xdel(JOBS_STREAM, entry_id)
+
+
+async def process_job(
+    r: Any, entry_id: str, fields: dict[str, str], *, deliveries: int = 1
+) -> None:
     """Run one job end-to-end; always leaves a result/error frame behind."""
     # Deferred: importing main pulls FastAPI + logfire config; worker pays it
     # once at first job (after warm-up), never per job.
@@ -60,10 +74,24 @@ async def process_job(r: Any, entry_id: str, fields: dict[str, str]) -> None:
         await publish_frame(
             r, job_id, "error", {"detail": "job expired in the queue before a worker was free"}
         )
-        await r.xack(JOBS_STREAM, CONSUMER_GROUP, entry_id)
-        await r.xdel(JOBS_STREAM, entry_id)
+        await _finish(r, entry_id)
         JOBS.labels(outcome="expired").inc()
         return
+
+    # s40 M2: the relay flags cancel when its client goes away — and also right
+    # after it consumed a result. Either way, a job whose flag is already up
+    # (disconnect, or a redelivery of already-answered work) must not run.
+    if await r.get(cancel_key(job_id)):
+        await _finish(r, entry_id)
+        JOBS.labels(outcome="cancelled").inc()
+        return
+
+    if deliveries > 1:
+        # s40 M2: redelivery restarts from frame zero. Truncate the dead
+        # worker's partial frames, then tell the client so it clears them
+        # instead of rendering two half-answers.
+        await r.xtrim(frames_stream(job_id), maxlen=0)
+        await publish_frame(r, job_id, "status", {"state": "restarted", "deliveries": deliveries})
 
     started = time.perf_counter()
     outcome = "ok"
@@ -76,11 +104,24 @@ async def process_job(r: Any, entry_id: str, fields: dict[str, str]) -> None:
             try:
                 event = await asyncio.wait_for(progress.get(), timeout=2.0)
             except TimeoutError:
-                # Heartbeat keeps the relay's XREAD loop (and the client's SSE)
-                # warm while a long step runs; also the cancel checkpoint.
+                # Heartbeat tick: keep the relay's XREAD loop (and the client's
+                # SSE) warm, checkpoint the cancel flag, and re-claim our own
+                # pending entry so its idle clock resets — the reaper only ever
+                # reclaims entries whose worker stopped heartbeating (died).
                 if not cancelled and await r.get(cancel_key(job_id)):
                     cancelled = True
                     task.cancel()
+                try:
+                    await r.xclaim(
+                        JOBS_STREAM,
+                        CONSUMER_GROUP,
+                        CONSUMER,
+                        min_idle_time=0,
+                        message_ids=[entry_id],
+                        justid=True,
+                    )
+                except Exception:  # noqa: BLE001 — a failed heartbeat is not fatal
+                    pass
                 await publish_frame(r, job_id, "status", {"state": "working"})
                 continue
             name = event.pop("event", None)
@@ -97,7 +138,7 @@ async def process_job(r: Any, entry_id: str, fields: dict[str, str]) -> None:
             {
                 "queue_wait_ms": queue_wait_ms,
                 "worker_id": CONSUMER,
-                "deliveries": int(job.get("deliveries") or 1),
+                "deliveries": deliveries,
             },
         )
         await publish_frame(r, job_id, "result", json.loads(result.model_dump_json()))
@@ -110,11 +151,59 @@ async def process_job(r: Any, entry_id: str, fields: dict[str, str]) -> None:
         JOBS.labels(outcome="error").inc()
     finally:
         SERVICE_SECONDS.observe(time.perf_counter() - started)
-        # At-least-once: ack only after the result/error frame exists, then
-        # delete the entry so XLEN stays the admission-control depth.
-        await r.xack(JOBS_STREAM, CONSUMER_GROUP, entry_id)
-        await r.xdel(JOBS_STREAM, entry_id)
+        await _finish(r, entry_id)
         print(f"[worker {CONSUMER}] job {job_id} {outcome} wait={queue_wait_ms}ms")
+
+
+async def reap(r: Any) -> list[tuple[str, dict[str, str], int]]:
+    """s40 M2: reclaim pending entries whose worker died mid-job.
+
+    XAUTOCLAIM hands over entries idle past REAPER_IDLE_MS (healthy workers
+    reset their idle clock every heartbeat). A reclaimed entry past
+    MAX_DELIVERIES is poison: it goes to the DLQ stream with an error frame to
+    the client, never to another worker. Returns the claimed jobs this worker
+    should now run, with their delivery counts.
+    """
+    try:
+        claimed = await r.xautoclaim(
+            JOBS_STREAM,
+            CONSUMER_GROUP,
+            CONSUMER,
+            min_idle_time=settings.reaper_idle_ms,
+            start_id="0-0",
+            count=8,
+        )
+    except Exception:  # noqa: BLE001 — no group yet / redis blip; next tick retries
+        return []
+    entries = claimed[1] if isinstance(claimed, (list, tuple)) and len(claimed) > 1 else []
+    todo: list[tuple[str, dict[str, str], int]] = []
+    for entry_id, fields in entries:
+        if fields is None:  # entry XDEL'd between claim and read
+            continue
+        pending = await r.xpending_range(
+            JOBS_STREAM, CONSUMER_GROUP, min=entry_id, max=entry_id, count=1
+        )
+        deliveries = int(pending[0]["times_delivered"]) if pending else 1
+        if deliveries > settings.max_deliveries:
+            job = json.loads(fields["job"])
+            job_id = str(job.get("job_id") or "unknown")
+            await r.xadd(
+                DLQ_STREAM,
+                {"job": fields["job"], "deliveries": str(deliveries), "worker": CONSUMER},
+            )
+            await publish_frame(
+                r,
+                job_id,
+                "error",
+                {"detail": f"job failed {deliveries - 1} times and was dead-lettered"},
+            )
+            await _finish(r, entry_id)
+            JOBS.labels(outcome="dead_lettered").inc()
+            REDELIVERIES.inc()
+            continue
+        REDELIVERIES.inc()
+        todo.append((entry_id, fields, deliveries))
+    return todo
 
 
 async def main() -> None:
@@ -135,6 +224,9 @@ async def main() -> None:
 
     print(f"[worker {CONSUMER}] consuming {JOBS_STREAM} (group {CONSUMER_GROUP})")
     while not stopping.is_set():
+        # s40 M2: sweep for orphaned work before blocking on fresh work.
+        for entry_id, fields, deliveries in await reap(r):
+            await process_job(r, entry_id, fields, deliveries=deliveries)
         # decode_responses=True means str fields at runtime; the redis stubs
         # don't carry that through, hence the cast.
         resp = cast(

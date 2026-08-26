@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-chat"
     anthropic_api_key: str | None = None
     model: str = "claude-sonnet-4-6"
+
+    # s40 (D2): LLM_STUB=1 forces the deterministic stub answer even when a
+    # provider key is present, paced so frames stream across STUB_LATENCY_S
+    # seconds — a stub run keeps the timing shape of a real one, which is what
+    # lets the load experiments measure this stack instead of the provider.
+    llm_stub: bool = False
+    stub_latency_s: float = 20.0
+
+    # s40 M0: pay the cold-start tax (embedding model load + one sandbox spawn)
+    # at startup instead of on the first real request. Off by default so unit
+    # tests and TestClient apps start instantly; compose turns it on.
+    warmup_on_start: bool = False
     # Row cap for a single result set. The marts are already aggregated
     # (monthly, per suburb/property-type), so legitimate time-series easily run
     # past a couple hundred rows — a 2-suburb monthly trend over 2010-2026 is

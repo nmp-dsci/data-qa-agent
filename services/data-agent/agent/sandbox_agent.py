@@ -856,7 +856,9 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
             return "STOP: no run_analysis attempts left. Use the report already built."
         ctx.deps.run_calls += 1
         ctx.deps.emit("Building the report", "")
-        result = run_code(code, frames=ctx.deps.frames)
+        # s40 M0: run_code blocks on a subprocess; off the event loop so one
+        # sandbox pass can't stall every other request on this worker.
+        result = await asyncio.to_thread(run_code, code, frames=ctx.deps.frames)
         # Accumulate across passes — pass 2's telemetry must not erase pass 1's.
         for name in result.skills_used:
             if name not in ctx.deps.skills_used:

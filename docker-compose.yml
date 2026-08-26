@@ -133,6 +133,12 @@ services:
       # Host port is overridable (API_HOST_PORT in .env) so a local dev machine
       # that already has something on 8000 can move the app instead of it.
       - "${API_HOST_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     depends_on:
       pipeline:
         condition: service_completed_successfully
@@ -160,10 +166,27 @@ services:
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
       # s37: self-hosted traces to the jaeger container (see backend-api).
       OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://jaeger:4318}
+      # s40 (D2): LLM_STUB=1 forces the deterministic stub answer, streamed
+      # across STUB_LATENCY_S seconds — the zero-spend workload for E2-E8 and
+      # the C-series load runs.
+      LLM_STUB: ${LLM_STUB:-0}
+      STUB_LATENCY_S: ${STUB_LATENCY_S:-20}
+      # s40 M0: pre-load embeddings + spawn one sandbox before serving, so the
+      # healthcheck below only goes green on a warm replica.
+      WARMUP_ON_START: "1"
     volumes:
       - dbt_target:/dbt-target:ro
     ports:
-      - "8100:8100"
+      # Host port is overridable (AGENT_HOST_PORT) like the backend's; the
+      # in-network address stays data-agent:8100. Worker replicas (s40 M1)
+      # publish nothing, so scaling never contends for this port.
+      - "${AGENT_HOST_PORT:-8100}:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8100/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     depends_on:
       pipeline:
         condition: service_completed_successfully

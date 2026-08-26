@@ -44,8 +44,28 @@ from .titles import summarize_title  # noqa: E402
 from .version import build_fingerprint  # noqa: E402
 
 
+async def _warmup() -> None:
+    """s40 M0: pre-load the embedding model and spawn one sandbox run so the
+    first real request doesn't pay the cold-start tax (ONNX load + first
+    Node/pyodide spawn). Best-effort — a failure degrades to a slow first
+    request, exactly the behaviour we have today.
+    """
+    from .embeddings import embed_text
+
+    try:
+        await asyncio.to_thread(embed_text, "warmup")
+    except Exception as exc:  # noqa: BLE001 — warm-up must never block startup
+        print(f"[data-agent] embedding warmup skipped: {exc}")
+    try:
+        await asyncio.to_thread(run_code, "result = {'answer': 'warmup', 'metrics': []}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[data-agent] sandbox warmup skipped: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    if settings.warmup_on_start:
+        await _warmup()
     yield
     await engine.dispose()
     await admin_engine.dispose()
@@ -535,6 +555,24 @@ def _salvage_usage(salvage: dict[str, Any] | None) -> dict[str, Any]:
     return {k: salvage[k] for k in keys if salvage.get(k) is not None}
 
 
+async def _pace_stub_frames(progress: asyncio.Queue[dict[str, Any]] | None) -> None:
+    """s40 (D2): spread the forced stub across STUB_LATENCY_S with progress
+    frames trickling out, so pages and the result land at ~S seconds the way a
+    real LLM answer would. The relay path, TTFP, and queue-wait measurements
+    then exercise the same shape in stub and live runs.
+    """
+    total = max(0.0, settings.stub_latency_s)
+    if total <= 0:
+        return
+    slices = 5
+    for i in range(slices):
+        await asyncio.sleep(total / slices)
+        if progress is not None:
+            progress.put_nowait(
+                {"n": i + 1, "action": "Working (stub)", "detail": f"{i + 1}/{slices}"}
+            )
+
+
 async def _answer(
     body: AskRequest, progress: asyncio.Queue[dict[str, Any]] | None = None
 ) -> AgentAnswer:
@@ -549,9 +587,13 @@ async def _answer(
     # None (→ deterministic offline stub below) when no provider key is set; a
     # salvage dict (fallback=True) when the LLM ran but never completed a report
     # — its trace (model turns, tool calls, tokens) stays with the stub answer.
-    llm = await answer_with_sandbox(
-        body.question, user_id=user_id, plan=body.user.plan, progress=progress
-    )
+    # s40 (D2): LLM_STUB=1 skips the provider entirely — the stub below answers,
+    # paced by _pace_stub_frames so the run keeps a real run's timing shape.
+    llm = None
+    if not settings.llm_stub:
+        llm = await answer_with_sandbox(
+            body.question, user_id=user_id, plan=body.user.plan, progress=progress
+        )
     salvage: dict[str, Any] | None = None
     if llm is not None:
         if not llm.get("fallback"):
@@ -566,6 +608,8 @@ async def _answer(
     page_index = {s["kind"]: s["index"] for s in plan_slots if s["status"] != "locked"}
     if progress is not None and llm is None:
         progress.put_nowait({"event": "plan", "pages": plan_slots})
+    if settings.llm_stub:
+        await _pace_stub_frames(progress)
 
     def _emit_stub_pages(pages: list[dict[str, Any]]) -> None:
         """Emit page frames for the stub's pages, then skip the rest (clears ghosts)."""
@@ -907,13 +951,13 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
     rows = meta.get("rows", [])
     row_count = meta.get("row_count", len(rows))
     # Named presentation objects recompute against this same extract (s18).
-    objects_out = _run_named_objects(body.objects, frame, sql=body.sql)
+    objects_out = await asyncio.to_thread(_run_named_objects, body.objects, frame, sql=body.sql)
     if not body.code.strip():
         return AnalysisResponse(
             columns=columns, rows=rows, row_count=row_count, objects_out=objects_out
         )
 
-    outcome = run_code(body.code, df=frame, frames={"extract": frame})
+    outcome = await asyncio.to_thread(run_code, body.code, df=frame, frames={"extract": frame})
     # Compose renderable pages from the produced report so the Builder can add
     # this sandbox run's output as a report page (the same PageLayout as chat).
     pages: list[dict[str, Any]] = []
@@ -1151,7 +1195,7 @@ async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectRe
                 error=f"revised extract failed: {exc}",
             )
 
-    outcome = run_code(code, df=frame, frames={"extract": frame})
+    outcome = await asyncio.to_thread(run_code, code, df=frame, frames={"extract": frame})
     pages: list[dict[str, Any]] = []
     if outcome.report and isinstance(outcome.report, dict):
         try:
@@ -1329,7 +1373,7 @@ async def agent_analysis_build_object(
             return _err(f"invalid spec: {exc}", sql=effective_sql)
 
     # 3. Run + lift the object (the lift orders any ordinal x-axis for the dataset).
-    outcome = run_code(code, df=frame, frames={"extract": frame})
+    outcome = await asyncio.to_thread(run_code, code, df=frame, frames={"extract": frame})
     # The curator reads this in the builder's status line, so it must be a message
     # rather than a Python traceback — the codegen loop has already spent its
     # correction passes by the time we get here.

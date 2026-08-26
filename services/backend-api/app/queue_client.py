@@ -123,6 +123,11 @@ async def ask_agent_stream_queued(
                     "list[tuple[str, list[tuple[str, dict[str, str]]]]]",
                     await r.xread({frames_key: last_id}, count=64, block=2000),
                 )
+            except aioredis.TimeoutError:
+                # redis-py 8.x raises instead of returning empty when a
+                # blocking read expires with no entries — it's just "no
+                # frames yet", not a failure.
+                resp = []
             except Exception as exc:  # noqa: BLE001
                 raise QueueError(f"relay read failed: {exc}") from exc
             if not resp:

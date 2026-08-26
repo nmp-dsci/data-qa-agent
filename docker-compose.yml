@@ -225,11 +225,17 @@ services:
     build: ./services/data-agent
     command: ["python", "-m", "agent.worker"]
     profiles: ["queue"]
+    # A crashed worker must rejoin the consumer group, not strand the queue —
+    # the reaper only redelivers to workers that are actually alive.
+    restart: unless-stopped
     environment:
       <<: *agent-env
       # The worker warms itself before consuming (agent/worker.py); the FastAPI
       # lifespan warm-up would be dead code on this entrypoint anyway.
       WARMUP_ON_START: "0"
+      # PID-1 python block-buffers stdout in a container; crash forensics need
+      # log lines in the order they happened.
+      PYTHONUNBUFFERED: "1"
     volumes:
       - dbt_target:/dbt-target:ro
     depends_on:
@@ -244,6 +250,10 @@ services:
   prometheus:
     image: prom/prometheus:v2.53.0
     profiles: ["obs"]
+    ports:
+      # Published for ad-hoc PromQL during experiments; Grafana uses the
+      # compose network and doesn't need this.
+      - "${PROM_HOST_PORT:-9090}:9090"
     volumes:
       - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 

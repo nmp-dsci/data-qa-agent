@@ -22,6 +22,7 @@ import socket
 import time
 from typing import Any, cast
 
+import redis.asyncio as aioredis
 from prometheus_client import Counter, Histogram, start_http_server
 
 from .config import settings
@@ -229,10 +230,17 @@ async def main() -> None:
             await process_job(r, entry_id, fields, deliveries=deliveries)
         # decode_responses=True means str fields at runtime; the redis stubs
         # don't carry that through, hence the cast.
-        resp = cast(
-            "list[tuple[str, list[tuple[str, dict[str, str]]]]]",
-            await r.xreadgroup(CONSUMER_GROUP, CONSUMER, {JOBS_STREAM: ">"}, count=1, block=5000),
-        )
+        try:
+            resp = cast(
+                "list[tuple[str, list[tuple[str, dict[str, str]]]]]",
+                await r.xreadgroup(
+                    CONSUMER_GROUP, CONSUMER, {JOBS_STREAM: ">"}, count=1, block=5000
+                ),
+            )
+        except aioredis.TimeoutError:
+            # redis-py 8.x raises instead of returning empty when a blocking
+            # read expires with nothing to deliver — an idle tick, not a fault.
+            continue
         if not resp:
             continue
         for _stream, entries in resp:

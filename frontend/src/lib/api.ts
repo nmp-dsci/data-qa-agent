@@ -626,6 +626,10 @@ export async function ask(
 export interface AskStatus {
   state: string;
   elapsed_s?: number;
+  // s40 queue mode: admission position when the job is waiting for a worker,
+  // and deliveries when a dead worker's job was restarted on another one.
+  position?: number;
+  deliveries?: number;
 }
 
 /** A live agent step while the answer is being built (running step list). */

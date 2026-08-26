@@ -28,12 +28,17 @@
 
 import http from "k6/http";
 import { check, sleep } from "k6";
-import { Trend } from "k6/metrics";
+import { Counter, Trend } from "k6/metrics";
 
 const BASE_URL = __ENV.BASE_URL || "http://localhost:8000";
 const SCENARIO = __ENV.SCENARIO || "browse";
 const VUS = parseInt(__ENV.VUS || "20", 10);
 const DURATION = __ENV.DURATION || "30s";
+// s40 M3: load shape. "constant" is the original open-ended loop; "oneshot"
+// is the C-series / E7 shape — N users ask exactly one question each, so the
+// offered load is exact and makespan ≈ ceil(N/workers) x service-time has a
+// closed-form prediction to compare against.
+const SHAPE = __ENV.SHAPE || "constant";
 // A bearer token for a seeded user. Locally the dev-auth stub mints one (see
 // below); against a real deployment pass TOKEN explicitly, because Google
 // ID tokens can't be minted from a load script.
@@ -44,18 +49,34 @@ const DEV_USER = __ENV.DEV_USER || "user1";
 // averaged together with cheap reads — the whole point is to keep them apart.
 const askDuration = new Trend("ask_duration", true);
 const browseDuration = new Trend("browse_duration", true);
+// s40: shed requests (admission-control 429s) counted apart from failures —
+// shedding is the system protecting itself, and shed% is a headline metric.
+const shed429 = new Counter("shed_429");
 
-export const options = {
-  vus: VUS,
-  duration: DURATION,
-  // Thresholds are recorded, not enforced as a gate: the first run's job is to
-  // establish what "normal" is. Once there is a baseline in app.load_tests, the
-  // numbers here become a real budget.
+// Thresholds are recorded, not enforced as a gate: the first run's job is to
+// establish what "normal" is. Once there is a baseline in app.load_tests, the
+// numbers here become a real budget.
+const common = {
   thresholds: {
     http_req_failed: ["rate<0.05"],
   },
   summaryTrendStats: ["min", "med", "p(90)", "p(95)", "p(99)", "max", "avg"],
 };
+export const options =
+  SHAPE === "oneshot"
+    ? {
+        ...common,
+        scenarios: {
+          [SCENARIO]: {
+            executor: "per-vu-iterations",
+            vus: VUS,
+            iterations: 1,
+            // Worst C-series cell: 20 users / 1 worker x 30s ≈ 600s serial.
+            maxDuration: "660s",
+          },
+        },
+      }
+    : { ...common, vus: VUS, duration: DURATION };
 
 const QUESTIONS = [
   "What are the top growth suburbs for sale price and rent?",
@@ -129,11 +150,15 @@ function chat(data) {
     { headers: headers(data), timeout: "240s" },
   );
   check(resp, {
-    // 429 is the daily LLM cap doing its job, not a failure of the service —
-    // counted as a pass so a capped run doesn't read as an outage.
+    // 429 is the daily LLM cap — or s40 admission control — doing its job, not
+    // a failure of the service; counted as a pass so a shed run doesn't read
+    // as an outage. Shed volume is its own counter.
     "ask answered or capped": (r) => r.status === 200 || r.status === 429,
   });
-  askDuration.add(resp.timings.duration);
+  if (resp.status === 429) shed429.add(1);
+  // Only successful answers feed the latency trend: mixing fast 429s into the
+  // same percentile as real answers would flatter p95 for the wrong reason.
+  if (resp.status === 200) askDuration.add(resp.timings.duration);
   sleep(2);
 }
 

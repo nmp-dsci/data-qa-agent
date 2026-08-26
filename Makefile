@@ -49,8 +49,17 @@ pipeline-docs:
 up:
 	docker compose up --build
 
+# s40 M1: the queue seam + metrics stack. WORKERS=N scales the consumer-group
+# replicas; flipping back is `QUEUE_MODE=off docker compose up -d --no-deps
+# backend-api`. Grafana: http://localhost:3000 (obs profile).
+WORKERS ?= 1
+queue-up:
+	QUEUE_MODE=on COMPOSE_PROFILES=queue,obs docker compose up --build -d --scale agent-worker=$(WORKERS)
+
 down:
-	docker compose down
+	# All profiles included so profile-gated services (queue/obs/docs) come
+	# down too, whatever combination was up.
+	COMPOSE_PROFILES=queue,obs,docs docker compose down
 
 reset:
 	docker compose down -v

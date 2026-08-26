@@ -21,6 +21,8 @@ dependencies = [
     # s38 demo mode: the local governed SQL executor (app/sql_exec.py) carries
     # the agent's AST guardrail layer, which needs sqlglot. Cheap and pure.
     "sqlglot>=25.0",
+    "redis>=8.1.0",
+    "prometheus-client>=0.26.0",
 ]
 
 [project.optional-dependencies]

@@ -129,6 +129,13 @@ services:
       # leaves the SDK's DNS-rebinding allowlist off — the key gate is the
       # control; see app/mcp_surface.py.
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+      # s40 M1: the queue seam. QUEUE_MODE=on enqueues chat to Redis Streams
+      # (make queue-up); off keeps today's direct hop. The bound sheds with a
+      # clean 429 + Retry-After; the deadline rides in each job.
+      QUEUE_MODE: ${QUEUE_MODE:-off}
+      REDIS_URL: redis://redis:6379/0
+      QUEUE_MAX_DEPTH: ${QUEUE_MAX_DEPTH:-10}
+      JOB_DEADLINE_S: ${JOB_DEADLINE_S:-240}
     ports:
       # Host port is overridable (API_HOST_PORT in .env) so a local dev machine
       # that already has something on 8000 can move the app instead of it.
@@ -145,7 +152,9 @@ services:
 
   data-agent:
     build: ./services/data-agent
-    environment:
+    # Anchored so agent-worker (s40 M1) runs the same image with the same
+    # environment — one config surface, two entrypoints.
+    environment: &agent-env
       APP_ENV: dev
       AGENT_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa
       # Elevated read-only role for the admin SQL editor (BYPASSRLS, all schemas);
@@ -174,6 +183,8 @@ services:
       # s40 M0: pre-load embeddings + spawn one sandbox before serving, so the
       # healthcheck below only goes green on a warm replica.
       WARMUP_ON_START: "1"
+      # s40 M1: where the worker (and future queue reads) find the job streams.
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - dbt_target:/dbt-target:ro
     ports:
@@ -190,6 +201,65 @@ services:
     depends_on:
       pipeline:
         condition: service_completed_successfully
+
+  # s40 M1 (D1): the queue. One redis container carries the shared agent:jobs
+  # stream (consumer group -> ack/pending/redelivery), a per-job frames stream
+  # the backend relays as SSE, and the DLQ. In-memory on purpose: losing it
+  # loses queued jobs, which users simply re-ask — the experiment's documented
+  # trade (same one SQS's managed durability would buy back in prod).
+  redis:
+    image: redis:7-alpine
+    profiles: ["queue"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # s40 M1: N of these consume agent:jobs — the same data-agent image running
+  # the consumer-group loop instead of uvicorn. No published ports, so
+  # `--scale agent-worker=N` just works; each replica joins the group as
+  # consumer-$HOSTNAME. Prometheus scrapes :9100 over the compose network via
+  # DNS discovery (see ops/prometheus.yml).
+  agent-worker:
+    build: ./services/data-agent
+    command: ["python", "-m", "agent.worker"]
+    profiles: ["queue"]
+    environment:
+      <<: *agent-env
+      # The worker warms itself before consuming (agent/worker.py); the FastAPI
+      # lifespan warm-up would be dead code on this entrypoint anyway.
+      WARMUP_ON_START: "0"
+    volumes:
+      - dbt_target:/dbt-target:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      pipeline:
+        condition: service_completed_successfully
+
+  # s40 M1 (D4, first-class): metrics collector + dashboard, obs profile.
+  # `make queue-up` enables queue+obs together; `COMPOSE_PROFILES=obs make up`
+  # gives the direct-path baselines (E1/E2) the same dashboard.
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ["obs"]
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    profiles: ["obs"]
+    environment:
+      # Local experiment tooling: no login wall between a run and its panels.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    volumes:
+      - ./ops/grafana:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
 
   # s37: self-hosted tracing. Logfire is an OpenTelemetry SDK, so the same
   # instrumentation both services already carry can export anywhere — this is

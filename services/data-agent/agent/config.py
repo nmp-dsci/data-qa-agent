@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # at startup instead of on the first real request. Off by default so unit
     # tests and TestClient apps start instantly; compose turns it on.
     warmup_on_start: bool = False
+
+    # s40 M1: the queue seam (worker side). REDIS_URL points at the compose
+    # redis service; MAX_DELIVERIES is the poison threshold before a job goes
+    # to the DLQ (M2); the worker serves prometheus metrics on this port.
+    redis_url: str = "redis://redis:6379/0"
+    max_deliveries: int = 3
+    worker_metrics_port: int = 9100
     # Row cap for a single result set. The marts are already aggregated
     # (monthly, per suburb/property-type), so legitimate time-series easily run
     # past a couple hundred rows — a 2-suburb monthly trend over 2010-2026 is

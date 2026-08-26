@@ -13,6 +13,8 @@ dependencies = [
     # AST-based SQL guardrail (defense-in-depth over the regex denylist); the SQL
     # editor turns arbitrary user-typed SQL into a first-class input.
     "sqlglot>=25.0",
+    "redis>=8.1.0",
+    "prometheus-client>=0.26.0",
 ]
 
 [project.optional-dependencies]

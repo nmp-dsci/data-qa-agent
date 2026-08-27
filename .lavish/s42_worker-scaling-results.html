@@ -280,9 +280,46 @@ tr.hl td{background:color-mix(in srgb,var(--purple) 8%,transparent)}
 <!-- ============================================================ 04 -->
 <section id="prod">
   <h2><span class="num">04</span> What the production dashboard showed</h2>
-  <p class="sec-sub">The golden-signals deck ran through every cell —
-  <span class="fileref">Grafana → Data QA · Queue (localhost:3000)</span>, fed by Prometheus +
-  the new docker-stats exporter. What an engineer would take away:</p>
+  <p class="sec-sub">The golden-signals deck ran through every cell — fed by Prometheus + the new
+  docker-stats exporter. Below: the actual deck over this morning's sweep window, then how to
+  open it yourself, then what an engineer would take away.</p>
+
+  <figure class="svg-panel">
+    <img src="s42_shot_grafana_deck.png" alt="The Grafana queue dashboard across the full sweep: depth sawtooths, per-worker throughput, wait vs service p95, job outcomes, CPU and memory per container, flat DLQ"
+      style="width:100%;border-radius:6px;border:1px solid var(--border)">
+    <figcaption><strong>The whole experiment in one screen</strong> (17:00–18:00 is the sweep).
+    Top-left: queue depth spikes to 15 on each burst, and you can read the worker count straight
+    off the drain slope — the long slow ramp ~17:10–17:40 is W1-S30/S60 draining one job at a
+    time; the steep sawteeth after 17:40 are W3/W5. Middle-right: the money panel — <em>wait p95
+    (green) collapses cell by cell while service p95 (yellow) stays pinned to S</em>. Bottom:
+    CPU spikes are replica boots (pyodide warm-up, not load), memory shows each worker's
+    ~300–840 MB footprint, and the dead-letter queue stayed flat zero.</figcaption>
+  </figure>
+
+  <h3>How to open the deck</h3>
+  <div class="cards c2" style="margin-bottom:18px">
+    <div class="card info">
+      <h4><span class="badge info">STEP 1–2</span> Start the obs profile, open Grafana</h4>
+      <p><code>make queue-up WORKERS=3</code> starts Prometheus + Grafana + the stats exporter
+      alongside the queue (the <code>obs</code> compose profile). Then open
+      <span class="fileref">http://localhost:3000</span> — anonymous access is pre-configured as
+      Admin locally, so there's no login; ignore the welcome page.</p>
+      <p>Direct link to the deck:
+      <span class="fileref">http://localhost:3000/d/dataqa-queue</span></p>
+    </div>
+    <div class="card info">
+      <h4><span class="badge info">STEP 3–4</span> Find the dashboard, set the time range</h4>
+      <p>Left sidebar → <strong>Dashboards</strong> → folder <strong>Data Pilot</strong> →
+      <strong>“Queue — depth, throughput, wait vs service”</strong> (provisioned from
+      <span class="fileref">ops/grafana/dashboards/queue.json</span>, so it's always there on a
+      fresh boot). Set the time picker (top right) to cover your run — e.g. <em>Last 1 hour</em>
+      while a sweep is live; it auto-refreshes every 5 s.</p>
+      <img src="s42_shot_grafana_find.png" alt="Grafana Dashboards page showing the Data Pilot folder that holds the queue deck"
+        style="width:100%;border-radius:6px;border:1px solid var(--border);margin-top:8px">
+    </div>
+  </div>
+
+  <h3>What an engineer takes away from it</h3>
   <div class="cards c2">
     <div class="card info">
       <h4><span class="badge info">LATENCY</span> Wait collapses; service stays put</h4>

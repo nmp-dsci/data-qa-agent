@@ -23,6 +23,8 @@ QUEUE_WAIT_SECONDS = Histogram(
     buckets=(0.05, 0.25, 1, 5, 15, 30, 60, 120, 240),
 )
 QUEUE_DEPTH = Gauge("dataqa_queue_depth", "Jobs waiting or in flight on agent:jobs")
+# s41: poison jobs parked for a human — should be flat zero; any rise is a page.
+QUEUE_DLQ_DEPTH = Gauge("dataqa_queue_dlq_depth", "Dead-lettered jobs on agent:dlq")
 
 
 async def _poll_depth() -> None:
@@ -31,6 +33,7 @@ async def _poll_depth() -> None:
     while True:
         try:
             QUEUE_DEPTH.set(await queue_client.queue_depth())
+            QUEUE_DLQ_DEPTH.set(await queue_client.client().xlen("agent:dlq"))
         except Exception:  # noqa: BLE001 — a redis blip must not kill the poller
             pass
         await asyncio.sleep(2)

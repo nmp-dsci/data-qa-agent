@@ -1,0 +1,27 @@
+[
+  {
+    "cell": "W5-S10",
+    "workers": 5,
+    "stub_s": 10,
+    "conc": 1,
+    "users": 15,
+    "predicted_makespan_s": 30,
+    "makespan_s": 31.6,
+    "error_pct": 5.3,
+    "ok": 15,
+    "outcomes": {
+      "ok": 15,
+      "shed": 0,
+      "error": 0,
+      "timeout": 0
+    },
+    "ttfp_med_s": 26.4,
+    "total_med_s": 21.3,
+    "wait_p95_s": 27.75,
+    "service_p95_s": 19.5,
+    "jobs_ok": 12.18,
+    "worker_cpu_max_pct": 581.7,
+    "worker_mem_max_mb": 2299.5,
+    "backend_cpu_max_pct": 35.15
+  }
+]

@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     # worker died) and reclaimed via XAUTOCLAIM. Healthy workers re-claim their
     # own entry every heartbeat tick (~2s), so 30s only ever fires on the dead.
     reaper_idle_ms: int = 30000
+    # s41 D2: jobs one worker process runs at once. 1 = the serial default
+    # (one worker = one answer-slot, exact capacity math). Raising it lets one
+    # process interleave react loops — LLM waits overlap, sandbox CPU still
+    # serializes through the thread pool.
+    worker_concurrency: int = 1
     # Row cap for a single result set. The marts are already aggregated
     # (monthly, per suburb/property-type), so legitimate time-series easily run
     # past a couple hundred rows — a 2-suburb monthly trend over 2010-2026 is

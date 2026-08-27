@@ -9,8 +9,10 @@ frame is published before the XACK (at-least-once: ack LAST), and the job
 entry is XDEL'd after the ack so ``XLEN agent:jobs`` stays an honest queue
 depth for admission control.
 
-One job at a time per worker — the sandbox serializes anyway. SIGTERM finishes
-the current job, then exits.
+One job at a time per worker by default (WORKER_CONCURRENCY=1 — exact
+capacity math: one replica = one answer-slot). WORKER_CONCURRENCY=N lets one
+process interleave N react loops, overlapping their LLM waits (s41 D2).
+SIGTERM finishes the in-flight jobs, then exits.
 """
 
 from __future__ import annotations
@@ -223,18 +225,43 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stopping.set)
 
-    print(f"[worker {CONSUMER}] consuming {JOBS_STREAM} (group {CONSUMER_GROUP})")
+    # s41 D2: a bounded set of in-flight jobs. cap=1 (default) is the serial
+    # worker — one job occupies the slot, LLM waits included. cap>1 interleaves
+    # react loops on one event loop, overlapping their LLM waits.
+    cap = max(1, settings.worker_concurrency)
+    running: set[asyncio.Task[None]] = set()
+
+    async def _run(entry_id: str, fields: dict[str, str], deliveries: int = 1) -> None:
+        try:
+            await process_job(r, entry_id, fields, deliveries=deliveries)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — one bad job must not kill the loop
+            print(f"[worker {CONSUMER}] job task crashed: {exc}")
+
+    def _spawn(entry_id: str, fields: dict[str, str], deliveries: int = 1) -> None:
+        task = asyncio.ensure_future(_run(entry_id, fields, deliveries))
+        running.add(task)
+        task.add_done_callback(running.discard)
+
+    print(f"[worker {CONSUMER}] consuming {JOBS_STREAM} (group {CONSUMER_GROUP}, slots {cap})")
     while not stopping.is_set():
+        if len(running) >= cap:
+            await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+            continue
         # s40 M2: sweep for orphaned work before blocking on fresh work.
         for entry_id, fields, deliveries in await reap(r):
-            await process_job(r, entry_id, fields, deliveries=deliveries)
+            _spawn(entry_id, fields, deliveries)
+        free = cap - len(running)
+        if free <= 0:
+            continue
         # decode_responses=True means str fields at runtime; the redis stubs
         # don't carry that through, hence the cast.
         try:
             resp = cast(
                 "list[tuple[str, list[tuple[str, dict[str, str]]]]]",
                 await r.xreadgroup(
-                    CONSUMER_GROUP, CONSUMER, {JOBS_STREAM: ">"}, count=1, block=5000
+                    CONSUMER_GROUP, CONSUMER, {JOBS_STREAM: ">"}, count=free, block=5000
                 ),
             )
         except aioredis.TimeoutError:
@@ -245,8 +272,10 @@ async def main() -> None:
             continue
         for _stream, entries in resp:
             for entry_id, fields in entries:
-                # Graceful SIGTERM: finish this job, then the loop exits.
-                await process_job(r, entry_id, fields)
+                _spawn(entry_id, fields)
+    if running:
+        # Graceful SIGTERM: finish the in-flight jobs, then exit.
+        await asyncio.wait(running)
     print(f"[worker {CONSUMER}] stopped")
 
 

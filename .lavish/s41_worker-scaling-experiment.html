@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s41 · Worker scaling — does adding workers shrink the queue?</title>
+<style>
+/* Night Flight tokens, lifted from frontend/src/styles.css (same as s40) so
+   this page reads as the same product. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae; --hud:#35803f;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10); --elev-2:0 8px 24px rgba(50,40,20,.12);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.flex,.cards,.steps,.opt-grid,.matrix-wrap)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,dd,td,th,.badge,.chip,label){overflow-wrap:anywhere}
+:where(img,svg,canvas){max-width:100%}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)} .lbl.hud{color:var(--hud)}
+.lbl.warn{color:var(--warn)} .lbl.bad{color:var(--bad)} .lbl.info{color:var(--info)}
+header.hero{padding:56px 0 30px;border-bottom:1px solid var(--border);margin-bottom:34px;
+  position:relative;overflow:hidden}
+header.hero::after{content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+.hero h1{font-size:clamp(30px,4.4vw,46px);line-height:1.08;margin:12px 0 0;
+  font-weight:750;letter-spacing:-.02em;max-width:30ch}
+.hero .kicker{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hero .sub{color:var(--muted);font-size:17px;margin:16px 0 0;max-width:76ch}
+.verdict{margin-top:26px;border:1px solid var(--accent);border-left-width:3px;
+  border-radius:var(--radius-lg);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 9%,var(--panel)),var(--panel));
+  padding:16px 20px;box-shadow:var(--elev-1)}
+.verdict p{margin:6px 0 0;color:var(--text)}
+.verdict .lbl{color:var(--accent-soft)}
+section{margin:46px 0}
+h2{font-size:24px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px;
+  display:flex;gap:12px;align-items:baseline}
+h2 .num{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700}
+h3{font-size:16px;font-weight:650;margin:22px 0 8px}
+.sec-sub{color:var(--muted);margin:0 0 18px;max-width:78ch}
+.cards{display:grid;gap:14px}
+.cards.c2{grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
+.cards.c3{grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr))}
+.cards.c4{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px 18px;box-shadow:var(--elev-1)}
+.card h4{margin:0 0 8px;font-size:14px;font-weight:650;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.card p{margin:6px 0;color:var(--muted);font-size:13.5px}
+.card ul{margin:6px 0;padding-left:18px;color:var(--muted);font-size:13.5px}
+.card.warn{border-color:var(--warn-border)} .card.bad{border-color:var(--bad-border)}
+.card.good{border-color:var(--good-border)} .card.info{border-color:var(--info-border)}
+.card.purple{border-color:var(--purple-border)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:2px 9px;
+  border-radius:999px;border:1px solid var(--border-2);color:var(--muted);white-space:nowrap}
+.badge.good{color:var(--good);border-color:var(--good-border)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border)}
+.badge.info{color:var(--info);border-color:var(--info-border)}
+.badge.accent{color:var(--accent-soft);border-color:var(--accent)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border)}
+code,.code{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--accent-2)}
+pre.block{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;
+  overflow-x:auto;line-height:1.55;color:var(--text);margin:10px 0}
+.fileref{font-family:var(--mono);font-size:11.5px;color:var(--accent-2)}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel)}
+.matrix-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:1px solid var(--border);margin:12px 0}
+table.tbl th{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);text-align:left;padding:10px 12px;
+  border-bottom:1px solid var(--border-2);background:var(--panel-2);white-space:nowrap}
+table.tbl td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text)}
+table.tbl tr:last-child td{border-bottom:0}
+table.tbl td.num{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+.svg-panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px;margin:14px 0;box-shadow:var(--elev-1)}
+.svg-panel figcaption{color:var(--muted);font-size:13px;margin-top:10px;max-width:80ch}
+.qa{border:1px solid var(--info-border);border-left-width:3px;border-radius:var(--radius-lg);
+  background:var(--panel);padding:14px 18px;margin:14px 0}
+.qa .q{font-weight:650;margin:0 0 6px}
+.qa p{margin:6px 0;color:var(--muted);font-size:13.5px}
+/* decision blocks (input playbook) */
+.decision{border:1px solid var(--purple-border);border-radius:var(--radius-lg);
+  background:var(--panel);padding:16px 18px;margin:16px 0}
+.decision h4{margin:0 0 4px;font-size:14.5px;font-weight:650}
+.decision .why{color:var(--muted);font-size:13px;margin:0 0 12px}
+.decision label{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;margin:6px 0;
+  border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13.5px}
+.decision label:hover{border-color:var(--border-2);background:var(--panel-2)}
+.decision label input{margin-top:3px;accent-color:var(--accent)}
+.decision .opt-title{font-weight:600}
+.decision .opt-sub{color:var(--muted);font-size:12.5px;display:block}
+.decision button{font-family:var(--mono);font-size:11.5px;font-weight:700;letter-spacing:.05em;
+  background:var(--accent);color:var(--accent-ink);border:0;border-radius:var(--radius);
+  padding:8px 14px;cursor:pointer;margin-top:8px}
+.decision button:hover{background:var(--accent-soft)}
+.queued-note{display:none;font-family:var(--mono);font-size:11px;color:var(--good);margin-top:8px}
+.chip{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 8px;
+  border:1px solid var(--border-2);border-radius:999px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">
+    <span class="lbl accent">S41 · EXPERIMENT PLAN</span>
+    <span class="badge">branch queue</span>
+    <span class="badge good">stack live-verified</span>
+    <span class="badge info">follows s40 M0–M3</span>
+  </div>
+  <h1>Does adding workers actually shrink the queue?</h1>
+  <p class="sub">A 3×3 sweep — <strong>1 / 3 / 5 workers</strong> × the data-agent taking
+  <strong>10 / 30 / 60 s</strong> per answer — with a fixed burst of one-shot users, measured
+  against a closed-form prediction. Alongside it: the production metrics an engineer would
+  actually watch (latency percentiles + CPU/memory), wired into the existing Grafana deck.</p>
+  <div class="verdict">
+    <span class="lbl">PREDICTION WE'RE TESTING</span>
+    <p><strong>makespan ≈ ⌈N ÷ W⌉ × S</strong> — with N users in a burst, W workers, and S seconds
+    of service time, the burst drains in ⌈N/W⌉ serial "waves". Going 1 → 5 workers should cut
+    total drain time ~5×, and the already-run smoke agrees: 4 users × 1 worker × 10 s stub
+    measured <strong>41.3 s ≈ 4 × 10 s</strong>. This sweep tests whether that linearity holds
+    across the whole grid — and where it bends.</p>
+  </div>
+</header>
+
+<!-- ============================================================ 01 -->
+<section id="matrix">
+  <h2><span class="num">01</span> The sweep: W × S, fixed burst of 15</h2>
+  <p class="sec-sub">One knob per axis. <code>WORKERS</code> scales the consumer-group replicas
+  (<span class="fileref">docker compose --scale agent-worker=W</span>); <code>STUB_LATENCY_S</code>
+  sets how long the stubbed data-agent takes per answer (<span class="fileref">agent/main.py · _pace_stub_frames</span>).
+  The burst is <strong>N = 15 one-shot users</strong> — 15 divides cleanly by 1, 3 and 5, so every
+  cell drains in whole waves and the prediction has no rounding fuzz.</p>
+
+  <div class="matrix-wrap">
+  <table class="tbl">
+    <thead><tr>
+      <th>cell</th><th>workers W</th><th>service S</th><th>waves ⌈15/W⌉</th>
+      <th>predicted makespan</th><th>predicted speedup vs W=1</th><th>worst queue wait</th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="num">W1-S10</td><td class="num">1</td><td class="num">10 s</td><td class="num">15</td><td class="num">150 s</td><td class="num">1.0×</td><td class="num">140 s</td></tr>
+      <tr><td class="num">W1-S30</td><td class="num">1</td><td class="num">30 s</td><td class="num">15</td><td class="num">450 s</td><td class="num">1.0×</td><td class="num">420 s</td></tr>
+      <tr><td class="num">W1-S60</td><td class="num">1</td><td class="num">60 s</td><td class="num">15</td><td class="num">900 s</td><td class="num">1.0×</td><td class="num">840 s</td></tr>
+      <tr><td class="num">W3-S10</td><td class="num">3</td><td class="num">10 s</td><td class="num">5</td><td class="num">50 s</td><td class="num">3.0×</td><td class="num">40 s</td></tr>
+      <tr><td class="num">W3-S30</td><td class="num">3</td><td class="num">30 s</td><td class="num">5</td><td class="num">150 s</td><td class="num">3.0×</td><td class="num">120 s</td></tr>
+      <tr><td class="num">W3-S60</td><td class="num">3</td><td class="num">60 s</td><td class="num">5</td><td class="num">300 s</td><td class="num">3.0×</td><td class="num">240 s</td></tr>
+      <tr><td class="num">W5-S10</td><td class="num">5</td><td class="num">10 s</td><td class="num">3</td><td class="num">30 s</td><td class="num">5.0×</td><td class="num">20 s</td></tr>
+      <tr><td class="num">W5-S30</td><td class="num">5</td><td class="num">30 s</td><td class="num">3</td><td class="num">90 s</td><td class="num">5.0×</td><td class="num">60 s</td></tr>
+      <tr><td class="num">W5-S60</td><td class="num">5</td><td class="num">60 s</td><td class="num">3</td><td class="num">180 s</td><td class="num">5.0×</td><td class="num">120 s</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="sec-sub">Whole grid ≈ <strong>38 min of measured time</strong>
+  (Σ = 2 300 s) plus ~1 min restack per cell — a single sitting. If the measured makespans track
+  the predicted column within ~10 %, the answer to the headline question is an unqualified
+  <strong>yes, linearly</strong>: with a serial worker, W workers drain a burst W× faster.</p>
+
+  <div class="cards c3">
+    <div class="card warn">
+      <h4><span class="badge warn">GOTCHA</span> Deadline must outlive the worst wait</h4>
+      <p>W1-S60's last job waits 840 s. The default <code>JOB_DEADLINE_S=240</code>
+      (<span class="fileref">app/config.py:35</span>) would expire 11 of its 15 jobs in the queue —
+      by design. Every cell runs with <code>JOB_DEADLINE_S=1200</code> and the prober's
+      <code>--deadline-s 1500</code>.</p>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">GOTCHA</span> Depth must not shed</h4>
+      <p>Default <code>QUEUE_MAX_DEPTH=10</code> would 429 five of the 15 users and corrupt the
+      capacity measurement. All cells run at <code>QUEUE_MAX_DEPTH=32</code> — same fairness rule
+      the s40 C-series locked. Shedding is E7's experiment, not this one.</p>
+    </div>
+    <div class="card info">
+      <h4><span class="badge info">MEASURE</span> Per-cell outputs</h4>
+      <p>From <span class="fileref">scripts/loadgen_sse.py</span>: makespan, outcome counts,
+      time-to-first-page and total per user, queue positions. From Prometheus: queue-wait
+      p50/p95, service p95, jobs/min, CPU + memory per container over the cell's window.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 02 -->
+<section id="serial">
+  <h2><span class="num">02</span> Serial or concurrent? What one worker really does</h2>
+  <p class="sec-sub">Your question — <em>"does the data-agent work through each request one at a
+  time, or can one worker handle multiple requests since it's an async LLM react loop?"</em> —
+  has a two-part answer, and the distinction is exactly what this experiment leans on.</p>
+
+  <div class="qa">
+    <p class="q">Today: one queue worker = deliberately one job at a time.</p>
+    <p>The worker loop reads <code>count=1</code> and <code>await</code>s the job to completion
+    before reading again (<span class="fileref">agent/worker.py:237–249</span>, and its docstring
+    says so out loud). That's a <em>choice</em>, not a limitation of the runtime: it makes
+    capacity arithmetic honest (1 worker = 1 answer-slot, so ⌈N/W⌉ is exact), keeps memory per
+    replica bounded, and avoids contention on the sandbox subprocess, which is real CPU work.</p>
+    <p class="q" style="margin-top:14px">But yes — the react loop is mostly waiting, so one process <em>could</em> interleave.</p>
+    <p>In a live answer, most wall-clock is spent awaiting DeepSeek over the network. The whole
+    agent is asyncio end-to-end — the HTTP <code>data-agent</code> service already serves
+    concurrent requests on one process, and the sandbox's blocking <code>run_code</code> was moved
+    off the event loop in M0 (<span class="fileref">asyncio.to_thread</span>,
+    <span class="fileref">agent/main.py:954–1376</span>). A worker with a concurrency semaphore of,
+    say, 4 would run 4 react loops at once, overlapping their LLM waits — one replica behaving
+    like ~4 workers for I/O-bound time, while CPU-bound sandbox slices still serialize through
+    the thread pool.</p>
+  </div>
+
+  <figure class="svg-panel">
+    <svg viewBox="0 0 860 300" width="100%" role="img" aria-label="Serial worker vs concurrent worker timelines">
+      <title>How the same worker process spends 60 seconds: serial vs interleaved</title>
+      <style>
+        .ax{stroke:currentColor;opacity:.25;stroke-width:1}
+        .t{font:600 12px var(--mono);fill:currentColor}
+        .tt{font:700 13px var(--sans);fill:currentColor}
+        .cap{font:500 11px var(--sans);fill:currentColor;opacity:.65}
+        .llm{fill:var(--accent-2);opacity:.75;rx:3}
+        .cpu{fill:var(--accent);rx:3}
+        .idle{fill:currentColor;opacity:.08;rx:3}
+      </style>
+      <text class="tt" x="12" y="24">Serial worker (today) — one job occupies the slot, LLM waits included</text>
+      <line class="ax" x1="120" y1="70" x2="840" y2="70"/>
+      <text class="t" x="12" y="58">job A</text>
+      <rect class="cpu" x="120" y="42" width="30" height="20"/>
+      <rect class="llm" x="150" y="42" width="150" height="20"/>
+      <rect class="cpu" x="300" y="42" width="40" height="20"/>
+      <rect class="llm" x="340" y="42" width="140" height="20"/>
+      <rect class="cpu" x="480" y="42" width="40" height="20"/>
+      <text class="t" x="12" y="94">job B</text>
+      <rect class="idle" x="120" y="80" width="400" height="20"/>
+      <rect class="cpu" x="524" y="80" width="30" height="20"/>
+      <rect class="llm" x="554" y="80" width="150" height="20"/>
+      <rect class="cpu" x="704" y="80" width="40" height="20"/>
+      <text class="cap" x="120" y="120">job B queues for job A's entire duration — even the parts where the worker was just waiting on the network</text>
+
+      <text class="tt" x="12" y="168">Concurrent worker (possible) — LLM waits overlap; only sandbox CPU serializes</text>
+      <line class="ax" x1="120" y1="216" x2="840" y2="216"/>
+      <text class="t" x="12" y="202">job A</text>
+      <rect class="cpu" x="120" y="186" width="30" height="20"/>
+      <rect class="llm" x="150" y="186" width="150" height="20"/>
+      <rect class="cpu" x="300" y="186" width="40" height="20"/>
+      <rect class="llm" x="340" y="186" width="140" height="20"/>
+      <rect class="cpu" x="480" y="186" width="40" height="20"/>
+      <text class="t" x="12" y="240">job B</text>
+      <rect class="cpu" x="150" y="224" width="30" height="20"/>
+      <rect class="llm" x="180" y="224" width="150" height="20"/>
+      <rect class="cpu" x="344" y="224" width="40" height="20"/>
+      <rect class="llm" x="384" y="224" width="140" height="20"/>
+      <rect class="cpu" x="524" y="224" width="40" height="20"/>
+      <text class="cap" x="120" y="272">both jobs finish ~together; total wall-clock barely grows because the blue (network wait) overlapped</text>
+      <rect class="cpu" x="620" y="252" width="14" height="12"/><text class="cap" x="640" y="262">sandbox / CPU</text>
+      <rect class="llm" x="736" y="252" width="14" height="12"/><text class="cap" x="756" y="262">LLM wait (I/O)</text>
+    </svg>
+    <figcaption>The stub used in this sweep simulates the <em>serial</em> model — each stubbed
+    answer holds its worker for the full S seconds — so the sweep measures the horizontal-scaling
+    story cleanly. Decision D2 below proposes one bonus cell that flips a per-worker concurrency
+    knob on, to show the interleaving story too.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ 03 -->
+<section id="metrics">
+  <h2><span class="num">03</span> Production metrics: the four golden signals, and what's missing</h2>
+  <p class="sec-sub">An SRE watches <strong>latency, traffic, errors, saturation</strong>. Three
+  and a half of the four already exist from s40 M1 — the gap is machine saturation:
+  <strong>nothing collects CPU or memory today</strong>. This plan closes that with a
+  <code>cadvisor</code> container in the <code>obs</code> profile and two new Grafana rows.</p>
+
+  <div class="matrix-wrap">
+  <table class="tbl">
+    <thead><tr><th>signal</th><th>metric</th><th>source</th><th>status</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Latency</strong></td><td>queue wait p50/p95 · service p50/p95 · end-to-end (wait + service)</td>
+        <td class="num">dataqa_queue_wait_seconds · dataqa_worker_service_seconds</td>
+        <td><span class="badge good">SHIPPED s40</span></td></tr>
+      <tr><td><strong>Traffic</strong></td><td>jobs/min per worker · enqueued/min</td>
+        <td class="num">dataqa_worker_jobs_total · dataqa_queue_enqueued_total</td>
+        <td><span class="badge good">SHIPPED s40</span></td></tr>
+      <tr><td><strong>Errors</strong></td><td>shed % · error/expired/dead-lettered outcomes · DLQ depth</td>
+        <td class="num">dataqa_queue_shed_total · jobs_total{outcome} · XLEN agent:dlq</td>
+        <td><span class="badge good">SHIPPED s40</span> <span class="chip">DLQ depth gauge: small add</span></td></tr>
+      <tr><td><strong>Saturation</strong></td><td>queue depth (backlog)</td>
+        <td class="num">dataqa_queue_depth (2 s XLEN poll)</td>
+        <td><span class="badge good">SHIPPED s40</span></td></tr>
+      <tr><td><strong>Saturation</strong></td><td><strong>CPU % + memory per container</strong> — backend, agent, each worker replica, db, redis</td>
+        <td class="num">container_cpu_usage_seconds_total · container_memory_working_set_bytes</td>
+        <td><span class="badge bad">MISSING → this plan</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="cards c2">
+    <div class="card good">
+      <h4><span class="badge accent">BUILD</span> cAdvisor in the obs profile</h4>
+      <p><code>gcr.io/cadvisor/cadvisor</code> alongside prometheus/grafana, mounting the Docker
+      socket read-only; Prometheus adds one scrape job. Grafana gets two provisioned rows on the
+      existing queue dashboard: <strong>CPU % by container</strong> and <strong>memory working set
+      by container</strong>, with worker replicas as separate series — so W=5 shows five lines
+      sharing the load.</p>
+      <p><span class="fileref">docker-compose.yml · ops/prometheus.yml · ops/grafana/dashboards/queue.json</span></p>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">HONESTY</span> The stub's CPU is ~zero — say so up front</h4>
+      <p>A stubbed answer is a paced <code>asyncio.sleep</code>: workers will show flat CPU while
+      "busy". That's fine — this sweep's CPU panels prove the <em>observability works</em> and
+      show the idle floor (~150 MB/replica memory is the real cost of W=5). The interesting CPU
+      trace comes from one <strong>live-LLM validation cell</strong> (s40's E9 pattern): a real
+      answer lights up the sandbox and the panels earn their keep.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 04 -->
+<section id="harness">
+  <h2><span class="num">04</span> The runner: one command, nine cells, one results file</h2>
+  <p class="sec-sub">A new <span class="fileref">scripts/wsweep.py</span> drives the whole grid so
+  the sweep is reproducible and boring. No k6 needed — <span class="fileref">scripts/loadgen_sse.py</span>
+  (already built, already used for the smoke) is the load source, so this runs on this machine today.</p>
+
+  <pre class="block">for W in 1 3 5:                 # outer: restacks are slow, latency changes are free
+  for S in 10 30 60:
+    1. restack:  QUEUE_MODE=on LLM_STUB=1 STUB_LATENCY_S=$S QUEUE_MAX_DEPTH=32 JOB_DEADLINE_S=1200 \
+                   docker compose up -d --no-deps --scale agent-worker=$W agent-worker backend-api data-agent
+    2. wait:     all workers heartbeating (consumer count via XINFO CONSUMERS) + backend /health
+    3. mark t0, run:  loadgen_sse --users 15 --deadline-s 1500 --json out/w$W-s$S.json
+    4. snapshot: Prometheus query_range over [t0, now] — wait p95, service p95, jobs/min,
+                 CPU%/mem per container — folded into the same JSON
+    5. record:   row into app.load_tests via scripts/ops_ingest.py
+                 (notes: "wsweep workers=$W stub_s=$S users=15", no schema change)
+
+then: render results table (measured vs predicted makespan, % error) → s42 artifact</pre>
+
+  <div class="cards c3">
+    <div class="card">
+      <h4>Fairness rules carried from s40</h4>
+      <ul>
+        <li>Same build for every cell — only env changes</li>
+        <li>Workers warmed before t0 (WARMUP_ON_START already in the worker boot)</li>
+        <li>No shedding in capacity cells (depth 32)</li>
+        <li>One cold throwaway probe after each restack, excluded from results</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>What "yes" looks like</h4>
+      <ul>
+        <li>Measured makespan within ~10 % of ⌈15/W⌉×S in all 9 cells</li>
+        <li>Queue-wait p95 collapses with W while service p95 stays flat ≈ S</li>
+        <li>Grafana: depth sawtooth drains 3× / 5× steeper as W rises</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>What would bend the line</h4>
+      <ul>
+        <li>Relay/SSE fan-in on one backend process (15 concurrent streams)</li>
+        <li>Postgres pool limits when 5 workers persist at once</li>
+        <li>Docker Desktop CPU throttling with 5 warm replicas (~150 MB each)</li>
+      </ul>
+      <p>Any bend is a finding, not a failure — it's the next bottleneck named.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 05 -->
+<section id="deliverables">
+  <h2><span class="num">05</span> Deliverables & risks</h2>
+  <div class="cards c2">
+    <div class="card good">
+      <h4><span class="badge good">SHIP</span> In this build</h4>
+      <ul>
+        <li><span class="fileref">scripts/wsweep.py</span> — the 9-cell runner above</li>
+        <li>cAdvisor service + Prometheus scrape + 2 Grafana rows (CPU, memory)</li>
+        <li>DLQ depth gauge (one XLEN poll alongside the existing depth poller)</li>
+        <li><strong>s42 results artifact</strong>: measured-vs-predicted table, speedup chart, and
+        annotated Grafana screenshots per W — the "does it scale" answer with receipts</li>
+        <li>README "Load &amp; backpressure" section pointing at the sweep + dashboard</li>
+      </ul>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">RISKS</span> Known limits of the rig</h4>
+      <ul>
+        <li><strong>cAdvisor on macOS</strong> reads the Docker Desktop VM — per-container CPU is
+        accurate <em>within</em> the VM but a few host metrics are absent. Fine for our purpose.</li>
+        <li><strong>All replicas share one laptop</strong> — CPU panels show shared-core behaviour,
+        not the isolated-node behaviour App Runner would give. The s40 §04b AWS note covers the mapping.</li>
+        <li><strong>Stub ≠ live</strong> — service time is exact by construction. That's the point
+        (it isolates queueing behaviour), but every claim gets labelled "stubbed" and one live cell
+        validates the machinery.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 06 -->
+<section id="decisions">
+  <h2><span class="num">06</span> Decisions before building</h2>
+  <p class="sec-sub">Pick an option and hit <em>Queue answer</em> — it lands with me alongside any
+  annotations. Defaults are marked; everything else in this plan proceeds as written.</p>
+
+  <div class="decision" data-lavish-question="d1-cpu">
+    <h4>D1 · How should CPU/memory be collected?</h4>
+    <p class="why">This is the "production metrics an engineer would track" half of the request —
+    the sweep works without it, but the dashboard story doesn't.</p>
+    <form onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d1'); if(!c) return;
+      window.lavish.queuePrompt('D1 decision: collect CPU/memory via '+c, {tag:'choice', text:'D1: '+c,
+      element:event.currentTarget, data:{question:'d1-cpu', answer:c}, queueKey:'d1-cpu'});
+      event.currentTarget.querySelector('.queued-note').style.display='block';">
+      <label><input type="radio" name="d1" value="cAdvisor container in the obs profile (recommended)">
+        <span><span class="opt-title">cAdvisor container in the obs profile</span> <span class="badge accent">RECOMMENDED</span>
+        <span class="opt-sub">The industry-standard answer; per-container CPU/mem into the existing Prometheus with one scrape job; worker replicas appear as separate series. One more container, obs-profile only.</span></span></label>
+      <label><input type="radio" name="d1" value="a docker stats sampling sidecar script writing to Prometheus pushgateway-style">
+        <span><span class="opt-title">docker stats sampler script</span>
+        <span class="opt-sub">No new container; a Python loop shells <code>docker stats</code> every 5 s during sweeps only. Cheaper, but bespoke, coarser, and not how production does it.</span></span></label>
+      <label><input type="radio" name="d1" value="skip CPU for now; latency/throughput panels only">
+        <span><span class="opt-title">Skip CPU for this sweep</span>
+        <span class="opt-sub">Fastest path to results; the saturation row stays queue-depth only. The "metrics an engineer tracks" story ships half-done.</span></span></label>
+      <button type="submit">Queue answer</button>
+      <div class="queued-note">✓ queued — sends with your next “Send to Agent”</div>
+    </form>
+  </div>
+
+  <div class="decision" data-lavish-question="d2-concurrency">
+    <h4>D2 · Add one bonus cell demonstrating per-worker concurrency?</h4>
+    <p class="why">§02's answer in measurable form: a <code>WORKER_CONCURRENCY=4</code> knob
+    (semaphore around <code>process_job</code>, XREADGROUP <code>count</code> raised) run as one
+    extra cell — W=1, S=30, concurrency 4 — predicted to drain 15 users in ~120 s instead of 450 s.</p>
+    <form onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d2'); if(!c) return;
+      window.lavish.queuePrompt('D2 decision: '+c, {tag:'choice', text:'D2: '+c,
+      element:event.currentTarget, data:{question:'d2-concurrency', answer:c}, queueKey:'d2-concurrency'});
+      event.currentTarget.querySelector('.queued-note').style.display='block';">
+      <label><input type="radio" name="d2" value="yes — build the WORKER_CONCURRENCY knob and run the one bonus cell (recommended)">
+        <span><span class="opt-title">Yes — one bonus cell</span> <span class="badge accent">RECOMMENDED</span>
+        <span class="opt-sub">Small, well-contained change; turns §02's diagram into a measured result and completes the answer to your question. Heartbeat/cancel logic needs a per-job review (~half a day).</span></span></label>
+      <label><input type="radio" name="d2" value="no — keep workers strictly one-job-at-a-time; ship the 3x3 only">
+        <span><span class="opt-title">No — 3×3 only</span>
+        <span class="opt-sub">Keeps the worker dead simple and the capacity math exact. The concurrency story stays a diagram.</span></span></label>
+      <button type="submit">Queue answer</button>
+      <div class="queued-note">✓ queued — sends with your next “Send to Agent”</div>
+    </form>
+  </div>
+
+  <div class="decision" data-lavish-question="d3-users">
+    <h4>D3 · Burst size per cell</h4>
+    <p class="why">Bigger N sharpens percentiles but stretches W1-S60 linearly (N=30 → a 30-minute
+    single cell).</p>
+    <form onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d3'); if(!c) return;
+      window.lavish.queuePrompt('D3 decision: burst size '+c, {tag:'choice', text:'D3: '+c,
+      element:event.currentTarget, data:{question:'d3-users', answer:c}, queueKey:'d3-users'});
+      event.currentTarget.querySelector('.queued-note').style.display='block';">
+      <label><input type="radio" name="d3" value="N=15 (recommended)">
+        <span><span class="opt-title">N = 15</span> <span class="badge accent">RECOMMENDED</span>
+        <span class="opt-sub">Divides by 1/3/5 → whole waves, exact predictions; whole grid ≈ 38 min.</span></span></label>
+      <label><input type="radio" name="d3" value="N=30">
+        <span><span class="opt-title">N = 30</span>
+        <span class="opt-sub">Smoother percentiles; also divides cleanly; grid ≈ 77 min, W1-S60 alone 30 min.</span></span></label>
+      <label><input type="radio" name="d3" value="N=20 to mirror the s40 C-series">
+        <span><span class="opt-title">N = 20 (match C-series)</span>
+        <span class="opt-sub">Comparable with s40's C-cells, but 20/3 leaves a ragged last wave — predictions get ± one wave of slack.</span></span></label>
+      <button type="submit">Queue answer</button>
+      <div class="queued-note">✓ queued — sends with your next “Send to Agent”</div>
+    </form>
+  </div>
+</section>
+
+<footer style="border-top:1px solid var(--border);padding-top:18px;color:var(--faint);font-size:12.5px">
+  s41 · worker-scaling experiment plan · branch <code>queue</code> · builds on s40 M0–M3 (all committed, live-verified) ·
+  verified facts: <span class="fileref">agent/worker.py</span> serial loop, <span class="fileref">app/config.py</span> deadline/depth defaults,
+  smoke 4×1×10 s → 41.3 s
+</footer>
+
+</div>
+</body>
+</html>

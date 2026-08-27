@@ -236,6 +236,9 @@ services:
       # PID-1 python block-buffers stdout in a container; crash forensics need
       # log lines in the order they happened.
       PYTHONUNBUFFERED: "1"
+      # s41 D2: answer-slots per worker process (1 = serial; >1 interleaves
+      # LLM waits on one event loop).
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
     volumes:
       - dbt_target:/dbt-target:ro
     depends_on:
@@ -247,6 +250,19 @@ services:
   # s40 M1 (D4, first-class): metrics collector + dashboard, obs profile.
   # `make queue-up` enables queue+obs together; `COMPOSE_PROFILES=obs make up`
   # gives the direct-path baselines (E1/E2) the same dashboard.
+  # s41 D1: per-container CPU/memory — the saturation golden signal. Not
+  # cAdvisor: v0.49's legacy Docker client fails Docker Desktop's info
+  # handshake and every series comes out an anonymous cgroup id. This ~100-line
+  # stdlib exporter asks the Docker API directly and labels series with the
+  # compose service, so worker replicas show as separate lines in Grafana.
+  stats-exporter:
+    image: python:3.12-alpine
+    profiles: ["obs"]
+    command: ["python", "/stats_exporter.py"]
+    volumes:
+      - ./ops/stats_exporter.py:/stats_exporter.py:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
   prometheus:
     image: prom/prometheus:v2.53.0
     profiles: ["obs"]

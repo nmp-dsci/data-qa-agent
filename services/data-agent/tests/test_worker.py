@@ -194,3 +194,15 @@ def test_reap_hands_back_retryable_jobs() -> None:
     todo = asyncio.run(worker.reap(r))
     assert todo == [("9-0", fields, 2)]
     assert r.dlq == [] and r.acked == []
+
+
+def test_reap_acks_zombie_pel_entry_xdeld_between_claim_and_read() -> None:
+    """review fix: an entry XDEL'd between XAUTOCLAIM and read must still be
+    XACK'd/XDEL'd (via _finish), else it becomes a zombie PEL entry that the
+    reaper reclaims forever without ever completing."""
+    r = FakeRedis()
+    r.autoclaim_result = ("0-0", [("9-0", None)], [])
+
+    todo = asyncio.run(worker.reap(r))
+    assert todo == []
+    assert r.acked == ["9-0"] and r.deleted == ["9-0"]

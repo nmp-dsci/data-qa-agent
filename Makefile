@@ -28,6 +28,9 @@ help:
 	@echo "make ops-rollup    - recompute the /ops deck's windows now"
 	@echo "make rollback      - revert App Runner to the previous image digest (prod)"
 	@echo ""
+	@echo "make queue-up      - QUEUE_MODE=on: redis + agent-worker(s) + Grafana/Prometheus (WORKERS=N)"
+	@echo "make c-run         - one queue load cell end-to-end (QUEUE=on|off WORKERS=N USERS=N STUB=N)"
+	@echo ""
 	@echo "Then open http://localhost:5230 and sign in as admin / user1 / user2."
 
 samples:

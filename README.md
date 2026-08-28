@@ -105,6 +105,8 @@ rest are started on demand by the command shown.
 | **4318** | **Jaeger OTLP/HTTP** — where both services send spans | not a UI | 4318 | `make up` |
 | **5434** | **Postgres** — `postgres`/`postgres`, db `dataqa` | `psql -h localhost -p 5434 -U postgres dataqa` | **5432** | `make up` |
 | **8180** | **dbt docs** — lineage graph, model SQL, column docs | <http://localhost:8180> | 8080 | `make pipeline-docs` |
+| **3000** | **Grafana** — queue-scaling dashboard (`obs` profile) | <http://localhost:3000> | 3000 | `make queue-up` |
+| **9090** | **Prometheus** — ad-hoc PromQL over queue/worker metrics (`obs` profile) | <http://localhost:9090> | 9090 | `make queue-up` |
 
 Two services run and exit rather than listening: **`migrate`** (Alembic) and **`pipeline`** (dlt + dbt).
 They publish no ports; `make up` waits for them to finish before the API starts.
@@ -170,8 +172,13 @@ scripts/                make_samples.py, smoke_test.py, build_poa_paths.py (Expl
                         eval_compare.py, eval_diagnose.py — the eval loop's DB<->pack, runner, gate, and
                         read-only diagnosis tools (`make eval*`); ops_ingest.py (records load/red-team/
                         deploy/pipeline outcomes for the Ops deck), ops_judge_sample.py, rollback_apprunner.sh;
-                        mcp_smoke.py — drives a real Claude client against the MCP surface (`make mcp-smoke`)
+                        mcp_smoke.py — drives a real Claude client against the MCP surface (`make mcp-smoke`);
+                        wsweep.py (s41 worker-scaling sweep), chaos.sh (queue chaos drills), loadgen_sse.py
+                        (SSE prober measuring TTFP/queue-position/restarts) — see "Job queue" below
 load/k6/                k6 load scripts (`make loadtest`) — the app's only load harness
+ops/                    stats_exporter.py (per-container CPU/mem for the `obs` profile — see "Job queue"),
+                        prometheus.yml, grafana/ (provisioned dashboards/datasources)
+out/wsweep/             committed s41 worker-scaling sweep receipts (raw probe timings + run.log)
 security/promptfoo/     red-team config for the governed boundary (`make redteam`)
 docs/runbook.md         production runbook, keyed off the Ops deck's lamps
 docs/evals/             cycle-NNN.md write-ups of real improvement attempts scored through the eval loop
@@ -295,6 +302,38 @@ make rollback          # revert App Runner to the previous image (prod)
 
 See [`docs/runbook.md`](./docs/runbook.md) for what to do when a lamp goes red, and
 [`SECURITY.md`](./SECURITY.md) for the threat model the red-team exercises.
+
+## Job queue (optional, local experiment)
+
+A Redis Streams queue can sit in front of the data agent, built to run a controlled worker-scaling
+experiment (s40–s42) rather than to ship to prod — `QUEUE_MODE` defaults to **off**, so a plain `make up`
+is unaffected. Turn it on with:
+
+```bash
+make queue-up              # QUEUE_MODE=on, brings up redis + N agent-worker replicas + Grafana/Prometheus
+make queue-up WORKERS=3    # scale the consumer-group replicas
+```
+
+Grafana (<http://localhost:3000>, anonymous admin, local-only by design) ships a pre-provisioned queue
+dashboard; Prometheus (<http://localhost:9090>) is scraped from `backend-api`, every `agent-worker` replica
+(DNS-discovered), and `ops/stats_exporter.py` — a ~100-line stdlib per-container CPU/mem exporter that
+replaced cAdvisor (cAdvisor can't name containers on Docker Desktop). `make down` tears down the `queue`
+and `obs` profiles along with everything else.
+
+Chat jobs are at-least-once over `agent:jobs`: a worker publishes its result before acking so the stream
+length stays an honest admission depth, backend-api is the single writer of `query_runs` and only then sets
+a per-job cancel key, workers heartbeat by self-reclaiming their own pending entry every ~2s so the 30s dead-
+worker reaper only ever redelivers real failures, and a job that keeps failing dead-letters after
+`MAX_DELIVERIES` (3). The chat UI shows `Queued — position N…` while a job waits for a worker slot and
+`Worker restarted — rebuilding the answer…` if a dead worker's job was picked up by a survivor.
+
+- `make c-run [QUEUE=on|off] [WORKERS=N] [USERS=N] [STUB=N]` — one load cell end-to-end (direct vs. queued).
+- `python3 scripts/wsweep.py` — the full s41 worker-count × stub-latency sweep; receipts land in `out/wsweep/`.
+- `./scripts/chaos.sh kill-worker|poison-job|flood|dlq` — chaos drills against a `queue-up` stack.
+- Write-ups: `.lavish/s40_queue-experiment-plan.html`, `s41_worker-scaling-experiment.html`,
+  `s42_worker-scaling-results.html`. See `AGENTS.md` → "Job queue: Redis Streams in front of the data agent
+  (s40–s42)" for the full design (at-least-once semantics, the redis-py 8.x timeout quirk, why
+  `AGENT_HOST_PORT` stays published, and the queue telemetry on `query_runs`).
 
 ## Golden Examples (the eval loop)
 

@@ -40,9 +40,25 @@ _RECORDABLE = ("deepseek", "anthropic", "openai")
 
 def _psql(query: str, service: str = "db") -> str:
     proc = subprocess.run(
-        ["docker", "compose", "exec", "-T", service, "psql", "-U", "postgres",
-         "-d", "dataqa", "-tA", "-f", "-"],
-        input=query, capture_output=True, text=True, cwd=REPO_ROOT,
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            service,
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "dataqa",
+            "-tA",
+            "-f",
+            "-",
+        ],
+        input=query,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
     )
     if proc.returncode != 0:
         sys.exit(f"psql failed: {proc.stderr.strip()}")

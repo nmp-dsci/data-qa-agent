@@ -15,9 +15,7 @@ import urllib.request
 
 TIMEOUT = int(os.environ.get("SMOKE_TIMEOUT_S", "180"))
 
-API = os.environ.get(
-    "SMOKE_API_URL", f"http://localhost:{os.environ.get('API_HOST_PORT', '8000')}"
-)
+API = os.environ.get("SMOKE_API_URL", f"http://localhost:{os.environ.get('API_HOST_PORT', '8000')}")
 
 
 def _post(path: str, body: dict, token: str | None = None, channel: str | None = None) -> dict:

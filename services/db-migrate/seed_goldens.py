@@ -31,9 +31,22 @@ PACK_DIR = Path(__file__).resolve().parent / "evals" / "cases"
 # Mirror of eval_pack.py: importable columns, jsonb casts, derived fields the
 # pack only ever carries as digests.
 FIELDS = [
-    "case_key", "question", "dataset", "tier", "as_user", "holdout", "origin_env",
-    "authoring_status", "expectation", "tags", "grader", "golden_sql",
-    "golden_sandbox", "golden_objects", "golden_data", "golden_report",
+    "case_key",
+    "question",
+    "dataset",
+    "tier",
+    "as_user",
+    "holdout",
+    "origin_env",
+    "authoring_status",
+    "expectation",
+    "tags",
+    "grader",
+    "golden_sql",
+    "golden_sandbox",
+    "golden_objects",
+    "golden_data",
+    "golden_report",
 ]
 JSONB = {"tags", "grader", "golden_objects", "golden_data", "golden_report"}
 DERIVED = {"golden_data"}
@@ -69,14 +82,13 @@ def main() -> None:
                 print("seed_goldens: skipping a case with no case_key")
                 continue
             cols = [
-                f for f in FIELDS
+                f
+                for f in FIELDS
                 if f in case
                 and f not in DERIVED
                 and not (isinstance(case[f], dict) and case[f].get("_omitted"))
             ]
-            placeholders = ", ".join(
-                f"%({f})s::jsonb" if f in JSONB else f"%({f})s" for f in cols
-            )
+            placeholders = ", ".join(f"%({f})s::jsonb" if f in JSONB else f"%({f})s" for f in cols)
             updates = ", ".join(f"{f} = EXCLUDED.{f}" for f in cols if f != "case_key")
             cur.execute(
                 f"INSERT INTO app.eval_cases ({', '.join(cols)}, source) "

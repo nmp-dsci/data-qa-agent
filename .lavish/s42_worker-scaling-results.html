@@ -395,6 +395,51 @@ tr.hl td{background:color-mix(in srgb,var(--purple) 8%,transparent)}
   </div>
 </section>
 
+<!-- ============================================================ 06 -->
+<section id="e9">
+  <h2><span class="num">06</span> E9 — the live-LLM validation (run 2026-08-28)</h2>
+  <p class="sec-sub">Everything above used the stub to isolate queueing. E9 reruns the burst with
+  <strong>real DeepSeek answers</strong>: 10 users at once, through the queue (3 workers) and then
+  straight at the single data-agent container (queue off). 20/20 answered, zero errors.</p>
+
+  <div class="matrix-wrap">
+  <table class="tbl">
+    <thead><tr><th>leg</th><th>makespan</th><th>median answer</th><th>slowest user</th>
+      <th>peak agent CPU</th><th>peak agent memory</th><th>concurrent LLM calls</th></tr></thead>
+    <tbody>
+      <tr><td>Queue · 3 workers</td><td class="num">197.0 s</td><td class="num">121.4 s</td><td class="num">197.0 s</td>
+        <td class="num">331% (≈110%/worker)</td><td class="num">2.0 GB (3 replicas)</td><td class="num">≤ 3, by construction</td></tr>
+      <tr><td>Direct · 1 container</td><td class="num">72.9 s</td><td class="num">60.7 s</td><td class="num">72.9 s</td>
+        <td class="num"><strong>816%</strong> (one process)</td><td class="num">2.3 GB (one process)</td><td class="num">10, unbounded</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="cards c3">
+    <div class="card info">
+      <h4><span class="badge info">CONFIRMS</span> The model held on live answers</h4>
+      <p>Live service time ran 25–85 s per answer (local stack, warm prompt cache — faster than
+      prod's ~95 s). Queue leg: ⌈10/3⌉ = 4 waves × ~50–60 s predicts ~200–240 s; measured
+      <strong>197 s</strong>. The stub sweep's arithmetic transfers to real answers.</p>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">THE CATCH</span> Direct speed was bought with 8 cores</h4>
+      <p>The direct leg won on wall-clock <em>because this laptop had 8+ idle cores to give one
+      container</em> (816% CPU peak — real sandbox work, unbounded). A prod App Runner instance
+      has 1–2 vCPU: the same burst there serializes on CPU and stretches toward the 240 s
+      timeout. The queue leg's CPU was flat-capped at ~110% per worker — a shape a small
+      instance can actually honour.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge good">THE DIAL</span> Latency vs boundedness, quantified</h4>
+      <p>Direct = fastest when resources are infinite, degradation when they're not. Queue =
+      +~2 min for the last user, in exchange for bounded LLM spend (≤3 concurrent calls),
+      bounded CPU/memory, and a clean 429 past depth 32. Raw data:
+      <span class="fileref">out/wsweep/E9-queue.json · E9-direct.json</span>.</p>
+    </div>
+  </div>
+</section>
+
 <footer style="border-top:1px solid var(--border);padding-top:18px;color:var(--faint);font-size:12.5px">
   s42 · worker-scaling results · run 2026-08-27 on branch <code>queue</code> (commits a3a607b + bb19aa6) ·
   rig: Redis Streams queue + LLM_STUB + <span class="fileref">scripts/wsweep.py</span> · plan &amp; decisions: s41

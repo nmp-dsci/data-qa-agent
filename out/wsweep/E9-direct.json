@@ -1,0 +1,76 @@
+{
+  "users": 10,
+  "makespan_s": 72.90398429200286,
+  "results": [
+    {
+      "outcome": "ok",
+      "ttfp_s": 49.74267304097884,
+      "total_s": 65.4100394579873,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 43.708340042008786,
+      "total_s": 61.04403754201485,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 15.106401208991883,
+      "total_s": 25.45941258399398,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 50.692177958000684,
+      "total_s": 60.356779166992055,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 33.43498137500137,
+      "total_s": 49.00739037501626,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 42.98291387502104,
+      "total_s": 66.17758920800406,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 24.90017620800063,
+      "total_s": 38.27573691599537,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 27.4613397080102,
+      "total_s": 40.12956808300805,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 55.38503229201888,
+      "total_s": 69.21519312501187,
+      "queued_pos": null,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 54.97018633398693,
+      "total_s": 72.90128387499135,
+      "queued_pos": null,
+      "restarts": 0
+    }
+  ]
+}

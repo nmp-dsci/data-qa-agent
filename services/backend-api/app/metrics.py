@@ -33,7 +33,7 @@ async def _poll_depth() -> None:
     while True:
         try:
             QUEUE_DEPTH.set(await queue_client.queue_depth())
-            QUEUE_DLQ_DEPTH.set(await queue_client.client().xlen("agent:dlq"))
+            QUEUE_DLQ_DEPTH.set(await queue_client.client().xlen(queue_client.DLQ_STREAM))
         except Exception:  # noqa: BLE001 — a redis blip must not kill the poller
             pass
         await asyncio.sleep(2)

@@ -13,10 +13,11 @@ consumer of one wire contract; change both together (units.py/units.ts rule).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any, cast
 
 import redis.asyncio as aioredis
@@ -26,6 +27,7 @@ from . import metrics
 from .config import settings
 
 JOBS_STREAM = "agent:jobs"
+DLQ_STREAM = "agent:dlq"
 FRAMES_PREFIX = "agent:frames:"
 CANCEL_PREFIX = "agent:cancel:"
 
@@ -173,11 +175,16 @@ async def ask_agent_queued(
     The s41 open question ("does /ask queue too?") is answered yes — Slack and
     service-account callers get backpressure for free through this one path.
     """
-    async for ev in ask_agent_stream_queued(
-        question=question, user_id=user_id, role=role, plan=plan, dataset_slug=dataset_slug
-    ):
-        if ev["event"] == "result":
-            return dict(ev["data"])
-        if ev["event"] == "error":
-            raise QueueError(str(ev["data"].get("detail") or "queued job failed"))
+    stream = cast(
+        "AsyncGenerator[dict[str, Any], None]",
+        ask_agent_stream_queued(
+            question=question, user_id=user_id, role=role, plan=plan, dataset_slug=dataset_slug
+        ),
+    )
+    async with contextlib.aclosing(stream):
+        async for ev in stream:
+            if ev["event"] == "result":
+                return dict(ev["data"])
+            if ev["event"] == "error":
+                raise QueueError(str(ev["data"].get("detail") or "queued job failed"))
     raise QueueError("queued job stream ended without a result")

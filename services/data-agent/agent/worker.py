@@ -182,6 +182,7 @@ async def reap(r: Any) -> list[tuple[str, dict[str, str], int]]:
     todo: list[tuple[str, dict[str, str], int]] = []
     for entry_id, fields in entries:
         if fields is None:  # entry XDEL'd between claim and read
+            await _finish(r, entry_id)
             continue
         pending = await r.xpending_range(
             JOBS_STREAM, CONSUMER_GROUP, min=entry_id, max=entry_id, count=1
@@ -245,12 +246,19 @@ async def main() -> None:
         task.add_done_callback(running.discard)
 
     print(f"[worker {CONSUMER}] consuming {JOBS_STREAM} (group {CONSUMER_GROUP}, slots {cap})")
+    reap_backlog: list[tuple[str, dict[str, str], int]] = []
     while not stopping.is_set():
         if len(running) >= cap:
             await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
             continue
-        # s40 M2: sweep for orphaned work before blocking on fresh work.
-        for entry_id, fields, deliveries in await reap(r):
+        # s40 M2: sweep for orphaned work before blocking on fresh work. Claimed
+        # entries beyond the cap stay in reap_backlog (still owned by this
+        # consumer in the PEL) instead of being spawned past the concurrency
+        # limit — drained as slots free up on later iterations.
+        if not reap_backlog:
+            reap_backlog.extend(await reap(r))
+        while reap_backlog and len(running) < cap:
+            entry_id, fields, deliveries = reap_backlog.pop(0)
             _spawn(entry_id, fields, deliveries)
         free = cap - len(running)
         if free <= 0:

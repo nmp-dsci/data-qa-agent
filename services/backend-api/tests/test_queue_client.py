@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -47,7 +48,7 @@ class FakeRedis:
 
 
 @pytest.fixture(autouse=True)
-def _reset_client(monkeypatch: pytest.MonkeyPatch):
+def _reset_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     yield
     queue_client._client = None
 
@@ -70,7 +71,7 @@ def test_admission_under_bound_returns_position(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_relay_merges_queue_meta_into_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    frames = [
+    frames: list[tuple[str, dict[str, Any]]] = [
         ("progress", {"n": 1, "action": "step"}),
         ("page", {"index": 0, "status": "complete", "page": {}}),
         ("queue_meta", {"queue_wait_ms": 1200, "worker_id": "consumer-w1", "deliveries": 1}),
@@ -104,7 +105,7 @@ def test_relay_merges_queue_meta_into_result(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_blocking_twin_returns_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    frames = [
+    frames: list[tuple[str, dict[str, Any]]] = [
         ("queue_meta", {"queue_wait_ms": 10, "worker_id": "consumer-w1", "deliveries": 1}),
         ("result", {"answer": "ok", "engine": "sandbox"}),
     ]

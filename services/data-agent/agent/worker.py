@@ -30,7 +30,6 @@ from prometheus_client import Counter, Histogram, start_http_server
 from .config import settings
 from .queue import (
     CONSUMER_GROUP,
-    DLQ_STREAM,
     JOBS_STREAM,
     cancel_key,
     client,
@@ -38,6 +37,7 @@ from .queue import (
     frames_stream,
     publish_frame,
 )
+from .queue import DLQ_STREAM as DLQ_STREAM
 
 CONSUMER = f"consumer-{socket.gethostname()}"
 

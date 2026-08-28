@@ -91,7 +91,9 @@ def main() -> None:
     print("4. live SQL through the local governed executor")
     status, rows = req("POST", "/sql",
                        {"sql": "SELECT * FROM marts.property_rent LIMIT 5"}, tok)
-    ok_rows = status == 200 and not (rows or {}).get("error") and (rows or {}).get("row_count", 0) > 0
+    ok_rows = (
+        status == 200 and not (rows or {}).get("error") and (rows or {}).get("row_count", 0) > 0
+    )
     check("governed SELECT returns rows", ok_rows,
           f"(rows={(rows or {}).get('row_count')}, err={(rows or {}).get('error')})")
     status, denied = req("POST", "/sql", {"sql": "DELETE FROM app.users"}, tok)

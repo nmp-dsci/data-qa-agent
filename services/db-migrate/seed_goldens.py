@@ -66,7 +66,7 @@ def main() -> None:
     with psycopg.connect(url) as conn, conn.cursor() as cur:
         for case in cases:
             if not case.get("case_key"):
-                print(f"seed_goldens: skipping a case with no case_key")
+                print("seed_goldens: skipping a case with no case_key")
                 continue
             cols = [
                 f for f in FIELDS

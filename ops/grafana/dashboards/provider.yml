@@ -1,0 +1,8 @@
+# s40 M1 (D4): auto-load the committed queue dashboard on first boot.
+apiVersion: 1
+providers:
+  - name: dataqa
+    folder: Data Pilot
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards

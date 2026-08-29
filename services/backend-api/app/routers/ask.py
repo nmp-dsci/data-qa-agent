@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from starlette.background import BackgroundTask
 
-from .. import demo_replay
+from .. import demo_replay, queue_client
 from ..agent_client import ask_agent, ask_agent_stream, title_agent
 from ..agent_version import current_agent_version_id
 from ..auth import CurrentUser, get_current_user
@@ -273,12 +273,13 @@ async def _persist_answer(
                         "sql_text, engine, row_count, latency_ms, status, error, input_tokens, "
                         "output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, "
                         "degraded, attempts, ttfp_ms, otel_trace_id, trace, channel, "
-                        "agent_version_id) "
+                        "agent_version_id, queue_wait_ms, worker_id, deliveries) "
                         "VALUES (:cid, :mid, :uid, "
                         "(SELECT id FROM app.datasets WHERE slug = :slug), :question, :sql, "
                         ":engine, :row_count, :lat, :status, :err, :in_tok, :out_tok, "
                         ":cache_read, :cache_write, :cost_usd, :degraded, :attempts, :ttfp, "
-                        ":trace_id, CAST(:trace AS jsonb), :channel, :agent_version_id) "
+                        ":trace_id, CAST(:trace AS jsonb), :channel, :agent_version_id, "
+                        ":queue_wait_ms, :worker_id, :deliveries) "
                         "RETURNING id"
                     ),
                     {
@@ -316,6 +317,11 @@ async def _persist_answer(
                         # Which build answered this (s24 M1). None when the agent
                         # cannot be reached — provenance never blocks an answer.
                         "agent_version_id": await current_agent_version_id(conn),
+                        # s40 M1: folded into the result by the queue relay's
+                        # queue_meta frame; NULL on the direct path.
+                        "queue_wait_ms": result.get("queue_wait_ms"),
+                        "worker_id": result.get("worker_id"),
+                        "deliveries": result.get("deliveries"),
                     },
                 )
             ).scalar_one()
@@ -465,6 +471,22 @@ async def run_question(
         # scan is O(pack size) and file parsing (lru_cache'd, so only ever
         # once) shouldn't block concurrent demo visitors either way.
         result = await asyncio.to_thread(demo_replay.result_for, question)
+    elif settings.queue_mode == "on":
+        # s40 M1: the queue seam. The blocking path enqueues and waits on the
+        # final result frame — same machinery as the stream, so Slack and
+        # service-account callers get admission control (429) for free.
+        try:
+            result = await queue_client.ask_agent_queued(
+                question=question,
+                user_id=user.id,
+                role=user.role,
+                plan=plan,
+                dataset_slug=DATASET_SLUG,
+            )
+        except queue_client.QueueError as exc:
+            async with rls_connection(user.id) as conn:
+                await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
+            result = _degraded_result(f"agent unavailable: {exc}")
     else:
         # Delegate to the agent (its own connection enforces the same RLS).
         try:
@@ -531,6 +553,10 @@ async def ask_stream(
     # Enforce the cap before the stream opens so the client gets a clean 429.
     if not settings.demo_mode:
         await check_daily_llm_cap(user)
+        # s40 M1: admission control also before the stream opens — a shed
+        # request costs one XLEN, a status line, and nothing else.
+        if settings.queue_mode == "on":
+            await queue_client.check_admission()
 
     # Populated by gen() for a new conversation; the background task below retitles
     # it once the stream has closed (never delays the streamed answer, s17 E1).
@@ -568,14 +594,26 @@ async def ask_stream(
             )
             yield _sse("result", response.model_dump_json())
             return
-        try:
-            async for ev in ask_agent_stream(
+        # s40 M1: the generator swaps its source — Redis frame relay in queue
+        # mode, the direct httpx SSE hop otherwise. Same frames either way.
+        if settings.queue_mode == "on":
+            stream_source = queue_client.ask_agent_stream_queued(
                 question=question,
                 user_id=user.id,
                 role=user.role,
                 plan=plan,
                 dataset_slug=DATASET_SLUG,
-            ):
+            )
+        else:
+            stream_source = ask_agent_stream(
+                question=question,
+                user_id=user.id,
+                role=user.role,
+                plan=plan,
+                dataset_slug=DATASET_SLUG,
+            )
+        try:
+            async for ev in stream_source:
                 name = ev["event"]
                 if name == "progress":
                     yield _sse("progress", ev["data"])
@@ -592,10 +630,16 @@ async def ask_stream(
                         ttfp_ms = int((time.perf_counter() - started) * 1000)
                     yield _sse(name, ev["data"])
                 elif name == "status":
-                    yield _sse(
-                        "status",
-                        {"state": "working", "elapsed_s": int(time.perf_counter() - started)},
-                    )
+                    data = ev.get("data")
+                    if isinstance(data, dict) and data.get("state") in ("queued", "restarted"):
+                        # s40: queued-position and mid-answer-restart frames are
+                        # UX — pass them through untouched.
+                        yield _sse("status", data)
+                    else:
+                        yield _sse(
+                            "status",
+                            {"state": "working", "elapsed_s": int(time.perf_counter() - started)},
+                        )
                 elif name == "result":
                     result = ev["data"]
                 elif name == "error":
@@ -603,7 +647,12 @@ async def ask_stream(
                         await _log_event(conn, user.id, "agent_error", ev["data"])
                     yield _sse("error", ev["data"])
                     return
-        except httpx.HTTPError as exc:  # noqa: BLE001
+        except HTTPException as exc:
+            # s40: an admission 429 raised after the stream opened (a race with
+            # the pre-stream check) still reaches the client as a clean frame.
+            yield _sse("error", {"detail": exc.detail, "status": exc.status_code})
+            return
+        except (httpx.HTTPError, queue_client.QueueError) as exc:  # noqa: BLE001
             async with rls_connection(user.id) as conn:
                 await _log_event(conn, user.id, "agent_error", {"error": str(exc)})
             # s32 W1: a degraded RESULT frame, not a bare error. The client has a

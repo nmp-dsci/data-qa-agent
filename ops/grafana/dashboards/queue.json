@@ -1,0 +1,242 @@
+{
+ "uid": "dataqa-queue",
+ "title": "Queue \u2014 depth, throughput, wait vs service",
+ "tags": [
+  "s40",
+  "queue"
+ ],
+ "timezone": "browser",
+ "refresh": "5s",
+ "time": {
+  "from": "now-30m",
+  "to": "now"
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "timeseries",
+   "title": "Queue depth (agent:jobs)",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 0
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "dataqa-prom"
+   },
+   "targets": [
+    {
+     "expr": "dataqa_queue_depth",
+     "legendFormat": "depth"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 2,
+   "type": "timeseries",
+   "title": "Accepted vs shed (per minute)",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 0
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "dataqa-prom"
+   },
+   "targets": [
+    {
+     "expr": "rate(dataqa_queue_enqueued_total[1m]) * 60",
+     "legendFormat": "enqueued/min"
+    },
+    {
+     "expr": "rate(dataqa_queue_shed_total[1m]) * 60",
+     "legendFormat": "shed/min (429)"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "Per-worker throughput (jobs/min)",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "dataqa-prom"
+   },
+   "targets": [
+    {
+     "expr": "sum by (instance) (rate(dataqa_worker_jobs_total{outcome=\"ok\"}[1m])) * 60",
+     "legendFormat": "{{instance}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "Queue wait vs service time (p95)",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "dataqa-prom"
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(dataqa_queue_wait_seconds_bucket[2m])) by (le))",
+     "legendFormat": "wait p95"
+    },
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(dataqa_worker_service_seconds_bucket[2m])) by (le))",
+     "legendFormat": "service p95"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "timeseries",
+   "title": "Job outcomes (per minute)",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 16
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "dataqa-prom"
+   },
+   "targets": [
+    {
+     "expr": "sum by (outcome) (rate(dataqa_worker_jobs_total[1m])) * 60",
+     "legendFormat": "{{outcome}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 6,
+   "type": "timeseries",
+   "title": "CPU by container (% of one core)",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 16
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "dataqa-prom"
+   },
+   "targets": [
+    {
+     "expr": "dataqa_container_cpu_percent{service=~\"agent-worker|backend-api|data-agent|db|redis\"}",
+     "legendFormat": "{{name}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "Memory working set by container (MB)",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 24
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "dataqa-prom"
+   },
+   "targets": [
+    {
+     "expr": "dataqa_container_mem_mb{service=~\"agent-worker|backend-api|data-agent|db|redis\"}",
+     "legendFormat": "{{name}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "decmbytes"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 8,
+   "type": "timeseries",
+   "title": "Dead-letter queue depth",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 24
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "dataqa-prom"
+   },
+   "targets": [
+    {
+     "expr": "dataqa_queue_dlq_depth",
+     "legendFormat": "dlq"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   }
+  }
+ ],
+ "schemaVersion": 39,
+ "version": 3
+}

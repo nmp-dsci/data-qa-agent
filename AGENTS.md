@@ -271,6 +271,63 @@ reimplement none of it. Four front doors, one security surface. `data-agent` is 
   tokens, so human editor use stays uncapped — but a machine key can loop, and the MCP surface hands
   `run_governed_query` straight to a model. It is a rate bound; the guard applies to every statement anyway.
 
+### Job queue: Redis Streams in front of the data agent (s40–s42)
+
+An optional queue seam sits between backend-api and the data agent, built to run a controlled worker-scaling
+experiment (write-ups: `.lavish/s40_queue-experiment-plan.html`, `s41_worker-scaling-experiment.html`,
+`s42_worker-scaling-results.html`; receipts in `out/wsweep/`). `QUEUE_MODE` (`off`/`on`, default **off**) picks
+between today's direct HTTP hop and enqueueing chat jobs to Redis Streams — `make queue-up` is the only thing
+that flips it on, so a plain `make up` is unchanged. `QUEUE_MAX_DEPTH` (default 10) bounds admission with a
+clean `429 Retry-After`, `JOB_DEADLINE_S` (default 240) rides in each job.
+
+- **At-least-once, honestly measured.** A worker publishes the result frame *before* `XACK`, then `XDEL`s the
+  entry, so `XLEN agent:jobs` always reads as the real admission depth rather than a stale pending count.
+  backend-api is the single persister — it writes `query_runs` and sets `agent:cancel:{job_id}` only after
+  actually consuming a result — so a redelivered, already-answered job just no-ops against a set cancel key
+  instead of double-answering.
+- **Liveness without a heavyweight failure detector.** Workers self-`XCLAIM` their own pending entry every
+  ~2s as a heartbeat, so the 30s `XAUTOCLAIM` reaper (`REAPER_IDLE_MS`) only ever claims entries whose worker
+  actually died — a live worker's own heartbeat keeps resetting its idle clock. A poison job (one that errors
+  on every delivery) dead-letters to `agent:dlq` after `MAX_DELIVERIES` (default 3) rather than looping
+  forever; `scripts/chaos.sh poison-job` / `dlq` rehearse this.
+- **redis-py 8.x quirk, handled deliberately, not defensively:** a blocking `XREAD`/`XREADGROUP` that expires
+  empty raises `TimeoutError` instead of returning `None` — found via live smoke. Both the worker
+  (`agent/worker.py`) and the relay (`app/queue_client.py`) catch it and treat it as an ordinary idle tick.
+- **`WORKER_CONCURRENCY` defaults to 1** — one worker process, one answer-slot, so capacity math is exact
+  (`ceil(N/W)`). Raising it interleaves N react loops on one event loop, overlapping LLM waits; it exists for
+  the s41 D2 experiment cell, not as a general throughput knob.
+- **cAdvisor was tried and dropped.** It cannot name containers on Docker Desktop — its legacy client fails
+  the daemon's info handshake, so every series comes back an anonymous cgroup id. `ops/stats_exporter.py`
+  (~100 lines, stdlib only) replaced it: it polls the Docker API directly over the mounted `docker.sock` and
+  labels series by compose service, so scaled `agent-worker` replicas show as separate lines in Grafana. This
+  was the plan's documented fallback, not a scope cut.
+- **The data agent's host port (`AGENT_HOST_PORT`) stays published-but-overridable**, even though the plan
+  called for removing it once workers took over the queued path — `scripts/eval_run.py` and
+  `scripts/ops_judge_sample.py` still hit it at `localhost:8100` directly. Worker replicas (`agent-worker`)
+  publish no ports at all, so scaling them never contends for it.
+- **Experiment dimensions ride as a convention string**, not a schema change: `app.load_tests.notes` carries
+  `queue=... workers=... stub_s=... users=...` (see the `c-run`/`loadtest` Make targets), and
+  `scripts/wsweep.py` synthesizes a k6-shaped summary so `scripts/ops_ingest.py` can record sweep cells the
+  same way it records a real k6 run.
+- **The queue's own telemetry lands on `query_runs`** (migration 0034, all nullable, all `NULL` on the direct
+  path): `queue_wait_ms` (enqueue → worker pickup, worker-measured), `worker_id` (`consumer-$HOSTNAME`), and
+  `deliveries` (1 = first attempt; >1 means `XAUTOCLAIM` handed the job to a survivor after its original
+  worker died).
+- **Frontend states.** The chat SSE `status` frame gained `queued` (shows admission `position` when >1) and
+  `restarted` (a dead worker's job was picked up by another one — the frontend clears any partial page state
+  and rebuilds the answer rather than appending to it) — `frontend/src/app/App.tsx`, `AskStatus` in
+  `frontend/src/lib/api.ts`.
+- **`LLM_STUB=1`** (data-agent) forces a deterministic stub answer streamed across `STUB_LATENCY_S` seconds
+  (default 20) — the zero-spend workload the C-series load runs and the s41 sweep drive through the queue.
+  Live-LLM validation (E9) used `--user admin` since the free tier's 5-asks/day cap would starve a real sweep.
+- **Committed experiment receipts are deliberate**, not accidental commits: `out/wsweep/*.json` + `run.log`
+  and the `.lavish/s40`–`s42` artifacts back the s42 write-up's numbers — never `.gitignore` `.lavish/`.
+- **Run it:** `make queue-up [WORKERS=N]` (Grafana at `http://localhost:3000`, Prometheus at
+  `http://localhost:9090` — both `obs`-profile, brought up together with `queue`); `make c-run` drives one
+  C-series load cell end-to-end; `scripts/wsweep.py` drives the full s41 W×S sweep; `scripts/chaos.sh`
+  rehearses worker death / poison jobs / admission shedding against a `queue-up` stack. `make down` tears
+  down every profile (`queue,obs,docs`) regardless of which were up.
+
 ---
 
 ## The data agent
@@ -477,7 +534,7 @@ All capabilities live in one Postgres, all under RLS.
 | `dataset_ordinals` | Datasets | Curator-editable ordinal band order per `(dataset, column)` (e.g. `area_band`) so ordinal chart axes sort naturally, not alphabetically | admin/CI-curated; no RLS |
 | `conversations` | Q&A | A user's chat sessions | owner; admin sees all |
 | `messages` | Q&A | Turns: question, answer, generated SQL, tokens, latency | via conversation owner |
-| `query_runs` | Q&A | Audit of every SQL executed (`source` = `agent` / `sql_editor` / `explore`); s32 adds the cache-token split, priced `cost_usd`, `degraded`, `attempts`, `ttfp_ms` and the `otel_trace_id` Logfire deep-link | via owner; admin audits |
+| `query_runs` | Q&A | Audit of every SQL executed (`source` = `agent` / `sql_editor` / `explore`); s32 adds the cache-token split, priced `cost_usd`, `degraded`, `attempts`, `ttfp_ms` and the `otel_trace_id` Logfire deep-link; s40 adds `queue_wait_ms` / `worker_id` / `deliveries` (all `NULL` off the queue path) | via owner; admin audits |
 | `user_memories` | Memory | Learned per-user preferences + `pgvector` embedding | owner only |
 | `events` | Analytics | Frontend + backend event stream for the admin dashboard | insert own; admin reads all |
 | `eval_cases` | Evals | Golden answers — feedback-promoted or hand-authored stages (`golden_sql`, `golden_sandbox`, `golden_objects`, `golden_report`) | admin/CI-curated; no RLS |

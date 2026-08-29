@@ -1,0 +1,1 @@
+{"metrics": {"ask_duration": {"med": 61310.903833997145, "p(95)": 121798.36026700214}, "http_reqs": {"count": 15, "rate": 0.1231633613552655}, "http_req_failed": {"value": 0.0}}}

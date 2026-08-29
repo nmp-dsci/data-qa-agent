@@ -314,6 +314,21 @@ export default function App() {
           if (s.state === "working" && s.elapsed_s != null) {
             setWorking(`Agent is working… ${s.elapsed_s}s`);
             setElapsedS(s.elapsed_s);
+          } else if (s.state === "queued") {
+            // s40 queue mode: waiting for a worker slot.
+            setWorking(
+              s.position != null && s.position > 1
+                ? `Queued — position ${s.position}…`
+                : "Queued — waiting for a worker…",
+            );
+          } else if (s.state === "restarted") {
+            // s40 M2: a worker died mid-answer and the job restarted from
+            // frame zero on another worker — drop the dead worker's partial
+            // pages so two half-answers never render at once.
+            setWorking("Worker restarted — rebuilding the answer…");
+            setProgress([]);
+            setPagePlan([]);
+            setStreamedPages({});
           }
         },
         (p) => setProgress((prev) => [...prev, p]),

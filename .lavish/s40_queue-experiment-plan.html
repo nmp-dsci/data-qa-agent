@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s40 · Queue in front of the data-agent — production-load experiment plan</title>
+<style>
+/* Night Flight tokens, lifted from frontend/src/styles.css so this page reads
+   as the same product. Dark is canonical; light mirrors the app's chart-paper. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae; --hud:#35803f;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10); --elev-2:0 8px 24px rgba(50,40,20,.12);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.flex,.cards,.steps,.opt-grid,.matrix-wrap)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,dd,td,th,.badge,.chip,label){overflow-wrap:anywhere}
+:where(img,svg,canvas){max-width:100%}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+.lbl.hud{color:var(--hud)}
+.lbl.warn{color:var(--warn)}
+.lbl.bad{color:var(--bad)}
+.lbl.info{color:var(--info)}
+
+header.hero{padding:56px 0 30px;border-bottom:1px solid var(--border);margin-bottom:34px;
+  position:relative;overflow:hidden}
+header.hero::after{content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+.hero h1{font-size:clamp(30px,4.4vw,46px);line-height:1.08;margin:12px 0 0;
+  font-weight:750;letter-spacing:-.02em;max-width:26ch}
+.hero .kicker{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hero .sub{color:var(--muted);font-size:17px;margin:16px 0 0;max-width:76ch}
+.verdict{margin-top:26px;border:1px solid var(--accent);border-left-width:3px;
+  border-radius:var(--radius-lg);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 9%,var(--panel)),var(--panel));
+  padding:16px 20px;box-shadow:var(--elev-1)}
+.verdict p{margin:6px 0 0;color:var(--text)}
+.verdict .lbl{color:var(--accent-soft)}
+
+section{margin:46px 0}
+h2{font-size:24px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px;
+  display:flex;gap:12px;align-items:baseline}
+h2 .num{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700}
+h3{font-size:16px;font-weight:650;margin:22px 0 8px}
+.sec-sub{color:var(--muted);margin:0 0 18px;max-width:78ch}
+
+.cards{display:grid;gap:14px}
+.cards.c2{grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
+.cards.c3{grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr))}
+.cards.c4{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px 18px;box-shadow:var(--elev-1)}
+.card h4{margin:0 0 8px;font-size:14px;font-weight:650;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.card p{margin:6px 0;color:var(--muted);font-size:13.5px}
+.card.warn{border-color:var(--warn-border)}
+.card.bad{border-color:var(--bad-border)}
+.card.good{border-color:var(--good-border)}
+.card.info{border-color:var(--info-border)}
+.card.purple{border-color:var(--purple-border)}
+
+.badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:2px 9px;
+  border-radius:999px;border:1px solid var(--border-2);color:var(--muted);white-space:nowrap}
+.badge.good{color:var(--good);border-color:var(--good-border)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border)}
+.badge.info{color:var(--info);border-color:var(--info-border)}
+.badge.accent{color:var(--accent-soft);border-color:var(--accent)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border)}
+
+code, .code{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--accent-2)}
+pre.block{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;
+  overflow-x:auto;line-height:1.55;color:var(--text);margin:10px 0}
+.fileref{font-family:var(--mono);font-size:11.5px;color:var(--accent-2)}
+
+.mermaid-panel{background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:18px;margin:14px 0;overflow-x:auto;box-shadow:var(--elev-1)}
+.mermaid{display:flex;justify-content:center;min-width:0}
+.mermaid svg{max-width:100%;height:auto}
+
+table.tbl{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);
+  border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.matrix-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:1px solid var(--border);margin:12px 0}
+.matrix-wrap table.tbl{border:0}
+table.tbl th{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);text-align:left;padding:10px 12px;
+  border-bottom:1px solid var(--border-2);background:var(--panel-2);white-space:nowrap}
+table.tbl td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text)}
+table.tbl tr:last-child td{border-bottom:0}
+table.tbl td .sub{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+
+.steps{display:grid;gap:12px}
+.step{display:grid;grid-template-columns:56px minmax(0,1fr);gap:14px;background:var(--panel);
+  border:1px solid var(--border);border-radius:var(--radius-lg);padding:15px 17px;box-shadow:var(--elev-1)}
+.step .mnum{font-family:var(--mono);font-weight:700;color:var(--accent);font-size:14px;padding-top:2px}
+.step h4{margin:0 0 6px;font-size:14.5px;font-weight:650;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.step p{margin:5px 0;color:var(--muted);font-size:13.5px}
+.step ul{margin:6px 0 2px;padding-left:18px;color:var(--muted);font-size:13.5px}
+.step li{margin:3px 0}
+.step li strong{color:var(--text)}
+
+.opt-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(255px,100%),1fr))}
+.opt{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:15px 16px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--elev-1)}
+.opt.rec{border-color:var(--accent);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 7%,var(--panel)),var(--panel))}
+.opt h4{margin:0;font-size:14px;font-weight:650;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.opt p{margin:0;color:var(--muted);font-size:13px}
+.opt .pro,.opt .con{font-size:12.5px;margin:0;padding-left:16px}
+.opt .pro li{color:var(--good)}
+.opt .con li{color:var(--bad)}
+.opt .pro li span,.opt .con li span{color:var(--muted)}
+
+.decision{background:var(--panel);border:1px solid var(--purple-border);border-radius:var(--radius-xl);
+  padding:18px 20px;margin:18px 0;box-shadow:var(--elev-1)}
+.decision h3{margin:0 0 4px;display:flex;gap:10px;align-items:center}
+.decision .dq{color:var(--muted);font-size:13.5px;margin:0 0 12px}
+.decision form{margin:0}
+.decision label.choice{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;
+  border:1px solid var(--border);border-radius:var(--radius);margin:6px 0;cursor:pointer;
+  background:var(--panel-2);font-size:13.5px}
+.decision label.choice:hover{border-color:var(--border-2)}
+.decision label.choice input{margin-top:3px;accent-color:var(--accent)}
+.decision label.choice .t{color:var(--text);font-weight:600}
+.decision label.choice .d{color:var(--muted);display:block;font-size:12.5px}
+.decision .qbtn{margin-top:10px;font-family:var(--mono);font-size:12px;font-weight:700;
+  letter-spacing:.04em;background:var(--accent);color:var(--accent-ink);border:0;
+  border-radius:var(--radius);padding:8px 16px;cursor:pointer}
+.decision .qbtn:hover{background:var(--accent-soft)}
+.decision .rec-tag{font-family:var(--mono);font-size:10px;color:var(--accent-soft);
+  border:1px solid var(--accent);border-radius:999px;padding:1px 8px}
+
+.kpi-row{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));margin:14px 0}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:13px 15px}
+.kpi .v{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--accent-soft)}
+.kpi .k{font-size:12px;color:var(--muted);margin-top:2px}
+
+.risk{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start;
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:13px 16px;margin:10px 0}
+.risk p{margin:3px 0 0;color:var(--muted);font-size:13.5px}
+.risk .t{color:var(--text);font-weight:600;font-size:14px}
+
+.filelist{font-size:13px;color:var(--muted);columns:2;column-gap:28px;padding-left:18px}
+.filelist li{margin:4px 0;break-inside:avoid}
+@media (max-width:760px){.filelist{columns:1}}
+
+footer.foot{margin-top:60px;padding-top:22px;border-top:1px solid var(--border);
+  color:var(--faint);font-size:13px}
+.pill-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">
+    <span class="badge accent">S40 · PLAN</span>
+    <span class="badge">BRANCH queue</span>
+    <span class="badge info">EXPERIMENT, NOT JUST A FEATURE</span>
+  </div>
+  <h1>A queue in front of the data-agent</h1>
+  <p class="sub">
+    Put a job queue between <code>backend-api</code> and the <code>data-agent</code>, then run a controlled
+    load experiment: two workload classes (plain FastAPI call vs full LLM answer), direct vs queued,
+    and 1 → 2 → 3 agent worker containers — measuring the lift in real production metrics
+    (throughput, p95/p99, time-to-first-page, shed rate, queue wait). The goal is production-AI
+    experience you can defend with numbers: backpressure, load shedding, redelivery, and
+    queue-depth-driven scaling.
+  </p>
+  <div class="verdict">
+    <span class="lbl">Decisions locked · 2026-08-26</span>
+    <p><strong>Redis Streams with a hand-rolled worker loop</strong> (D1), <strong>LLM-stub mode for the volume
+    runs (E2–E8) and the controlled C-series, with live DeepSeek only in the E9 validation run</strong>
+    (D2, re-decided back to the original recommendation),
+    <strong>extend the existing k6 harness + a small SSE prober</strong> (D3),
+    <strong>Prometheus + Grafana land in M1 as first-class deliverables</strong> (D4 — promoted from
+    stretch), <strong>local compose only</strong> with AWS mapping notes in M4 (D5). Baseline first
+    (M0), queue + metrics second (M1), break it on purpose third (M2), then run the matrix (M3).
+    ~4–5 focused days to a results write-up.</p>
+  </div>
+</header>
+
+<!-- ============================================================ -->
+<section id="why">
+  <h2><span class="num">01</span>Why this project — the career case</h2>
+  <p class="sec-sub">
+    From <code>ai-engineer-fit/ai-role-summary-v1.md</code>: the capability that separates demos from
+    senior-level AI engineering is #4/#5/#6 — evaluation, LLMOps lifecycle, and cloud-native operation.
+    Your skills analysis ranks Docker/CI-CD at 64%, MLOps at 56%, Kubernetes at 56% of AU AI-engineer
+    roles. This experiment is the "Production LLMOps Reference Stack" project (project #4 in your notes)
+    applied to an app you already run in prod.
+  </p>
+  <div class="cards c3">
+    <div class="card good">
+      <h4><span class="badge good">INTERVIEW</span> Numbers, not adjectives</h4>
+      <p>"I load-tested my agent: one container saturated at N answers/min with p95 of Xs; behind a
+      bounded queue with 3 workers it did ~3N with p95 held at Ys and clean 429s past the knee."
+      That sentence is the whole point of this build.</p>
+    </div>
+    <div class="card info">
+      <h4><span class="badge info">CONCEPTS</span> The backpressure vocabulary</h4>
+      <p>Bounded queues, admission control, Little's law, deadline propagation, poison messages,
+      consumer groups, queue-depth autoscaling — the exact vocabulary of Kafka/SQS/KEDA questions,
+      learned by building each one small.</p>
+    </div>
+    <div class="card purple">
+      <h4><span class="badge purple">LLM-SPECIFIC</span> Why AI serving is different</h4>
+      <p>LLM requests are 30–90s, IO-bound, streaming, and expensive. CPU-based autoscaling is the
+      wrong signal; queue depth is the right one. Streaming + queueing interact (TTFT vs queue wait).
+      This is the production-AI part, not generic web-scale.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="current">
+  <h2><span class="num">02</span>Current state — verified against the code</h2>
+  <p class="sec-sub">The chat path is a synchronous chain of two SSE hops. Every fact below carries its file:line.</p>
+
+  <div class="mermaid-panel">
+  <div class="mermaid">
+flowchart LR
+  B["Browser<br/>fetch + SSE parse<br/><i>api.ts:707</i>"] -->|"POST /ask/stream"| API["backend-api<br/>run_question()<br/><i>ask.py:436</i>"]
+  API -->|"POST /agent/ask/stream<br/>httpx SSE, read=30s<br/><b>never retried</b><br/><i>agent_client.py:112</i>"| AG["data-agent<br/>_answer()<br/><i>main.py:671</i>"]
+  AG -->|"~20 LLM turns"| LLM["DeepSeek API"]
+  AG -->|"governed SQL<br/>NullPool"| PG[("Postgres<br/>marts + app")]
+  AG -->|"subprocess.run<br/><b>blocks event loop</b><br/><i>sandbox_agent.py:859</i>"| SBX["Pyodide sandbox<br/>Node subprocess<br/>2-4s, cap 30s"]
+  API -->|"persist run + frames relay<br/><i>ask.py:571-605</i>"| PG
+  style AG stroke:#e0af68,stroke-width:2px
+  style SBX stroke:#f2777a,stroke-width:2px
+  </div>
+  </div>
+
+  <div class="cards c2">
+    <div class="card">
+      <h4><span class="badge">CALL CHAIN</span> One request = one held connection end-to-end</h4>
+      <p>Frontend streams from <span class="fileref">POST /ask/stream</span> (<span class="fileref">ask.py:513</span>);
+      backend opens a second SSE to <code>AGENT_URL=http://data-agent:8100</code>
+      (<span class="fileref">config.py:21</span>) and relays <code>progress/plan/page/result</code> frames
+      nearly verbatim. The streaming hop is <strong>deliberately never retried</strong>
+      (<span class="fileref">agent_client.py:123-127</span>) — once frames reach the client, a retry
+      would replay the answer. Failures degrade via <code>_degraded_result()</code>
+      (<span class="fileref">ask.py:415</span>).</p>
+    </div>
+    <div class="card bad">
+      <h4><span class="badge bad">BOTTLENECK</span> One container ≈ one concurrent answer</h4>
+      <p>Single uvicorn worker (no <code>--workers</code>, <span class="fileref">data-agent/Dockerfile:41</span>)
+      and the sandbox runs as a blocking <code>subprocess.run</code> <em>inside the event loop</em>
+      (<span class="fileref">sandbox_agent.py:859</span>, plus 3 endpoints in <span class="fileref">main.py</span>).
+      While a sandbox pass runs (2–4s typical), that container can't even serve <code>/health</code>.
+      Horizontal replicas are the only real concurrency lever today.</p>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">DB CEILING</span> NullPool everywhere → Postgres is the limit</h4>
+      <p>Both services use <code>NullPool</code> deliberately so Aurora Serverless can auto-pause
+      (<span class="fileref">agent/db.py:26-34</span>, <span class="fileref">app/db.py:37-39</span>).
+      N workers × concurrent fresh connects means <code>max_connections</code> — not any app-side pool —
+      is the true ceiling under fan-out. Must be checked in M0.</p>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">SCALE BLOCKERS</span> compose isn't scale-ready yet</h4>
+      <p><code>data-agent</code> publishes fixed host port <code>8100:8100</code>
+      (<span class="fileref">docker-compose.yml:165</span>) — <code>--scale data-agent=3</code> won't even
+      start until it's removed. No healthcheck on either API service, so nothing gates traffic away
+      from a replica still cold-loading the 130MB embedding model
+      (<span class="fileref">embeddings.py:15</span>, per-process <code>lru_cache</code>).</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge good">ALREADY THERE</span> Observability spine exists</h4>
+      <p>One trace spans both services via <code>traceparent</code> injection
+      (<span class="fileref">agent_client.py:56</span>) into self-hosted Jaeger.
+      <code>app.query_runs</code> already records <code>latency_ms</code>, <code>ttfp_ms</code>
+      (time-to-first-page), tokens, cost, and <code>otel_trace_id</code>
+      (<span class="fileref">ask.py:267-322</span>). Queue timings extend this row, no new table.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge good">ALREADY THERE</span> A k6 harness wired to the ops deck</h4>
+      <p><code>make loadtest</code> runs <span class="fileref">load/k6/chat.js</span>
+      (scenarios <code>browse</code> and <code>chat</code>) and persists the summary into
+      <code>app.load_tests</code> via <span class="fileref">scripts/ops_ingest.py</span> — visible on the
+      ops deck's load tile. It's tuned for low VUs against one instance; the experiment adds
+      queue/worker-count dimensions rather than starting from scratch.</p>
+    </div>
+  </div>
+
+  <h3>Non-LLM surfaces already on the agent (workload A candidates)</h3>
+  <p class="sec-sub" style="margin-bottom:8px">
+    <span class="fileref">POST /agent/sql</span> (<span class="fileref">main.py:706</span>) — governed
+    read-only SQL executor, real FastAPI + DB work with zero LLM calls — and
+    <span class="fileref">GET /agent/schema</span> (<span class="fileref">main.py:1450</span>). These give
+    the "1. FastAPI call" workload without inventing a synthetic endpoint.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="backpressure">
+  <h2><span class="num">03</span>What "production AI" means for backpressure — the primer</h2>
+  <p class="sec-sub">
+    The concepts this build teaches, each mapped to where it lands in the code. An unbounded queue is
+    not backpressure — it's a latency bomb that converts overload into infinite wait times. Real
+    backpressure is <em>refusing work early and cheaply</em> so accepted work stays fast.
+  </p>
+  <div class="cards c3">
+    <div class="card">
+      <h4><span class="badge accent">1</span> Bounded queue + admission control</h4>
+      <p>Cap the queue depth. When depth ≥ <code>QUEUE_MAX_DEPTH</code>, reject at the door with
+      <strong>429 + Retry-After</strong> in ~1ms instead of accepting a job that will time out 5 minutes
+      later. Fast failure is a feature: the client can back off, retry elsewhere, or show "busy".</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">2</span> Little's law: L = λ·W</h4>
+      <p>Queue length = arrival rate × time-in-system. With one worker at ~60s/answer, λ of 2/min means
+      W grows without bound — no queue size fixes throughput. The experiment verifies this live: measured
+      L, λ and W from your own runs should agree. It's also how you size <code>QUEUE_MAX_DEPTH</code>:
+      depth ≈ workers × (acceptable wait ÷ service time).</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">3</span> Queue depth is the autoscaling signal</h4>
+      <p>LLM work is IO-bound — CPU sits near idle while the model streams tokens, so CPU-based
+      autoscaling (App Runner's only mode) never fires. Depth (or depth ÷ workers) is the correct
+      signal — this is exactly the KEDA / SQS-backlog-per-instance pattern, demoed here with a tiny
+      compose-scale watcher.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">4</span> Deadline propagation & cancellation</h4>
+      <p>Each job carries an absolute deadline. A worker picking up a job whose client already gave up
+      must <strong>drop it</strong>, not burn 60s of LLM tokens answering nobody. Client disconnect →
+      cancel marker → worker checks between steps. This is real money in LLM systems, not hygiene.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">5</span> At-least-once + redelivery + poison jobs</h4>
+      <p>Worker dies mid-job → the pending entry is reclaimed (<code>XAUTOCLAIM</code>) and redelivered
+      to another worker. A job that kills every worker that touches it (poison) goes to a
+      <strong>dead-letter stream</strong> after N deliveries instead of looping forever. Chat answers are
+      side-effect-light, so redelivery is safe — but the run row must not duplicate (idempotency by job id).</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">6</span> Streaming × queueing (the LLM twist)</h4>
+      <p>Latency splits into <em>queue wait</em> + <em>service time</em>, and the user sees both. The SSE
+      contract already has <code>status</code> frames — the backend emits <code>queued (position N)</code>
+      immediately, so waiting is visible instead of a dead spinner. TTFT/TTFP becomes queue wait + first
+      model token: the honest number to report.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">7</span> Per-replica vs global limits</h4>
+      <p>The demo concurrency gate (<span class="fileref">app/main.py:163-230</span>) is per-process state —
+      valid only because prod pins one instance. Scaling multiplies it silently (N × 20). Real limits
+      must live in a shared store; the queue itself becomes that shared, globally-bounded thing.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">8</span> Warm-up & readiness gating</h4>
+      <p>Each fresh replica pays a cold-start tax: lazy ONNX embedding load + first Node/Pyodide spawn.
+      A worker must warm up <em>before</em> consuming (lifespan pre-load + healthcheck), or your p99 eats
+      a fake 10s spike every time a container recycles.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">9</span> Retries need idempotency</h4>
+      <p>The blocking hop already retries safely because the agent writes nothing
+      (<span class="fileref">agent_client.py:90</span>). Behind a queue, "safe to retry" must be
+      re-derived: enqueue is idempotent by job id; a worker dying <em>mid-stream</em> restarts the answer
+      from frame zero — the relay must signal a restart, not splice two half-answers.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="target">
+  <h2><span class="num">04</span>Target architecture</h2>
+  <p class="sec-sub">
+    Same image, new seam: the backend enqueues instead of calling the agent directly; N worker
+    containers (the existing data-agent image in a worker entrypoint) consume jobs and publish SSE
+    frames back through a per-job stream the backend relays. The direct path stays behind
+    <code>QUEUE_MODE=off</code> so direct-vs-queued is an A/B on the same build.
+  </p>
+
+  <div class="mermaid-panel">
+  <div class="mermaid">
+flowchart LR
+  B["Browser"] -->|"POST /ask/stream"| API["backend-api"]
+  API -->|"depth &lt; bound?<br/>no → <b>429 Retry-After</b>"| GATE{"admission<br/>control"}
+  GATE -->|"XADD job"| J[("Redis Stream<br/>agent:jobs<br/>consumer group")]
+  GATE -.->|"SSE: queued, position N"| B
+  J -->|"XREADGROUP"| W1["worker-1<br/>data-agent image"]
+  J -->|"XREADGROUP"| W2["worker-2"]
+  J -->|"XREADGROUP"| W3["worker-3"]
+  W1 -->|"XADD frames"| F[("agent:frames:{job}<br/>per-job stream")]
+  W1 --> LLM["DeepSeek (live, low volume)"]
+  W1 --> PG[("Postgres")]
+  F -->|"XREAD block + relay"| API
+  API -->|"SSE frames"| B
+  J -->|"crash → XAUTOCLAIM<br/>N deliveries → DLQ"| DLQ[("agent:dlq")]
+  style GATE stroke:#d9a84e,stroke-width:2px
+  style J stroke:#7fb0ff,stroke-width:2px
+  style DLQ stroke:#f2777a,stroke-width:2px
+  </div>
+  </div>
+
+  <div class="cards c2">
+    <div class="card">
+      <h4><span class="badge info">ENQUEUE PATH</span> backend-api, <code>QUEUE_MODE=on</code></h4>
+      <p>In <code>run_question()</code>: check depth (pending − acked) → over bound = 429 with
+      <code>Retry-After</code>; else <code>XADD agent:jobs</code> with
+      <code>{job_id, question, user, dataset_slug, deadline_ts, traceparent}</code> — the exact payload
+      the HTTP hop sends today (<span class="fileref">ask.py:471-477</span>) plus deadline and trace
+      context, so Jaeger still shows one trace across enqueue → work.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge info">WORKER LOOP</span> same image, <code>python -m agent.worker</code></h4>
+      <p>Warm up (embedding + one sandbox spawn) → <code>XREADGROUP GROUP workers consumer-$HOSTNAME
+      BLOCK</code> → drop if past deadline → run the existing <code>_answer()</code> internals, publishing
+      each frame via <code>XADD agent:frames:{job_id}</code> → final <code>result</code> frame →
+      <code>XACK</code>. One job at a time per worker (the sandbox serializes anyway). SIGTERM finishes
+      the current job then exits.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge info">RELAY</span> SSE from a stream instead of httpx</h4>
+      <p>The <code>/ask/stream</code> generator swaps its source: instead of iterating the httpx SSE
+      body, it <code>XREAD BLOCK</code>s the per-job frames stream and yields the same
+      <code>progress/plan/page/result</code> frames — the frontend contract does not change at all.
+      Client disconnect sets <code>cancel:{job_id}</code>; workers check it between steps.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge info">RESILIENCE</span> the semantics you're here to learn</h4>
+      <p>A reaper (in the backend lifespan or a worker sidecar) runs <code>XAUTOCLAIM</code> on entries
+      pending &gt; heartbeat×k → redelivery. Delivery count ≥ <code>MAX_DELIVERIES</code> (3) →
+      <code>XADD agent:dlq</code> + error frame to the client. On redelivery mid-stream the relay emits a
+      <code>status: restarted</code> frame and replays from frame zero (frames stream is truncated first).</p>
+    </div>
+  </div>
+
+  <h3>Observability additions</h3>
+  <p class="sec-sub" style="margin-bottom:8px">
+    Extend the existing <code>query_runs</code> write path (<span class="fileref">ask.py:232-339</span>)
+    with <code>queue_wait_ms</code>, <code>worker_id</code>, <code>deliveries</code>. Spans:
+    <code>queue.enqueue</code> / <code>queue.wait</code> / <code>worker.run</code> under the propagated
+    trace so Jaeger shows the wait visually. The k6 summary keeps flowing to
+    <code>app.load_tests</code> — add <code>workers</code> and <code>queue_mode</code> to its payload so the
+    ops deck load tile can compare runs.
+  </p>
+
+  <h3>New config surface</h3>
+  <div class="matrix-wrap"><table class="tbl">
+    <thead><tr><th>Var</th><th>Where</th><th>Default</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>QUEUE_MODE</code></td><td>backend-api</td><td><code>off</code></td><td>off = today's direct HTTP hop; on = enqueue to Redis. The A/B switch.</td></tr>
+      <tr><td><code>REDIS_URL</code></td><td>both</td><td><code>redis://redis:6379/0</code></td><td>New <code>redis</code> compose service (redis:7-alpine, no persistence needed).</td></tr>
+      <tr><td><code>QUEUE_MAX_DEPTH</code></td><td>backend-api</td><td><code>10</code></td><td>Admission bound; sized by Little's law from measured service time.</td></tr>
+      <tr><td><code>JOB_DEADLINE_S</code></td><td>backend-api</td><td><code>240</code></td><td>Matches the k6 chat client timeout; workers drop expired jobs.</td></tr>
+      <tr><td><code>MAX_DELIVERIES</code></td><td>worker</td><td><code>3</code></td><td>Poison threshold before DLQ.</td></tr>
+      <tr><td><code>LLM_STUB</code></td><td>data-agent / worker</td><td><code>0</code></td><td>Per D2: canned answer streamed as realistic frames, zero spend — powers E2–E8 and the C-series.</td></tr>
+      <tr><td><code>STUB_LATENCY_S</code></td><td>data-agent / worker</td><td><code>20</code></td><td>Fixed simulated service time for stub runs (C-series sweeps 10 / 20 / 30).</td></tr>
+      <tr><td><code>GRAFANA_HOST_PORT</code></td><td>grafana</td><td><code>3000</code></td><td>Per D4: Prometheus + Grafana ship in M1 behind an <code>obs</code> compose profile.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Worker loop — proposed shape</h3>
+  <p class="sec-sub" style="margin-bottom:6px">New file <span class="fileref">services/data-agent/agent/worker.py</span> (sketch, ~120 lines real):</p>
+  <div id="worker-code"></div>
+
+  <h3>Compose changes</h3>
+  <p class="sec-sub" style="margin-bottom:6px"><span class="fileref">docker-compose.yml</span> — the scale-enabling diff (abridged):</p>
+  <div id="compose-diff"></div>
+
+  <h3 id="new-services">What each new service does</h3>
+  <p class="sec-sub" style="margin-bottom:8px">
+    Four new containers total. <code>agent-worker</code> is covered above (same data-agent image running
+    the consumer loop instead of the HTTP server); the other three:
+  </p>
+  <div class="cards c3">
+    <div class="card">
+      <h4><span class="badge info">redis</span> the queue itself</h4>
+      <p>The coordination point that lets N workers share work without knowing about each other. It holds
+      three kinds of streams: <code>agent:jobs</code> — the shared job queue the worker consumer group
+      reads, which is what provides the ack / pending / redelivery / <code>XAUTOCLAIM</code> semantics
+      this whole experiment is about; <code>agent:frames:{job_id}</code> — one small stream per job that
+      the worker publishes SSE frames into and the backend relays to the browser; and
+      <code>agent:dlq</code> — where poison jobs land after <code>MAX_DELIVERIES</code>. Plus
+      <code>cancel:{job_id}</code> flags for client disconnects. In-memory, no persistence: losing Redis
+      loses queued jobs, which is acceptable here — users just re-ask.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge info">prometheus</span> the metrics collector</h4>
+      <p>Turns instantaneous numbers into time series. Every few seconds it <em>pulls</em> (scrapes) the
+      <code>/metrics</code> HTTP endpoints that backend-api and each worker expose via
+      <code>prometheus_client</code> — queue depth (from <code>XLEN</code>/<code>XPENDING</code>), shed
+      and provider-429 counters, queue-wait and service-time histograms, per-worker jobs processed —
+      and stores them locally. Nothing pushes to it; services just expose a text endpoint and Prometheus
+      finds them via <span class="fileref">ops/prometheus.yml</span>. That history is what makes "queue
+      depth during the E7 burst" a graph instead of a number you happened to glance at.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge info">grafana</span> the dashboard on top</h4>
+      <p>The UI that queries Prometheus (its only datasource here) and renders the committed queue
+      dashboard — depth, per-worker throughput, shed rate, wait vs service time — at
+      <code>localhost:${GRAFANA_HOST_PORT:-3000}</code>. Provisioned from
+      <span class="fileref">ops/grafana/</span> so the dashboard exists on first boot, no clicking
+      around. This is where you watch an experiment run live, and where the s41 write-up's screenshots
+      come from. Distinct from the ops deck (business-level history from <code>app.load_tests</code>)
+      and Jaeger (per-request traces): Grafana is the second-by-second operational view.</p>
+    </div>
+  </div>
+
+  <h3 id="spinup">Spin-up: queue on / off</h3>
+  <p class="sec-sub" style="margin-bottom:8px">
+    Two knobs, nothing else: a compose <strong>profile</strong> decides which containers exist
+    (<code>redis</code> + <code>agent-worker</code> are gated behind a <code>queue</code> profile, the same
+    mechanism the repo already uses for <code>docs</code> at
+    <span class="fileref">docker-compose.yml:62</span>), and <code>QUEUE_MODE</code> on backend-api decides
+    which path <code>/ask/stream</code> takes. The <code>data-agent</code> HTTP service runs in
+    <em>both</em> modes — it is the queue-off chat path and always serves <code>/agent/sql</code> /
+    <code>/agent/schema</code> — so nothing about today's stack changes when the profile is off.
+    Per D4 there is a second profile, <code>obs</code>, carrying <code>prometheus</code> +
+    <code>grafana</code>: <code>queue-up</code> enables both, and baselines (E1/E2) can add it to a
+    plain <code>make up</code> so the dashboard covers direct-path runs too.
+  </p>
+  <div class="cards c2">
+    <div class="card good">
+      <h4><span class="badge good">QUEUE OFF</span> today's stack, unchanged</h4>
+      <p><code>make up</code> exactly as now — the <code>queue</code> profile keeps redis and workers from
+      even starting, and <code>QUEUE_MODE</code> defaults to <code>off</code> in backend-api's env
+      (<code>${QUEUE_MODE:-off}</code>). This is the E1/E2 baseline path.</p>
+      <pre class="block">make up            # docker compose up --build — no redis, no workers
+COMPOSE_PROFILES=obs make up   # baselines with the Grafana stack watching</pre>
+    </div>
+    <div class="card">
+      <h4><span class="badge info">QUEUE ON</span> one make target, N workers</h4>
+      <p>New Makefile target (already on the touch list) enables the profile, flips the mode, and scales
+      the worker service — workers have no published ports, so <code>--scale</code> just works and each
+      replica joins the consumer group as <code>consumer-$HOSTNAME</code>.</p>
+      <pre class="block">make queue-up WORKERS=2
+# = QUEUE_MODE=on COMPOSE_PROFILES=queue,obs \
+#   docker compose up --build -d --scale agent-worker=$(WORKERS)</pre>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">A/B FLIP</span> between experiment runs, no rebuild</h4>
+      <p>The switch lives only in backend-api's environment, so flipping direct↔queued is a restart of
+      one container. Use <code>--no-deps</code> — a bare <code>up backend-api</code> drags in the pipeline
+      dependency (~8&nbsp;min re-run). Idle workers in queue-off mode are harmless.</p>
+      <pre class="block">QUEUE_MODE=off docker compose up -d --no-deps backend-api   # back to direct
+QUEUE_MODE=on  docker compose up -d --no-deps backend-api   # queued again</pre>
+    </div>
+    <div class="card">
+      <h4><span class="badge accent">RESCALE</span> mid-experiment, workers only</h4>
+      <p>E4→E5→E6 is just a re-up of the worker service at a new scale — backend and agent stay put; new
+      replicas warm up, pass their healthcheck, and start consuming from the shared group.</p>
+      <pre class="block">docker compose --profile queue up -d --no-deps \
+  --scale agent-worker=3 agent-worker</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="redis-vs-sqs">
+  <style>
+    .arch2{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(430px,100%),1fr));margin:14px 0}
+    .arch-panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px 10px}
+    .arch-panel h4{margin:0 0 10px;font-size:13px}
+    .archsvg{width:100%;height:auto;display:block}
+    .archsvg text{font-family:var(--sans);font-size:11.5px;fill:var(--text);text-anchor:middle}
+    .archsvg text.code{font-family:var(--mono);font-size:10px}
+    .archsvg text.lbl{font-size:9px;fill:var(--muted)}
+    .archsvg .node{fill:var(--panel-2);stroke:var(--border-2)}
+    .archsvg .edge{stroke:var(--faint);fill:none;stroke-width:1.3}
+  </style>
+  <h2><span class="num">04b</span>Redis Streams vs AWS SQS — what actually changes</h2>
+  <p class="sec-sub">
+    The question this answers: if the D1 build moved to AWS-managed queueing (the M4 design note, per
+    D5), which boxes move, which disappear, and which appear? The worker-loop <em>shape</em> is
+    identical in both — receive → deadline check → work → publish frames → ack. What changes is
+    <strong>who implements the resilience semantics</strong> (you, vs the service) and, critically,
+    <strong>where result streaming lives</strong>: Redis Streams covers jobs <em>and</em> frames with
+    one primitive; SQS is fire-and-forget delivery only, so a second transport appears.
+  </p>
+
+  <div class="arch2">
+    <div class="arch-panel">
+      <h4><span class="badge info">LOCAL — THE BUILD</span> Redis Streams: one primitive for everything</h4>
+      <svg class="archsvg" viewBox="0 0 560 372" role="img" aria-label="Local architecture: jobs, frames and DLQ all inside one Redis container">
+        <defs>
+          <marker id="ar-f" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L8,4L0,8z" fill="var(--faint)"/></marker>
+          <marker id="ar-i" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L8,4L0,8z" fill="var(--info)"/></marker>
+          <marker id="ar-w" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L8,4L0,8z" fill="var(--warn)"/></marker>
+          <marker id="ar-g" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L8,4L0,8z" fill="var(--good)"/></marker>
+        </defs>
+        <rect id="a-browser" class="node" x="10" y="44" width="88" height="40" rx="6"><title>Browser — holds one SSE connection</title></rect>
+        <text x="54" y="61">Browser</text><text class="lbl" x="54" y="75">SSE open</text>
+        <rect id="a-backend" class="node" x="128" y="44" width="112" height="40" rx="6"><title>backend-api — enqueues, relays frames</title></rect>
+        <text x="184" y="68">backend-api</text>
+        <rect id="a-redis" x="270" y="16" width="150" height="300" rx="10" fill="var(--panel-3)" stroke="var(--info-border)"><title>One redis container — all coordination state</title></rect>
+        <text class="code" x="345" y="36" fill="var(--info)">redis</text>
+        <rect id="a-jobs" class="node" x="282" y="52" width="126" height="48" rx="6"><title>agent:jobs — shared job stream, consumer group</title></rect>
+        <text class="code" x="345" y="73">agent:jobs</text><text class="lbl" x="345" y="88">consumer group</text>
+        <rect id="a-frames" class="node" x="282" y="150" width="126" height="48" rx="6" stroke="var(--info)"><title>agent:frames:{job} — per-job result stream</title></rect>
+        <text class="code" x="345" y="171">agent:frames:{job}</text><text class="lbl" x="345" y="186">per-job stream</text>
+        <rect id="a-dlq" class="node" x="282" y="252" width="126" height="40" rx="6"><title>agent:dlq — poison jobs, hand-rolled</title></rect>
+        <text class="code" x="345" y="270">agent:dlq</text><text class="lbl" x="345" y="284">hand-rolled reaper</text>
+        <text class="lbl" x="501" y="38">agent-worker ×N</text>
+        <rect id="a-w1" class="node" x="452" y="44" width="98" height="38" rx="6"><title>worker 1 — XREADGROUP consumer</title></rect>
+        <text x="501" y="66">worker 1</text>
+        <rect id="a-w2" class="node" x="452" y="90" width="98" height="38" rx="6" stroke-dasharray="4 3"><title>worker N — scaled with --scale</title></rect>
+        <text x="501" y="112" fill="var(--muted)">worker N</text>
+        <rect id="a-deps" class="node" x="452" y="196" width="98" height="56" rx="6"><title>Work dependencies — unchanged either way</title></rect>
+        <text x="501" y="218">DeepSeek</text><text x="501" y="236">Postgres</text>
+        <path class="edge" d="M98,58 L128,58" marker-end="url(#ar-f)"/>
+        <path class="edge" d="M128,74 L98,74" marker-end="url(#ar-i)" stroke="var(--info)"/><text class="lbl" x="113" y="92">SSE</text>
+        <path class="edge" d="M240,58 L282,66" marker-end="url(#ar-f)"/><text class="code lbl" x="259" y="52">XADD</text>
+        <path class="edge" d="M408,68 L452,60" marker-end="url(#ar-f)"/><text class="code lbl" x="430" y="50">XREADGROUP</text>
+        <path class="edge" d="M470,128 C470,168 432,172 412,172" marker-end="url(#ar-i)" stroke="var(--info)"/><text class="code lbl" x="462" y="152" fill="var(--info)">XADD frame</text>
+        <path class="edge" d="M282,178 C226,178 192,130 190,88" marker-end="url(#ar-i)" stroke="var(--info)"/><text class="code lbl" x="230" y="150" fill="var(--info)">XREAD → relay</text>
+        <path class="edge" d="M282,96 L276,96 L276,266 L282,266" marker-end="url(#ar-f)" stroke-dasharray="3 3"><title>after MAX_DELIVERIES the reaper moves the job to the DLQ</title></path>
+        <text class="lbl" transform="rotate(-90 268 180)" x="268" y="180">≥3 deliveries</text>
+        <path class="edge" d="M501,128 L501,196" marker-end="url(#ar-f)"/>
+        <text class="code" x="280" y="350" fill="var(--good)" font-size="10">ONE PRIMITIVE — jobs, frames, DLQ, cancel: all Redis Streams, ~200 lines you own</text>
+      </svg>
+    </div>
+    <div class="arch-panel">
+      <h4><span class="badge accent">AWS — THE M4 NOTE</span> SQS: managed queue, but the streaming story splits</h4>
+      <svg class="archsvg" viewBox="0 0 560 372" role="img" aria-label="AWS architecture: SQS handles jobs and DLQ, but frames need a separate transport">
+        <rect id="b-browser" class="node" x="10" y="44" width="88" height="40" rx="6"><title>Browser — SSE unchanged</title></rect>
+        <text x="54" y="61">Browser</text><text class="lbl" x="54" y="75">SSE open</text>
+        <rect id="b-backend" class="node" x="128" y="44" width="112" height="40" rx="6"><title>backend-api on ECS</title></rect>
+        <text x="184" y="64">backend-api</text><text class="lbl" x="184" y="78">ECS</text>
+        <rect id="b-sqs" x="270" y="16" width="150" height="180" rx="10" fill="var(--panel-3)" stroke="var(--accent)"><title>Amazon SQS — managed, durable, multi-AZ</title></rect>
+        <text class="code" x="345" y="36" fill="var(--accent-soft)">Amazon SQS</text>
+        <rect id="b-jobs" class="node" x="282" y="52" width="126" height="48" rx="6"><title>jobs queue — at-least-once, visibility timeout</title></rect>
+        <text class="code" x="345" y="73">jobs queue</text><text class="lbl" x="345" y="88">visibility timeout ↻</text>
+        <rect id="b-dlq" class="node" x="282" y="130" width="126" height="48" rx="6" stroke="var(--good)"><title>Dead-letter queue via redrive policy — zero code</title></rect>
+        <text class="code" x="345" y="151">DLQ</text><text class="lbl" x="345" y="166" fill="var(--good)">redrive ≥3 · managed</text>
+        <rect id="b-frames" x="270" y="224" width="150" height="64" rx="10" fill="var(--panel-2)" stroke="var(--warn)" stroke-dasharray="5 4"><title>NEW component — SQS cannot stream results back</title></rect>
+        <text class="code" x="345" y="246" fill="var(--warn)">frames transport</text>
+        <text class="lbl" x="345" y="261">ElastiCache / DynamoDB / WS API</text>
+        <text class="lbl" x="345" y="276" fill="var(--warn)">NEW — SQS can’t stream</text>
+        <text class="lbl" x="501" y="38">ECS worker tasks ×N</text>
+        <rect id="b-w1" class="node" x="452" y="44" width="98" height="38" rx="6"><title>worker task 1 — ReceiveMessage long-poll</title></rect>
+        <text x="501" y="66">task 1</text>
+        <rect id="b-w2" class="node" x="452" y="90" width="98" height="38" rx="6" stroke-dasharray="4 3"><title>task N — auto-scaled on backlog</title></rect>
+        <text x="501" y="112" fill="var(--muted)">task N</text>
+        <rect id="b-deps" class="node" x="452" y="150" width="98" height="56" rx="6"><title>Work dependencies — unchanged</title></rect>
+        <text x="501" y="172">DeepSeek</text><text x="501" y="190">Aurora</text>
+        <rect id="b-cw" class="node" x="452" y="246" width="98" height="56" rx="6"><title>CloudWatch reads ApproximateNumberOfMessages; ECS scales on backlog-per-task</title></rect>
+        <text x="501" y="268">CloudWatch</text><text class="lbl" x="501" y="284">backlog-per-task</text>
+        <path class="edge" d="M98,58 L128,58" marker-end="url(#ar-f)"/>
+        <path class="edge" d="M128,74 L98,74" marker-end="url(#ar-i)" stroke="var(--info)"/><text class="lbl" x="113" y="92">SSE</text>
+        <path class="edge" d="M240,58 L282,66" marker-end="url(#ar-f)"/><text class="code lbl" x="259" y="50">SendMessage</text>
+        <path class="edge" d="M408,68 L452,60" marker-end="url(#ar-f)"/><text class="code lbl" x="431" y="50">ReceiveMessage</text>
+        <path class="edge" d="M470,128 C470,230 444,250 424,252" marker-end="url(#ar-w)" stroke="var(--warn)"/><text class="code lbl" x="464" y="180" fill="var(--warn)">frames</text>
+        <path class="edge" d="M270,256 C208,256 192,132 190,88" marker-end="url(#ar-w)" stroke="var(--warn)"/><text class="code lbl" x="222" y="176" fill="var(--warn)">relay</text>
+        <path class="edge" d="M282,96 L276,96 L276,146 L282,146" marker-end="url(#ar-g)" stroke="var(--good)" stroke-dasharray="3 3"><title>redrive policy moves the message after maxReceiveCount — no reaper code</title></path>
+        <text class="lbl" transform="rotate(-90 268 122)" x="268" y="122" fill="var(--good)">redrive</text>
+        <path class="edge" d="M408,160 C432,178 436,254 452,266" marker-end="url(#ar-f)" stroke-dasharray="3 3"><title>ApproximateNumberOfMessages — about a minute of lag, approximate</title></path>
+        <text class="lbl" x="437" y="212">≈ depth · 1 min</text>
+        <path class="edge" d="M535,246 C558,215 558,160 535,128" marker-end="url(#ar-f)" stroke-dasharray="3 3"><title>ECS service scales worker tasks from the backlog metric</title></path>
+        <path class="edge" d="M501,128 L501,150" marker-end="url(#ar-f)"/>
+        <text class="code" x="280" y="350" fill="var(--warn)" font-size="10">TWO SYSTEMS — the queue is managed, but streaming + cancel need a second transport</text>
+      </svg>
+    </div>
+  </div>
+
+  <h3>Primitive-by-primitive mapping</h3>
+  <div class="matrix-wrap"><table class="tbl">
+    <thead><tr><th>Concern</th><th>Redis Streams (the build)</th><th>AWS SQS (prod shape)</th><th>Who wins</th></tr></thead>
+    <tbody>
+      <tr><td>Enqueue</td><td><code>XADD agent:jobs</code></td><td><code>SendMessage</code></td><td><span class="badge">same idea</span></td></tr>
+      <tr><td>Consume</td><td><code>XREADGROUP</code> consumer group, BLOCK</td><td><code>ReceiveMessage</code> long-poll (20s)</td><td><span class="badge">same idea</span></td></tr>
+      <tr><td>Ack</td><td><code>XACK</code> after the result frame</td><td><code>DeleteMessage</code> after the result</td><td><span class="badge">same idea</span></td></tr>
+      <tr><td>Crash reclaim</td><td>Pending entries + heartbeat + <code>XAUTOCLAIM</code> reaper — <strong>you write it</strong> (M2)</td><td>Visibility timeout + <code>ChangeMessageVisibility</code> heartbeat — reclaim is automatic</td><td><span class="badge good">SQS free</span></td></tr>
+      <tr><td>Poison jobs</td><td>Delivery counter + hand-rolled <code>agent:dlq</code></td><td><code>ApproximateReceiveCount</code> + redrive policy → managed DLQ</td><td><span class="badge good">SQS free</span></td></tr>
+      <tr><td>Durability / HA</td><td>One container, in-memory, SPOF</td><td>Managed, multi-AZ, at-least-once guaranteed</td><td><span class="badge good">SQS free</span></td></tr>
+      <tr><td>Queue depth signal</td><td><code>XLEN</code>/<code>XPENDING</code> — exact, instant → crisp admission control</td><td><code>ApproximateNumberOfMessages</code> via CloudWatch — approximate, ~1 min lag</td><td><span class="badge warn">Redis wins</span></td></tr>
+      <tr><td><strong>Result streaming</strong></td><td><code>agent:frames:{job_id}</code> — same primitive, same connection</td><td><strong>Nothing.</strong> A second transport appears: ElastiCache Redis, DynamoDB append-and-poll, or API Gateway WebSockets</td><td><span class="badge warn">Redis wins big</span></td></tr>
+      <tr><td>Cancellation</td><td><code>cancel:{job_id}</code> key, checked between steps</td><td>No primitive — side-channel flag (usually on the frames transport)</td><td><span class="badge warn">Redis wins</span></td></tr>
+      <tr><td>Local iteration</td><td><code>docker compose up</code>, instant, free</td><td>Cloud round-trips or LocalStack approximations</td><td><span class="badge warn">Redis wins</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="cards c2" style="margin-top:14px">
+    <div class="card">
+      <h4><span class="badge">UNCHANGED</span> what transfers 1:1</h4>
+      <p>The worker loop shape (receive → deadline check → work → publish → ack), admission control at
+      the door, idempotent run persistence by <code>job_id</code>, the queued-position UX, and the whole
+      metrics/dashboard story. Everything M1–M2 teaches is the vocabulary SQS speaks — just with
+      different verbs.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge good">SQS GIVES FREE</span> most of M2 disappears</h4>
+      <p>Crash reclaim (visibility timeout), delivery counting, DLQ redrive, durability, multi-AZ, IAM
+      auth. Roughly all the reaper/heartbeat code M2 builds by hand is a queue attribute in SQS —
+      which is exactly why building it by hand first is the better learning order.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge warn">SQS TAKES AWAY</span> streaming, precision, iteration speed</h4>
+      <p>The big one: no per-job result stream, so the single-primitive architecture splits into
+      <em>queue + result transport</em> — and the most common choice for that transport is… Redis
+      (ElastiCache). Depth also degrades from exact/instant to approximate/minute-lagged, which softens
+      both admission control and the autoscaling signal.</p>
+    </div>
+    <div class="card info">
+      <h4><span class="badge info">WHY THIS ORDER</span> build Redis, document SQS</h4>
+      <p>Per D1 + D5: hand-roll the semantics locally where iteration is instant, then write the M4
+      mapping note instead of deploying. In an interview, the table above <em>is</em> the answer to
+      "how would you run this on AWS?" — same loop, managed resilience, plus an explicit story for the
+      streaming gap.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="experiment">
+  <h2><span class="num">05</span>The experiment</h2>
+  <p class="sec-sub">
+    Hypothesis-driven, baseline first. Workload <strong>A</strong> = non-LLM FastAPI call
+    (<code>/agent/sql</code>, ~100s of ms). Workload <strong>B-stub</strong> = the full answer path
+    with <code>LLM_STUB=1</code> — a canned answer streamed as realistic frames over
+    <code>STUB_LATENCY_S</code>, zero spend. Per the re-decided D2 this is the workhorse for E2–E8
+    <em>and</em> the C-series: it measures <em>your</em> infrastructure, not DeepSeek's rate limiter.
+    Workload <strong>B-live</strong> = real DeepSeek, used only in E9 to check that the stub's shape
+    predicts reality — keep it tiny and tag provider 429s separately.
+  </p>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="v">λ max</div><div class="k">throughput at saturation (answers/min)</div></div>
+    <div class="kpi"><div class="v">p50 / p95 / p99</div><div class="k">total latency, accepted jobs only</div></div>
+    <div class="kpi"><div class="v">TTFP</div><div class="k">time-to-first-page (exists: <code>ttfp_ms</code>)</div></div>
+    <div class="kpi"><div class="v">queue_wait_ms</div><div class="k">enqueue → worker pickup</div></div>
+    <div class="kpi"><div class="v">shed %</div><div class="k">429s / total — should be cheap + fast</div></div>
+    <div class="kpi"><div class="v">error %</div><div class="k">timeouts, 5xx, lost jobs (target: 0 lost)</div></div>
+  </div>
+
+  <div class="matrix-wrap"><table class="tbl">
+    <thead><tr><th>Run</th><th>Path</th><th>Workload</th><th>Workers</th><th>Load shape</th><th>Question it answers / expected result</th></tr></thead>
+    <tbody>
+      <tr><td><strong>E1</strong></td><td>direct</td><td>A</td><td>1</td><td>ramp VUs until knee</td>
+        <td>Where does a single container saturate on pure FastAPI+DB work? <span class="sub">Expect: high RPS; knee likely at Postgres connect rate (NullPool) or event-loop stalls.</span></td></tr>
+      <tr><td><strong>E2</strong></td><td>direct</td><td>B-stub</td><td>1</td><td>arrivals &gt; 1/service-time</td>
+        <td>What does overload look like with no queue? <span class="sub">Expect: pileup → 120s httpx timeouts, ugly p99, wasted work. This is the "before" photo.</span></td></tr>
+      <tr><td><strong>E3</strong></td><td>queued</td><td>A</td><td>1</td><td>same as E1</td>
+        <td>What overhead does the queue add when idle? <span class="sub">Expect: small fixed cost per request (target &lt; 20ms); throughput ≈ E1.</span></td></tr>
+      <tr><td><strong>E4</strong></td><td>queued</td><td>B-stub</td><td>1</td><td>same as E2</td>
+        <td>Baseline λ and W for Little's law. <span class="sub">Expect: same throughput as E2 but bounded p95 for accepted jobs + fast 429s past the bound.</span></td></tr>
+      <tr><td><strong>E5</strong></td><td>queued</td><td>B-stub</td><td>2</td><td>same</td>
+        <td rowspan="2">The headline: does throughput scale with workers? <span class="sub">Expect: ~linear lift (2×, 3×) since work is stub-IO-bound; watch the shared ceilings — laptop CPU during sandbox passes, Postgres connects.</span></td></tr>
+      <tr><td><strong>E6</strong></td><td>queued</td><td>B-stub</td><td>3</td><td>same</td></tr>
+      <tr><td><strong>E7</strong></td><td>queued</td><td>B-stub</td><td>2</td><td>burst 3× the bound</td>
+        <td>Does backpressure actually protect? <span class="sub">Expect: shed % rises, accepted-job p95 flat, zero timeouts — contrast directly with E2.</span></td></tr>
+      <tr><td><strong>E8</strong></td><td>queued</td><td>B-stub</td><td>2</td><td>steady + <code>docker kill</code> one worker mid-job</td>
+        <td>Redelivery works? <span class="sub">Expect: job reclaimed + restarted on the survivor, client sees a restart frame, zero lost jobs, run row not duplicated.</span></td></tr>
+      <tr><td><strong>E9</strong></td><td>queued</td><td>B-live</td><td>2</td><td>low VUs, short</td>
+        <td>Does the stub predict reality? <span class="sub">Real DeepSeek at small N; compare shape (TTFP, service-time distribution) against B-stub. The only run with token spend — keep tiny, tag provider 429s separately.</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="c-series">C-series — the controlled stub matrix <span class="badge accent">added by D2 amendment · 2026-08-26</span></h3>
+  <p class="sec-sub">
+    Your design: stub the LLM (assume it works), fix its latency at <strong>10 / 20 / 30s</strong>, and
+    fire <strong>5 / 10 / 20 concurrent users, one question each</strong>. This is a
+    <em>burst-capacity</em> experiment, and it's the cleanest possible demonstration of the scaling
+    claim, because a closed-form prediction exists to test against:
+    <strong>makespan ≈ ⌈N ∕ W⌉ × S</strong> (N users, W workers, S seconds per answer). Measured vs
+    predicted on one chart is the headline figure. Each cell is minutes long and costs zero tokens, so
+    run every cell 3× and report medians. The executed subset (full 3×3×4 grid optional):
+  </p>
+  <div class="matrix-wrap"><table class="tbl">
+    <thead><tr><th>Run</th><th>Config</th><th>Stub S</th><th>Users N</th><th>What it shows / predicted result</th></tr></thead>
+    <tbody>
+      <tr><td><strong>C1</strong></td><td>direct</td><td>20s</td><td>20</td>
+        <td>The "before" photo at fixed load. One container serializes the burst — completion crawls toward 20×20 = 400s serial and most users blow the 120s client timeout. <span class="sub">Chaotic failure, wasted work.</span></td></tr>
+      <tr><td><strong>C2</strong></td><td>queued ×1</td><td>20s</td><td>20</td>
+        <td>Same capacity, orderly: everyone holds a position, zero timeouts (deadline permitting). <span class="sub">Predicted makespan ≈ 400s, p95 wait ≈ 380s — slow but honest, and every job lands.</span></td></tr>
+      <tr><td><strong>C3</strong></td><td>queued ×2</td><td>20s</td><td>20</td>
+        <td rowspan="2">The scaling headline: makespan halves then thirds. <span class="sub">Predicted ≈ 200s (×2) and ⌈20/3⌉×20 = 140s (×3). Plot measured vs ⌈N∕W⌉×S — the gap between the curves is your infra overhead, and it should be small and flat.</span></td></tr>
+      <tr><td><strong>C4</strong></td><td>queued ×3</td><td>20s</td><td>20</td></tr>
+      <tr><td><strong>C5</strong></td><td>queued ×2</td><td>10s</td><td>20</td>
+        <td rowspan="2">Sensitivity in S: results should scale linearly (≈100s and ≈300s). <span class="sub">If the residual overhead grows with S, something (heartbeat, relay, sandbox) is leaking time.</span></td></tr>
+      <tr><td><strong>C6</strong></td><td>queued ×2</td><td>30s</td><td>20</td></tr>
+      <tr><td><strong>C7</strong></td><td>queued ×2</td><td>20s</td><td>5</td>
+        <td rowspan="2">Under capacity the queue must be invisible: wait ≈ 0, per-user latency ≈ S + ε. <span class="sub">Predicted makespan ⌈5/2⌉×20 = 60s and ⌈10/2⌉×20 = 100s. Proves the seam costs nothing when idle (pairs with E3).</span></td></tr>
+      <tr><td><strong>C8</strong></td><td>queued ×2</td><td>20s</td><td>10</td></tr>
+    </tbody>
+  </table></div>
+  <div class="cards c2" style="margin-top:14px">
+    <div class="card good">
+      <h4><span class="badge good">REVIEW</span> Is this a fair test? Yes — with the right claim attached</h4>
+      <p>Fixing S removes provider noise (the exact reason the stub was originally recommended), one-shot
+      users make the offered load exact, and sweeping N across the capacity line (5 under, 10 near, 20
+      over for 1–3 workers) exercises both regimes. Best of all it's <em>falsifiable</em>: ⌈N∕W⌉×S is the
+      prediction, and measured-vs-predicted is stronger evidence than any before/after anecdote. The one
+      framing caveat: a one-shot burst measures <strong>burst capacity and makespan</strong>, not
+      steady-state throughput — Little's law needs sustained arrivals, which stays the E-runs' job. Say
+      "handles a 20-user burst" not "handles 20 users/minute", and the claim is airtight.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge warn">TWEAKS</span> four amendments to keep it honest</h4>
+      <p>① Hold everything but the swept variable identical across cells and repeat 3× (stub runs are
+      free). ② Set <code>QUEUE_MAX_DEPTH=32</code> for C-runs — at the default bound of 10, a 20-user
+      burst sheds ~half the users and the comparison silently becomes "queued did less work"; shedding
+      gets its own run (E7). ③ The stub must <em>stream</em> frames across its S seconds (progress →
+      pages → result), not <code>sleep(S)</code> then dump — otherwise TTFP is meaningless and the relay
+      path isn't exercised. ④ In C1, count timeouts as failures in the chart, not as missing data —
+      the direct path's failure mode is the point.</p>
+    </div>
+  </div>
+
+  <div class="cards c2" style="margin-top:14px">
+    <div class="card good">
+      <h4><span class="badge good">SUCCESS CRITERIA</span></h4>
+      <p>① E5/E6 show ≥ 1.8× / ≥ 2.5× throughput lift over E4. ② E7 holds accepted-job p95 within
+      ~15% of E4 while shedding cleanly. ③ E8 loses zero jobs. ④ Measured L ≈ λ·W within ~20%
+      (Little's law sanity check). ⑤ Every run lands as a row in <code>app.load_tests</code> with
+      workers + queue_mode dimensions, visible on the ops deck. ⑥ C3/C4 makespans land within ~15%
+      of the ⌈N∕W⌉×S prediction (median of 3). ⑦ E9's live shape (TTFP, service-time spread)
+      resembles the stub's — report it with n, it's the only small-sample run.</p>
+    </div>
+    <div class="card info">
+      <h4><span class="badge info">DELIVERABLE</span> s41 results artifact</h4>
+      <p>The write-up is part of the experiment: a follow-up lavish page (and a README section on the
+      repo) with the E1–E9 and C-series tables, the E2-vs-E7 "collapse vs shed" chart, the
+      measured-vs-predicted C-series chart, the Grafana dashboard screenshots, and the honest caveats
+      (laptop, stub, single Redis). That's the portfolio artifact interviewers actually read.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="decisions">
+  <h2><span class="num">06</span>Decisions — locked 2026-08-26</h2>
+  <p class="sec-sub">All five answered in the review session. D4 overrides the original
+  recommendation; D2 was first flipped to live-only, then re-decided back to the recommendation
+  (stub for volume, live to validate) when the C-series was added. Sections 04, 05, 07, 08 and 09
+  reflect the current picks. Re-queue an answer below to change one.</p>
+
+  <div class="decision">
+    <h3><span class="badge purple">D1</span> Queue technology <span class="badge good">LOCKED: Redis Streams, hand-rolled (= rec)</span></h3>
+    <p class="dq">What carries jobs from backend to workers, and frames back?</p>
+    <div class="opt-grid" style="margin-bottom:12px">
+      <div class="opt rec">
+        <h4>Redis Streams (hand-rolled)</h4>
+        <p>Consumer groups + <code>XAUTOCLAIM</code> + per-job frame streams. ~200 lines you fully understand.</p>
+        <ul class="pro"><li><span>Teaches ack/pending/redelivery/DLQ semantics for real — the learning goal</span></li><li><span>One primitive covers jobs AND frame relay</span></li><li><span>Industry-recognizable (Redis 64%-adjacent in your skills notes via Docker/infra)</span></li></ul>
+        <ul class="con"><li><span>New container; you own edge cases a framework would handle</span></li></ul>
+      </div>
+      <div class="opt">
+        <h4>arq (Redis, framework)</h4>
+        <p>Asyncio-native job library on Redis.</p>
+        <ul class="pro"><li><span>Retries/timeouts free; less code</span></li></ul>
+        <ul class="con"><li><span>Hides exactly the semantics you're trying to learn</span></li><li><span>Frame streaming still needs hand-rolled pub/sub anyway</span></li></ul>
+      </div>
+      <div class="opt">
+        <h4>Postgres SKIP LOCKED</h4>
+        <p>Jobs table + <code>FOR UPDATE SKIP LOCKED</code> + LISTEN/NOTIFY.</p>
+        <ul class="pro"><li><span>Zero new infra; transactional with the run row</span></li></ul>
+        <ul class="con"><li><span>Frame relay is clunky (NOTIFY 8KB limit → notify-and-fetch)</span></li><li><span>Polling workers; adds load to the very DB you're measuring</span></li></ul>
+      </div>
+      <div class="opt">
+        <h4>AWS SQS</h4>
+        <p>The real prod answer on AWS.</p>
+        <ul class="pro"><li><span>Managed, durable, the interview name-drop</span></li></ul>
+        <ul class="con"><li><span>Slow local iteration, no streaming story, prod is demo-mode (no agent deployed)</span></li><li><span>Better as the M4 "how this maps to AWS" note than the build</span></li></ul>
+      </div>
+    </div>
+    <form data-lavish-question="d1-queue-tech" onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d1'); if(c) window.lavish.queuePrompt('D1 queue technology: use '+c, {tag:'decision', text:'D1: '+c, element:event.currentTarget, data:{question:'d1-queue-tech', answer:c}});">
+      <label class="choice"><input type="radio" name="d1" value="Redis Streams hand-rolled (recommended)"><span><span class="t">Redis Streams, hand-rolled</span><span class="d">Recommended — maximum learning per line of code</span></span></label>
+      <label class="choice"><input type="radio" name="d1" value="arq on Redis"><span><span class="t">arq</span><span class="d">Faster to ship, less mechanism learned</span></span></label>
+      <label class="choice"><input type="radio" name="d1" value="Postgres SKIP LOCKED"><span><span class="t">Postgres SKIP LOCKED</span><span class="d">No new infra, clunkier streaming</span></span></label>
+      <label class="choice"><input type="radio" name="d1" value="AWS SQS"><span><span class="t">SQS</span><span class="d">Prod-real, weak local experiment loop</span></span></label>
+      <button class="qbtn" type="submit">Queue D1 answer</button>
+    </form>
+  </div>
+
+  <div class="decision">
+    <h3><span class="badge purple">D2</span> LLM load source <span class="badge good">RE-DECIDED 2026-08-26: stub for E2–E8 + C-series, live only for E9 (= rec)</span></h3>
+    <p class="dq">High-volume runs against real DeepSeek measure their rate limiter and your wallet, not your queue.</p>
+    <form data-lavish-question="d2-llm-source" onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d2'); if(c) window.lavish.queuePrompt('D2 LLM load source: '+c, {tag:'decision', text:'D2: '+c, element:event.currentTarget, data:{question:'d2-llm-source', answer:c}});">
+      <label class="choice"><input type="radio" name="d2" value="LLM_STUB mode in the agent for E2-E8, live DeepSeek only for E9 (recommended)"><span><span class="t">Stub + live validation</span><span class="d">Recommended — <code>LLM_STUB=1</code> returns a canned answer with realistic token cadence; E9 checks the stub against reality at small N</span></span></label>
+      <label class="choice"><input type="radio" name="d2" value="Live DeepSeek for everything, at low volumes"><span><span class="t">Live only</span><span class="d">Most realistic, but rate limits + spend cap the matrix at small N and add noise</span></span></label>
+      <button class="qbtn" type="submit">Queue D2 answer</button>
+    </form>
+  </div>
+
+  <div class="decision">
+    <h3><span class="badge purple">D3</span> Load harness <span class="badge good">LOCKED: k6 extended + SSE prober (= rec)</span></h3>
+    <p class="dq"><code>make loadtest</code> → k6 → <code>app.load_tests</code> → ops deck already exists. But k6's http client can't measure SSE time-to-first-frame.</p>
+    <form data-lavish-question="d3-harness" onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d3'); if(c) window.lavish.queuePrompt('D3 load harness: '+c, {tag:'decision', text:'D3: '+c, element:event.currentTarget, data:{question:'d3-harness', answer:c}});">
+      <label class="choice"><input type="radio" name="d3" value="Extend k6 chat.js with workers/queue_mode dimensions for throughput runs, plus a small scripts/loadgen_sse.py for TTFP-focused runs (recommended)"><span><span class="t">k6 (extended) + small SSE script</span><span class="d">Recommended — k6 stays the throughput/latency engine feeding the ops deck; a ~100-line asyncio script covers TTFP + queued-position UX checks</span></span></label>
+      <label class="choice"><input type="radio" name="d3" value="Bespoke asyncio loadgen only, retire k6 for this experiment"><span><span class="t">Bespoke only</span><span class="d">One tool, full SSE control — but re-implements percentiles/ramping k6 already does, and orphans the ops-deck wiring</span></span></label>
+      <label class="choice"><input type="radio" name="d3" value="Locust"><span><span class="t">Locust</span><span class="d">Python + nice UI, but third harness in the repo and same SSE gap as k6</span></span></label>
+      <button class="qbtn" type="submit">Queue D3 answer</button>
+    </form>
+  </div>
+
+  <div class="decision">
+    <h3><span class="badge purple">D4</span> Metrics surface <span class="badge warn">LOCKED: Prometheus + Grafana in M1 (overrides rec)</span></h3>
+    <p class="dq">Where do queue metrics live for the write-up?</p>
+    <form data-lavish-question="d4-metrics" onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d4'); if(c) window.lavish.queuePrompt('D4 metrics surface: '+c, {tag:'decision', text:'D4: '+c, element:event.currentTarget, data:{question:'d4-metrics', answer:c}});">
+      <label class="choice"><input type="radio" name="d4" value="query_runs columns + Jaeger spans + k6-to-ops-deck now; Prometheus/Grafana as stretch M4 (recommended)"><span><span class="t">Existing spine now, Grafana later</span><span class="d">Recommended — queue_wait_ms/worker_id on query_runs, queue spans in Jaeger, load_tests rows on the ops deck; add Prometheus + Grafana only if M0–M3 land with time left</span></span></label>
+      <label class="choice"><input type="radio" name="d4" value="Add Prometheus + Grafana containers in M1 as first-class deliverables"><span><span class="t">Prometheus + Grafana up front</span><span class="d">Stronger dashboard artifact + resume signal, ~0.5–1 day extra before any experiment runs</span></span></label>
+      <button class="qbtn" type="submit">Queue D4 answer</button>
+    </form>
+  </div>
+
+  <div class="decision">
+    <h3><span class="badge purple">D5</span> Scope boundary <span class="badge good">LOCKED: local compose only + AWS notes (= rec)</span></h3>
+    <p class="dq">Prod is currently the zero-LLM demo (no data-agent service deployed at all), which makes it the wrong venue for this experiment anyway.</p>
+    <form data-lavish-question="d5-scope" onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d5'); if(c) window.lavish.queuePrompt('D5 scope: '+c, {tag:'decision', text:'D5: '+c, element:event.currentTarget, data:{question:'d5-scope', answer:c}});">
+      <label class="choice"><input type="radio" name="d5" value="Local docker compose only; M4 writes the how-this-maps-to-AWS (SQS/ECS/KEDA) notes without deploying (recommended)"><span><span class="t">Local only + AWS mapping notes</span><span class="d">Recommended — fast iteration, zero cloud cost/risk; the AWS translation is a design note, which is what interviews test anyway</span></span></label>
+      <label class="choice"><input type="radio" name="d5" value="Also deploy the queue path to AWS behind a flag in a later phase"><span><span class="t">Local + real AWS phase later</span><span class="d">Real cloud numbers, but requires reviving the agent service in prod (demo_mode=false), ECS workers, and real spend</span></span></label>
+      <button class="qbtn" type="submit">Queue D5 answer</button>
+    </form>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="phases">
+  <h2><span class="num">07</span>Build phases</h2>
+  <p class="sec-sub">Measure → build → break → measure again. Each phase ends runnable; ~4–5 focused days total (M4 excluded) — the extra half-day vs the original plan is the D4 metrics stack landing in M1.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="mnum">M0</div>
+      <div>
+        <h4>Hygiene + baselines <span class="badge">~0.5–1 day</span></h4>
+        <ul>
+          <li><strong>Unblock scaling:</strong> remove <code>8100:8100</code> host mapping; add <code>/health</code>-based healthchecks for data-agent and backend-api in compose.</li>
+          <li><strong>Unblock the event loop:</strong> wrap <code>run_code()</code> call sites in <code>asyncio.to_thread</code> (<span class="fileref">sandbox_agent.py:859</span> + 3 endpoints in <span class="fileref">main.py</span>) — worth it independent of the queue.</li>
+          <li><strong>Warm-up:</strong> lifespan pre-loads the embedding model + spawns one sandbox process so first requests aren't cold.</li>
+          <li><strong>LLM_STUB mode</strong> (per D2): canned answer <em>streamed</em> as frames across <code>STUB_LATENCY_S</code> — powers E2–E8 and the C-series.</li>
+          <li><strong>Check the ceiling:</strong> record Postgres <code>max_connections</code> and connect-rate behavior under NullPool.</li>
+          <li><strong>Run E1 + E2</strong> (direct baselines) via extended k6; persist to <code>app.load_tests</code>. The "before" numbers.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="step">
+      <div class="mnum">M1</div>
+      <div>
+        <h4>Queue core + metrics stack <span class="badge">~1.5–2 days</span></h4>
+        <ul>
+          <li>Redis service in compose; <code>agent/worker.py</code> consumer-group loop; <code>agent-worker</code> compose service (same image, scale-friendly).</li>
+          <li>Backend: <code>QUEUE_MODE</code> flag, enqueue + admission control (depth bound → 429 Retry-After), frames-stream relay into the unchanged SSE contract, <code>queued (position N)</code> status frame.</li>
+          <li><code>queue_wait_ms</code> / <code>worker_id</code> on <code>query_runs</code> (migration), queue spans in the propagated trace.</li>
+          <li><strong>Per D4, first-class:</strong> <code>/metrics</code> via <code>prometheus_client</code> on backend-api (queue depth gauge from <code>XLEN</code>/<code>XPENDING</code>, shed + provider-429 counters, queue-wait histogram) and on the worker (jobs processed, service-time histogram); <code>prometheus</code> + <code>grafana</code> compose services behind the <code>obs</code> profile with a provisioned datasource + one committed queue dashboard (depth, per-worker throughput, shed rate, wait vs service time).</li>
+          <li>Smoke: <code>make queue-up</code>, one chat answer streams end-to-end through the queue and the dashboard shows the job.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="step">
+      <div class="mnum">M2</div>
+      <div>
+        <h4>Break it on purpose — resilience <span class="badge">~1 day</span></h4>
+        <ul>
+          <li>Heartbeats + <code>XAUTOCLAIM</code> reaper → redelivery; <code>MAX_DELIVERIES</code> → DLQ stream + client error frame.</li>
+          <li>Deadline drop + client-disconnect cancellation; graceful SIGTERM (finish current job).</li>
+          <li>Idempotent run persistence by job id (redelivery must not duplicate <code>query_runs</code> rows).</li>
+          <li>Chaos drills scripted: kill a worker mid-job (E8 rehearsal), inject a poison job, flood past the bound.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="step">
+      <div class="mnum">M3</div>
+      <div>
+        <h4>Run the matrix + write it up <span class="badge">~0.5–1 day</span></h4>
+        <ul>
+          <li>k6 scenario matrix E3–E9 with <code>WORKERS</code> / <code>QUEUE_MODE</code> dims; <code>docker compose up --scale agent-worker=N</code>. E9 is the only live-LLM cell (per D2) — keep it small.</li>
+          <li><strong>C-series C1–C8</strong> (stub, 3× repeats, <code>QUEUE_MAX_DEPTH=32</code>): the measured-vs-⌈N∕W⌉×S headline chart.</li>
+          <li>Little's law check; E2-vs-E7 collapse-vs-shed comparison.</li>
+          <li><strong>s41 results artifact</strong> + README "Load & backpressure" section with the numbers.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="step">
+      <div class="mnum">M4</div>
+      <div>
+        <h4>Stretch <span class="badge warn">optional</span></h4>
+        <ul>
+          <li>Tiny autoscaler demo: a watcher that runs <code>compose up --scale</code> from the Prometheus queue-depth gauge — the KEDA pattern in 50 lines (the metric now exists from M1).</li>
+          <li>"How this maps to AWS" note: expand <a href="#redis-vs-sqs">§04b's Redis ↔ SQS mapping</a> (SQS + ECS workers + backlog-per-task scaling) into the README.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="risks">
+  <h2><span class="num">08</span>Risks & open questions</h2>
+
+  <div class="risk"><span class="badge bad">RISK</span><div>
+    <p class="t">Laptop is the hidden ceiling</p>
+    <p>3 workers × sandbox subprocess (Pyodide cold-starts pandas per run) on one machine — CPU contention
+    can masquerade as "queue overhead" and flatten the E5/E6 lift. Mitigation: record host CPU during runs
+    (the Grafana node view helps here) and report worker-side service time separately from wait.</p>
+  </div></div>
+  <div class="risk"><span class="badge warn">RISK</span><div>
+    <p class="t">DeepSeek's rate limiter — contained to E9 after the D2 re-decision</p>
+    <p>With E2–E8 and the C-series on the stub, provider throttling and latency variance touch only the
+    E9 validation run. Keep E9's λ tiny, tag provider 429s/timeouts as their own counter (never fold
+    them into our error %), and record its token spend. If E9's shape diverges from the stub's, tune
+    <code>STUB_LATENCY_S</code> / the frame cadence to match reality and note the correction in s41 —
+    that's calibration, not failure.</p>
+  </div></div>
+  <div class="risk"><span class="badge bad">RISK</span><div>
+    <p class="t">Postgres connect storms under NullPool</p>
+    <p>Every query = fresh TCP+TLS connect; N workers amplify it. If E1 knees on connects, either accept and
+    document it (it's a finding, not a failure) or bolt PgBouncer on as a follow-up experiment. Don't switch
+    the app to pooled engines mid-experiment — it changes the system under test.</p>
+  </div></div>
+  <div class="risk"><span class="badge warn">RISK</span><div>
+    <p class="t">Mid-stream worker death UX</p>
+    <p>Redelivery restarts the answer from frame zero. The relay must truncate + signal
+    <code>status: restarted</code>; the frontend already tolerates status frames, but verify it doesn't
+    render two half-answers. E8 exists to prove this.</p>
+  </div></div>
+  <div class="risk"><span class="badge warn">RISK</span><div>
+    <p class="t">Redis is a new single point of failure</p>
+    <p>Fine for a local experiment (that's also true of SQS's role in prod — the queue being the SPOF is
+    the standard trade). No persistence config needed; jobs are re-enqueueable by the user.</p>
+  </div></div>
+  <div class="risk"><span class="badge info">OPEN</span><div>
+    <p class="t">Which non-chat endpoints route through the queue?</p>
+    <p>Proposal: chat (<code>/agent/ask*</code>) only. <code>/agent/sql</code> and <code>/agent/schema</code>
+    stay direct (they're the fast workload-A surface and the SQL editor needs low latency). Golden
+    authoring / eval endpoints stay direct too — they're admin tools. Confirm or annotate.</p>
+  </div></div>
+  <div class="risk"><span class="badge info">OPEN</span><div>
+    <p class="t">Does the blocking <code>/ask</code> endpoint also go through the queue?</p>
+    <p>Proposal: yes — it enqueues and blocks on the final result frame (same machinery, no second path).
+    Slack and service-account callers then get backpressure for free.</p>
+  </div></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="files">
+  <h2><span class="num">09</span>Touch list</h2>
+  <p class="sec-sub">Files this plan expects to create or modify (M0–M3):</p>
+  <ul class="filelist">
+    <li><span class="fileref">docker-compose.yml</span> — redis + agent-worker services (queue profile), prometheus + grafana (obs profile), healthchecks, drop fixed agent port</li>
+    <li><span class="fileref">services/data-agent/agent/worker.py</span> — NEW: consumer-group worker loop + worker /metrics</li>
+    <li><span class="fileref">services/data-agent/agent/queue.py</span> — NEW: stream names, frame publish helpers</li>
+    <li><span class="fileref">services/data-agent/agent/llm_stub.py</span> — NEW (per D2): streamed canned answer at <code>STUB_LATENCY_S</code></li>
+    <li><span class="fileref">services/data-agent/agent/sandbox_agent.py</span> — asyncio.to_thread wrap</li>
+    <li><span class="fileref">services/data-agent/agent/main.py</span> — to_thread wraps, lifespan warm-up</li>
+    <li><span class="fileref">services/backend-api/app/queue_client.py</span> — NEW: enqueue, depth check, frames relay</li>
+    <li><span class="fileref">services/backend-api/app/routers/ask.py</span> — QUEUE_MODE branch, queued-position frame</li>
+    <li><span class="fileref">services/backend-api/app/config.py</span> — new settings</li>
+    <li><span class="fileref">services/db-migrate/migrations/00XX</span> — queue_wait_ms, worker_id, deliveries on query_runs</li>
+    <li><span class="fileref">load/k6/chat.js</span> — workers/queue_mode dims, stub scenarios + small E9 live scenario, burst shape</li>
+    <li><span class="fileref">services/backend-api/app/metrics.py</span> — NEW: prometheus_client registry (queue depth, shed %, provider 429s, wait histogram)</li>
+    <li><span class="fileref">ops/prometheus.yml</span> — NEW: scrape config (backend-api, workers)</li>
+    <li><span class="fileref">ops/grafana/</span> — NEW: provisioned datasource + committed queue dashboard JSON</li>
+    <li><span class="fileref">scripts/loadgen_sse.py</span> — NEW: TTFP-focused SSE prober (per D3)</li>
+    <li><span class="fileref">scripts/chaos.sh</span> — NEW: kill-worker / poison-job / flood drills</li>
+    <li><span class="fileref">Makefile</span> — loadtest matrix targets, queue-up target</li>
+  </ul>
+</section>
+
+<footer class="foot">
+  <p>s40 · queue-experiment plan · branch <code>queue</code> · grounded in a code survey of
+  <code>ask.py</code>, <code>agent_client.py</code>, <code>agent/main.py</code>, <code>docker-compose.yml</code>,
+  <code>load/k6/chat.js</code> on 2026-08-23. Design: Night Flight tokens from
+  <code>frontend/src/styles.css</code> (the app's own design system), matching prior sNN artifacts.</p>
+  <p>Annotate any card, row, or decision — or queue the D1–D5 answers above and hit Send to Agent.</p>
+</footer>
+
+</div>
+
+<!-- Code renders (@pierre/diffs) -->
+<script type="module">
+  import { File, FileDiff } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const dark = !window.matchMedia("(prefers-color-scheme: light)").matches;
+  const options = { theme: { light: "github-light", dark: "github-dark" }, themeType: dark ? "dark" : "light", overflow: "wrap" };
+
+  const workerFile = {
+    name: "services/data-agent/agent/worker.py",
+    contents: `"""Queue worker: same image as the HTTP service, different entrypoint.
+
+Consumes agent:jobs via a Redis consumer group, publishes SSE-shaped frames
+to agent:frames:{job_id}, and acks only after the final result frame.
+"""
+import asyncio, os, signal, time
+
+GROUP, CONSUMER = "workers", f"consumer-{os.environ.get('HOSTNAME', 'local')}"
+
+async def main() -> None:
+    await warm_up()                      # embedding model + one sandbox spawn,
+    mark_ready()                         # BEFORE consuming — no cold p99 spikes
+    stop = install_sigterm_handler()     # graceful: finish current job, then exit
+    while not stop.is_set():
+        job = await xreadgroup(GROUP, CONSUMER, block_ms=5000)   # blocking pop
+        if job is None:
+            continue
+        if time.time() > job.deadline_ts:          # deadline propagation:
+            await ack_dropped(job, "expired")      # never burn tokens for a
+            continue                               # client that already left
+        if job.deliveries >= MAX_DELIVERIES:       # poison -> dead-letter
+            await to_dlq(job)
+            continue
+        async with heartbeat(job):                 # visible liveness while working
+            async for frame in answer_frames(job): # existing _answer() internals
+                await publish_frame(job.id, frame) # XADD agent:frames:{job_id}
+                if await cancelled(job.id):        # client disconnect -> stop early
+                    break
+        await xack(job)                            # at-least-once: ack LAST
+
+if __name__ == "__main__":
+    asyncio.run(main())
+`,
+  };
+  new File(options).render({ containerWrapper: document.querySelector("#worker-code"), file: workerFile });
+
+  const composeOld = {
+    name: "docker-compose.yml",
+    contents: `  data-agent:
+    build: services/data-agent
+    ports:
+      - "8100:8100"          # fixed host port
+    environment:
+      AGENT_DATABASE_URL: ...
+      LLM_PROVIDER: \${LLM_PROVIDER:-deepseek}
+`,
+  };
+  const composeNew = {
+    name: "docker-compose.yml",
+    contents: `  data-agent:
+    build: services/data-agent
+    # no host port: scale-safe; reach it via the compose network
+    environment:
+      AGENT_DATABASE_URL: ...
+      LLM_PROVIDER: \${LLM_PROVIDER:-deepseek}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8100/health"]
+      interval: 10s
+      retries: 6
+
+  agent-worker:
+    build: services/data-agent          # same image, worker entrypoint
+    command: python -m agent.worker
+    profiles: ["queue"]                 # only exists when the queue profile is on
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis: { condition: service_started }
+    # docker compose up --scale agent-worker=3
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["queue"]
+
+  prometheus:                           # D4: first-class in M1
+    image: prom/prometheus
+    profiles: ["obs"]
+    volumes: ["./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+
+  grafana:
+    image: grafana/grafana
+    profiles: ["obs"]
+    ports: ["\${GRAFANA_HOST_PORT:-3000}:3000"]
+    volumes: ["./ops/grafana:/etc/grafana/provisioning:ro"]
+`,
+  };
+  new FileDiff({ ...options, diffStyle: "unified" }).render({
+    containerWrapper: document.querySelector("#compose-diff"),
+    oldFile: composeOld, newFile: composeNew,
+  });
+</script>
+
+<!-- Mermaid (theme-aware, from lavish design snippet) -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(fg, bg) {
+    const fa = fg[3] / 255, ba = bg[3] / 255;
+    const a = fa + ba * (1 - fa);
+    if (a === 0) return [0, 0, 0, 0];
+    return [
+      (fg[0] * fa + bg[0] * ba * (1 - fa)) / a,
+      (fg[1] * fa + bg[1] * ba * (1 - fa)) / a,
+      (fg[2] * fa + bg[2] * ba * (1 - fa)) / a,
+      a * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBg = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBg = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0, 0, 0, 0];
+    const [r, g, b, a] = compositeRgba(bodyBg, rootBg);
+    if (a > 0) return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+    const cs = getComputedStyle(root).colorScheme;
+    if (cs.includes("dark") && !cs.includes("light")) return true;
+    if (cs.includes("light") && !cs.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.innerHTML }));
+  let applied, rendering = false, queued = false;
+  function queueRender() { queued = true; if (!rendering) void render(); }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({ startOnLoad: false, theme, securityLevel: "strict" });
+        for (const { el, src } of diagrams) { el.removeAttribute("data-processed"); el.innerHTML = src; }
+        try { await mermaid.run({ nodes: diagrams.map((d) => d.el) }); }
+        catch (e) { console.error("Mermaid render failed:", e); return; }
+        applied = theme;
+      }
+    } finally { rendering = false; if (queued) queueRender(); }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const mo = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (el) mo.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  darkQuery.addEventListener("change", queueRender);
+</script>
+</body>
+</html>

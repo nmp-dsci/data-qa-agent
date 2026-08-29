@@ -17,9 +17,7 @@ import sys
 import urllib.error
 import urllib.request
 
-API = os.environ.get(
-    "SMOKE_API_URL", f"http://localhost:{os.environ.get('API_HOST_PORT', '8000')}"
-)
+API = os.environ.get("SMOKE_API_URL", f"http://localhost:{os.environ.get('API_HOST_PORT', '8000')}")
 TIMEOUT = int(os.environ.get("SMOKE_TIMEOUT_S", "60"))
 
 _passed = 0
@@ -68,14 +66,20 @@ def main() -> None:
 
     print("2. the chip rail")
     status, chips = req("GET", "/demo/questions")
-    check("questions endpoint serves the pack", status == 200 and len(chips or []) >= 5,
-          f"(count={len(chips or [])})")
+    check(
+        "questions endpoint serves the pack",
+        status == 200 and len(chips or []) >= 5,
+        f"(count={len(chips or [])})",
+    )
     chip_q = chips[0]["question"]
 
     print("3. replayed chat")
     status, ans = req("POST", "/ask", {"question": chip_q}, tok)
-    check("exact chip question answers", status == 200 and ans.get("engine") == "demo_replay",
-          f"(engine={ans.get('engine') if ans else None})")
+    check(
+        "exact chip question answers",
+        status == 200 and ans.get("engine") == "demo_replay",
+        f"(engine={ans.get('engine') if ans else None})",
+    )
     check("replay carries the recorded report", bool(ans.get("report")))
     check("replay carries the recorded SQL", bool(ans.get("sql")))
     check("exact match has no closest-answer note", ans.get("demo_matched_question") in (None, ""))
@@ -85,23 +89,34 @@ def main() -> None:
     check("fuzzy variant matches a recording", status == 200 and bool(ans2.get("sql")))
 
     status, miss = req("POST", "/ask", {"question": "write me a poem about kubernetes"}, tok)
-    check("unrelated question misses honestly",
-          status == 200 and "recorded" in (miss.get("answer") or ""))
+    check(
+        "unrelated question misses honestly",
+        status == 200 and "recorded" in (miss.get("answer") or ""),
+    )
 
     print("4. live SQL through the local governed executor")
-    status, rows = req("POST", "/sql",
-                       {"sql": "SELECT * FROM marts.property_rent LIMIT 5"}, tok)
-    ok_rows = status == 200 and not (rows or {}).get("error") and (rows or {}).get("row_count", 0) > 0
-    check("governed SELECT returns rows", ok_rows,
-          f"(rows={(rows or {}).get('row_count')}, err={(rows or {}).get('error')})")
+    status, rows = req("POST", "/sql", {"sql": "SELECT * FROM marts.property_rent LIMIT 5"}, tok)
+    ok_rows = (
+        status == 200 and not (rows or {}).get("error") and (rows or {}).get("row_count", 0) > 0
+    )
+    check(
+        "governed SELECT returns rows",
+        ok_rows,
+        f"(rows={(rows or {}).get('row_count')}, err={(rows or {}).get('error')})",
+    )
     status, denied = req("POST", "/sql", {"sql": "DELETE FROM app.users"}, tok)
     check("write SQL is refused", status == 200 and bool((denied or {}).get("error")))
     status, cat = req("GET", "/schema/catalog", token=tok)
     tables = (cat or {}).get("tables") or []
-    check("schema catalog served locally", status == 200 and len(tables) > 0,
-          f"(tables={len(tables)})")
-    check("visitor catalog stays analytical (marts/staging only)",
-          all(t.get("schema") in ("marts", "staging") for t in tables))
+    check(
+        "schema catalog served locally",
+        status == 200 and len(tables) > 0,
+        f"(tables={len(tables)})",
+    )
+    check(
+        "visitor catalog stays analytical (marts/staging only)",
+        all(t.get("schema") in ("marts", "staging") for t in tables),
+    )
 
     print("5. LLM endpoints are closed")
     status, _ = req("POST", "/sql/ai", {"action": "generate", "prompt": "top suburbs"}, tok)
@@ -109,20 +124,28 @@ def main() -> None:
 
     print("6. exhibits are readable, mutations are not")
     status, goldens = req("GET", "/admin/eval-goldens", token=tok)
-    check("goldens gallery readable by visitor", status == 200 and len(goldens or []) > 0,
-          f"(count={len(goldens or [])})")
+    check(
+        "goldens gallery readable by visitor",
+        status == 200 and len(goldens or []) > 0,
+        f"(count={len(goldens or [])})",
+    )
     status, _ = req("GET", "/admin/events?limit=5", token=tok)
     check("admin events readable (static exhibit)", status == 200)
-    status, _ = req("POST", "/admin/eval-goldens",
-                    {"question": "x", "dataset": "nsw_rent"}, tok)
+    status, _ = req("POST", "/admin/eval-goldens", {"question": "x", "dataset": "nsw_rent"}, tok)
     check("golden create still 403s", status == 403, f"(status={status})")
     status, _ = req("GET", "/analytics/summary", token=tok)
     check("analytics is owner-only (403 for visitor)", status == 403, f"(status={status})")
 
     print("7. analytics beacon")
-    status, _ = req("POST", "/events",
-                    {"event_type": "demo_landing_view", "session_id": "smoke",
-                     "payload": {"visitor_id": "smoke-visitor"}})
+    status, _ = req(
+        "POST",
+        "/events",
+        {
+            "event_type": "demo_landing_view",
+            "session_id": "smoke",
+            "payload": {"visitor_id": "smoke-visitor"},
+        },
+    )
     check("anonymous event accepted", status == 201)
 
     print("8. per-IP rate limit")

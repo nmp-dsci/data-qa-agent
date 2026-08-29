@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     # cloud agent (s12), whose App Runner URL is public. Empty = not sent (local).
     agent_shared_token: str = ""
 
+    # s40 M1: the queue seam. QUEUE_MODE=off is today's direct HTTP hop;
+    # "on" enqueues chat questions to Redis Streams and relays frames back —
+    # the direct-vs-queued A/B on the same build. QUEUE_MAX_DEPTH is the
+    # admission bound (429 + Retry-After past it; the C-series raises it to 32
+    # so capacity runs aren't confounded by shedding); JOB_DEADLINE_S rides in
+    # each job so workers drop questions whose client has already given up.
+    queue_mode: str = "off"
+    redis_url: str = "redis://redis:6379/0"
+    queue_max_depth: int = 10
+    job_deadline_s: int = 240
+
     # Dev-auth stub (auth_mode=dev): a locally signed HS256 token.
     jwt_secret: str = "dev-secret-change-me"
     jwt_alg: str = "HS256"

@@ -1,0 +1,111 @@
+{
+  "users": 15,
+  "makespan_s": 154.7524571660033,
+  "results": [
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 11.014707041002112,
+      "queued_pos": 1,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 144.4746519160035,
+      "queued_pos": 14,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 52.22352666599909,
+      "total_s": 52.257361500000115,
+      "queued_pos": 5,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 103.40757958400354,
+      "queued_pos": 5,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 31.862453208996158,
+      "queued_pos": 2,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 42.03483254100138,
+      "queued_pos": 2,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 113.60460887500085,
+      "total_s": 113.64940641700377,
+      "queued_pos": 5,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 93.13752745799866,
+      "queued_pos": 5,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 21.442256832997373,
+      "queued_pos": 2,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 72.65021066600457,
+      "queued_pos": 5,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 82.86154149999493,
+      "total_s": 82.8988605409977,
+      "queued_pos": 5,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 134.32430754099914,
+      "queued_pos": 7,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 124.05379166700004,
+      "queued_pos": 5,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": null,
+      "total_s": 62.44491770899913,
+      "queued_pos": 5,
+      "restarts": 0
+    },
+    {
+      "outcome": "ok",
+      "ttfp_s": 154.70933337500173,
+      "total_s": 154.7472657920007,
+      "queued_pos": 15,
+      "restarts": 0
+    }
+  ]
+}

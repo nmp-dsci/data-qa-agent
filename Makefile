@@ -28,6 +28,9 @@ help:
 	@echo "make ops-rollup    - recompute the /ops deck's windows now"
 	@echo "make rollback      - revert App Runner to the previous image digest (prod)"
 	@echo ""
+	@echo "make queue-up      - QUEUE_MODE=on: redis + agent-worker(s) + Grafana/Prometheus (WORKERS=N)"
+	@echo "make c-run         - one queue load cell end-to-end (QUEUE=on|off WORKERS=N USERS=N STUB=N)"
+	@echo ""
 	@echo "Then open http://localhost:5230 and sign in as admin / user1 / user2."
 
 samples:
@@ -49,8 +52,17 @@ pipeline-docs:
 up:
 	docker compose up --build
 
+# s40 M1: the queue seam + metrics stack. WORKERS=N scales the consumer-group
+# replicas; flipping back is `QUEUE_MODE=off docker compose up -d --no-deps
+# backend-api`. Grafana: http://localhost:3000 (obs profile).
+WORKERS ?= 1
+queue-up:
+	QUEUE_MODE=on COMPOSE_PROFILES=queue,obs docker compose up --build -d --scale agent-worker=$(WORKERS)
+
 down:
-	docker compose down
+	# All profiles included so profile-gated services (queue/obs/docs) come
+	# down too, whatever combination was up.
+	COMPOSE_PROFILES=queue,obs,docs docker compose down
 
 reset:
 	docker compose down -v
@@ -164,15 +176,35 @@ SCENARIO ?= browse
 VUS ?= 20
 DURATION ?= 30s
 BASE_URL ?= http://localhost:8000
+# s40 M3: SHAPE=oneshot = N users x 1 question (C-series / burst); NOTES carries
+# the experiment dimensions into app.load_tests (queue=... workers=... stub_s=...).
+SHAPE ?= constant
+NOTES ?=
 loadtest:
 	@command -v k6 >/dev/null || { echo "k6 not installed (brew install k6)"; exit 1; }
 	mkdir -p load/out
-	BASE_URL=$(BASE_URL) SCENARIO=$(SCENARIO) VUS=$(VUS) DURATION=$(DURATION) \
+	BASE_URL=$(BASE_URL) SCENARIO=$(SCENARIO) VUS=$(VUS) DURATION=$(DURATION) SHAPE=$(SHAPE) \
 	  TOKEN=$${TOKEN:-} k6 run --summary-export load/out/summary.json load/k6/chat.js
 	uv run python scripts/ops_ingest.py load-test --k6-summary load/out/summary.json \
-	  --scenario $(SCENARIO) --vus $(VUS) --duration-s $$(python3 -c \
+	  --scenario $(SCENARIO) --vus $(VUS) --notes "$(NOTES)" --duration-s $$(python3 -c \
 	  "import re,sys; s='$(DURATION)'; m=re.match(r'(\d+)([smh]?)',s); n=int(m.group(1)); \
 	   print(n*{'':1,'s':1,'m':60,'h':3600}[m.group(2)])")
+
+# s40 M3: one C-series cell end-to-end — restack the knobs, then a one-shot
+# burst of USERS questions. QUEUE_MAX_DEPTH=32 per the plan's fairness tweak
+# (capacity cells must not shed; E7 tests shedding on its own).
+#   make c-run WORKERS=2 USERS=20 STUB=20            # C3
+#   make c-run QUEUE=off WORKERS=0 USERS=20 STUB=20  # C1 (direct)
+QUEUE ?= on
+USERS ?= 20
+STUB ?= 20
+c-run:
+	QUEUE_MODE=$(QUEUE) QUEUE_MAX_DEPTH=32 LLM_STUB=1 STUB_LATENCY_S=$(STUB) \
+	  COMPOSE_PROFILES=queue,obs docker compose up -d --no-deps \
+	  --scale agent-worker=$(WORKERS) agent-worker backend-api data-agent
+	@sleep 8
+	$(MAKE) loadtest SCENARIO=chat SHAPE=oneshot VUS=$(USERS) \
+	  NOTES="c-series queue=$(QUEUE) workers=$(WORKERS) stub_s=$(STUB) users=$(USERS)"
 
 # promptfoo red-team of the governed boundary (RLS bypass, jailbreak to DML,
 # prompt injection, PII exfil). Costs model tokens and needs a running stack, so

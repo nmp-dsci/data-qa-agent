@@ -1,0 +1,28 @@
+# s40 M1 (D4): scrape config for the local obs profile.
+#
+# backend-api exposes /metrics on its app port; workers serve :9100 via
+# prometheus_client. Workers are discovered by DNS A lookup so
+# `--scale agent-worker=N` replicas all get scraped — compose's DNS returns
+# one A record per replica for the service name.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: backend-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend-api:8000"]
+
+  - job_name: agent-worker
+    dns_sd_configs:
+      - names: ["agent-worker"]
+        type: A
+        port: 9100
+        refresh_interval: 10s
+
+  # s41 D1: per-container CPU/memory (saturation) via the docker-stats
+  # exporter (ops/stats_exporter.py).
+  - job_name: stats-exporter
+    static_configs:
+      - targets: ["stats-exporter:9110"]

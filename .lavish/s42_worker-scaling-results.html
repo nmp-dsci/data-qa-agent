@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s42 · Worker scaling — measured: yes, and it's linear</title>
+<style>
+/* Night Flight tokens (frontend/src/styles.css), same as s40/s41. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae; --hud:#35803f;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.cards,.matrix-wrap,.charts)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,td,th,.badge){overflow-wrap:anywhere}
+:where(img,svg){max-width:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+header.hero{padding:56px 0 30px;border-bottom:1px solid var(--border);margin-bottom:34px;
+  position:relative;overflow:hidden}
+header.hero::after{content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+.hero h1{font-size:clamp(30px,4.4vw,46px);line-height:1.08;margin:12px 0 0;
+  font-weight:750;letter-spacing:-.02em;max-width:30ch}
+.hero .kicker{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hero .sub{color:var(--muted);font-size:17px;margin:16px 0 0;max-width:78ch}
+.verdict{margin-top:26px;border:1px solid var(--good-border);border-left:3px solid var(--good);
+  border-radius:var(--radius-lg);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--good) 8%,var(--panel)),var(--panel));
+  padding:16px 20px;box-shadow:var(--elev-1)}
+.verdict p{margin:6px 0 0}
+.verdict .lbl{color:var(--good)}
+section{margin:46px 0}
+h2{font-size:24px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px;
+  display:flex;gap:12px;align-items:baseline}
+h2 .num{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700}
+.sec-sub{color:var(--muted);margin:0 0 18px;max-width:80ch}
+.cards{display:grid;gap:14px}
+.cards.c2{grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
+.cards.c3{grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px 18px;box-shadow:var(--elev-1)}
+.card h4{margin:0 0 8px;font-size:14px;font-weight:650;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.card p{margin:6px 0;color:var(--muted);font-size:13.5px}
+.card ul{margin:6px 0;padding-left:18px;color:var(--muted);font-size:13.5px}
+.card.warn{border-color:var(--warn-border)} .card.good{border-color:var(--good-border)}
+.card.info{border-color:var(--info-border)} .card.purple{border-color:var(--purple-border)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:2px 9px;
+  border-radius:999px;border:1px solid var(--border-2);color:var(--muted);white-space:nowrap}
+.badge.good{color:var(--good);border-color:var(--good-border)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border)}
+.badge.info{color:var(--info);border-color:var(--info-border)}
+.badge.accent{color:var(--accent-soft);border-color:var(--accent)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border)}
+code{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--accent-2)}
+.fileref{font-family:var(--mono);font-size:11.5px;color:var(--accent-2)}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel)}
+.matrix-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:1px solid var(--border);margin:12px 0}
+table.tbl th{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);text-align:left;padding:10px 12px;
+  border-bottom:1px solid var(--border-2);background:var(--panel-2);white-space:nowrap}
+table.tbl td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text)}
+table.tbl tr:last-child td{border-bottom:0}
+table.tbl td.num{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+tr.hl td{background:color-mix(in srgb,var(--purple) 8%,transparent)}
+.svg-panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px;margin:14px 0;box-shadow:var(--elev-1)}
+.svg-panel figcaption{color:var(--muted);font-size:13px;margin-top:10px;max-width:82ch}
+.charts{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">
+    <span class="lbl accent">S42 · EXPERIMENT RESULTS</span>
+    <span class="badge">branch queue</span>
+    <span class="badge good">10/10 cells · 150/150 answers ok</span>
+    <span class="badge info">plan: s41</span>
+  </div>
+  <h1>Yes — workers scale the queue linearly. Measured.</h1>
+  <p class="sub">The full s41 sweep ran this morning: <strong>1/3/5 workers × 10/30/60&nbsp;s
+  service time</strong>, 15 one-shot users per cell, plus the concurrency bonus cell — all on the
+  live stack through Redis Streams, with every answer streamed end-to-end. Zero shed, zero
+  errors, zero timeouts across 150 requests.</p>
+  <div class="verdict">
+    <span class="lbl">VERDICT</span>
+    <p><strong>Adding workers cuts total time through the queue almost exactly in proportion:
+    3 workers → 2.97–2.99× faster, 5 workers → 4.87–4.98× faster</strong>, at every service
+    time. Every one of the 9 grid cells landed within <strong>0.5–6%</strong> of the closed-form
+    prediction ⌈15/W⌉ × S. And the bonus cell answered your architecture question with a number:
+    <strong>one worker process running 4 concurrent react loops beat three serial replicas</strong>
+    (121.8 s vs 152.3 s) — slots are slots, whether they're processes or coroutines.</p>
+  </div>
+</header>
+
+<!-- ============================================================ 01 -->
+<section id="headline">
+  <h2><span class="num">01</span> Makespan: measured vs predicted, all cells</h2>
+  <p class="sec-sub">Each panel is one service time S; bars are measured burst-drain time for
+  1 / 3 / 5 workers, the dashed marks the prediction ⌈15/W⌉ × S. The measured bar overshoots
+  prediction by only the per-wave overhead (frame relay + persistence, ~150 ms/wave).</p>
+
+  <div class="charts">
+    <figure class="svg-panel">
+      <svg viewBox="0 0 300 210" width="100%" role="img" aria-label="Makespan at 10s service time">
+        <title>S = 10 s: 154.8 / 52.1 / 31.8 s measured</title>
+        <style>.b{fill:var(--accent-2);opacity:.85}.pr{stroke:var(--accent);stroke-width:2;stroke-dasharray:5 3}
+          .t{font:600 11px var(--mono);fill:currentColor}.tt{font:700 13px var(--sans);fill:currentColor}
+          .cap{font:500 10px var(--sans);fill:currentColor;opacity:.6}.ax{stroke:currentColor;opacity:.2}</style>
+        <text class="tt" x="10" y="18">S = 10 s</text>
+        <line class="ax" x1="40" y1="170" x2="290" y2="170"/>
+        <rect class="b" x="60" y="49.5" width="46" height="120.5" rx="3"/>
+        <line class="pr" x1="54" y1="53.2" x2="112" y2="53.2"/>
+        <text class="t" x="66" y="42">154.8s</text><text class="cap" x="72" y="184">W=1</text>
+        <rect class="b" x="130" y="129.4" width="46" height="40.6" rx="3"/>
+        <line class="pr" x1="124" y1="131.1" x2="182" y2="131.1"/>
+        <text class="t" x="139" y="122">52.1s</text><text class="cap" x="142" y="184">W=3</text>
+        <rect class="b" x="200" y="145.2" width="46" height="24.8" rx="3"/>
+        <line class="pr" x1="194" y1="146.6" x2="252" y2="146.6"/>
+        <text class="t" x="209" y="138">31.8s</text><text class="cap" x="212" y="184">W=5</text>
+        <text class="cap" x="40" y="202">dashed = predicted ⌈15/W⌉×S</text>
+      </svg>
+    </figure>
+    <figure class="svg-panel">
+      <svg viewBox="0 0 300 210" width="100%" role="img" aria-label="Makespan at 30s service time">
+        <title>S = 30 s: 454.7 / 152.3 / 91.7 s measured</title>
+        <text class="tt" x="10" y="18">S = 30 s</text>
+        <line class="ax" x1="40" y1="170" x2="290" y2="170"/>
+        <rect class="b" x="60" y="49.6" width="46" height="120.4" rx="3"/>
+        <line class="pr" x1="54" y1="50.8" x2="112" y2="50.8"/>
+        <text class="t" x="66" y="42">454.7s</text><text class="cap" x="72" y="184">W=1</text>
+        <rect class="b" x="130" y="129.7" width="46" height="40.3" rx="3"/>
+        <line class="pr" x1="124" y1="130.3" x2="182" y2="130.3"/>
+        <text class="t" x="136" y="122">152.3s</text><text class="cap" x="142" y="184">W=3</text>
+        <rect class="b" x="200" y="145.7" width="46" height="24.3" rx="3"/>
+        <line class="pr" x1="194" y1="146.2" x2="252" y2="146.2"/>
+        <text class="t" x="209" y="138">91.7s</text><text class="cap" x="212" y="184">W=5</text>
+        <text class="cap" x="40" y="202">dashed = predicted ⌈15/W⌉×S</text>
+      </svg>
+    </figure>
+    <figure class="svg-panel">
+      <svg viewBox="0 0 300 210" width="100%" role="img" aria-label="Makespan at 60s service time">
+        <title>S = 60 s: 904.7 / 302.4 / 181.6 s measured</title>
+        <text class="tt" x="10" y="18">S = 60 s</text>
+        <line class="ax" x1="40" y1="170" x2="290" y2="170"/>
+        <rect class="b" x="60" y="49.6" width="46" height="120.4" rx="3"/>
+        <line class="pr" x1="54" y1="50.2" x2="112" y2="50.2"/>
+        <text class="t" x="66" y="42">904.7s</text><text class="cap" x="72" y="184">W=1</text>
+        <rect class="b" x="130" y="129.8" width="46" height="40.2" rx="3"/>
+        <line class="pr" x1="124" y1="130.1" x2="182" y2="130.1"/>
+        <text class="t" x="136" y="122">302.4s</text><text class="cap" x="142" y="184">W=3</text>
+        <rect class="b" x="200" y="145.8" width="46" height="24.2" rx="3"/>
+        <line class="pr" x1="194" y1="146" x2="252" y2="146"/>
+        <text class="t" x="203" y="138">181.6s</text><text class="cap" x="212" y="184">W=5</text>
+        <text class="cap" x="40" y="202">dashed = predicted ⌈15/W⌉×S</text>
+      </svg>
+    </figure>
+  </div>
+
+  <figure class="svg-panel">
+    <svg viewBox="0 0 860 250" width="100%" role="img" aria-label="Speedup vs workers against the ideal diagonal">
+      <title>Speedup vs workers: measured sits on the ideal line</title>
+      <style>.grid{stroke:currentColor;opacity:.12}.ideal{stroke:currentColor;opacity:.35;stroke-width:1.5;stroke-dasharray:6 4}
+        .s10{stroke:var(--accent-2);fill:var(--accent-2)}.s30{stroke:var(--good);fill:var(--good)}.s60{stroke:var(--purple);fill:var(--purple)}
+        .ln{fill:none;stroke-width:2}.t2{font:600 11px var(--mono);fill:currentColor}.cap2{font:500 11px var(--sans);fill:currentColor;opacity:.65}</style>
+      <text style="font:700 13px var(--sans);fill:currentColor" x="12" y="20">Speedup vs W=1 (higher = better; dashed = perfect linear scaling)</text>
+      <!-- x: W=1..5 mapped 120..760 ; y: 1..5 mapped 210..50 -->
+      <line class="grid" x1="120" y1="210" x2="760" y2="210"/>
+      <line class="grid" x1="120" y1="130" x2="760" y2="130"/>
+      <line class="grid" x1="120" y1="50" x2="760" y2="50"/>
+      <text class="t2" x="90" y="214">1×</text><text class="t2" x="90" y="134">3×</text><text class="t2" x="90" y="54">5×</text>
+      <text class="t2" x="115" y="232">W=1</text><text class="t2" x="435" y="232">W=3</text><text class="t2" x="755" y="232">W=5</text>
+      <line class="ideal" x1="120" y1="210" x2="760" y2="50"/>
+      <polyline class="ln s10" points="120,210 440,131.2 760,55.2"/>
+      <polyline class="ln s30" points="120,210 440,130.4 760,51.6"/>
+      <polyline class="ln s60" points="120,210 440,130.4 760,50.8"/>
+      <circle class="s10" cx="440" cy="131.2" r="4"/><circle class="s10" cx="760" cy="55.2" r="4"/>
+      <circle class="s30" cx="440" cy="130.4" r="4"/><circle class="s30" cx="760" cy="51.6" r="4"/>
+      <circle class="s60" cx="440" cy="130.4" r="4"/><circle class="s60" cx="760" cy="50.8" r="4"/>
+      <text class="t2" x="770" y="58" fill="var(--purple)">4.98×</text>
+      <text class="t2" x="450" y="126">2.97–2.99×</text>
+      <circle class="s10" cx="140" cy="246" r="4"/><text class="cap2" x="150" y="250">S=10s (4.87×@W5)</text>
+      <circle class="s30" cx="330" cy="246" r="4"/><text class="cap2" x="340" y="250">S=30s (4.96×)</text>
+      <circle class="s60" cx="480" cy="246" r="4"/><text class="cap2" x="490" y="250">S=60s (4.98×)</text>
+    </svg>
+    <figcaption>The longer the service time, the closer to perfect: at S=60 s the fixed per-wave
+    overhead (SSE relay, DB persistence, scheduling) is amortized to noise. The only visible
+    deviation is S=10 s at W=5 (4.87×), where a ~1.8 s constant overhead is 6% of a 30 s cell.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ 02 -->
+<section id="table">
+  <h2><span class="num">02</span> The full grid</h2>
+  <p class="sec-sub">Every cell: 15/15 answered, nothing shed, nothing dead-lettered.
+  <em>median answer</em> is what the median user experienced end-to-end (queue wait + service);
+  <em>throughput</em> is answers per minute during the burst.</p>
+  <div class="matrix-wrap">
+  <table class="tbl">
+    <thead><tr><th>cell</th><th>workers</th><th>service</th><th>predicted</th><th>measured</th>
+      <th>err</th><th>speedup</th><th>median answer</th><th>throughput</th></tr></thead>
+    <tbody>
+      <tr><td class="num">W1-S10</td><td class="num">1</td><td class="num">10 s</td><td class="num">150 s</td><td class="num">154.8 s</td><td class="num">3.2%</td><td class="num">1.0×</td><td class="num">82.9 s</td><td class="num">5.8/min</td></tr>
+      <tr><td class="num">W3-S10</td><td class="num">3</td><td class="num">10 s</td><td class="num">50 s</td><td class="num">52.1 s</td><td class="num">4.2%</td><td class="num">2.97×</td><td class="num">31.5 s</td><td class="num">17.3/min</td></tr>
+      <tr><td class="num">W5-S10</td><td class="num">5</td><td class="num">10 s</td><td class="num">30 s</td><td class="num">31.8 s</td><td class="num">6.0%</td><td class="num">4.87×</td><td class="num">21.1 s</td><td class="num">28.3/min</td></tr>
+      <tr><td class="num">W1-S30</td><td class="num">1</td><td class="num">30 s</td><td class="num">450 s</td><td class="num">454.7 s</td><td class="num">1.0%</td><td class="num">1.0×</td><td class="num">242.4 s</td><td class="num">2.0/min</td></tr>
+      <tr><td class="num">W3-S30</td><td class="num">3</td><td class="num">30 s</td><td class="num">150 s</td><td class="num">152.3 s</td><td class="num">1.5%</td><td class="num">2.99×</td><td class="num">91.5 s</td><td class="num">5.9/min</td></tr>
+      <tr><td class="num">W5-S30</td><td class="num">5</td><td class="num">30 s</td><td class="num">90 s</td><td class="num">91.7 s</td><td class="num">1.9%</td><td class="num">4.96×</td><td class="num">61.3 s</td><td class="num">9.8/min</td></tr>
+      <tr><td class="num">W1-S60</td><td class="num">1</td><td class="num">60 s</td><td class="num">900 s</td><td class="num">904.7 s</td><td class="num">0.5%</td><td class="num">1.0×</td><td class="num">482.9 s</td><td class="num">1.0/min</td></tr>
+      <tr><td class="num">W3-S60</td><td class="num">3</td><td class="num">60 s</td><td class="num">300 s</td><td class="num">302.4 s</td><td class="num">0.8%</td><td class="num">2.99×</td><td class="num">181.5 s</td><td class="num">3.0/min</td></tr>
+      <tr><td class="num">W5-S60</td><td class="num">5</td><td class="num">60 s</td><td class="num">180 s</td><td class="num">181.6 s</td><td class="num">0.9%</td><td class="num">4.98×</td><td class="num">121.1 s</td><td class="num">5.0/min</td></tr>
+      <tr class="hl"><td class="num">W1-S30-C4</td><td class="num">1 (× 4 slots)</td><td class="num">30 s</td><td class="num">120 s</td><td class="num">121.8 s</td><td class="num">1.5%</td><td class="num">3.73×</td><td class="num">61.3 s</td><td class="num">7.4/min</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============================================================ 03 -->
+<section id="concurrency">
+  <h2><span class="num">03</span> The concurrency cell: your question, answered with a number</h2>
+  <p class="sec-sub">You asked whether one data-agent worker must grind through requests one at a
+  time, or can interleave them during the LLM react loop. Both are now measured facts:</p>
+  <figure class="svg-panel">
+    <svg viewBox="0 0 860 190" width="100%" role="img" aria-label="Serial vs replicas vs concurrency, S=30s">
+      <title>15 users at S=30 s: serial worker vs 3 replicas vs 1 process with 4 slots</title>
+      <style>.bar{opacity:.85;rx:3}.tb{font:600 12px var(--mono);fill:currentColor}
+        .lb{font:600 12.5px var(--sans);fill:currentColor}.cp{font:500 11px var(--sans);fill:currentColor;opacity:.65}</style>
+      <text style="font:700 13px var(--sans);fill:currentColor" x="12" y="20">Burst drain time, 15 users × 30 s answers (shorter = better)</text>
+      <text class="lb" x="12" y="58">1 worker, serial</text>
+      <rect class="bar" x="220" y="44" width="600" height="20" fill="var(--bad)"/>
+      <text class="tb" x="700" y="58" fill="var(--accent-ink)">454.7 s</text>
+      <text class="lb" x="12" y="98">3 replicas, serial</text>
+      <rect class="bar" x="220" y="84" width="201" height="20" fill="var(--accent-2)"/>
+      <text class="tb" x="428" y="98">152.3 s · 3 processes, 3 slots</text>
+      <text class="lb" x="12" y="138">1 replica, 4 slots</text>
+      <rect class="bar" x="220" y="124" width="161" height="20" fill="var(--purple)"/>
+      <text class="tb" x="388" y="138">121.8 s · 1 process, 4 coroutines</text>
+      <text class="cp" x="220" y="172">WORKER_CONCURRENCY=4: one asyncio event loop runs four react loops; their (stubbed) LLM waits overlap.</text>
+    </svg>
+    <figcaption><strong>The queue doesn't care where slots come from.</strong> Capacity =
+    replicas × WORKER_CONCURRENCY, and drain time follows ⌈N ÷ slots⌉ × S in every configuration
+    tested (4 slots → predicted 120 s, measured 121.8 s). In live operation the two knobs buy
+    different things: <em>replicas</em> add real CPU for the sandbox and isolation from a bad job;
+    <em>concurrency</em> is nearly free capacity during LLM waits but shares one process's memory
+    and one CPU for sandbox slices. Production shape: a few replicas × modest concurrency.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ 04 -->
+<section id="prod">
+  <h2><span class="num">04</span> What the production dashboard showed</h2>
+  <p class="sec-sub">The golden-signals deck ran through every cell — fed by Prometheus + the new
+  docker-stats exporter. Below: the actual deck over this morning's sweep window, then how to
+  open it yourself, then what an engineer would take away.</p>
+
+  <figure class="svg-panel">
+    <img src="s42_shot_grafana_deck.png" alt="The Grafana queue dashboard across the full sweep: depth sawtooths, per-worker throughput, wait vs service p95, job outcomes, CPU and memory per container, flat DLQ"
+      style="width:100%;border-radius:6px;border:1px solid var(--border)">
+    <figcaption><strong>The whole experiment in one screen</strong> (17:00–18:00 is the sweep).
+    Top-left: queue depth spikes to 15 on each burst, and you can read the worker count straight
+    off the drain slope — the long slow ramp ~17:10–17:40 is W1-S30/S60 draining one job at a
+    time; the steep sawteeth after 17:40 are W3/W5. Middle-right: the money panel — <em>wait p95
+    (green) collapses cell by cell while service p95 (yellow) stays pinned to S</em>. Bottom:
+    CPU spikes are replica boots (pyodide warm-up, not load), memory shows each worker's
+    ~300–840 MB footprint, and the dead-letter queue stayed flat zero.</figcaption>
+  </figure>
+
+  <h3>How to open the deck</h3>
+  <div class="cards c2" style="margin-bottom:18px">
+    <div class="card info">
+      <h4><span class="badge info">STEP 1–2</span> Start the obs profile, open Grafana</h4>
+      <p><code>make queue-up WORKERS=3</code> starts Prometheus + Grafana + the stats exporter
+      alongside the queue (the <code>obs</code> compose profile). Then open
+      <span class="fileref">http://localhost:3000</span> — anonymous access is pre-configured as
+      Admin locally, so there's no login; ignore the welcome page.</p>
+      <p>Direct link to the deck:
+      <span class="fileref">http://localhost:3000/d/dataqa-queue</span></p>
+    </div>
+    <div class="card info">
+      <h4><span class="badge info">STEP 3–4</span> Find the dashboard, set the time range</h4>
+      <p>Left sidebar → <strong>Dashboards</strong> → folder <strong>Data Pilot</strong> →
+      <strong>“Queue — depth, throughput, wait vs service”</strong> (provisioned from
+      <span class="fileref">ops/grafana/dashboards/queue.json</span>, so it's always there on a
+      fresh boot). Set the time picker (top right) to cover your run — e.g. <em>Last 1 hour</em>
+      while a sweep is live; it auto-refreshes every 5 s.</p>
+      <img src="s42_shot_grafana_find.png" alt="Grafana Dashboards page showing the Data Pilot folder that holds the queue deck"
+        style="width:100%;border-radius:6px;border:1px solid var(--border);margin-top:8px">
+    </div>
+  </div>
+
+  <h3>What an engineer takes away from it</h3>
+  <div class="cards c2">
+    <div class="card info">
+      <h4><span class="badge info">LATENCY</span> Wait collapses; service stays put</h4>
+      <p>Service p95 tracked S in every cell (~10/30/60 s — the histogram reports 19.5/44.3/88.5 s
+      because bucket edges interpolate; the probe's per-user timings carry the exact values).
+      Queue-wait p95 is the lever that moved: at S=30, from <strong>~420 s (W1) → ~120 s (W3) →
+      ~60 s (W5)</strong>. That divergence — wait ≫ service — is precisely the "add workers"
+      signal on the dashboard. <em>Caveat: the wait histogram's top bucket is 240 s, so the W1
+      cells clip there; the probe data is the source of truth for the long tails.</em></p>
+    </div>
+    <div class="card info">
+      <h4><span class="badge info">TRAFFIC</span> Throughput scaled with slots</h4>
+      <p>Answers per minute at S=10: <strong>5.8 (W1) → 17.3 (W3) → 28.3 (W5)</strong> — 4.9×
+      for 5× the slots. The per-worker throughput panel showed each replica contributing an even
+      share (the consumer group balances by pull, so no replica hot-spots).</p>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">SATURATION · CPU</span> Boot spikes, idle cruise</h4>
+      <p>Steady-state CPU with the stub is deliberately ~0–3% per worker (the stub sleeps — that's
+      the experiment isolating queueing). The CPU row still earned its keep twice: <strong>replica
+      boot is expensive</strong> — restacks spiked to 500–750% total as 3–5 replicas warmed
+      pyodide/ONNX concurrently — and the backend stayed ≤10% CPU while relaying 15 concurrent
+      SSE streams. Real answer CPU comes from live-LLM runs (E9), where the sandbox actually works.</p>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">SATURATION · MEMORY</span> The real price of a worker</h4>
+      <p>A warm replica holds <strong>~300 MB at cruise, up to ~840 MB freshly warmed</strong>
+      (pyodide + ONNX); W5 cells peaked at ~4.2 GB of worker memory on one laptop. Notably,
+      <strong>WORKER_CONCURRENCY=4 stayed inside one replica's footprint (~1.45 GB peak incl.
+      4 in-flight jobs)</strong> — a third of five replicas' worth for comparable capacity. Memory,
+      not CPU, is what bounds worker count on small hardware.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge good">ERRORS</span> Flat zero, and provably watched</h4>
+      <p>150/150 ok — no shed (depth 32 held; peak backlog 14), no expired deadlines, no
+      dead-letters (the new DLQ-depth panel stayed at 0), no restarts. The error panels being
+      flat is only meaningful because s40's chaos drills can make them move.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge">RECEIPTS</span> Where the raw data lives</h4>
+      <p><span class="fileref">out/wsweep/summary.json</span> — all 10 rows;
+      <span class="fileref">out/wsweep/&lt;cell&gt;.json</span> — per-user probe timings;
+      every answer persisted to <span class="fileref">app.query_runs</span> with
+      <code>queue_wait_ms</code> / <code>worker_id</code> / <code>deliveries</code>. Rerun any
+      cell: <code>python3 scripts/wsweep.py --cells W3-S30</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 05 -->
+<section id="reading">
+  <h2><span class="num">05</span> How to read this for production</h2>
+  <div class="cards c3">
+    <div class="card good">
+      <h4>Sizing is now arithmetic</h4>
+      <p>With live answers averaging ~90 s (the s40 A/B measurement), one serial worker sustains
+      ~0.7 answers/min. Target a peak of, say, 10 concurrent askers with sub-3-min waits →
+      3–4 slots. The formula held to within 6% everywhere it was tested.</p>
+    </div>
+    <div class="card info">
+      <h4>The dashboard signal to alert on</h4>
+      <p>wait p95 rising while service p95 is flat = under-provisioned slots (scale out);
+      both rising = the agent itself got slower (an eval-loop problem, not an infra one). This
+      sweep demonstrated the first pattern on demand.</p>
+    </div>
+    <div class="card warn">
+      <h4>Honest limits</h4>
+      <p>Stubbed service time is exact by construction — that isolates queueing, but live answers
+      vary (60–120 s), which smears wave boundaries; expect the same means with wider spread.
+      All replicas shared one laptop; isolated nodes only improve the story. Warm-up must stay
+      ahead of scale-out (a cold replica costs ~30 s before its first answer).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 06 -->
+<section id="e9">
+  <h2><span class="num">06</span> E9 — the live-LLM validation (run 2026-08-28)</h2>
+  <p class="sec-sub">Everything above used the stub to isolate queueing. E9 reruns the burst with
+  <strong>real DeepSeek answers</strong>: 10 users at once, through the queue (3 workers) and then
+  straight at the single data-agent container (queue off). 20/20 answered, zero errors.</p>
+
+  <div class="matrix-wrap">
+  <table class="tbl">
+    <thead><tr><th>leg</th><th>makespan</th><th>median answer</th><th>slowest user</th>
+      <th>peak agent CPU</th><th>peak agent memory</th><th>concurrent LLM calls</th></tr></thead>
+    <tbody>
+      <tr><td>Queue · 3 workers</td><td class="num">197.0 s</td><td class="num">121.4 s</td><td class="num">197.0 s</td>
+        <td class="num">331% (≈110%/worker)</td><td class="num">2.0 GB (3 replicas)</td><td class="num">≤ 3, by construction</td></tr>
+      <tr><td>Direct · 1 container</td><td class="num">72.9 s</td><td class="num">60.7 s</td><td class="num">72.9 s</td>
+        <td class="num"><strong>816%</strong> (one process)</td><td class="num">2.3 GB (one process)</td><td class="num">10, unbounded</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="cards c3">
+    <div class="card info">
+      <h4><span class="badge info">CONFIRMS</span> The model held on live answers</h4>
+      <p>Live service time ran 25–85 s per answer (local stack, warm prompt cache — faster than
+      prod's ~95 s). Queue leg: ⌈10/3⌉ = 4 waves × ~50–60 s predicts ~200–240 s; measured
+      <strong>197 s</strong>. The stub sweep's arithmetic transfers to real answers.</p>
+    </div>
+    <div class="card warn">
+      <h4><span class="badge warn">THE CATCH</span> Direct speed was bought with 8 cores</h4>
+      <p>The direct leg won on wall-clock <em>because this laptop had 8+ idle cores to give one
+      container</em> (816% CPU peak — real sandbox work, unbounded). A prod App Runner instance
+      has 1–2 vCPU: the same burst there serializes on CPU and stretches toward the 240 s
+      timeout. The queue leg's CPU was flat-capped at ~110% per worker — a shape a small
+      instance can actually honour.</p>
+    </div>
+    <div class="card good">
+      <h4><span class="badge good">THE DIAL</span> Latency vs boundedness, quantified</h4>
+      <p>Direct = fastest when resources are infinite, degradation when they're not. Queue =
+      +~2 min for the last user, in exchange for bounded LLM spend (≤3 concurrent calls),
+      bounded CPU/memory, and a clean 429 past depth 32. Raw data:
+      <span class="fileref">out/wsweep/E9-queue.json · E9-direct.json</span>.</p>
+    </div>
+  </div>
+</section>
+
+<footer style="border-top:1px solid var(--border);padding-top:18px;color:var(--faint);font-size:12.5px">
+  s42 · worker-scaling results · run 2026-08-27 on branch <code>queue</code> (commits a3a607b + bb19aa6) ·
+  rig: Redis Streams queue + LLM_STUB + <span class="fileref">scripts/wsweep.py</span> · plan &amp; decisions: s41
+</footer>
+
+</div>
+</body>
+</html>

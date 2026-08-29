@@ -1,0 +1,10 @@
+# s40 M1 (D4): the only datasource — the obs profile's prometheus.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: dataqa-prom
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

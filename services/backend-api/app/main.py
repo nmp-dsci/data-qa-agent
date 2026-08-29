@@ -22,7 +22,7 @@ from .tracing import configure as configure_tracing
 # ahead of it. instrument_fastapi comes later, once the routes exist.
 configure_tracing()
 
-from . import demo_replay  # noqa: E402
+from . import demo_replay, metrics  # noqa: E402
 from .config import settings  # noqa: E402 — after configure_tracing, by design
 from .db import engine, rls_connection  # noqa: E402
 from .explore.manifest import ManifestError, validate_manifest  # noqa: E402
@@ -114,10 +114,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # the very first /ask never pays that cost inline.
         await asyncio.to_thread(demo_replay.load_pack)
     reset_task = asyncio.create_task(_demo_reset_loop()) if settings.demo_mode else None
+    # s40 M1 (D4): the Grafana queue-depth panel reads a gauge this poller
+    # keeps fresh; scrapes then never block on Redis. Only runs in queue mode.
+    if settings.queue_mode == "on":
+        metrics.start_depth_poller()
     async with _mcp_inner.router.lifespan_context(_mcp_inner):
         yield
     if reset_task is not None:
         reset_task.cancel()
+    await metrics.stop_depth_poller()
     await engine.dispose()
 
 
@@ -297,6 +302,18 @@ instrument_app(app)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "env": settings.app_env}
+
+
+@app.get("/metrics")
+async def prometheus_metrics() -> Any:
+    """s40 M1 (D4): the Prometheus scrape surface — queue depth/shed/wait plus
+    whatever else registers on the default registry. Text format, no auth: the
+    obs profile's prometheus is the only intended caller and the metrics carry
+    no user data."""
+    from fastapi import Response
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 _HEALTH_DB_MIN_INTERVAL_S = 5.0

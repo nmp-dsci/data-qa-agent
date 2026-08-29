@@ -18,7 +18,9 @@ if [ -n "$AWS_PROFILE" ]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
 TF_DIR="infra/terraform/foundations"
 BACKEND_URL="${BACKEND_URL:-$(terraform -chdir="$TF_DIR" output -raw backend_api_url)}"
-AGENT_URL="${AGENT_URL:-$(terraform -chdir="$TF_DIR" output -raw data_agent_url)}"
+# `-` not `:-`: an explicitly empty AGENT_URL means "no agent" (demo mode) and
+# must not fall through to the terraform lookup.
+AGENT_URL="${AGENT_URL-$(terraform -chdir="$TF_DIR" output -raw data_agent_url)}"
 FRONTEND_URL="${FRONTEND_URL:-$(terraform -chdir="$TF_DIR" output -raw cloudfront_domain)}"
 
 PASS=0
@@ -42,8 +44,11 @@ echo "    frontend: $FRONTEND_URL"
 # 1. Backend health + auth mode
 check "backend /health ok" \
   "ok" "$(curl -sf -m 30 "$BACKEND_URL/health" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-check "backend auth_mode google" \
-  "google" "$(curl -sf -m 30 "$BACKEND_URL/auth/config" | python3 -c 'import json,sys; print(json.load(sys.stdin)["auth_mode"])')"
+# s38: demo mode reports "demo" (the walk-in door) while google stays the
+# owner door — either is a healthy prod; "dev" or a blank would not be.
+AUTH_MODE="$(curl -sf -m 30 "$BACKEND_URL/auth/config" | python3 -c 'import json,sys; print(json.load(sys.stdin)["auth_mode"])' || echo "")"
+case "$AUTH_MODE" in google|demo) AUTH_OK="$AUTH_MODE" ;; *) AUTH_OK="google|demo" ;; esac
+check "backend auth_mode google|demo ($AUTH_MODE)" "$AUTH_OK" "$AUTH_MODE"
 check "backend /me rejects bad token (401)" \
   "401" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer bogus' "$BACKEND_URL/me")"
 
@@ -57,31 +62,38 @@ check "backend /mcp mounted and gated (401)" \
     -H 'Accept: application/json, text/event-stream' \
     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
 
-# 2. Agent health + token guard
-check "agent /health ok" \
-  "ok" "$(curl -sf -m 30 "$AGENT_URL/health" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-check "agent rejects unauthenticated (401)" \
-  "401" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$AGENT_URL/agent/config")"
+# 2+3. Agent health, token guard, and a governed query through its executor
+#    (agent -> guardrails -> Aurora over TLS). In demo mode (s38) there is no
+#    agent service at all — terraform's data_agent_url output is empty — so
+#    these are skipped rather than failed; the deploy after #34 destroyed the
+#    agent was the first to trip over this (2026-08-29).
+if [ -z "$AGENT_URL" ]; then
+  echo "  – agent checks skipped: demo mode, no data-agent service"
+else
+  check "agent /health ok" \
+    "ok" "$(curl -sf -m 30 "$AGENT_URL/health" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+  check "agent rejects unauthenticated (401)" \
+    "401" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$AGENT_URL/agent/config")"
 
-# 3. Governed query through the agent's executor — proves the whole
-#    agent -> guardrails -> Aurora (TLS) path without depending on RLS grants
-#    (a synthetic user legitimately sees 0 rows from the marts). Retries once
-#    after 60s: the first hit after idle can catch the Aurora resume.
-TOKEN=$(aws secretsmanager get-secret-value --secret-id data-qa/agent-shared-token \
-  --query SecretString --output text)
-SQL='{"sql": "select 1 as n", "user": {"id": "00000000-0000-0000-0000-000000000000", "role": "user"}}'
-run_sql() {
-  curl -sf -m 120 -X POST "$AGENT_URL/agent/sql" \
-    -H "Content-Type: application/json" -H "X-Agent-Token: $TOKEN" -d "$SQL" \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin); print("rows" if d.get("row_count",0) >= 1 and d.get("error") is None else "bad: %s" % d.get("error"))'
-}
-RESULT=$(run_sql || echo "request-failed")
-if [ "$RESULT" != "rows" ]; then
-  echo "  … first agent query failed ($RESULT) — retrying in 60s (Aurora resume)"
-  sleep 60
+  # Proves the whole path without depending on RLS grants (a synthetic user
+  # legitimately sees 0 rows from the marts). Retries once after 60s: the
+  # first hit after idle can catch the Aurora resume.
+  TOKEN=$(aws secretsmanager get-secret-value --secret-id data-qa/agent-shared-token \
+    --query SecretString --output text)
+  SQL='{"sql": "select 1 as n", "user": {"id": "00000000-0000-0000-0000-000000000000", "role": "user"}}'
+  run_sql() {
+    curl -sf -m 120 -X POST "$AGENT_URL/agent/sql" \
+      -H "Content-Type: application/json" -H "X-Agent-Token: $TOKEN" -d "$SQL" \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print("rows" if d.get("row_count",0) >= 1 and d.get("error") is None else "bad: %s" % d.get("error"))'
+  }
   RESULT=$(run_sql || echo "request-failed")
+  if [ "$RESULT" != "rows" ]; then
+    echo "  … first agent query failed ($RESULT) — retrying in 60s (Aurora resume)"
+    sleep 60
+    RESULT=$(run_sql || echo "request-failed")
+  fi
+  check "agent SQL executor reaches Aurora" "rows" "$RESULT"
 fi
-check "agent SQL executor reaches Aurora" "rows" "$RESULT"
 
 # 4. Frontend serves from CloudFront (SPA fallback too)
 check "frontend 200" \

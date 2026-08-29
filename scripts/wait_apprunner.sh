@@ -30,8 +30,13 @@ echo "==> waiting for App Runner ($REASON)"
 for i in $(seq 1 "$MAX_POLLS"); do
   B=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='data-qa-backend-api'].Status" --output text)
   A=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='data-qa-data-agent'].Status" --output text)
+  # s38 demo mode has no data-agent service at all (terraform count = 0), so
+  # an empty status is "absent", not "not yet RUNNING" — otherwise every
+  # demo-mode deploy times out here (first hit: 2026-08-29, the deploy after
+  # #34 destroyed the agent).
+  if [ -z "$A" ]; then A="ABSENT"; fi
   echo "    backend=$B agent=$A"
-  if [ "$B" = "RUNNING" ] && [ "$A" = "RUNNING" ] && [ "$i" -gt "$MIN_POLLS" ]; then
+  if [ "$B" = "RUNNING" ] && { [ "$A" = "RUNNING" ] || [ "$A" = "ABSENT" ]; } && [ "$i" -gt "$MIN_POLLS" ]; then
     echo "==> settled"
     exit 0
   fi

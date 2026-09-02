@@ -173,7 +173,10 @@ scripts/                make_samples.py, smoke_test.py, build_poa_paths.py (Expl
                         deploy/pipeline outcomes for the Ops deck), ops_judge_sample.py, rollback_apprunner.sh;
                         mcp_smoke.py — drives a real Claude client against the MCP surface (`make mcp-smoke`);
                         wsweep.py (s41 worker-scaling sweep), chaos.sh (queue chaos drills), loadgen_sse.py
-                        (SSE prober measuring TTFP/queue-position/restarts) — see "Job queue" below
+                        (SSE prober measuring TTFP/queue-position/restarts) — see "Job queue" below;
+                        mlflow_client.py (stdlib-only MLflow REST client) + mlflow_registry.py (agent
+                        registry + champion/challenger promotion gate — `make mlflow-init/register/promote`,
+                        see AGENTS.md "The MLOps plane")
 load/k6/                k6 load scripts (`make loadtest`) — the app's only load harness
 ops/                    stats_exporter.py (per-container CPU/mem for the `obs` profile — see "Job queue"),
                         prometheus.yml, grafana/ (provisioned dashboards/datasources)
@@ -443,6 +446,9 @@ and the `data-qa-agent` registry (@champion/@challenger) in one UI — no extern
 - **Frontend can't reach the API** — CORS allows `http://localhost:5230`; if you change the frontend port,
   add the new origin to `EXTRA_CORS_ORIGINS` in `.env` (comma-separated) rather than editing
   `cors_origins` in `services/backend-api/app/config.py`.
+- **Traces 403 against MLflow** — its DNS-rebinding guard only accepts known `Host` headers; in-network span
+  export arrives as `mlflow:5000`, which `docker-compose.yml` already allowlists via
+  `MLFLOW_SERVER_ALLOWED_HOSTS`. If you front MLflow with a different hostname, add it to that list too.
 
 ## Deploy to AWS (live)
 

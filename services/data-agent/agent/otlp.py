@@ -25,7 +25,8 @@ def otlp_processors() -> list[Any]:
     """A span processor per configured OTLP endpoint — empty when unset.
 
     HTTP rather than gRPC: logfire already ships the proto-http exporter, so
-    this needs no new dependency, and Jaeger accepts OTLP/HTTP on 4318.
+    this needs no new dependency, and MLflow's OTLP ingest lives at
+    ``/v1/traces``.
 
     Additive, not exclusive. With both a Logfire token and an OTLP endpoint set,
     spans go to both — which makes swapping backends a side-by-side comparison

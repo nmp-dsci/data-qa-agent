@@ -82,18 +82,18 @@ def configure() -> None:
 
 
 def _otlp_processors() -> list[Any]:
-    """Export to a self-hosted OTLP collector when one is configured (s37).
+    """Export to a self-hosted OTLP collector when one is configured (s37, MLflow per s43).
 
     Logfire is an OpenTelemetry SDK, so the instrumentation is backend-agnostic:
     the FastAPI/httpx/pydantic-ai spans are ordinary OTel spans and only their
     destination is a choice. Setting ``OTLP_ENDPOINT`` adds an exporter pointed
-    at whatever you run — locally that is the Jaeger container in
+    at whatever you run — locally that is the MLflow container in
     docker-compose. Unset, this returns nothing and behaviour is exactly as
     before.
 
     HTTP rather than gRPC on purpose: logfire already ships the
-    proto-http exporter, so this needs no new dependency, and Jaeger accepts
-    OTLP/HTTP on 4318.
+    proto-http exporter, so this needs no new dependency, and MLflow's
+    OTLP ingest lives at ``/v1/traces``.
 
     This is additive, not exclusive — with both a Logfire token and an OTLP
     endpoint set, spans go to both. That makes switching backends a

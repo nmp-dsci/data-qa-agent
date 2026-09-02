@@ -82,18 +82,18 @@ def configure() -> None:
 
 
 def _otlp_processors() -> list[Any]:
-    """Export to a self-hosted OTLP collector when one is configured (s37).
+    """Export to a self-hosted OTLP collector when one is configured (s37, MLflow per s43).
 
     Logfire is an OpenTelemetry SDK, so the instrumentation is backend-agnostic:
     the FastAPI/httpx/pydantic-ai spans are ordinary OTel spans and only their
     destination is a choice. Setting ``OTLP_ENDPOINT`` adds an exporter pointed
-    at whatever you run — locally that is the Jaeger container in
+    at whatever you run — locally that is the MLflow container in
     docker-compose. Unset, this returns nothing and behaviour is exactly as
     before.
 
     HTTP rather than gRPC on purpose: logfire already ships the
-    proto-http exporter, so this needs no new dependency, and Jaeger accepts
-    OTLP/HTTP on 4318.
+    proto-http exporter, so this needs no new dependency, and MLflow's
+    OTLP ingest lives at ``/v1/traces``.
 
     This is additive, not exclusive — with both a Logfire token and an OTLP
     endpoint set, spans go to both. That makes switching backends a
@@ -108,8 +108,17 @@ def _otlp_processors() -> list[Any]:
     except ImportError:  # pragma: no cover — ships with logfire
         log.warning("OTLP exporter unavailable; self-hosted tracing disabled")
         return []
+    # s43 M1: MLflow's OTLP endpoint routes spans to an experiment via this
+    # header (its /v1/traces ingest requires it, MLflow >= 3.6). Empty = plain
+    # OTLP with no extra header, which generic collectors expect.
+    experiment_id = settings.mlflow_trace_experiment_id.strip()
+    headers = {"x-mlflow-experiment-id": experiment_id} if experiment_id else None
     log.info("exporting traces to %s", endpoint)
-    return [BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces"))]
+    return [
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces", headers=headers)
+        )
+    ]
 
 
 def instrument_app(app: FastAPI) -> None:

@@ -25,7 +25,8 @@ def otlp_processors() -> list[Any]:
     """A span processor per configured OTLP endpoint — empty when unset.
 
     HTTP rather than gRPC: logfire already ships the proto-http exporter, so
-    this needs no new dependency, and Jaeger accepts OTLP/HTTP on 4318.
+    this needs no new dependency, and MLflow's OTLP ingest lives at
+    ``/v1/traces``.
 
     Additive, not exclusive. With both a Logfire token and an OTLP endpoint set,
     spans go to both — which makes swapping backends a side-by-side comparison
@@ -40,4 +41,13 @@ def otlp_processors() -> list[Any]:
     except ImportError:  # pragma: no cover — ships with logfire
         log.warning("OTLP exporter unavailable; self-hosted tracing disabled")
         return []
-    return [BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces"))]
+    # s43 M1: MLflow's OTLP endpoint routes spans to an experiment via this
+    # header (required by its /v1/traces ingest, MLflow >= 3.6). Empty = plain
+    # OTLP with no extra header, which is what Jaeger-style collectors expect.
+    experiment_id = os.environ.get("MLFLOW_TRACE_EXPERIMENT_ID", "").strip()
+    headers = {"x-mlflow-experiment-id": experiment_id} if experiment_id else None
+    return [
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces", headers=headers)
+        )
+    ]

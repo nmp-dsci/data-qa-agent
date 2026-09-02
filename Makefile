@@ -1,4 +1,4 @@
-.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version loadtest redteam injection-suite ops-rollup rollback
+.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version mlflow-init register promote loadtest redteam injection-suite ops-rollup rollback
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
@@ -18,6 +18,10 @@ help:
 	@echo "make eval-compare  - base vs experiment, with the regression gate"
 	@echo "make eval-diagnose - failure clusters + one-lever hypotheses (read-only)"
 	@echo "make eval-pack-version - print the content hash of the golden pack"
+	@echo ""
+	@echo "make mlflow-init   - s43: create the MLflow experiments (traces/evals), print ids"
+	@echo "make register      - s43: mirror app.agent_versions into the MLflow model registry"
+	@echo "make promote       - s43: comparator gate; on PASS move @champion + record history"
 	@echo ""
 	@echo "make mcp-test      - MCP protocol conformance (deterministic, no LLM)"
 	@echo "make mcp-smoke     - drive a REAL Claude client through the MCP server"
@@ -180,6 +184,19 @@ BASE_URL ?= http://localhost:8000
 # the experiment dimensions into app.load_tests (queue=... workers=... stub_s=...).
 SHAPE ?= constant
 NOTES ?=
+
+# s43: the MLOps plane. init is idempotent (safe to re-run); register mirrors
+# every app.agent_versions fingerprint into the `data-qa-agent` registered
+# model; promote applies the ConvFinQA comparator rule and moves @champion.
+mlflow-init:
+	uv run python scripts/mlflow_registry.py init
+
+register:
+	uv run python scripts/mlflow_registry.py ensure
+
+promote:
+	uv run python scripts/mlflow_registry.py promote
+
 loadtest:
 	@command -v k6 >/dev/null || { echo "k6 not installed (brew install k6)"; exit 1; }
 	mkdir -p load/out

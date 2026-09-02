@@ -196,27 +196,31 @@ CREATE POLICY tenant_isolation ON insights
 - Role-level `statement_timeout`s (migration 0018: `app_user`/`agent_ro` 15s, `admin_ro` 30s) are a
   database-side backstop against runaway queries on every code path, independent of app-level guards.
 
-### Tracing: self-hosted by default (s37)
+### Tracing: self-hosted by default (s37, MLflow per s43)
 
 Logfire is an **OpenTelemetry SDK**, not a lock-in — the FastAPI, httpx and pydantic-ai instrumentation
 both services carry emits ordinary OTel spans, and only the *destination* is a choice. That makes the
 backend swappable for the cost of one endpoint.
 
-- `OTLP_ENDPOINT` adds an exporter via `additional_span_processors`. Locally it defaults to the Jaeger
-  container (`http://jaeger:4318`), so `make up` gives a trace UI on **:16686** with no extra step.
+- `OTLP_ENDPOINT` adds an exporter via `additional_span_processors`. Locally it defaults to the MLflow
+  container (`http://mlflow:5000`, header `x-mlflow-experiment-id` from `MLFLOW_TRACE_EXPERIMENT_ID`), so
+  `make up` gives traces + eval runs + the agent registry on **:5500** with no extra step (s43).
 - **Additive, not exclusive.** With both `LOGFIRE_TOKEN` and `OTLP_ENDPOINT` set, spans go to both —
   so evaluating a different backend is a side-by-side comparison, never a cutover.
 - OTLP over **HTTP**, not gRPC: logfire already ships the proto-http exporter, so self-hosting costs no
-  new dependency. Jaeger accepts OTLP/HTTP on 4318.
+  new dependency. MLflow's OTLP ingest lives at `/v1/traces` and routes spans to an experiment via the
+  `x-mlflow-experiment-id` header (from `MLFLOW_TRACE_EXPERIMENT_ID`), sent by both exporters.
+  Deliberately **not** `mlflow.pydantic_ai.autolog` — that has a streaming gap; the existing Logfire-SDK
+  instrumentation is kept unchanged and only the export destination changes.
 - The agent reads the env var directly (`agent/otlp.py`) rather than through `agent.config`, because
   `main` must call `logfire.configure()` before importing config — `agent_common` instruments
   pydantic-ai at import time and needs configure to have run first. A telemetry setting is not a good
   reason to reorder that.
-- **Jaeger all-in-one keeps traces in memory**: they vanish on restart. That is right for local
-  development and is exactly why it is not wired into production, where the ops deck's CloudWatch-backed
-  telemetry remains the answer. Self-hosting traces in prod means an always-on service, persistent
-  storage, a retention policy and auth on a UI that holds user question text — a real ops commitment,
-  deliberately not taken on.
+- **MLflow's sqlite backend store (`./.mlflow`, gitignored) persists across restarts**, unlike the s37
+  Jaeger container it replaced (in-memory, traces vanished on restart). Self-hosting traces in prod still
+  means an always-on service, persistent storage, a retention policy and auth on a UI that holds user
+  question text — a real ops commitment, deliberately not taken on (s43 is dev+CI only, no prod/terraform
+  changes).
 - `app.query_runs.otel_trace_id` carries the trace id, so a slow row on the ops deck is one lookup from
   its span waterfall in whichever backend is receiving spans.
 
@@ -329,6 +333,43 @@ clean `429 Retry-After`, `JOB_DEADLINE_S` (default 240) rides in each job.
   down every profile (`queue,obs,docs`) regardless of which were up.
 
 ---
+
+### The MLOps plane: MLflow registry + champion/challenger gate (s43)
+
+A self-hosted **MLflow** server (`docker-compose.yml`, sqlite backend store in the gitignored `./.mlflow`
+volume, host port **5500** — 5000 is taken by the ConvFinQA-agent's MLflow on this machine, override with
+`MLFLOW_HOST_PORT`) is the one MLOps surface for traces (above), eval runs, and the agent registry. Postgres
+stays the operational source of truth throughout — MLflow mirrors it, never the other way round — and every
+script speaks stdlib-only `urllib` REST (`scripts/mlflow_client.py`) rather than pulling in the `mlflow`
+package, matching `eval_run.py`'s no-third-party-deps grain. `MLFLOW_URL` (default
+`http://localhost:5500`) points the host-side scripts at the server; dev+CI only, no prod/terraform change.
+
+- **`make mlflow-init`** (`scripts/mlflow_registry.py init`) creates the `data-qa/traces` and `data-qa/evals`
+  experiments (idempotent) and warns if the traces experiment's id doesn't match the services'
+  `MLFLOW_TRACE_EXPERIMENT_ID` — on a fresh store `data-qa/traces` is created first and gets id `1`, which is
+  the default, but a store that already has other experiments needs the id set explicitly in `.env`.
+- **`make register`** (`scripts/mlflow_registry.py ensure`) mirrors every `app.agent_versions` fingerprint
+  into the `data-qa-agent` registered model as one model version (idempotent — re-running only registers new
+  fingerprints). It bootstraps `@champion` to the fingerprint the live agent reports (`GET /agent/version`,
+  falling back to the newest version if the agent is unreachable or its build isn't registered yet) and
+  `@challenger` to the newest other version, but only when those aliases don't already exist — a promotion is
+  the only thing that moves `@champion` afterwards.
+- **`make promote`** (`scripts/mlflow_registry.py promote`) is the comparator gate, porting ConvFinQA's rule:
+  the challenger's latest eval run must have `pass_rate >= champion`'s **and** no case that passed for the
+  champion may fail for the challenger, both measured against the same golden pack version (different pack
+  versions are refused as not comparable). On PASS, `@champion` moves to the challenger's version,
+  `@challenger` is cleared, and an append-only row is recorded in `app.promotions` (migration 0035 — see
+  Data model). On HOLD, nothing changes and the verdict JSON explains why (missing eval runs, pack mismatch,
+  lower pass rate, or named pass→fail flips).
+- `scripts/mlflow_registry.py status` (no Makefile target) prints every registered version with its aliases
+  and latest eval pass rate — the quickest way to see the registry without opening the UI.
+- **The eval → MLflow sink** (`eval_run.py`'s `log_mlflow`, s43 M3) logs one comparable MLflow run per
+  `make eval` invocation — params carry the build fingerprint and run framing, metrics carry the pass rate
+  and per-tier breakdown — tagged with the `app.eval_runs` id so the two stores reconcile. It is additive and
+  soft-fails by design: a down tracking server prints `mlflow · skipped (...)` and never fails `make eval`.
+  Set `EVAL_MLFLOW=0` to skip it outright. The same script also stopped hardcoding `localhost:8000`/`:8100`
+  — it now reads `API_HOST_PORT`/`AGENT_HOST_PORT` from the shell env or the repo `.env`, so it still finds
+  the right ports on a machine that remapped them.
 
 ## The data agent
 
@@ -546,6 +587,7 @@ All capabilities live in one Postgres, all under RLS.
 | `deploy_events` | Ops | Every deploy: sha, actor, duration, smoke result, `deployed`/`rolled_back`/`failed` | admin/CI-curated; no RLS |
 | `pipeline_runs` | Ops | Marts freshness + dbt pass/total per pipeline run — the data-staleness signal | admin/CI-curated; no RLS |
 | `judge_samples` | Ops | Advisory insight scores over sampled live asks (FK `query_runs`) | admin/CI-curated; no RLS |
+| `promotions` | Ops | Append-only champion/challenger promotion history (s43 M2) — Postgres is the source of truth, MLflow's `@champion`/`@challenger` aliases are the mirror | admin/CI-curated; no RLS |
 | `marts.*` (e.g. `housing`) | Domain | dbt-built, documented tables questions run against | via `dataset_access` |
 
 ## Datasets, config & the CSV drop-folder

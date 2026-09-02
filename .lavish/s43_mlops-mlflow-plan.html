@@ -1,0 +1,901 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s43 · MLOps: MLflow registry, champion/challenger, tracing</title>
+<style>
+/* Night Flight tokens (frontend/src/styles.css), same as s40–s42. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae; --hud:#35803f;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.cards,.cols,.matrix-wrap)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,td,th,.badge){overflow-wrap:anywhere}
+:where(img,svg){max-width:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+header.hero{padding:52px 0 28px;border-bottom:1px solid var(--border);margin-bottom:34px}
+h1{font-size:30px;line-height:1.2;margin:10px 0 10px;letter-spacing:-.02em}
+h1 .gold{color:var(--accent-soft)}
+h2{font-size:20px;margin:0 0 6px;letter-spacing:-.01em}
+h3{font-size:15px;margin:0 0 6px}
+p{margin:8px 0}
+.sub{color:var(--muted);max-width:78ch}
+section{margin:44px 0}
+.badge{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;
+  padding:2px 9px;border-radius:999px;border:1px solid var(--border-2);
+  color:var(--muted);background:var(--panel-2);letter-spacing:.04em;white-space:nowrap}
+.badge.gold{color:var(--accent-soft);border-color:var(--accent);background:transparent}
+.badge.good{color:var(--good);border-color:var(--good-border)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border)}
+.badge.info{color:var(--info);border-color:var(--info-border)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tinted{background:var(--panel-2)}
+.cards{display:grid;gap:14px}
+.cols-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.cols-3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.verdict{border-left:3px solid var(--good);background:var(--panel);
+  border-radius:0 var(--radius-lg) var(--radius-lg) 0;padding:16px 20px;margin:18px 0}
+.verdict strong{color:var(--good)}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.55;margin:10px 0}
+pre code{background:none;border:none;padding:0}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+.matrix-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+th,td{padding:9px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--faint);background:var(--panel-2)}
+tr:last-child td{border-bottom:none}
+td.win{color:var(--good);font-weight:600}
+td.mid{color:var(--warn)}
+td.lose{color:var(--bad)}
+.klist{margin:8px 0 0;padding-left:20px}
+.klist li{margin:6px 0}
+.klist li::marker{color:var(--accent)}
+.have li::marker{color:var(--good)}
+.build li::marker{color:var(--accent-2)}
+figure{margin:16px 0}
+figcaption{color:var(--faint);font-size:12.5px;margin-top:8px}
+.phase{display:grid;grid-template-columns:88px minmax(0,1fr);gap:0;border:1px solid var(--border);
+  border-radius:var(--radius-lg);background:var(--panel);margin:12px 0;overflow:hidden}
+.phase .pnum{background:var(--panel-2);border-right:1px solid var(--border);padding:16px 12px;
+  display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.phase .pnum .n{font-family:var(--mono);font-weight:700;font-size:17px;color:var(--accent-soft)}
+.phase .pbody{padding:14px 18px}
+.phase .pbody h3{margin-bottom:2px}
+.files{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.files code{font-size:11px;color:var(--info)}
+.risk{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1.6fr);gap:12px;
+  padding:10px 0;border-bottom:1px solid var(--border)}
+.risk:last-child{border-bottom:none}
+.risk .r{color:var(--warn);font-weight:600;font-size:13.5px}
+.risk .m{color:var(--muted);font-size:13.5px}
+.qcard{background:var(--panel);border:1px solid var(--border-2);border-radius:var(--radius-lg);
+  padding:16px 18px}
+.qcard legend,.qcard .qt{font-weight:700;font-size:14px;padding:0}
+.qcard .why{color:var(--faint);font-size:12.5px;margin:4px 0 10px}
+.qcard label{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border-radius:6px;
+  cursor:pointer;font-size:13.5px}
+.qcard label:hover{background:var(--panel-2)}
+.qcard input[type=radio]{margin-top:3px;accent-color:var(--accent)}
+.qcard .rec{color:var(--good);font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.08em}
+.qcard button{margin-top:10px;font-family:var(--mono);font-size:11px;font-weight:700;
+  letter-spacing:.06em;color:var(--accent-ink);background:var(--accent);border:none;
+  border-radius:6px;padding:7px 14px;cursor:pointer}
+.qcard button:hover{background:var(--accent-soft)}
+.note{font-size:12.5px;color:var(--faint)}
+a{color:var(--accent-2);text-decoration:none}
+a:hover{text-decoration:underline}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--border);
+  color:var(--faint);font-size:12.5px}
+.twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+.envrow{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--border);font-size:13.5px}
+.envrow:last-child{border-bottom:none}
+.envrow .e{font-family:var(--mono);font-weight:700;font-size:11px;letter-spacing:.08em;
+  padding-top:2px}
+.envrow .e.dev{color:var(--good)}
+.envrow .e.prod{color:var(--accent-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="lbl accent">s43 · branch <span class="mono">mlops</span> · plan for review — no code written yet</div>
+  <h1>MLflow as the MLOps plane: <span class="gold">agent registry, champion/challenger, tracing</span></h1>
+  <p class="sub">Replace Logfire-bound observability with MLflow, register agent versions with
+  champion/challenger aliases, and make the existing golden-pack eval loop the scoring engine —
+  mirroring the harness already proven in <span class="mono">ConvFinQA-agent</span>.</p>
+  <div class="chips">
+    <span class="badge good">VERDICT · yes, MLflow — with 3 adjustments</span>
+    <span class="badge gold">branch mlops @ e03ee46</span>
+    <span class="badge info">MLflow v3.12.0 (same as ConvFinQA)</span>
+    <span class="badge">plan only · M0–M3 dev, M4 deferred</span>
+  </div>
+</header>
+
+<!-- ============================================================ VERDICT -->
+<section id="verdict">
+  <div class="lbl">Review of the idea</div>
+  <h2>Does it make sense? Yes — and it's a smaller build than it sounds</h2>
+  <div class="verdict">
+    <p><strong>Confirmed: MLflow wins for this goal set.</strong> It is the only one of the three
+    that covers the full cycle you want — registry + aliases, run/metric comparison,
+    trace capture, and eval tooling — self-hosted for $0, and it's the harness you already run in
+    ConvFinQA-agent (<span class="mono">ghcr.io/mlflow/mlflow:v3.12.0</span>). The linchpin fact,
+    verified against the MLflow docs: <b>the OSS tracking server ingests OpenTelemetry traces
+    natively</b> (OTLP/HTTP at <code>/v1/traces</code>, MLflow ≥ 3.6). Both services here already
+    emit OTel spans through an additive <code>OTLP_ENDPOINT</code> — so "tracing in MLflow, not
+    Logfire" is a <b>re-point, not a re-instrumentation</b>.</p>
+  </div>
+  <div class="cards cols-3">
+    <div class="card">
+      <h3><span class="badge warn">Adjustment 1</span></h3>
+      <p style="font-size:13.5px">"Registry of agents" here means registering the <b>agent build
+      fingerprint</b>, not model weights. <code>app.agent_versions</code> (s24) already composes
+      exactly the right identity: provider + model + prompts-hash + skills-hash + knowledge-hash +
+      git sha + image tag. Register <i>that</i> as the model version; artifacts are the spec, not
+      a pickled model.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge warn">Adjustment 2</span></h3>
+      <p style="font-size:13.5px">Postgres stays the operational source of truth
+      (<code>app.agent_versions</code>, <code>eval_runs</code>, <code>eval_results</code> already
+      exist and the app UI reads them). MLflow is the <b>MLOps view + promotion mechanics</b> —
+      mirror into it, don't migrate onto it. Same reasoning as ConvFinQA's
+      <span class="mono">registry.json</span>: the app must render without a tracking store.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge warn">Adjustment 3</span></h3>
+      <p style="font-size:13.5px">Prod runs <b>demo mode with no data-agent service</b> — replayed
+      answers, no live agent to trace or score. So champion/challenger is a <b>dev + CI activity
+      today</b>. Build the harness dev-first (M0–M3); prod hosting of MLflow is a deliberate later
+      step (M4), not a blocker.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ CURRENT STATE -->
+<section id="state">
+  <div class="lbl">Current state</div>
+  <h2>You are ~70% built already</h2>
+  <p class="sub">This plan is mostly wiring existing, verified pieces into MLflow — not new
+  machinery.</p>
+  <div class="twocol">
+    <div class="card">
+      <h3 style="color:var(--good)">Already in the repo (verified)</h3>
+      <ul class="klist have">
+        <li><b>Agent identity</b> — <code>agent/version.py</code>: composed fingerprint persisted
+          to <code>app.agent_versions</code>; every answer row carries
+          <code>agent_version_id</code>.</li>
+        <li><b>Eval loop</b> — golden pack (30 goldens, tiers T1–T7), deterministic graders
+          (<code>eval_graders.py</code>), LLM judge (<code>eval_judge.py</code>),
+          <code>make eval</code> runner with <code>EXPERIMENT=</code> /
+          <code>HYPOTHESIS=</code> flags, results in <code>app.eval_runs</code> /
+          <code>eval_results</code>.</li>
+        <li><b>OTel everywhere</b> — Logfire SDK instruments FastAPI + httpx +
+          <b>pydantic-ai</b>; <code>agent/otlp.py</code> and backend
+          <code>app/tracing.py</code> add an <i>additive</i> OTLP exporter
+          (<code>OTLP_ENDPOINT</code> → Jaeger today). Logfire Cloud is already off
+          (empty token).</li>
+        <li><b>Per-answer records</b> — <code>app.query_runs</code>: latency, ttfp, tokens, cost,
+          <code>otel_trace_id</code>.</li>
+        <li><b>The ConvFinQA pattern</b> — registry with champion/challenger aliases, comparator
+          gate ("score ≥ champion AND no pass→fail flips"), append-only promotion history,
+          MLflow mirror (<code>tracking/registry.py</code>).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--accent-2)">To build on <span class="mono">mlops</span></h3>
+      <ul class="klist build">
+        <li><b>M0</b> — MLflow server in docker-compose (ConvFinQA parity).</li>
+        <li><b>M1</b> — point both services' OTLP exporters at MLflow with the
+          <code>x-mlflow-experiment-id</code> header.</li>
+        <li><b>M2</b> — registry sync: each <code>app.agent_versions</code> row ⇒ MLflow model
+          version of <code>data-qa-agent</code>; <code>@champion</code> /
+          <code>@challenger</code> aliases.</li>
+        <li><b>M3</b> — <code>make eval</code> logs an MLflow run per eval (params = fingerprint +
+          hypothesis, metrics = pass-rates + judge + latency/cost); comparator gate +
+          <code>make promote</code>.</li>
+        <li><b>M4 (deferred)</b> — prod hosting, <code>mlflow.pydantic_ai.autolog()</code>,
+          monitoring scorers.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ ARCHITECTURE -->
+<section id="arch">
+  <div class="lbl">Proposed architecture · dev loop</div>
+  <h2>One MLflow server, three planes: traces · runs · registry</h2>
+  <figure>
+  <svg viewBox="0 0 980 470" width="100%" role="img" aria-label="Dev architecture: services export OTLP traces to MLflow; eval runner logs runs; registry holds champion and challenger aliases; Postgres remains source of truth">
+    <title>Dev loop: traces, eval runs, and registry all land in one MLflow server</title>
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--faint)"/>
+      </marker>
+      <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--accent-2)"/>
+      </marker>
+      <marker id="arrP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--purple)"/>
+      </marker>
+      <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--good)"/>
+      </marker>
+    </defs>
+
+    <!-- running services -->
+    <g id="svc-group">
+      <rect x="20" y="28" width="240" height="150" rx="10" fill="var(--panel)" stroke="var(--border-2)"/>
+      <text x="36" y="52" fill="var(--faint)" font-size="10" font-family="var(--mono)" letter-spacing="2">RUNNING SERVICES</text>
+      <rect x="36" y="64" width="208" height="30" rx="6" fill="var(--panel-2)" stroke="var(--border)"/>
+      <text x="48" y="84" fill="var(--text)" font-size="12.5">backend-api <tspan fill="var(--faint)" font-size="10.5">/ask · explore · sql</tspan></text>
+      <rect x="36" y="100" width="208" height="30" rx="6" fill="var(--panel-2)" stroke="var(--border)"/>
+      <text x="48" y="120" fill="var(--text)" font-size="12.5">data-agent <tspan fill="var(--faint)" font-size="10.5">pydantic-ai</tspan></text>
+      <rect x="36" y="136" width="208" height="30" rx="6" fill="var(--panel-2)" stroke="var(--border)"/>
+      <text x="48" y="156" fill="var(--text)" font-size="12.5">agent workers ×N <tspan fill="var(--faint)" font-size="10.5">queue mode</tspan></text>
+    </g>
+
+    <!-- eval loop -->
+    <g id="eval-group">
+      <rect x="20" y="220" width="240" height="128" rx="10" fill="var(--panel)" stroke="var(--purple-border)"/>
+      <text x="36" y="244" fill="var(--purple)" font-size="10" font-family="var(--mono)" letter-spacing="2">EVAL LOOP (EXISTS)</text>
+      <text x="36" y="268" fill="var(--text)" font-size="12.5">make eval → scripts/eval_run.py</text>
+      <text x="36" y="290" fill="var(--muted)" font-size="12">golden pack T1–T7 · graders · judge</text>
+      <text x="36" y="312" fill="var(--muted)" font-size="12">EXPERIMENT= / HYPOTHESIS= flags</text>
+      <text x="36" y="334" fill="var(--faint)" font-size="11">writes app.eval_runs + eval_results</text>
+    </g>
+
+    <!-- postgres -->
+    <g id="pg-group">
+      <rect x="20" y="382" width="240" height="66" rx="10" fill="var(--panel)" stroke="var(--border-2)"/>
+      <text x="36" y="406" fill="var(--faint)" font-size="10" font-family="var(--mono)" letter-spacing="2">POSTGRES · SOURCE OF TRUTH</text>
+      <text x="36" y="428" fill="var(--muted)" font-size="11.5">app.agent_versions · eval_runs · query_runs</text>
+    </g>
+
+    <!-- mlflow server -->
+    <g id="mlflow-group">
+      <rect x="392" y="28" width="300" height="420" rx="12" fill="var(--panel-2)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="410" y="56" fill="var(--accent-soft)" font-size="13" font-weight="700">MLflow server · v3.12.0</text>
+      <text x="410" y="74" fill="var(--faint)" font-size="10.5" font-family="var(--mono)">compose service · host :5500 (5000 = ConvFinQA)</text>
+
+      <g id="mlflow-traces">
+        <rect x="410" y="90" width="264" height="92" rx="8" fill="var(--panel)" stroke="var(--info-border)"/>
+        <text x="424" y="112" fill="var(--info)" font-size="11" font-family="var(--mono)" letter-spacing="1.5">1 · TRACES</text>
+        <text x="424" y="133" fill="var(--text)" font-size="12">OTLP ingest at /v1/traces</text>
+        <text x="424" y="152" fill="var(--muted)" font-size="11.5">span waterfalls · token &amp; cost</text>
+        <text x="424" y="170" fill="var(--faint)" font-size="10.5">replaces Jaeger + Logfire roles</text>
+      </g>
+
+      <g id="mlflow-runs">
+        <rect x="410" y="196" width="264" height="92" rx="8" fill="var(--panel)" stroke="var(--purple-border)"/>
+        <text x="424" y="218" fill="var(--purple)" font-size="11" font-family="var(--mono)" letter-spacing="1.5">2 · EXPERIMENTS &amp; RUNS</text>
+        <text x="424" y="239" fill="var(--text)" font-size="12">one run per eval execution</text>
+        <text x="424" y="258" fill="var(--muted)" font-size="11.5">params = fingerprint + hypothesis</text>
+        <text x="424" y="276" fill="var(--muted)" font-size="11.5">metrics = pass-rate/tier · judge · cost</text>
+      </g>
+
+      <g id="mlflow-registry">
+        <rect x="410" y="302" width="264" height="128" rx="8" fill="var(--panel)" stroke="var(--accent)"/>
+        <text x="424" y="324" fill="var(--accent-soft)" font-size="11" font-family="var(--mono)" letter-spacing="1.5">3 · MODEL REGISTRY</text>
+        <text x="424" y="345" fill="var(--text)" font-size="12">registered model: data-qa-agent</text>
+        <text x="424" y="366" fill="var(--muted)" font-size="11.5">version N = agent fingerprint</text>
+        <text x="424" y="392" fill="var(--good)" font-size="12" font-family="var(--mono)">@champion → v7</text>
+        <text x="424" y="412" fill="var(--warn)" font-size="12" font-family="var(--mono)">@challenger → v9</text>
+      </g>
+    </g>
+
+    <!-- promotion gate -->
+    <g id="gate-group">
+      <rect x="760" y="196" width="200" height="150" rx="10" fill="var(--panel)" stroke="var(--good-border)"/>
+      <text x="776" y="220" fill="var(--good)" font-size="10" font-family="var(--mono)" letter-spacing="2">PROMOTION GATE</text>
+      <text x="776" y="243" fill="var(--text)" font-size="12">make promote:</text>
+      <text x="776" y="263" fill="var(--muted)" font-size="11.5">challenger ≥ champion</text>
+      <text x="776" y="281" fill="var(--muted)" font-size="11.5">AND no pass→fail flips</text>
+      <text x="776" y="303" fill="var(--text)" font-size="11.5">⇒ alias moves,</text>
+      <text x="776" y="321" fill="var(--text)" font-size="11.5">append-only history</text>
+      <text x="776" y="339" fill="var(--faint)" font-size="10.5">(ConvFinQA comparator)</text>
+    </g>
+
+    <!-- humans -->
+    <g id="ui-group">
+      <rect x="760" y="60" width="200" height="80" rx="10" fill="var(--panel)" stroke="var(--border-2)"/>
+      <text x="776" y="84" fill="var(--faint)" font-size="10" font-family="var(--mono)" letter-spacing="2">YOU · MLFLOW UI</text>
+      <text x="776" y="106" fill="var(--muted)" font-size="11.5">compare runs side-by-side</text>
+      <text x="776" y="124" fill="var(--muted)" font-size="11.5">trace waterfalls · registry</text>
+    </g>
+
+    <!-- edges -->
+    <path d="M260 110 C 330 110, 330 128, 406 132" fill="none" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#arrB)"/>
+    <text x="276" y="102" fill="var(--accent-2)" font-size="10.5" font-family="var(--mono)">OTLP_ENDPOINT</text>
+    <text x="276" y="116" fill="var(--faint)" font-size="10">+ x-mlflow-experiment-id</text>
+
+    <path d="M260 270 C 330 270, 330 245, 406 242" fill="none" stroke="var(--purple)" stroke-width="1.6" marker-end="url(#arrP)"/>
+    <text x="285" y="256" fill="var(--purple)" font-size="10.5" font-family="var(--mono)">log run</text>
+
+    <path d="M260 300 C 340 310, 350 350, 406 360" fill="none" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arr)"/>
+    <text x="285" y="332" fill="var(--accent-soft)" font-size="10.5" font-family="var(--mono)">register version</text>
+
+    <path d="M140 348 L 140 378" fill="none" stroke="var(--faint)" stroke-width="1.4" marker-end="url(#arr)"/>
+    <text x="150" y="370" fill="var(--faint)" font-size="10">truth first, mirror second</text>
+
+    <path d="M696 242 L 756 250" fill="none" stroke="var(--good)" stroke-width="1.6" marker-end="url(#arrG)"/>
+    <path d="M756 320 C 720 340, 700 350, 682 356" fill="none" stroke="var(--good)" stroke-width="1.6" marker-end="url(#arrG)"/>
+    <text x="700" y="378" fill="var(--good)" font-size="10.5" font-family="var(--mono)">alias flip</text>
+
+    <path d="M756 100 C 720 100, 710 110, 696 120" fill="none" stroke="var(--faint)" stroke-width="1.4" marker-end="url(#arr)"/>
+  </svg>
+  <figcaption>The three planes live in one server. Blue: spans the services already emit are
+  re-pointed from Jaeger to MLflow. Purple: each <code>make eval</code> becomes a comparable run.
+  Gold: each agent fingerprint becomes a registry version; green: promotion is an alias move
+  behind a comparator gate. Postgres keeps being the truth the app reads.</figcaption>
+  </figure>
+
+  <div class="card tinted" style="margin-top:6px">
+    <h3>Why the tracing switch is nearly free</h3>
+    <p style="font-size:13.5px">Logfire's SDK is an OpenTelemetry SDK; the instrumentation
+    (<code>instrument_pydantic_ai</code>, <code>instrument_fastapi</code>,
+    <code>instrument_httpx</code>) stays exactly as-is and Logfire Cloud stays off (the token is
+    already empty). Only the export destination changes:</p>
+<pre><code># services/data-agent/agent/otlp.py — today
+OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces")
+
+# M1 — same exporter, MLflow destination + experiment routing header
+OTLPSpanExporter(
+    endpoint=f"{endpoint}/v1/traces",          # OTLP_ENDPOINT=http://mlflow:5000
+    headers={"x-mlflow-experiment-id": os.environ["MLFLOW_TRACE_EXPERIMENT_ID"]},
+)</code></pre>
+    <p class="note">Same one-line change in backend <code>app/tracing.py:_otlp_processors()</code>.
+    Because processors are additive, Jaeger can be kept as a second destination during the
+    transition, then dropped (decision D2 below).</p>
+  </div>
+</section>
+
+<!-- ============================================================ COMPARISON -->
+<section id="compare">
+  <div class="lbl">The decision, examined</div>
+  <h2>MLflow vs LangSmith vs Logfire</h2>
+  <p class="sub">Scored against what this repo actually needs. Your expectation holds — MLflow is
+  the only full-cycle option — but not uniformly: Logfire remains the stronger pure-observability
+  product, and that's the one real trade you're making.</p>
+  <div class="matrix-wrap">
+    <table>
+      <thead><tr>
+        <th style="min-width:150px">Criterion</th>
+        <th style="min-width:210px">MLflow (OSS, self-host)</th>
+        <th style="min-width:200px">LangSmith</th>
+        <th style="min-width:200px">Logfire</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Agent versioning / registry</b></td>
+          <td class="win">Native. Model Registry versions + <code>@champion</code>/<code>@challenger</code> aliases; MLflow 3 LoggedModel is built for weight-less agents. Fits <code>app.agent_versions</code> 1:1.</td>
+          <td class="mid">Prompt-hub versioning + tagged experiments; no real registry or alias semantics — promotion is DIY convention.</td>
+          <td class="lose">None. It's an observability product; versioning isn't in scope.</td>
+        </tr>
+        <tr>
+          <td><b>Champion / challenger scoring</b></td>
+          <td class="win">Runs + metrics + side-by-side compare UI; <code>mlflow.genai.evaluate()</code> + scorers when wanted; alias flip = promotion. ConvFinQA comparator ports directly.</td>
+          <td class="mid">Datasets + experiments + compare view are genuinely good; but gate + promotion machinery still lives outside the product.</td>
+          <td class="lose">No eval harness in-product (pydantic-evals is a separate library, no registry to promote into).</td>
+        </tr>
+        <tr>
+          <td><b>Observability / tracing</b></td>
+          <td class="mid">Good GenAI trace UI, token+cost aggregation, OTLP ingest (≥3.6). Weaker as <i>ops</i> tooling: no alerting, no live tail, no SQL over spans.</td>
+          <td class="mid">Strong LLM-centric tracing; OTel accepted. Same ops gaps, plus vendor-hosted by default.</td>
+          <td class="win">Best-in-class for this stack — first-party pydantic-ai support, live tail, alerts, SQL explorer.</td>
+        </tr>
+        <tr>
+          <td><b>Self-hosting &amp; cost</b></td>
+          <td class="win">$0, one container; you already run it for ConvFinQA. Data stays local.</td>
+          <td class="lose">Self-host is enterprise-tier; otherwise SaaS with per-trace pricing.</td>
+          <td class="mid">SaaS (free tier, then usage). No self-host offering.</td>
+        </tr>
+        <tr>
+          <td><b>Fit with existing code</b></td>
+          <td class="win">OTLP re-point of exporters that already exist; <code>mlflow.pydantic_ai.autolog()</code> available later; eval runner just adds a logging sink.</td>
+          <td class="mid">New SDK + new concepts; overlaps the golden/grader loop you've already built rather than absorbing it.</td>
+          <td class="win">Already wired (token is just empty) — zero work, but covers only ⅓ of the goal.</td>
+        </tr>
+        <tr>
+          <td><b>Lock-in / exit</b></td>
+          <td class="win">Everything is OTel + open tables; dual-export supported, so a later move is additive.</td>
+          <td class="mid">Export exists; workflows are product-shaped.</td>
+          <td class="win">Pure OTel SDK — repointing away (which is exactly what M1 does) is trivial.</td>
+        </tr>
+        <tr>
+          <td><b>Verdict</b></td>
+          <td class="win">✅ Wins 5/6 — the full-cycle harness</td>
+          <td class="mid">Strong evals, wrong deployment model here</td>
+          <td class="mid">Best observability, but ⅓ of the cycle</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note" style="margin-top:10px">The honest trade: you give up Logfire's alerting/live-ops
+  polish for a single self-hosted plane. In dev that costs ~nothing (Jaeger goes away too). If prod
+  observability ever needs alerting, OTel dual-export means MLflow + anything-else is additive, not
+  a cutover — the harness you're building doesn't foreclose it.</p>
+
+  <div class="card tinted" style="margin-top:14px" id="phoenix-jaeger">
+    <h3>Why not Phoenix + Jaeger, like the ConvFinQA self-host advice?</h3>
+    <p style="font-size:13.5px">It <b>is</b> the same architecture — the difference is only which
+    viewers subscribe to the span fan-out. ConvFinQA's own eval-loop plan
+    (<span class="mono">.lavish/s04</span>) examined exactly this and landed where this plan does:
+    <b>MLflow as the primary trace store</b> (it verified <code>mlflow/server/otel_api.py</code>,
+    <code>/v1/traces</code> and the <code>x-mlflow-experiment-id</code> constant in the venv), with
+    <b>Arize Phoenix rated "best second opinion"</b> — one container, OTLP in, strong LLM trace UI —
+    run <i>alongside</i> as a cheap insurance policy for a few weeks because MLflow's trace explorer
+    is younger, then kept only if you actually open it.</p>
+    <ul class="klist" style="font-size:13.5px">
+      <li><b>Phoenix and Jaeger are viewers, not the cycle.</b> Neither has a model registry,
+        aliases, or eval runs — with them you'd still run MLflow for ⅔ of this ticket's goal, just
+        with two more containers.</li>
+      <li><b>Adding Phoenix later is one env var, not a migration.</b> The exporters are additive
+        span processors; a second OTLP destination (Phoenix on :6006) subscribes to the identical
+        spans. Decision D2 below now carries this option.</li>
+      <li><b>Jaeger is already here</b> — it's today's general-trace viewer, and D2 decides whether
+        it stays as dual-export or retires once MLflow traces are verified.</li>
+      <li><b>License note from the ConvFinQA review:</b> Phoenix is ELv2 — source-available, fine
+        for internal self-hosting, not OSI open source.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ DEV VS PROD -->
+<section id="devprod">
+  <div class="lbl">Environments</div>
+  <h2>Dev vs Production</h2>
+  <div class="card">
+    <div class="envrow">
+      <div class="e dev">DEV</div>
+      <div><b>Full loop, always on.</b> Compose service <code>mlflow</code> (image
+      <span class="mono">ghcr.io/mlflow/mlflow:v3.12.0</span>, sqlite backend +
+      <code>./.mlflow</code> volume — ConvFinQA parity), UI on
+      <b>host :5500</b> (ConvFinQA owns :5000 locally). <code>OTLP_ENDPOINT</code> defaults to
+      <code>http://mlflow:5000</code> for backend-api, data-agent and workers; Jaeger optionally
+      kept as dual destination during M1. <code>make eval</code> logs runs; registry + aliases
+      live here; promotion happens here.</div>
+    </div>
+    <div class="envrow">
+      <div class="e dev">CI</div>
+      <div><b>Challenger scoring on demand.</b> The existing eval runner gains
+      <code>--mlflow-uri</code>; a manual/PR-labelled GitHub Actions job can score a challenger
+      branch against the pack and log the run. Gate output (<span class="mono">promote / hold</span>)
+      posted as a check — promotion itself stays a human <code>make promote</code>.</div>
+    </div>
+    <div class="envrow">
+      <div class="e prod">PROD · today</div>
+      <div><b>Demo mode: no data-agent service exists</b> — answers replay from the pack, so there
+      is nothing to trace or score beyond backend spans. No MLflow in prod in this ticket. The
+      champion alias still governs prod indirectly: what you deploy <i>is</i> whatever fingerprint
+      holds <code>@champion</code>.</div>
+    </div>
+    <div class="envrow">
+      <div class="e prod">PROD · when live agent returns</div>
+      <div><b>M4, deliberately deferred.</b> MLflow tracking server as a small App Runner service
+      (admin-auth in front), backend store on Aurora (<code>mlflow</code> database), artifacts on
+      S3; services' <code>OTLP_ENDPOINT</code> pointed at it; optional monitoring scorers sampling
+      prod traces. Decision D4 below records the intent; no terraform in M0–M3.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ OBSERVABILITY MODEL -->
+<section id="obs-model">
+  <div class="lbl">Full-coverage production observability</div>
+  <h2>The distilled model — and your four-way split, refined</h2>
+  <p class="sub">Your split (request tracing · LLM · p95/CPU/mem/network · cost) is close. The
+  standard model separates <b>what you collect</b> from <b>what you ask of it</b> — that's what
+  makes the tool mapping fall out cleanly.</p>
+
+  <div class="cards cols-3">
+    <div class="card">
+      <h3><span class="badge info">SIGNALS · what you collect</span></h3>
+      <p style="font-size:13.5px"><b>MELT:</b> <b>M</b>etrics (aggregates over time),
+      <b>E</b>vents, <b>L</b>ogs (discrete records), <b>T</b>races (one request's path across
+      services). Your bucket 1 is the T; your bucket 3 is two different uses of M. Everything
+      below is one of these four, correlated by trace/request id.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge purple">LENSES · what you ask</span></h3>
+      <p style="font-size:13.5px"><b>RED</b> for request-driven services (Rate, Errors,
+      Duration — <i>p95 lives here</i>). <b>USE</b> for resources (Utilization, Saturation,
+      Errors — CPU/mem/network/ACU live here). Google's <b>4 golden signals</b> = the two
+      combined (latency, traffic, errors, saturation). <b>GenAI lens</b> (OTel GenAI semconv):
+      spans per LLM/tool call, tokens, cost-per-answer, quality evals. <b>FinOps lens:</b>
+      infra $ + LLM $.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge good">PRACTICES · how you act</span></h3>
+      <p style="font-size:13.5px"><b>SLOs + error budgets</b> (alert on burn rate, not every
+      blip), <b>dashboards</b> per audience, <b>correlation habit</b> (metric spike → trace →
+      log line), <b>synthetics</b> (is it up before a user tells you), retention/cardinality
+      discipline.</p>
+    </div>
+  </div>
+
+  <div class="card tinted" style="margin-top:14px">
+    <h3>Direct answers to the tool question</h3>
+    <ul class="klist" style="font-size:13.5px">
+      <li><b>"MLflow for LLM, Grafana for requests?" — yes, that's the right shape.</b> MLflow
+        owns the GenAI lens (per this plan) <i>and</i> receives the request-flow traces, since
+        both ride the same OTel stream (M1).</li>
+      <li><b>"Could this be Jaeger?" — no.</b> Jaeger is a <i>trace viewer</i>: it answers "why
+        was <i>this one</i> request slow?" It has no aggregates, dashboards, or alerting — it
+        cannot tell you p95 rose 40% this week. That's the metrics plane
+        (Prometheus + Grafana in dev, CloudWatch in prod). Traces and metrics are different
+        signals; you need one tool per <i>role</i>, not per product.</li>
+      <li><b>GPU: not applicable here.</b> The LLM is API-based (DeepSeek) — there's no local
+        inference, so "GPU" collapses into LLM cost + latency per call, which
+        <code>query_runs</code> and MLflow already carry. It becomes a real pillar only if you
+        ever self-host a model.</li>
+      <li><b>What your split was missing:</b> logs, SLOs/alerting, and uptime synthetics —
+        rows 5–8 below. You already have more of them than you might think
+        (<code>/ops</code> deck computes availability + responsiveness SLOs from Postgres
+        today).</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:22px">Coverage matrix — this stack, dev and prod</h3>
+  <div class="matrix-wrap">
+    <table>
+      <thead><tr>
+        <th style="min-width:150px">Pillar (lens)</th>
+        <th style="min-width:170px">Question it answers</th>
+        <th style="min-width:170px">Dev</th>
+        <th style="min-width:180px">Prod</th>
+        <th style="min-width:110px">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><b>1 · Request / flow traces</b></td>
+          <td>Why was <i>this</i> answer slow? What did the agent do?</td>
+          <td>MLflow after M1 (Jaeger/Phoenix per D2)</td>
+          <td>M4; meanwhile <code>query_runs.otel_trace_id</code> + CloudWatch logs</td>
+          <td><span class="badge good">HAVE → M1</span></td>
+        </tr>
+        <tr>
+          <td><b>2 · LLM / agent (GenAI lens)</b></td>
+          <td>Tokens, cost/answer, tool spans, quality vs goldens</td>
+          <td>MLflow M1–M3 consolidates</td>
+          <td><code>query_runs</code> tokens/cost + /ops cost panel (demo: replay only)</td>
+          <td><span class="badge good">HAVE → M1–M3</span></td>
+        </tr>
+        <tr>
+          <td><b>3 · Service metrics (RED)</b></td>
+          <td>Rate, error %, <b>p95 duration</b> per endpoint</td>
+          <td>Prometheus+Grafana run, but only queue metrics exist → <b>OBS-1</b></td>
+          <td>App Runner emits requests/latency/5xx to CloudWatch; 5xx alarms exist, no latency alarm/dashboard → <b>OBS-2</b></td>
+          <td><span class="badge warn">PARTIAL</span></td>
+        </tr>
+        <tr>
+          <td><b>4 · Resource metrics (USE)</b></td>
+          <td>CPU, memory, network, Aurora ACU saturation</td>
+          <td>cAdvisor + stats-exporter + Prometheus (s41) ✓</td>
+          <td>App Runner CPU/mem + Aurora ACU emitted by default; no dashboard/alarm → <b>OBS-2</b></td>
+          <td><span class="badge warn">PARTIAL</span></td>
+        </tr>
+        <tr>
+          <td><b>5 · Logs</b></td>
+          <td>What exactly happened at 14:32?</td>
+          <td>docker logs / compose</td>
+          <td>CloudWatch Logs via App Runner ✓, correlated by <code>x-request-id</code> + trace id</td>
+          <td><span class="badge good">HAVE</span></td>
+        </tr>
+        <tr>
+          <td><b>6 · Cost (FinOps)</b></td>
+          <td>What does the stack + each answer cost?</td>
+          <td>LLM $ per answer in <code>query_runs.cost_usd</code> → MLflow run metrics</td>
+          <td>Billing alarm ✓ + /ops budget panel ✓; per-service breakdown = Cost Explorer (manual)</td>
+          <td><span class="badge good">HAVE (light)</span></td>
+        </tr>
+        <tr>
+          <td><b>7 · SLOs &amp; alerting</b></td>
+          <td>Are we meeting promises? Wake someone?</td>
+          <td>—</td>
+          <td>/ops deck availability + responsiveness SLOs ✓; alarms = billing + 2×5xx; no burn-rate alerting → <b>OBS-3</b></td>
+          <td><span class="badge warn">PARTIAL</span></td>
+        </tr>
+        <tr>
+          <td><b>8 · Uptime / synthetics</b></td>
+          <td>Is it up before a visitor finds out?</td>
+          <td>make smoke</td>
+          <td>Deploy smoke ✓; no scheduled probe — <i>deliberate</i>: a generic poller defeats Aurora auto-pause (the /health/db fence). Safe option: ping <code>/health</code> only → <b>OBS-3</b></td>
+          <td><span class="badge warn">PARTIAL (by design)</span></td>
+        </tr>
+        <tr>
+          <td><b>9 · Frontend / RUM</b></td>
+          <td>What did the user's browser experience?</td>
+          <td>—</td>
+          <td>None (CloudFront logs only). Accepted gap for a portfolio demo</td>
+          <td><span class="badge bad">MISSING (accepted)</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h3>OBS track — the three additions that close the gaps</h3>
+    <p class="note">Runs beside the M-track; none blocks the MLflow work.</p>
+    <div class="risk"><div class="r" style="color:var(--accent-soft)">OBS-1 · RED metrics, dev
+      <span class="badge">~½ day · with M0–M3</span></div>
+      <div class="m">Prometheus middleware on backend-api: one
+      <code>dataqa_http_request_duration_seconds</code> histogram labelled route×status (watch
+      cardinality — route templates, not raw paths). Grafana "requests &amp; answers" dashboard
+      beside <code>queue.json</code>: RED per endpoint + p50/p95, queue depth, answer cost. This is
+      the RED gap named in the Explore-tab triage.</div></div>
+    <div class="risk"><div class="r" style="color:var(--accent-soft)">OBS-2 · Prod dashboards + 2 alarms
+      <span class="badge">~½ day · terraform</span></div>
+      <div class="m">CloudWatch dashboard over metrics AWS already emits (App Runner requests,
+      latency, 5xx, CPU/mem, active instances; Aurora ACU, connections) + alarms on backend p95
+      latency and Aurora capacity-at-max. Extends <code>alarms.tf</code>; no new agents or
+      services.</div></div>
+    <div class="risk"><div class="r" style="color:var(--accent-soft)">OBS-3 · SLO burn alert + safe synthetic
+      <span class="badge">later</span></div>
+      <div class="m">The /ops rollup already computes the SLOs — add a burn-rate check that
+      notifies (Slack webhook, reusing the s37 integration) instead of threshold-per-blip alarms.
+      Scheduled uptime probe hits <code>/health</code> only (never <code>/health/db</code> — the
+      fence protecting Aurora auto-pause stays intact).</div></div>
+  </div>
+</section>
+
+<!-- ============================================================ PLAN -->
+<section id="plan">
+  <div class="lbl">Implementation plan · branch <span class="mono">mlops</span></div>
+  <h2>Four phases, each independently shippable</h2>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">M0</span><span class="badge">~½ day</span></div>
+    <div class="pbody">
+      <h3>MLflow server in the dev stack</h3>
+      <p style="font-size:13.5px;color:var(--muted)">Compose service mirroring ConvFinQA:
+      v3.12.0, sqlite backend-store, <code>./.mlflow</code> volume (gitignored), host port
+      <b>5500</b> via <code>MLFLOW_HOST_PORT</code> env (5000 is taken by ConvFinQA locally).
+      Healthcheck; <code>make mlflow-init</code> creates the two experiments
+      (<span class="mono">data-qa/traces</span>, <span class="mono">data-qa/evals</span>) and
+      prints their ids for <code>.env</code>. Acceptance: UI up, experiments exist.</p>
+      <div class="files"><code>docker-compose.yml</code> <code>Makefile</code> <code>.env.example</code> <code>.gitignore(.mlflow)</code></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">M1</span><span class="badge">~½ day</span></div>
+    <div class="pbody">
+      <h3>Tracing → MLflow (Logfire stays off, Jaeger per decision D2)</h3>
+      <p style="font-size:13.5px;color:var(--muted)">Add optional
+      <code>OTLP_HEADERS</code>-style support to <code>agent/otlp.py</code> and backend
+      <code>tracing.py</code> (the <code>x-mlflow-experiment-id</code> header), flip the compose
+      default <code>OTLP_ENDPOINT</code> from <code>http://jaeger:4318</code> to
+      <code>http://mlflow:5000</code>. Acceptance: ask a question in dev, open MLflow UI, see the
+      full backend→agent trace with every LLM/tool span (the same waterfall Jaeger shows today);
+      <code>query_runs.otel_trace_id</code> still populated.</p>
+      <div class="files"><code>services/data-agent/agent/otlp.py</code> <code>services/backend-api/app/tracing.py</code> <code>docker-compose.yml</code></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">M2</span><span class="badge">~1 day</span></div>
+    <div class="pbody">
+      <h3>Agent registry: fingerprint → model version, champion/challenger aliases</h3>
+      <p style="font-size:13.5px;color:var(--muted)">New small module (backend or script — it only
+      needs DB + MLflow client): ensure registered model <span class="mono">data-qa-agent</span>;
+      for each new <code>app.agent_versions</code> row create a version whose params/tags are the
+      composed fingerprint (provider, model, prompts/skills/knowledge hashes, git sha, image tag)
+      and whose description links the version row. First version auto-gets
+      <code>@champion</code>; new fingerprints get <code>@challenger</code>. Port ConvFinQA's
+      append-only promotion history (as MLflow tags + a small
+      <code>app.promotions</code> table so the app can render it without MLflow — Adjustment 2).
+      Acceptance: <code>make register</code> idempotent; aliases visible in UI.</p>
+      <div class="files"><code>scripts/mlflow_registry.py (new)</code> <code>services/data-agent/agent/version.py (read-only reuse)</code> <code>migration 00NN_promotions</code></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">M3</span><span class="badge">~1–1½ days</span></div>
+    <div class="pbody">
+      <h3>Eval runs → MLflow + promotion gate</h3>
+      <p style="font-size:13.5px;color:var(--muted)"><code>scripts/eval_run.py</code> gains an
+      MLflow sink (soft-fail if the server is down — DB write stays primary): run name =
+      experiment flag, params = fingerprint + <code>HYPOTHESIS</code>, metrics = overall pass-rate,
+      per-tier pass-rates, judge mean, latency p50, tokens, cost; artifacts = per-case JSON.
+      <code>make promote</code> runs the comparator (challenger ≥ champion on pass-rate AND no
+      golden pass→fail flips — ConvFinQA's rule) and moves the alias + appends history.
+      Acceptance: two eval runs comparable side-by-side in the UI; a promotion visibly flips the
+      alias and records history. <b>Not</b> adopting <code>mlflow.genai.evaluate()</code> yet —
+      the graders/judge already exist and plain runs keep them untouched (revisit for judge
+      alignment later).</p>
+      <div class="files"><code>scripts/eval_run.py</code> <code>scripts/mlflow_registry.py</code> <code>Makefile (promote)</code> <code>.github/workflows (optional eval job)</code></div>
+    </div>
+  </div>
+
+  <div class="phase" style="opacity:.75">
+    <div class="pnum"><span class="n">M4</span><span class="badge warn">deferred</span></div>
+    <div class="pbody">
+      <h3>Later: prod hosting · native autolog · monitoring scorers</h3>
+      <p style="font-size:13.5px;color:var(--muted)">When the live agent returns to prod: MLflow on
+      App Runner + Aurora + S3 (admin-auth), <code>mlflow.pydantic_ai.autolog()</code> for
+      GenAI-flavoured traces and per-trace token/cost dashboards (verify streaming coverage first —
+      see risks), sampled monitoring scorers on prod traces, and possibly
+      <code>mlflow.genai.evaluate()</code> + judge alignment. Nothing in M0–M3 blocks or presumes
+      this.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ RISKS -->
+<section id="risks">
+  <div class="lbl">Risks &amp; failure modes</div>
+  <h2>What could bite</h2>
+  <div class="card">
+    <div class="risk"><div class="r">Streaming spans in autolog</div>
+      <div class="m">MLflow's pydantic-ai autolog has an open FR for streaming support, and the
+      agent answers via <code>/agent/ask/stream</code>. M1 sidesteps this entirely (Logfire's
+      instrumentation already handles streaming; MLflow only <i>receives</i> OTLP). Re-check before
+      adopting autolog in M4.</div></div>
+    <div class="risk"><div class="r">Double instrumentation</div>
+      <div class="m">Never run Logfire's <code>instrument_pydantic_ai()</code> and
+      <code>mlflow.pydantic_ai.autolog()</code> in the same process — duplicated spans and token
+      counts. M0–M3 keeps exactly one SDK (Logfire's, as today).</div></div>
+    <div class="risk"><div class="r">Port and profile clashes</div>
+      <div class="m">ConvFinQA's MLflow owns host :5000; this one binds :5500
+      (<code>MLFLOW_HOST_PORT</code>, same pattern as the :8010 backend remap). Keep the service in
+      the default profile (the eval loop needs it), not behind <code>obs</code>.</div></div>
+    <div class="risk"><div class="r">Trace volume &amp; retention</div>
+      <div class="m">Every dev question now lands spans in sqlite. Fine at this scale (ConvFinQA
+      precedent); add a <code>make mlflow-gc</code> (mlflow gc) target and revisit Postgres backend
+      only if the file gets unwieldy — decision D3.</div></div>
+    <div class="risk"><div class="r">Eval writes diverging</div>
+      <div class="m">MLflow sink must be additive and soft-fail: DB write (existing) is primary,
+      MLflow logging wrapped so a down server never fails <code>make eval</code>. Runs carry
+      <code>eval_run_id</code> as a tag so the two stores reconcile.</div></div>
+    <div class="risk"><div class="r">Unauthenticated UI</div>
+      <div class="m">Dev binds localhost only (like Jaeger/Grafana today). Prod exposure is M4-only
+      and goes behind admin auth — never a public App Runner URL.</div></div>
+    <div class="risk"><div class="r">Prod value is limited today</div>
+      <div class="m">Named openly: with demo mode on, the harness improves the <i>development</i>
+      cycle now and prod later. That matches the stated goal ("build the harness, optimise down
+      the track").</div></div>
+  </div>
+</section>
+
+<!-- ============================================================ DECISIONS -->
+<section id="decisions">
+  <div class="lbl">Open decisions · answer inline and Send to Agent</div>
+  <h2>Four calls before build starts</h2>
+  <div class="cards cols-2">
+
+    <form class="qcard" data-lavish-question="d1-trace-path"
+      onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d1');
+      if(c) window.lavish.queuePrompt('Decision D1 (trace capture path): '+c,
+      {tag:'decision', text:'D1: '+c, element:event.currentTarget,
+       data:{question:'d1-trace-path', answer:c}, queueKey:'d1'});">
+      <div class="qt">D1 · How do spans get into MLflow?</div>
+      <div class="why">M1 ships one of these; both verified possible.</div>
+      <label><input type="radio" name="d1" value="OTLP re-point (keep Logfire SDK instrumentation)">
+        <span>OTLP re-point — keep today's instrumentation, change destination only
+        <span class="rec">RECOMMENDED · zero re-instrumentation, streaming-safe</span></span></label>
+      <label><input type="radio" name="d1" value="mlflow.pydantic_ai.autolog native (replace Logfire SDK in the agent)">
+        <span>Native <code>mlflow.pydantic_ai.autolog()</code> now — richer GenAI UI, but swaps the
+        agent's instrumentation and streaming needs verifying</span></label>
+      <label><input type="radio" name="d1" value="OTLP now, evaluate autolog in M4">
+        <span>OTLP now, revisit autolog in M4 (the plan as written)</span></label>
+      <button type="submit">Queue answer</button>
+    </form>
+
+    <form class="qcard" data-lavish-question="d2-jaeger"
+      onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d2');
+      if(c) window.lavish.queuePrompt('Decision D2 (Jaeger): '+c,
+      {tag:'decision', text:'D2: '+c, element:event.currentTarget,
+       data:{question:'d2-jaeger', answer:c}, queueKey:'d2'});">
+      <div class="qt">D2 · Secondary trace viewers alongside MLflow?</div>
+      <div class="why">Exporters are additive span processors — each extra destination is one env
+      var, none changes instrumentation. (See "Why not Phoenix + Jaeger?" above.)</div>
+      <label><input type="radio" name="d2" value="MLflow only - drop Jaeger once M1 verified">
+        <span>MLflow only — drop Jaeger once M1 is verified; fewest moving parts
+        <span class="rec">RECOMMENDED</span></span></label>
+      <label><input type="radio" name="d2" value="Keep Jaeger as dual export indefinitely">
+        <span>Keep Jaeger dual-export — stays the quick general-ops waterfall</span></label>
+      <label><input type="radio" name="d2" value="Add Phoenix as a second OTLP destination for a trial period (ConvFinQA insurance-policy pattern)">
+        <span>Add <b>Phoenix</b> as a trial second destination — richer LLM trace UI while judging
+        MLflow's explorer (ConvFinQA s04 "insurance policy" pattern)</span></label>
+      <button type="submit">Queue answer</button>
+    </form>
+
+    <form class="qcard" data-lavish-question="d3-backend-store"
+      onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d3');
+      if(c) window.lavish.queuePrompt('Decision D3 (MLflow backend store): '+c,
+      {tag:'decision', text:'D3: '+c, element:event.currentTarget,
+       data:{question:'d3-backend-store', answer:c}, queueKey:'d3'});">
+      <div class="qt">D3 · MLflow backend store in dev</div>
+      <div class="why">ConvFinQA uses sqlite in a volume; this stack also has Postgres running.</div>
+      <label><input type="radio" name="d3" value="sqlite volume (ConvFinQA parity)">
+        <span>sqlite + <code>./.mlflow</code> volume — zero config, proven pattern
+        <span class="rec">RECOMMENDED for M0</span></span></label>
+      <label><input type="radio" name="d3" value="Postgres database on the existing db container">
+        <span>Postgres (<span class="mono">mlflow</span> database on the existing container) —
+        one store fewer, survives volume wipes</span></label>
+      <button type="submit">Queue answer</button>
+    </form>
+
+    <form class="qcard" data-lavish-question="d4-prod-scope"
+      onsubmit="event.preventDefault(); const c=new FormData(event.currentTarget).get('d4');
+      if(c) window.lavish.queuePrompt('Decision D4 (prod scope): '+c,
+      {tag:'decision', text:'D4: '+c, element:event.currentTarget,
+       data:{question:'d4-prod-scope', answer:c}, queueKey:'d4'});">
+      <div class="qt">D4 · Prod scope of this ticket</div>
+      <div class="why">Prod currently has no live agent (demo mode).</div>
+      <label><input type="radio" name="d4" value="Dev + CI only (M0-M3); prod MLflow deferred to M4">
+        <span>Dev + CI only now; prod hosting is its own later ticket
+        <span class="rec">RECOMMENDED</span></span></label>
+      <label><input type="radio" name="d4" value="Include prod MLflow server (terraform) in this ticket">
+        <span>Include the terraform for a prod MLflow server now</span></label>
+      <button type="submit">Queue answer</button>
+    </form>
+
+  </div>
+  <p class="note">Anything else — annotate the element directly and Send to Agent.</p>
+</section>
+
+<footer>
+  <div><b>Verified sources:</b>
+    <a href="https://mlflow.org/docs/latest/genai/tracing/opentelemetry/">MLflow · OpenTelemetry integration</a> (server OTLP endpoint at /v1/traces; dual export) ·
+    <a href="https://mlflow.org/docs/latest/genai/tracing/opentelemetry/ingest/">Collect OTel traces into MLflow</a> (≥ 3.6.0; <span class="mono">x-mlflow-experiment-id</span> header; OTLP/HTTP only) ·
+    <a href="https://mlflow.org/docs/latest/genai/tracing/integrations/listing/pydantic_ai/">Tracing PydanticAI</a> (<span class="mono">mlflow.pydantic_ai.autolog()</span>, token/cost capture) ·
+    <a href="https://github.com/mlflow/mlflow/issues/18999">mlflow#18999</a> (streaming FR) ·
+    <a href="https://www.techtarget.com/searchitoperations/tip/The-3-pillars-of-observability-Logs-metrics-and-traces">pillars/MELT</a> ·
+    <a href="https://www.elastic.co/blog/observability-metrics">golden signals · RED · USE</a> ·
+    <a href="https://opentelemetry.io/blog/2026/genai-observability/">OTel GenAI observability</a> ·
+    <a href="https://uptrace.dev/blog/opentelemetry-ai-systems">OTel for LLM/agent systems (2026)</a>
+  </div>
+  <div style="margin-top:6px">Repo evidence: <span class="mono">agent/version.py · agent/otlp.py ·
+  app/tracing.py · eval_graders.py · eval_judge.py · make eval · app.agent_versions/eval_runs
+  (live DB) · ConvFinQA-agent src/convfinqa/tracking/{registry,mlflow_log}.py + compose mlflow
+  v3.12.0</span></div>
+  <div style="margin-top:6px">s43 · branch <span class="mono">mlops</span> · design: project Night
+  Flight tokens (as s40–s42)</div>
+</footer>
+
+</div>
+</body>
+</html>

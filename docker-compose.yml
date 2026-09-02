@@ -111,10 +111,14 @@ services:
       OPS_INGEST_TOKEN: ${OPS_INGEST_TOKEN:-dev-ops-token}
       # Optional — ships backend traces to Logfire Cloud; local-only otherwise.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
-      # s37: self-hosted traces to the jaeger container. Defaulted ON locally so
-      # `make up` gives you a trace UI with no extra step; set OTLP_ENDPOINT=
-      # (empty) to turn it off.
-      OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://jaeger:4318}
+      # s43 M1: self-hosted traces land in the MLflow server (OTLP ingest at
+      # /v1/traces), so one UI carries traces + eval runs + the agent registry.
+      # Set OTLP_ENDPOINT= (empty) to turn span export off entirely.
+      OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://mlflow:5000}
+      # MLflow routes OTLP spans by experiment id (x-mlflow-experiment-id).
+      # `make mlflow-init` creates data-qa/traces first, so 1 is its id on a
+      # fresh store; the init target warns if yours differs.
+      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-1}
       # s35: Slack's workspace signing secret, used to verify X-Slack-Signature.
       # A fixed dev value so the signature path is exercisable locally without a
       # real workspace; empty CLOSES the Slack endpoint (404), which is the
@@ -173,8 +177,9 @@ services:
       SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-pyodide}
       # Optional — ships agent traces to Logfire Cloud; empty = local-only tracing.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
-      # s37: self-hosted traces to the jaeger container (see backend-api).
-      OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://jaeger:4318}
+      # s43 M1: self-hosted traces to the MLflow server (see backend-api).
+      OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://mlflow:5000}
+      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-1}
       # s40 (D2): LLM_STUB=1 forces the deterministic stub answer, streamed
       # across STUB_LATENCY_S seconds — the zero-spend workload for E2-E8 and
       # the C-series load runs.
@@ -287,20 +292,36 @@ services:
     depends_on:
       - prometheus
 
-  # s37: self-hosted tracing. Logfire is an OpenTelemetry SDK, so the same
-  # instrumentation both services already carry can export anywhere — this is
-  # the "run it yourself" alternative to shipping spans to Logfire Cloud.
-  # Jaeger all-in-one is one container with no external storage: traces live in
-  # memory and vanish on restart, which is right for local development and is
-  # exactly why this is not the production answer.
-  #   UI: http://localhost:16686
-  jaeger:
-    image: jaegertracing/all-in-one:1.62.0
+  # s43 M0: the MLOps plane. One MLflow server carries all three surfaces —
+  # traces (OTLP ingest at /v1/traces, replacing the s37 Jaeger container),
+  # experiments & eval runs (`make eval` logs one run each), and the agent
+  # registry with @champion/@challenger aliases. sqlite + ./.mlflow volume
+  # mirrors the ConvFinQA-agent setup (decision D3); unlike Jaeger's in-memory
+  # store, traces survive restarts. Host port 5500 because ConvFinQA's MLflow
+  # owns 5000 on this machine (MLFLOW_HOST_PORT overrides, like API_HOST_PORT).
+  #   UI: http://localhost:5500
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.12.0
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/store/mlflow.db
+      --artifacts-destination /mlflow/artifacts
     environment:
-      COLLECTOR_OTLP_ENABLED: "true"
+      # The server's DNS-rebinding guard only accepts localhost Hosts by
+      # default; in-network span export arrives as Host "mlflow:5000" and was
+      # 403'd without this. Keep it to the compose-internal name + localhost.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost,127.0.0.1,localhost:${MLFLOW_HOST_PORT:-5500},127.0.0.1:${MLFLOW_HOST_PORT:-5500}"
     ports:
-      - "16686:16686" # web UI
-      - "4318:4318" # OTLP/HTTP — the port both services export to
+      - "${MLFLOW_HOST_PORT:-5500}:5000"
+    volumes:
+      - ./.mlflow:/mlflow
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:5000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   frontend:
     image: node:22-bookworm-slim

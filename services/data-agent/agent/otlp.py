@@ -40,4 +40,13 @@ def otlp_processors() -> list[Any]:
     except ImportError:  # pragma: no cover — ships with logfire
         log.warning("OTLP exporter unavailable; self-hosted tracing disabled")
         return []
-    return [BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces"))]
+    # s43 M1: MLflow's OTLP endpoint routes spans to an experiment via this
+    # header (required by its /v1/traces ingest, MLflow >= 3.6). Empty = plain
+    # OTLP with no extra header, which is what Jaeger-style collectors expect.
+    experiment_id = os.environ.get("MLFLOW_TRACE_EXPERIMENT_ID", "").strip()
+    headers = {"x-mlflow-experiment-id": experiment_id} if experiment_id else None
+    return [
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces", headers=headers)
+        )
+    ]

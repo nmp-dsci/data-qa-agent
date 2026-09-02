@@ -202,8 +202,9 @@ Logfire is an **OpenTelemetry SDK**, not a lock-in — the FastAPI, httpx and py
 both services carry emits ordinary OTel spans, and only the *destination* is a choice. That makes the
 backend swappable for the cost of one endpoint.
 
-- `OTLP_ENDPOINT` adds an exporter via `additional_span_processors`. Locally it defaults to the Jaeger
-  container (`http://jaeger:4318`), so `make up` gives a trace UI on **:16686** with no extra step.
+- `OTLP_ENDPOINT` adds an exporter via `additional_span_processors`. Locally it defaults to the MLflow
+  container (`http://mlflow:5000`, header `x-mlflow-experiment-id` from `MLFLOW_TRACE_EXPERIMENT_ID`), so
+  `make up` gives traces + eval runs + the agent registry on **:5500** with no extra step (s43).
 - **Additive, not exclusive.** With both `LOGFIRE_TOKEN` and `OTLP_ENDPOINT` set, spans go to both —
   so evaluating a different backend is a side-by-side comparison, never a cutover.
 - OTLP over **HTTP**, not gRPC: logfire already ships the proto-http exporter, so self-hosting costs no

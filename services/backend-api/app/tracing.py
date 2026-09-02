@@ -108,8 +108,17 @@ def _otlp_processors() -> list[Any]:
     except ImportError:  # pragma: no cover — ships with logfire
         log.warning("OTLP exporter unavailable; self-hosted tracing disabled")
         return []
+    # s43 M1: MLflow's OTLP endpoint routes spans to an experiment via this
+    # header (its /v1/traces ingest requires it, MLflow >= 3.6). Empty = plain
+    # OTLP with no extra header, which generic collectors expect.
+    experiment_id = settings.mlflow_trace_experiment_id.strip()
+    headers = {"x-mlflow-experiment-id": experiment_id} if experiment_id else None
     log.info("exporting traces to %s", endpoint)
-    return [BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces"))]
+    return [
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces", headers=headers)
+        )
+    ]
 
 
 def instrument_app(app: FastAPI) -> None:

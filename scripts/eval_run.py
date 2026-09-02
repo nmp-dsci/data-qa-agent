@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -40,8 +41,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import yaml  # noqa: E402
 from eval_pack import CASES_DIR, REPO_ROOT, pack_version  # noqa: E402
 
-API = "http://localhost:8000"
-AGENT = "http://localhost:8100"
+
+def _host_port(name: str, default: str) -> str:
+    """A compose host-port override: shell env first, then the repo .env.
+
+    Compose reads .env itself, but this script runs on the host, so a machine
+    that remapped a port (API_HOST_PORT=8010 here) needs the same value or
+    every request lands on the wrong service.
+    """
+    if os.environ.get(name):
+        return os.environ[name]
+    env_file = REPO_ROOT / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text().splitlines():
+            if line.strip().startswith(f"{name}="):
+                return line.split("=", 1)[1].strip() or default
+    return default
+
+
+API = f"http://localhost:{_host_port('API_HOST_PORT', '8000')}"
+AGENT = f"http://localhost:{_host_port('AGENT_HOST_PORT', '8100')}"
 
 # A full insight answer legitimately runs many tool round-trips.
 ASK_TIMEOUT = 300
@@ -454,6 +473,83 @@ def persist(
     return run_id
 
 
+def log_mlflow(
+    results: list[dict[str, Any]],
+    totals: dict[str, Any],
+    *,
+    args: argparse.Namespace,
+    pack_v: str,
+    eval_run_id: str,
+    agent_version_id: str | None,
+) -> None:
+    """s43 M3: mirror this eval into MLflow as one comparable run.
+
+    Additive and soft-fail by design — the app.eval_runs write above is the
+    source of truth, so a down tracking server must never fail `make eval`.
+    Params carry the build fingerprint + the experiment framing; metrics carry
+    the totals plus per-tier pass rates; tags carry the DB ids so the two
+    stores reconcile. EVAL_MLFLOW=0 skips entirely.
+    """
+    if os.environ.get("EVAL_MLFLOW", "1") == "0":
+        return
+    try:
+        import mlflow_client as mc  # noqa: PLC0415 — optional sink, same dir
+
+        exp_id = mc.ensure_experiment(mc.EVALS_EXPERIMENT)
+        fingerprint: dict[str, Any] = {}
+        if agent_version_id:
+            out = _scalar(
+                "SELECT row_to_json(t) FROM (SELECT fingerprint, provider, model_id, "
+                "prompt_hash, skills_hash, knowledge_version, image_tag, git_sha "
+                f"FROM app.agent_versions WHERE id = {_lit(agent_version_id)}::uuid) t"
+            )
+            fingerprint = json.loads(out) if out else {}
+        run_name = f"eval · {args.experiment}" if args.experiment else "eval · baseline"
+        run_id = mc.start_run(
+            exp_id,
+            run_name,
+            tags={
+                "kind": "eval",
+                "eval_run_id": eval_run_id,
+                "agent_version_id": agent_version_id,
+                "base_run_id": getattr(args, "base", None),
+            },
+        )
+        tiers = sorted({r.get("tier") for r in results if r.get("tier")})
+        tier_metrics = {}
+        for tier in tiers:
+            of_tier = [r for r in results if r.get("tier") == tier]
+            tier_metrics[f"pass_rate_{tier}"] = (
+                sum(1 for r in of_tier if r.get("passed")) / len(of_tier) if of_tier else 0.0
+            )
+        mc.log_batch(
+            run_id,
+            params={
+                "pack_version": pack_v,
+                "dataset": args.dataset or "all",
+                "tier": args.tier,
+                "case": args.case_key,
+                "hypothesis": args.hypothesis,
+                "judge": "off" if args.no_judge else "on",
+                **fingerprint,
+            },
+            metrics={
+                "pass_rate": totals.get("pass_rate"),
+                "passed": totals.get("passed"),
+                "cases": totals.get("cases"),
+                "errors": totals.get("errors"),
+                "g1_mean": totals.get("g1_mean"),
+                "g3_insight_mean": totals.get("g3_insight_mean"),
+                "g4_turns_mean": totals.get("g4_turns_mean"),
+                **tier_metrics,
+            },
+        )
+        mc.end_run(run_id)
+        print(f"mlflow · logged run {run_id} to {mc.EVALS_EXPERIMENT!r}")
+    except Exception as exc:  # noqa: BLE001 — observability must not fail the eval
+        print(f"mlflow · skipped ({exc})")
+
+
 def summarise(results: list[dict[str, Any]]) -> dict[str, Any]:
     scored = [r for r in results if not r.get("error")]
     passed = [r for r in scored if r.get("passed")]
@@ -521,6 +617,13 @@ def main() -> None:
     results = [score_case(c, use_judge=not args.no_judge) for c in cases]
     totals = summarise(results)
     run_id = persist(results, args=args, pack_v=pack_v, totals=totals)
+    version_id = (
+        _scalar(f"SELECT agent_version_id FROM app.eval_runs WHERE id = {_lit(run_id)}::uuid")
+        or None
+    )
+    log_mlflow(
+        results, totals, args=args, pack_v=pack_v, eval_run_id=run_id, agent_version_id=version_id
+    )
 
     print(f"\nrun {run_id}")
     for r in results:

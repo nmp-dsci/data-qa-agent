@@ -115,10 +115,14 @@ class Settings(BaseSettings):
     logfire_token: str | None = None
     # s37: self-hosted tracing. Logfire is an OpenTelemetry SDK, so the same
     # instrumentation can export anywhere — set this to an OTLP/HTTP collector
-    # (locally the Jaeger container, http://jaeger:4318) and spans go there
+    # (locally the MLflow server, http://mlflow:5000) and spans go there
     # instead of, or as well as, Logfire Cloud. Empty = off, which is the
     # default and matches the previous behaviour exactly.
     otlp_endpoint: str = ""
+    # s43 M1: MLflow's /v1/traces ingest routes spans to an experiment via the
+    # x-mlflow-experiment-id header. Empty = plain OTLP (no header), which any
+    # generic collector accepts.
+    mlflow_trace_experiment_id: str = ""
 
     # ---- Ops deck (s32 W0/W2/W4) ------------------------------------------
     # Machine token for POST /ops/ingest/* — the k6, promptfoo and deploy

@@ -36,3 +36,6 @@ frontend/playwright-report/
 # Restore instructions: docs/chronicle/README.md (D5, .lavish/s19_chronicle-explore-plan.html)
 docs/chronicle/datafeed/
 docs/chronicle/assets/POA_2016_NSW_reduced.geojson
+
+# s43: MLflow tracking store (sqlite + artifacts) — local volume, never committed.
+.mlflow/

@@ -36,9 +36,9 @@ variable "db_master_username" {
 }
 
 variable "db_engine_version" {
-  description = "Aurora PostgreSQL engine version. Must support Serverless v2 scale-to-zero if min ACU = 0."
+  description = "Aurora PostgreSQL engine version at CREATE time only — the cluster ignores later changes (lifecycle ignore_changes) because RDS auto-minor-upgrades and a stale pin wedges deploys. Must support Serverless v2 scale-to-zero if min ACU = 0."
   type        = string
-  default     = "16.6"
+  default     = "16.11"
 }
 
 variable "db_min_acu" {

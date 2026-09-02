@@ -27,6 +27,15 @@ resource "aws_rds_cluster" "main" {
   engine_mode        = "provisioned" # Serverless v2 runs under provisioned mode
   engine_version     = var.db_engine_version
 
+  # RDS auto-minor-upgrades the cluster (16.6 -> 16.11, 2026-09), after which
+  # a plan pinning the old version tries to "downgrade" and ModifyDBCluster
+  # rejects it (InvalidParameterCombination), wedging every deploy at the
+  # terraform step. The variable is the *initial* version for fresh creates;
+  # the live cluster's minor version is AWS's to move.
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
+
   database_name   = var.db_name
   master_username = var.db_master_username
   master_password = random_password.db_master.result

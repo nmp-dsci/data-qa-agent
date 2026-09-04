@@ -485,6 +485,11 @@ async def agent_config() -> ConfigSection:
             note="pyodide (WASM, hardened) | subprocess",
         ),
         ConfigItem(key="APP_ENV", value=s.app_env),
+        ConfigItem(
+            key="AGENT_RUNTIME",
+            value=s.agent_runtime,
+            note="pydantic_ai (champion) | agent_sdk (Claude Agent SDK challenger)",
+        ),
         ConfigItem(key="LLM_PROVIDER", value=s.llm_provider, note="deepseek | anthropic"),
         ConfigItem(key="model", value=active_model, note="model used by the active provider"),
         _secret_item("DEEPSEEK_API_KEY", s.deepseek_api_key, note="empty = offline stub"),
@@ -573,6 +578,31 @@ async def _pace_stub_frames(progress: asyncio.Queue[dict[str, Any]] | None) -> N
             )
 
 
+async def _run_agent(
+    body: AskRequest,
+    *,
+    user_id: str,
+    progress: asyncio.Queue[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Dispatch one question to the configured agent runtime (agent_sdk M1).
+
+    The single seam between champion and challenger. Both take the same
+    arguments and return the same contract (answer dict / no_answer report /
+    salvage dict / None), so everything downstream — SSE relay, persistence,
+    the queue worker, which reaches this through ``_answer`` — is untouched by
+    the choice. LLM_STUB is checked by the caller and still wins over both.
+    """
+    if settings.agent_runtime == "agent_sdk":
+        from .sdk_agent import answer_with_sdk
+
+        return await answer_with_sdk(
+            body.question, user_id=user_id, plan=body.user.plan, progress=progress
+        )
+    return await answer_with_sandbox(
+        body.question, user_id=user_id, plan=body.user.plan, progress=progress
+    )
+
+
 async def _answer(
     body: AskRequest, progress: asyncio.Queue[dict[str, Any]] | None = None
 ) -> AgentAnswer:
@@ -591,9 +621,7 @@ async def _answer(
     # paced by _pace_stub_frames so the run keeps a real run's timing shape.
     llm = None
     if not settings.llm_stub:
-        llm = await answer_with_sandbox(
-            body.question, user_id=user_id, plan=body.user.plan, progress=progress
-        )
+        llm = await _run_agent(body, user_id=user_id, progress=progress)
     salvage: dict[str, Any] | None = None
     if llm is not None:
         if not llm.get("fallback"):

@@ -37,6 +37,28 @@ class Settings(BaseSettings):
     llm_stub: bool = False
     stub_latency_s: float = 20.0
 
+    # agent_sdk migration (M1): which runtime answers a question.
+    #   "pydantic_ai" — the champion: the DeepSeek/pydantic-ai ReAct loop in
+    #     sandbox_agent.py. Unchanged, and still the default.
+    #   "agent_sdk"   — the challenger: the Claude Agent SDK runtime in
+    #     sdk_agent.py (a real per-run workspace the model Reads/Greps, the same
+    #     governed extract/run_analysis tools exposed over an in-process MCP
+    #     server). Needs the `agentsdk` extra installed.
+    # Both produce the identical answer/report/pages/trace contract, so the two
+    # can be A/B'd on the same eval pack.
+    agent_runtime: str = "pydantic_ai"
+    # Model alias the Agent SDK runtime drives. Separate from `model` because
+    # that one names the pydantic-ai Anthropic model id; the SDK talks to the
+    # Claude Code CLI, whose aliases (claude-sonnet-5) resolve differently.
+    sdk_model: str = "claude-sonnet-5"
+    # Subscription auth for the CLI subprocess in a container (no keychain).
+    # Passed through explicitly; provider API keys are blanked instead, because
+    # ANTHROPIC_API_KEY in the CLI's env silently overrides subscription auth.
+    claude_code_oauth_token: str | None = None
+    # Where per-run workspaces are built. Empty = the OS temp dir (workspace.py's
+    # default), which is what local dev and the container both want.
+    sdk_workspace_dir: str = ""
+
     # s40 M0: pay the cold-start tax (embedding model load + one sandbox spawn)
     # at startup instead of on the first real request. Off by default so unit
     # tests and TestClient apps start instantly; compose turns it on.

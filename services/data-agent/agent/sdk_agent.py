@@ -325,6 +325,28 @@ def _within(root: Path, candidate: Path) -> bool:
     return True
 
 
+def _search_root(ws: Path, tool_name: str, tool_input: Any) -> Path | None:
+    """The effective directory a Grep/Glob call recurses from.
+
+    Both tools default their search root to ``cwd`` (``ws``) when the model
+    omits ``path`` — the SDK never sends that default back in ``tool_input``,
+    so leaving an absent ``path`` unclassified would let a no-``path`` Grep
+    walk the whole workspace, including ``knowledge/``, uncounted. Returning
+    ``ws`` itself here makes that default explicit for the caller.
+    """
+    if tool_name not in ("Grep", "Glob"):
+        return None
+    raw = tool_input.get("path") if isinstance(tool_input, dict) else None
+    if not raw:
+        return ws
+    candidate = Path(str(raw))
+    if not candidate.is_absolute():
+        candidate = ws / candidate
+    with contextlib.suppress(OSError, ValueError):
+        return candidate.resolve()
+    return None
+
+
 def _deny(reason: str) -> dict[str, Any]:
     return {
         "hookSpecificOutput": {
@@ -371,8 +393,17 @@ def make_knowledge_hook(deps: _SdkDeps) -> Any:
         page = _knowledge_target(tool_input)
         if page is None:
             if deps.ws is not None:
-                knowledge_dir = deps.ws.resolve() / "knowledge"
-                if any(_within(knowledge_dir, resolved) for resolved in resolved_args):
+                ws = deps.ws.resolve()
+                knowledge_dir = ws / "knowledge"
+                touches_knowledge = any(_within(knowledge_dir, resolved) for resolved in resolved_args)
+                if not touches_knowledge:
+                    search_root = _search_root(
+                        ws, str(data.get("tool_name") or ""), tool_input
+                    )
+                    touches_knowledge = search_root is not None and (
+                        search_root == knowledge_dir or _within(search_root, knowledge_dir)
+                    )
+                if touches_knowledge:
                     deps.knowledge_denials += 1
                     return _deny(
                         "read knowledge pages one at a time by path; "

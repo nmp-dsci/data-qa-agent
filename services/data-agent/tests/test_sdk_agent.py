@@ -411,6 +411,28 @@ def test_run_analysis_quota_hard_stops_before_a_report(
     assert out is not None and out["fallback"] is True
 
 
+def test_token_budget_hard_stops_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "agent_total_tokens_limit", 100)
+
+    def script(prompt: str, options: Any) -> AsyncIterator[Any]:
+        async def gen() -> AsyncIterator[Any]:
+            yield AssistantMessage(
+                content=[TextBlock("thinking")],
+                usage={"input_tokens": 80, "output_tokens": 30},
+            )
+            yield AssistantMessage(content=[TextBlock("NEVER TRACED")])
+            yield ResultMessage()
+
+        return gen()
+
+    out, _sdk = _run(script)
+
+    assert out is not None and out["fallback"] is True and out["degraded"] is True
+    budget_step = next(s for s in out["steps"] if s.get("kind") == "budget")
+    assert "token budget exhausted" in budget_step["error"]
+    assert not any("NEVER TRACED" in str(s.get("content", "")) for s in out["steps"])
+
+
 def test_knowledge_hook_counts_reads_then_denies_past_the_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -434,6 +456,72 @@ def test_knowledge_hook_counts_reads_then_denies_past_the_cap(
     decision = denied["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
     assert "knowledge read limit reached" in decision["permissionDecisionReason"]
+
+
+def test_hook_denies_paths_outside_the_workspace(tmp_path: Path) -> None:
+    deps = sdk_agent._SdkDeps(user_id=USER_ID, ws=tmp_path)
+    hook = sdk_agent.make_knowledge_hook(deps)
+
+    outside = asyncio.run(
+        hook(
+            {"tool_name": "Read", "tool_input": {"file_path": "/etc/passwd"}},
+            "tu-1",
+            {"signal": None},
+        )
+    )
+    decision = outside["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "outside the run workspace" in decision["permissionDecisionReason"]
+
+    inside = asyncio.run(
+        hook(
+            {"tool_name": "Read", "tool_input": {"file_path": str(tmp_path / "marts.md")}},
+            "tu-2",
+            {"signal": None},
+        )
+    )
+    assert inside == {}
+
+
+def test_hook_denies_directory_scoped_grep_over_knowledge(tmp_path: Path) -> None:
+    (tmp_path / "knowledge").mkdir()
+    deps = sdk_agent._SdkDeps(user_id=USER_ID, ws=tmp_path)
+    hook = sdk_agent.make_knowledge_hook(deps)
+
+    explicit_path = asyncio.run(
+        hook(
+            {
+                "tool_name": "Grep",
+                "tool_input": {"path": str(tmp_path / "knowledge"), "pattern": "bond"},
+            },
+            "tu-1",
+            {"signal": None},
+        )
+    )
+    assert explicit_path["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert deps.knowledge_denials == 1
+
+    # No `path` argument: Grep's real default search root is cwd (ws), which
+    # contains knowledge/ — that must be classified the same as an explicit
+    # path="knowledge", not silently allowed.
+    no_path = asyncio.run(
+        hook({"tool_name": "Grep", "tool_input": {"pattern": "bond"}}, "tu-2", {"signal": None})
+    )
+    assert no_path["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert deps.knowledge_denials == 2
+
+    scoped_elsewhere = asyncio.run(
+        hook(
+            {
+                "tool_name": "Grep",
+                "tool_input": {"path": str(tmp_path / "schema"), "pattern": "bond"},
+            },
+            "tu-3",
+            {"signal": None},
+        )
+    )
+    assert scoped_elsewhere == {}
+    assert deps.knowledge_denials == 2
 
 
 def test_knowledge_path_mapping_ignores_non_pages() -> None:
@@ -528,6 +616,23 @@ def test_trace_entries_match_the_champion_shape() -> None:
     assert by_kind["tool_return"]["name"] == "Read"
     # The champion's decision log rides along unchanged.
     assert any(e.get("kind") == "decision_log" for e in out["steps"])
+
+
+def test_denied_knowledge_read_is_not_recorded_as_used() -> None:
+    trace = SdkTrace(system_prompt="sys", question="q")
+    page_path = "/ws/knowledge/domains/property-sales/overview.md"
+
+    trace.consume(
+        AssistantMessage(content=[ToolUseBlock("t0", "Read", {"file_path": page_path})])
+    )
+    trace.consume(UserMessage(content=[ToolResultBlock("t0", "STOP: denied", True)]))
+    assert trace.knowledge_pages == []
+
+    trace.consume(
+        AssistantMessage(content=[ToolUseBlock("t1", "Read", {"file_path": page_path})])
+    )
+    trace.consume(UserMessage(content=[ToolResultBlock("t1", "page content", False)]))
+    assert trace.knowledge_pages == ["property-sales-overview"]
 
 
 def test_usage_totals_prefer_the_result_message() -> None:

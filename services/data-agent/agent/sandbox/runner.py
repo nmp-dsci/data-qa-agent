@@ -2,8 +2,9 @@
 
 Runs model-written pandas over an injected DataFrame in a **spawned subprocess**
 with:
-  * a restricted ``__builtins__`` (no ``open`` / ``eval`` / ``exec`` /
-    ``__import__`` / ``input``), so the code can't open files or import ``os``;
+  * a restricted ``__builtins__`` (no ``open`` / ``eval`` / ``exec`` / ``input``,
+    and a guarded ``__import__`` allowing only preloaded/no-I/O modules), so the
+    code can't open files or import ``os``;
   * network blocked (``socket`` disabled in the child);
   * no DB handle, secrets, or env passed into the code's namespace — only ``df``,
     ``pd`` and ``skills``;
@@ -35,9 +36,10 @@ _CPU_SECONDS = 8
 _WALLCLOCK_SECONDS = 12  # parent-side hard stop; > CPU cap to allow spawn/import
 
 # Builtins the model code may use. Deliberately excludes open, eval, exec,
-# compile, __import__, input, globals, locals, vars, memoryview, help — the
-# obvious file / import / introspection escape hatches. pandas and skills are
-# already imported (they keep full builtins); this only limits the exec'd code.
+# compile, input, globals, locals, vars, memoryview, help — the obvious file /
+# introspection escape hatches. __import__ is added back below, guarded to the
+# allowlist. pandas and skills are already imported (they keep full builtins);
+# this only limits the exec'd code.
 _SAFE_BUILTIN_NAMES = (
     "abs",
     "all",

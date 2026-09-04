@@ -395,11 +395,11 @@ def make_knowledge_hook(deps: _SdkDeps) -> Any:
             if deps.ws is not None:
                 ws = deps.ws.resolve()
                 knowledge_dir = ws / "knowledge"
-                touches_knowledge = any(_within(knowledge_dir, resolved) for resolved in resolved_args)
+                touches_knowledge = any(
+                    _within(knowledge_dir, resolved) for resolved in resolved_args
+                )
                 if not touches_knowledge:
-                    search_root = _search_root(
-                        ws, str(data.get("tool_name") or ""), tool_input
-                    )
+                    search_root = _search_root(ws, str(data.get("tool_name") or ""), tool_input)
                     touches_knowledge = search_root is not None and (
                         search_root == knowledge_dir or _within(search_root, knowledge_dir)
                     )
@@ -648,7 +648,10 @@ async def _drive(
     async with contextlib.aclosing(stream) as messages:
         async for msg in messages:
             trace.consume(msg)
-            if deps.abort_reason is None and trace.total_tokens >= settings.agent_total_tokens_limit:
+            if (
+                deps.abort_reason is None
+                and trace.total_tokens >= settings.agent_total_tokens_limit
+            ):
                 deps.abort_reason = (
                     f"token budget exhausted ({trace.total_tokens}/"
                     f"{settings.agent_total_tokens_limit})"

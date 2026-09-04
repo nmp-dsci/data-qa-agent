@@ -622,15 +622,11 @@ def test_denied_knowledge_read_is_not_recorded_as_used() -> None:
     trace = SdkTrace(system_prompt="sys", question="q")
     page_path = "/ws/knowledge/domains/property-sales/overview.md"
 
-    trace.consume(
-        AssistantMessage(content=[ToolUseBlock("t0", "Read", {"file_path": page_path})])
-    )
+    trace.consume(AssistantMessage(content=[ToolUseBlock("t0", "Read", {"file_path": page_path})]))
     trace.consume(UserMessage(content=[ToolResultBlock("t0", "STOP: denied", True)]))
     assert trace.knowledge_pages == []
 
-    trace.consume(
-        AssistantMessage(content=[ToolUseBlock("t1", "Read", {"file_path": page_path})])
-    )
+    trace.consume(AssistantMessage(content=[ToolUseBlock("t1", "Read", {"file_path": page_path})]))
     trace.consume(UserMessage(content=[ToolResultBlock("t1", "page content", False)]))
     assert trace.knowledge_pages == ["property-sales-overview"]
 

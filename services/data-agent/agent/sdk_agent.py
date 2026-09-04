@@ -279,46 +279,111 @@ def build_tool_server(sdk: Any, deps: _SdkDeps, *, max_extracts: int, max_runs: 
 # Knowledge-read quota (the champion's max_knowledge_reads, enforced on Read/Grep)
 # ---------------------------------------------------------------------------
 
+# Argument keys across Read/Grep/Glob that can carry a filesystem location.
+_PATH_ARG_KEYS = ("file_path", "path", "pattern", "notebook_path")
+
 
 def _knowledge_target(tool_input: Any) -> str | None:
     if not isinstance(tool_input, dict):
         return None
-    for key in ("file_path", "path", "pattern", "notebook_path"):
+    for key in _PATH_ARG_KEYS:
         page = knowledge_page_from_path(str(tool_input.get(key) or ""))
         if page:
             return page
     return None
 
 
-def make_knowledge_hook(deps: _SdkDeps) -> Any:
-    """PreToolUse hook enforcing ``max_knowledge_reads`` on Read/Grep of knowledge/.
+def _resolved_path_args(ws: Path, tool_input: Any) -> list[Path]:
+    """Every path-shaped argument, resolved against the workspace root.
 
-    The champion enforces the cap inside its ``read_knowledge`` tool. Here the
-    model opens pages with the built-in file tools, so the cap has to live where
-    the CLI asks permission — an in-process PreToolUse hook. Re-reading a page
-    already loaded is free (it is already in context), matching the champion's
-    "(already loaded …)" short-circuit; a genuinely new page past the cap is
-    denied with the champion's wording.
+    Covers Read's ``file_path``, Grep/Glob's ``path`` (base directory) and
+    ``pattern`` (Glob's pattern doubles as a path — wildcards resolve fine
+    since ``Path.resolve()`` only normalizes ``..``/symlinks, not glob syntax)
+    and ``notebook_path``. A relative value is resolved against ``ws`` the
+    same way the CLI itself resolves a relative tool argument against ``cwd``.
+    """
+    if not isinstance(tool_input, dict):
+        return []
+    resolved = []
+    for key in _PATH_ARG_KEYS:
+        raw = tool_input.get(key)
+        if not raw:
+            continue
+        candidate = Path(str(raw))
+        if not candidate.is_absolute():
+            candidate = ws / candidate
+        with contextlib.suppress(OSError, ValueError):
+            resolved.append(candidate.resolve())
+    return resolved
+
+
+def _within(root: Path, candidate: Path) -> bool:
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _deny(reason: str) -> dict[str, Any]:
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
+def make_knowledge_hook(deps: _SdkDeps) -> Any:
+    """PreToolUse hook scoping Read/Grep/Glob to the workspace and enforcing
+    ``max_knowledge_reads`` on Read/Grep of knowledge/.
+
+    Every built-in file tool call is resolved against the per-run workspace
+    root first: a path (absolute or, after joining onto ``cwd``, relative)
+    that lands outside the workspace is denied outright — the workspace is
+    the ONLY filesystem surface this runtime advertises to the model, so
+    nothing here may read another run's ``runs_dir`` entry or a host path
+    like ``/app/.env``.
+
+    The champion enforces the knowledge cap inside its ``read_knowledge``
+    tool. Here the model opens pages with the built-in file tools, so the cap
+    has to live where the CLI asks permission — this same hook. Re-reading a
+    page already loaded is free (it is already in context), matching the
+    champion's "(already loaded …)" short-circuit; a genuinely new page past
+    the cap is denied with the champion's wording. A directory-scoped
+    Grep/Glob over ``knowledge/`` that names no single page would otherwise
+    read the whole tree in one uncounted call, so it is denied too — the
+    model must open pages one at a time to stay inside the quota.
     """
 
     async def hook(input_data: Any, tool_use_id: str | None, context: Any) -> dict[str, Any]:
         data = input_data if isinstance(input_data, dict) else {}
         if data.get("tool_name") not in BUILTIN_TOOLS:
             return {}
-        page = _knowledge_target(data.get("tool_input"))
-        if page is None or page in deps.knowledge_pages:
+        tool_input = data.get("tool_input")
+        resolved_args: list[Path] = []
+        if deps.ws is not None:
+            ws = deps.ws.resolve()
+            resolved_args = _resolved_path_args(ws, tool_input)
+            if any(not _within(ws, resolved) for resolved in resolved_args):
+                return _deny("path is outside the run workspace")
+        page = _knowledge_target(tool_input)
+        if page is None:
+            if deps.ws is not None:
+                knowledge_dir = deps.ws.resolve() / "knowledge"
+                if any(_within(knowledge_dir, resolved) for resolved in resolved_args):
+                    deps.knowledge_denials += 1
+                    return _deny(
+                        "read knowledge pages one at a time by path; "
+                        "whole-directory reads are not permitted"
+                    )
+            return {}
+        if page in deps.knowledge_pages:
             return {}
         if deps.knowledge_reads >= settings.max_knowledge_reads:
             deps.knowledge_denials += 1
-            return {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": (
-                        "knowledge read limit reached; proceed with the pages you have."
-                    ),
-                }
-            }
+            return _deny("knowledge read limit reached; proceed with the pages you have.")
         deps.knowledge_pages.append(page)
         deps.knowledge_reads += 1
         deps.steps.append({"kind": "knowledge", "status": "read", "name": page, "why": ""})
@@ -543,12 +608,20 @@ async def _drive(
     the async generator tears down the CLI transport, which is this runtime's
     equivalent of the champion raising ``SandboxBudgetExhausted`` out of its
     tool and ending the run instead of letting a looping model burn the request
-    budget.
+    budget. The cumulative-token check mirrors the champion's
+    ``UsageLimits(total_tokens_limit=...)`` — ``max_turns`` alone caps request
+    count, not spend, so a run that loops on large Read/Grep output is stopped
+    by tokens too.
     """
     stream = sdk.query(prompt=question, options=options)
     async with contextlib.aclosing(stream) as messages:
         async for msg in messages:
             trace.consume(msg)
+            if deps.abort_reason is None and trace.total_tokens >= settings.agent_total_tokens_limit:
+                deps.abort_reason = (
+                    f"token budget exhausted ({trace.total_tokens}/"
+                    f"{settings.agent_total_tokens_limit})"
+                )
             if deps.abort_reason:
                 # Recorded on the trace itself, not in deps.steps: deps.steps
                 # only reach the run as the condensed decision log, and a hard

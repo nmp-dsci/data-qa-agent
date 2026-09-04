@@ -136,9 +136,14 @@ class SdkTrace:
         self.final_text: str = ""
         self.num_turns: int = 0
         self.session_id: str | None = None
+        self.total_tokens: int = 0
         # tool_use_id → tool name, so a tool_result entry can name its tool the
         # way the champion's tool-return parts do.
         self._tool_names: dict[str, str] = {}
+        # tool_use_id → knowledge page name requested, held here until the
+        # matching tool_result confirms the hook did not deny it — see
+        # ``_note_knowledge``.
+        self._pending_knowledge: dict[str, str] = {}
 
     # -- stream consumption ------------------------------------------------
     def consume(self, msg: Any) -> None:
@@ -181,10 +186,12 @@ class SdkTrace:
                         "tool_call_id": tool_id,
                     }
                 )
-                self._note_knowledge(tool_name, tool_input)
+                self._note_knowledge(tool_id, tool_name, tool_input)
         text = "\n".join(texts)
         if text.strip():
             self.final_text = text.strip()
+        usage_fields = _usage_fields(getattr(msg, "usage", None))
+        self.total_tokens += usage_fields.get("total_tokens") or 0
         self.entries.append(
             {
                 "kind": "model",
@@ -192,7 +199,7 @@ class SdkTrace:
                 "thinking": "\n".join(thinking) or None,
                 "tool_calls": tool_calls,
                 "model_name": getattr(msg, "model", None),
-                **_usage_fields(getattr(msg, "usage", None)),
+                **usage_fields,
             }
         )
 
@@ -204,13 +211,17 @@ class SdkTrace:
             if _block_kind(block) != "tool_result":
                 continue
             tool_use_id = getattr(block, "tool_use_id", None)
+            is_error = bool(getattr(block, "is_error", False))
+            page = self._pending_knowledge.pop(str(tool_use_id), None)
+            if page and not is_error and page not in self.knowledge_pages:
+                self.knowledge_pages.append(page)
             self.entries.append(
                 {
                     "kind": "tool_return",
                     "name": self._tool_names.get(str(tool_use_id), ""),
                     "tool_call_id": tool_use_id,
                     "content": _stringify(getattr(block, "content", "")),
-                    **({"error": True} if getattr(block, "is_error", False) else {}),
+                    **({"error": True} if is_error else {}),
                 }
             )
 
@@ -222,14 +233,22 @@ class SdkTrace:
         if isinstance(text, str) and text.strip():
             self.final_text = text.strip()
 
-    def _note_knowledge(self, tool_name: str, tool_input: Any) -> None:
-        """Record a knowledge page the model opened with a built-in file tool."""
-        if tool_name not in _FILE_TOOLS or not isinstance(tool_input, dict):
+    def _note_knowledge(self, tool_use_id: Any, tool_name: str, tool_input: Any) -> None:
+        """Queue a knowledge page a tool_use block asked for.
+
+        Not recorded as used yet: the PreToolUse hook (``sdk_agent.py``) can
+        still deny this call for being over the knowledge-read quota, in which
+        case the model never saw the page. The page only moves into
+        ``knowledge_pages`` once the matching tool_result comes back without
+        ``is_error`` — see ``_consume_user``.
+        """
+        if tool_name not in _FILE_TOOLS or not isinstance(tool_input, dict) or not tool_use_id:
             return
         for key in ("file_path", "path", "notebook_path", "pattern"):
             page = knowledge_page_from_path(str(tool_input.get(key) or ""))
-            if page and page not in self.knowledge_pages:
-                self.knowledge_pages.append(page)
+            if page:
+                self._pending_knowledge[str(tool_use_id)] = page
+                return
 
     # -- totals ------------------------------------------------------------
     def usage_totals(self, model_name: str) -> dict[str, Any]:

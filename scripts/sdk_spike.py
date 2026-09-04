@@ -51,6 +51,9 @@ DATA_AGENT_DIR = REPO_ROOT / "services" / "data-agent"
 if str(DATA_AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(DATA_AGENT_DIR))
 
+from agent.db import run_select  # noqa: E402
+from agent.schema import describe_table, get_catalog, list_marts  # noqa: E402
+from agent.sql_guardrails import UnsafeSQLError, validate_select  # noqa: E402
 from claude_agent_sdk import (  # noqa: E402
     AssistantMessage,
     ClaudeAgentOptions,
@@ -65,10 +68,6 @@ from claude_agent_sdk import (  # noqa: E402
     query,
     tool,
 )
-
-from agent.db import run_select  # noqa: E402
-from agent.schema import describe_table, get_catalog, list_marts  # noqa: E402
-from agent.sql_guardrails import UnsafeSQLError, validate_select  # noqa: E402
 
 # user1@example.com — has app.dataset_access "read" on nsw_sales/nsw_rent/nsw_yield,
 # so RLS actually returns rows for the extract tool (agent_ro is RLS-scoped).
@@ -162,7 +161,9 @@ def _truncate(obj: Any, limit: int = 220) -> str:
     return s if len(s) <= limit else s[:limit] + "…"
 
 
-async def run_once(model: str, workspace: str, server: Any) -> tuple[ResultMessage | None, float, float | None]:
+async def run_once(
+    model: str, workspace: str, server: Any
+) -> tuple[ResultMessage | None, float, float | None]:
     """Stream one query() run; returns (ResultMessage, total_wall_s, ttfe_s)."""
     options = ClaudeAgentOptions(
         model=model,

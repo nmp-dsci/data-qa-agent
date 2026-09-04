@@ -14,11 +14,15 @@ change for a telemetry setting.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+from collections.abc import Iterator
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+_TRACER_NAME = "data-agent.sdk_agent"
 
 
 def otlp_processors() -> list[Any]:
@@ -51,3 +55,54 @@ def otlp_processors() -> list[Any]:
             OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces", headers=headers)
         )
     ]
+
+
+class _NoOpSpan:
+    """What :func:`agent_span` yields when OTLP export is not configured.
+
+    Same call surface as a real OTel ``Span`` for the two methods callers use,
+    so ``sdk_agent.py`` never needs an ``if OTLP_ENDPOINT`` branch of its own —
+    it just calls ``span.set_attribute(...)`` unconditionally.
+    """
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        pass
+
+    def record_exception(self, exc: BaseException) -> None:
+        pass
+
+
+@contextlib.contextmanager
+def agent_span(name: str, **attributes: Any) -> Iterator[Any]:
+    """A manual OTel span for a run of the Claude Agent SDK runtime (s44 M3b).
+
+    The pydantic-ai champion gets its spans for free — logfire's pydantic-ai
+    instrumentation wraps every model/tool call automatically. The Agent SDK
+    runtime drives an external CLI subprocess that nothing auto-instruments,
+    so ``sdk_agent.answer_with_sdk`` opens one of these by hand around a run,
+    the way ``otlp_processors()`` is the manual half of this service's
+    exporter wiring.
+
+    A genuine no-op — no tracer looked up, no span created — when
+    ``OTLP_ENDPOINT`` is unset, mirroring :func:`otlp_processors`'s own check
+    exactly: "no destination configured" behaves identically for the exporter
+    and for this. Keyword attributes with a ``None`` value are dropped rather
+    than stringified (OTel span attributes don't accept ``None``); the span
+    object is yielded either way so the caller can add more attributes once
+    the run's outcome is known.
+    """
+    endpoint = os.environ.get("OTLP_ENDPOINT", "").strip()
+    if not endpoint:
+        yield _NoOpSpan()
+        return
+    try:
+        from opentelemetry import trace
+    except ImportError:  # pragma: no cover — ships with logfire
+        yield _NoOpSpan()
+        return
+    tracer = trace.get_tracer(_TRACER_NAME)
+    with tracer.start_as_current_span(name) as span:
+        for key, value in attributes.items():
+            if value is not None:
+                span.set_attribute(key, value)
+        yield span

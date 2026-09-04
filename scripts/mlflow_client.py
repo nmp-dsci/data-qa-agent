@@ -120,6 +120,72 @@ def end_run(run_id: str, status: str = "FINISHED") -> None:
     api("POST", "runs/update", {"run_id": run_id, "status": status, "end_time": _now_ms()})
 
 
+def get_run(run_id: str) -> dict[str, Any]:
+    return api("GET", f"runs/get?run_id={urllib.parse.quote(run_id)}")["run"]
+
+
+def set_tag(run_id: str, key: str, value: Any) -> None:
+    api("POST", "runs/set-tag", {"run_id": run_id, "key": key, "value": str(value)})
+
+
+# ---- artifacts (s44 M3b) ----------------------------------------------------
+#
+# The tracking REST API (``api()`` above) has no artifact-write call; MLflow's
+# artifact store sits behind a second, separate proxy API
+# (``/api/2.0/mlflow-artifacts/...``) that PUTs raw bytes under a run's
+# artifact root. Verified against the live local server (MLflow 3.12.0, the
+# ``mlflow-artifacts:/`` store this compose stack runs): ``runs/create``'s
+# response carries ``artifact_uri`` as ``mlflow-artifacts:/<experiment_id>/
+# <run_id>/artifacts``; stripping the scheme gives the path this proxy expects.
+# Reading it back from the run (rather than assuming the
+# ``<experiment_id>/<run_id>/artifacts`` shape) keeps this correct even if a
+# server is configured with a different artifact root layout.
+
+
+def _artifact_root(run_id: str) -> str:
+    uri = str(get_run(run_id)["info"]["artifact_uri"])
+    prefix = "mlflow-artifacts:/"
+    if not uri.startswith(prefix):
+        raise MlflowError(f"unsupported artifact store (not mlflow-artifacts:/): {uri!r}")
+    return uri[len(prefix) :]
+
+
+def log_artifact(
+    run_id: str, path: str, data: bytes, *, content_type: str = "application/octet-stream"
+) -> None:
+    """Upload one small artifact's raw bytes.
+
+    Stdlib-only, matching this module's grain — no multipart upload, no local
+    tempfile: the proxy's PUT endpoint takes the raw body directly. Sized for
+    the small text/JSON artifacts this project logs (an answer, a report, a
+    trace), not large binary uploads.
+    """
+    root = _artifact_root(run_id).strip("/")
+    url = f"{MLFLOW_URL}/api/2.0/mlflow-artifacts/artifacts/{root}/{path.lstrip('/')}"
+    req = urllib.request.Request(
+        url, data=data, method="PUT", headers={"Content-Type": content_type}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            resp.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")[:300]
+        raise MlflowError(f"PUT artifacts/{path}: HTTP {exc.code} {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise MlflowError(
+            f"PUT artifacts/{path}: {exc.reason} (is the mlflow service up?)"
+        ) from exc
+
+
+def log_text_artifact(run_id: str, path: str, text: str) -> None:
+    log_artifact(run_id, path, text.encode("utf-8"), content_type="text/plain; charset=utf-8")
+
+
+def log_json_artifact(run_id: str, path: str, obj: Any) -> None:
+    body = json.dumps(obj, indent=2, default=str, sort_keys=True).encode("utf-8")
+    log_artifact(run_id, path, body, content_type="application/json")
+
+
 # ---- model registry --------------------------------------------------------
 
 

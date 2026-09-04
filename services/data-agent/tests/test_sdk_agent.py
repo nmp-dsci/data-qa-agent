@@ -12,7 +12,8 @@ runs, so a green suite means the two runtimes really do share their behaviour.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+import contextlib
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -703,3 +704,123 @@ def test_a_failure_after_the_report_still_delivers_it() -> None:
     assert not out.get("fallback")
     assert out["answer"] == _report()["summary"]
     assert out["pages"]
+
+
+# ---------------------------------------------------------------------------
+# 7. OTel span per run (s44 M3b)
+# ---------------------------------------------------------------------------
+
+
+class _FakeSpan:
+    def __init__(self) -> None:
+        self.attributes: dict[str, Any] = {}
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        self.attributes[key] = value
+
+    def record_exception(self, exc: BaseException) -> None:
+        self.attributes["_exception"] = str(exc)
+
+
+class _FakeTracer:
+    def __init__(self) -> None:
+        self.spans: list[tuple[str, _FakeSpan]] = []
+
+    @contextlib.contextmanager
+    def start_as_current_span(self, name: str) -> Iterator[_FakeSpan]:
+        span = _FakeSpan()
+        self.spans.append((name, span))
+        yield span
+
+
+@pytest.fixture
+def _fake_otel(monkeypatch: pytest.MonkeyPatch) -> _FakeTracer:
+    """Route agent_span's tracer to a fake one, and pin the live-ordinals
+    attribute so these tests don't depend on a reachable DB."""
+    from opentelemetry import trace as ot_trace
+
+    tracer = _FakeTracer()
+    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5500")
+    monkeypatch.setattr(ot_trace, "get_tracer", lambda name: tracer)  # noqa: ARG005
+
+    async def fake_ordinals_hash() -> str:
+        return "ord-fixture"
+
+    monkeypatch.setattr(sdk_agent, "ordinals_snapshot_hash", fake_ordinals_hash)
+    return tracer
+
+
+def test_span_attributes_on_a_successful_run(_fake_otel: _FakeTracer) -> None:
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    out, _sdk = _run(_happy_script(queue, {}), plan="pro", progress=queue)
+
+    assert out is not None
+    assert len(_fake_otel.spans) == 1
+    name, span = _fake_otel.spans[0]
+    assert name == "agent_sdk.answer"
+
+    # Creation-time attributes.
+    assert span.attributes["question_length"] == len("What is the rent trend in Hornsby?")
+    assert span.attributes["run_id"]
+    assert span.attributes["model"] == settings.sdk_model
+    fp = sdk_agent.build_sdk_fingerprint()
+    assert span.attributes["agent_version_fingerprint"] == fp["fingerprint"]
+
+    # The live ordinals diagnostic attribute, set best-effort mid-run.
+    assert span.attributes["ordinals_snapshot_hash"] == "ord-fixture"
+
+    # Outcome attributes, only known once the run finished.
+    assert span.attributes["ok"] is True
+    assert span.attributes["aborted"] is False
+    assert span.attributes["num_turns"] == 3  # ResultMessage's default in _happy_script
+    assert span.attributes["pages_emitted"] == 1
+    assert span.attributes["session_id"] == "sess-1"
+    assert span.attributes["cost_usd"] == pytest.approx(out["cost_usd"])
+    assert span.attributes["input_tokens"] == out["input_tokens"]
+    assert span.attributes["output_tokens"] == out["output_tokens"]
+    assert span.attributes["cache_read_tokens"] == out["cache_read_tokens"]
+
+
+def test_span_marks_aborted_and_not_ok_on_a_budget_hard_stop(
+    _fake_otel: _FakeTracer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "sandbox_run_attempts", 0)
+
+    def script(prompt: str, options: Any) -> AsyncIterator[Any]:
+        async def gen() -> AsyncIterator[Any]:
+            server = options.mcp_servers["dp"]
+            extract_args = {"sql": "SELECT 1"}
+            yield AssistantMessage(content=[ToolUseBlock("t0", "mcp__dp__extract", extract_args)])
+            await server.tools["extract"].handler(extract_args)
+            yield UserMessage(content=[ToolResultBlock("t0", "ok")])
+            code = {"code": "result = 1"}
+            yield AssistantMessage(content=[ToolUseBlock("t1", "mcp__dp__run_analysis", code)])
+            await server.tools["run_analysis"].handler(code)
+            yield UserMessage(content=[ToolResultBlock("t1", "budget spent", True)])
+            yield ResultMessage()
+
+        return gen()
+
+    out, _sdk = _run(script)
+    assert out is not None and out["fallback"] is True
+
+    name, span = _fake_otel.spans[0]
+    assert span.attributes["ok"] is False
+    assert span.attributes["aborted"] is True
+
+
+def test_agent_span_is_a_no_op_without_otlp_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default test environment has no OTLP_ENDPOINT set — confirms a real
+    run never even looks up a tracer in that (the common) case."""
+    monkeypatch.delenv("OTLP_ENDPOINT", raising=False)
+
+    from opentelemetry import trace as ot_trace
+
+    def boom(name: str) -> Any:
+        raise AssertionError("get_tracer must not be called when OTLP_ENDPOINT is unset")
+
+    monkeypatch.setattr(ot_trace, "get_tracer", boom)
+
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    out, _sdk = _run(_happy_script(queue, {}), progress=queue)
+    assert out is not None

@@ -39,6 +39,8 @@ from typing import Any
 from .config import settings
 from .knowledge import knowledge_version
 from .memory import recall_memories
+from .ordinals import ordinals_snapshot_hash
+from .otlp import agent_span
 from .pages import compose_pages, page_plan, planned_kinds
 from .report import select_primary_query
 from .sandbox_agent import (
@@ -53,6 +55,7 @@ from .sandbox_agent import (
     _SbDeps,
 )
 from .sdk_trace import SdkTrace, knowledge_page_from_path
+from .version import build_sdk_fingerprint
 from .workspace import workspace
 
 # Recorded as AgentAnswer.engine, the way the stub records "stub" and the demo
@@ -363,6 +366,46 @@ def _memories_block(recalled: list[str]) -> str:
     return "\n".join(f"- {m}" for m in recalled) if recalled else "(none stored yet)"
 
 
+def _finish_span(span: Any, *, deps: _SdkDeps, trace: SdkTrace | None) -> None:
+    """Attach the run's outcome to its OTel span (s44 M3b).
+
+    Split from the span's creation attributes because these are only known
+    once the run — or its failure — has actually happened: turns, tokens, cost
+    and pages-emitted all come from state ``_drive``/``_assemble`` built up
+    over the run. A no-op-safe ``span`` (see ``otlp._NoOpSpan``) makes every
+    call here free when ``OTLP_ENDPOINT`` is unset.
+
+    ``ok`` is computed from ``deps`` rather than passed in by the caller: a run
+    that hits a hard stop (a spent budget) returns cleanly through the SAME
+    code path as a real answer — no exception is raised, ``_assemble`` just
+    hands back a salvage dict — so "did an exception propagate" is not the
+    same question as "did this run produce something usable". A real report or
+    an honest ``no_answer`` is ``ok``; the salvage/fallback envelope (whether
+    reached via a clean hard stop or via a caught exception) is not.
+    ``aborted`` is the separate, narrower signal for specifically the budget
+    hard-stop case.
+    """
+    ok = deps.report is not None or bool(deps.no_answer)
+    usage = trace.usage_totals(settings.sdk_model) if trace is not None else {}
+    span.set_attribute("ok", ok)
+    span.set_attribute("aborted", bool(deps.abort_reason))
+    span.set_attribute("num_turns", trace.num_turns if trace is not None else 0)
+    span.set_attribute("pages_emitted", len(deps.pages_emitted))
+    if trace is not None and trace.session_id:
+        span.set_attribute("session_id", trace.session_id)
+    usage_keys = (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "cost_usd",
+    )
+    for key in usage_keys:
+        value = usage.get(key)
+        if value is not None:
+            span.set_attribute(key, value)
+
+
 async def answer_with_sdk(
     question: str,
     *,
@@ -378,74 +421,113 @@ async def answer_with_sdk(
     dict (``fallback=True``) carrying the trace and token spend of a run that
     never produced a report so the caller can fall back to the stub without
     losing what the model actually did.
+
+    The whole run is wrapped in one OTel span (s44 M3b) — this runtime has no
+    library auto-instrumenting the model turns the way logfire's pydantic-ai
+    instrumentation does for the champion, so this is the only span a slow or
+    failing SDK run gets. Nested inside the FastAPI-instrumented ``/agent/ask``
+    request span (main.py), it inherits that request's trace id — the same one
+    backend-api reads off its own ambient span and stamps onto
+    ``app.query_runs.otel_trace_id`` (see ``backend-api/app/tracing.py``'s
+    ``current_trace_id()``), so the two services' traces are one trace, not two
+    to correlate by hand.
     """
     sdk = _load_sdk()
+    rid = run_id or uuid.uuid4().hex
     deps = _SdkDeps(user_id=user_id, progress=progress, user_plan=plan)
     trace: SdkTrace | None = None
-    try:
-        # The page plan is deterministic policy per user (s10): declared and
-        # emitted BEFORE any model work, so the frontend draws its ghost slots
-        # while the CLI is still spawning.
-        plan_slots = page_plan(plan=plan)
-        deps.page_indexes = {s["kind"]: s["index"] for s in plan_slots if s["status"] != "locked"}
-        deps.emit_frame("plan", {"pages": plan_slots})
+    # The sync fingerprint (no DB read) so the span's identity always matches
+    # exactly what /agent/version returns and what backend-api resolves to an
+    # app.agent_versions row — see version.build_sdk_fingerprint's docstring.
+    fingerprint = build_sdk_fingerprint()
+    with agent_span(
+        "agent_sdk.answer",
+        question_length=len(question),
+        run_id=rid,
+        agent_version_fingerprint=fingerprint.get("fingerprint"),
+        model=settings.sdk_model,
+    ) as span:
+        # The TRUE live ordinals state (DB overrides included) for this run,
+        # as an extra diagnostic attribute — never folded into the fingerprint
+        # identity above, which stays DB-independent. Best-effort: this must
+        # never be why a run fails, even though ordinals_snapshot_hash() itself
+        # already never raises.
+        with contextlib.suppress(Exception):
+            span.set_attribute("ordinals_snapshot_hash", await ordinals_snapshot_hash())
+        try:
+            # The page plan is deterministic policy per user (s10): declared and
+            # emitted BEFORE any model work, so the frontend draws its ghost slots
+            # while the CLI is still spawning.
+            plan_slots = page_plan(plan=plan)
+            deps.page_indexes = {
+                s["kind"]: s["index"] for s in plan_slots if s["status"] != "locked"
+            }
+            deps.emit_frame("plan", {"pages": plan_slots})
 
-        recalled = await recall_memories(user_id, question)
-        include_insights = "insights" in deps.page_indexes
-        base_dir = Path(settings.sdk_workspace_dir) if settings.sdk_workspace_dir else None
-        async with workspace(
-            run_id or uuid.uuid4().hex,
-            question,
-            include_insights=include_insights,
-            memories_block=_memories_block(recalled),
-            base_dir=base_dir,
-        ) as ws:
-            deps.ws = ws
-            # CLAUDE.md is passed as the system prompt rather than relied on
-            # being auto-read: the SDK only discovers a cwd CLAUDE.md when
-            # `setting_sources` includes "project", which would also drag the
-            # host's user/project settings into a server run. The file stays in
-            # the workspace so Read/Grep still see it.
-            system_prompt = (ws / "CLAUDE.md").read_text(encoding="utf-8")
-            trace = SdkTrace(system_prompt=system_prompt, question=question)
-            server = build_tool_server(
-                sdk,
-                deps,
-                max_extracts=settings.max_sql_attempts,
-                max_runs=settings.sandbox_run_attempts,
-            )
-            options = sdk.ClaudeAgentOptions(
-                model=settings.sdk_model,
-                cwd=str(ws),
-                system_prompt=system_prompt,
-                max_turns=settings.agent_request_limit,
-                mcp_servers={MCP_SERVER: server},
-                # `tools` restricts the built-in toolset (no Bash/Write/Edit in
-                # the workspace); `allowed_tools` auto-approves what is left, so
-                # a headless run never blocks on a permission prompt.
-                tools=list(ALLOWED_TOOLS),
-                allowed_tools=list(ALLOWED_TOOLS),
-                hooks={"PreToolUse": [sdk.HookMatcher(hooks=[make_knowledge_hook(deps)])]},
-                env=cli_env(),
-            )
-            await _drive(sdk, options, question, deps, trace)
+            recalled = await recall_memories(user_id, question)
+            include_insights = "insights" in deps.page_indexes
+            base_dir = Path(settings.sdk_workspace_dir) if settings.sdk_workspace_dir else None
+            async with workspace(
+                rid,
+                question,
+                include_insights=include_insights,
+                memories_block=_memories_block(recalled),
+                base_dir=base_dir,
+            ) as ws:
+                deps.ws = ws
+                # CLAUDE.md is passed as the system prompt rather than relied on
+                # being auto-read: the SDK only discovers a cwd CLAUDE.md when
+                # `setting_sources` includes "project", which would also drag the
+                # host's user/project settings into a server run. The file stays in
+                # the workspace so Read/Grep still see it.
+                system_prompt = (ws / "CLAUDE.md").read_text(encoding="utf-8")
+                trace = SdkTrace(system_prompt=system_prompt, question=question)
+                server = build_tool_server(
+                    sdk,
+                    deps,
+                    max_extracts=settings.max_sql_attempts,
+                    max_runs=settings.sandbox_run_attempts,
+                )
+                options = sdk.ClaudeAgentOptions(
+                    model=settings.sdk_model,
+                    cwd=str(ws),
+                    system_prompt=system_prompt,
+                    max_turns=settings.agent_request_limit,
+                    mcp_servers={MCP_SERVER: server},
+                    # `tools` restricts the built-in toolset (no Bash/Write/Edit in
+                    # the workspace); `allowed_tools` auto-approves what is left, so
+                    # a headless run never blocks on a permission prompt.
+                    tools=list(ALLOWED_TOOLS),
+                    allowed_tools=list(ALLOWED_TOOLS),
+                    hooks={"PreToolUse": [sdk.HookMatcher(hooks=[make_knowledge_hook(deps)])]},
+                    env=cli_env(),
+                )
+                await _drive(sdk, options, question, deps, trace)
 
-        return _assemble(deps, trace, question, plan)
-    except AgentSdkUnavailable:
-        raise  # a misconfiguration, not a runtime failure — never hide it
-    except Exception as exc:  # noqa: BLE001 — never let this path break the app
-        if trace is None:
+            result = _assemble(deps, trace, question, plan)
+            _finish_span(span, deps=deps, trace=trace)
+            return result
+        except AgentSdkUnavailable:
+            _finish_span(span, deps=deps, trace=trace)
+            raise  # a misconfiguration, not a runtime failure — never hide it
+        except Exception as exc:  # noqa: BLE001 — never let this path break the app
+            if trace is None:
+                print(f"[data-agent] agent_sdk path unavailable, using stub: {exc}")
+                _finish_span(span, deps=deps, trace=trace)
+                return None
+            if deps.report is not None or deps.no_answer:
+                # The champion salvages the same way: a failure AFTER the report was
+                # built (a dropped transport on the confirmation turn, say) must
+                # still deliver the report the user already watched stream in.
+                print(f"[data-agent] agent_sdk run errored ({exc}); using result built so far")
+                with contextlib.suppress(Exception):
+                    result = _assemble(deps, trace, question, plan)
+                    _finish_span(span, deps=deps, trace=trace)
+                    return result
             print(f"[data-agent] agent_sdk path unavailable, using stub: {exc}")
-            return None
-        if deps.report is not None or deps.no_answer:
-            # The champion salvages the same way: a failure AFTER the report was
-            # built (a dropped transport on the confirmation turn, say) must
-            # still deliver the report the user already watched stream in.
-            print(f"[data-agent] agent_sdk run errored ({exc}); using result built so far")
-            with contextlib.suppress(Exception):
-                return _assemble(deps, trace, question, plan)
-        print(f"[data-agent] agent_sdk path unavailable, using stub: {exc}")
-        return _salvage(deps, trace, str(exc))
+            out = _salvage(deps, trace, str(exc))
+            _finish_span(span, deps=deps, trace=trace)
+            return out
 
 
 async def _drive(

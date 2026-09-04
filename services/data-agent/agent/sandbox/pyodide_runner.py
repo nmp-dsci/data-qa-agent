@@ -26,7 +26,10 @@ from typing import Any
 import pandas as pd
 
 from .contract import AnalysisResult, SkillGap
-from .runner import _SAFE_BUILTIN_NAMES  # single source of truth for the allowlist
+from .runner import (
+    _IMPORTABLE_MODULES,  # single source of truth for the allowlists
+    _SAFE_BUILTIN_NAMES,
+)
 
 _HOST_SCRIPT = Path(__file__).with_name("pyodide_host.mjs")
 _WALLCLOCK_SECONDS = 30  # > subprocess cap: Pyodide cold-starts pandas (~2-4s) per run
@@ -65,6 +68,7 @@ def run_code(
             "code": code,
             "frames": {name: _frame_payload(f) for name, f in all_frames.items()},
             "safe_builtins": list(_SAFE_BUILTIN_NAMES),
+            "importable_modules": sorted(_IMPORTABLE_MODULES),
         },
         default=str,
     )

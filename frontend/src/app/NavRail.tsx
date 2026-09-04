@@ -17,6 +17,7 @@ import { ReactElement } from "react";
 import {
   BarChart3,
   Compass,
+  Cpu,
   Gauge,
   LogOut,
   MessageSquare,
@@ -39,6 +40,7 @@ export type View =
   | "goldens"
   | "evals"
   | "ops"
+  | "architecture"
   | "admin"
   | "analytics"
   | "settings";
@@ -69,6 +71,15 @@ const ITEMS: {
   // (s32). Renamed from "Ops" in s33 — the rail shows names now, and an
   // abbreviation that saved nothing was the only one in the list.
   { view: "ops", label: "Operations", icon: () => <Radar {...GLYPH} />, adminOnly: true },
+  // s45 M5: the GenAI system itself, visualised — pipeline, knowledge base,
+  // tool registry, and a real run's trace. The agent_sdk migration's demo
+  // surface as much as an admin tool.
+  {
+    view: "architecture",
+    label: "Architecture",
+    icon: () => <Cpu {...GLYPH} />,
+    adminOnly: true,
+  },
   { view: "admin", label: "Admin", icon: () => <ShieldCheck {...GLYPH} />, adminOnly: true },
   // s38 P2.5: first-party visitor analytics — uniques, funnel, top questions.
   {

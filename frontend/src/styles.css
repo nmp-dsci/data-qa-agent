@@ -1150,6 +1150,57 @@ th.sortable:hover { color: var(--text); }
 .config-note { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .badge.secret { color: var(--accent); border-color: var(--warn-border); margin-left: 6px; }
 
+/* ---------------------------------------------------------------------------
+   Architecture tab (M5, agent_sdk migration) — reuses .config-card/.config-
+   table for the tools registry and ui/AgentTrace's .trace-* for the run
+   walk-through; only the system map and the knowledge-base split pane are new.
+--------------------------------------------------------------------------- */
+.architecture { gap: 0; align-self: center; width: 100%; max-width: 1180px; min-width: 0; }
+.arch-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.arch-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; max-width: 640px; }
+.arch-section { margin-top: 22px; min-width: 0; }
+.arch-section-label { display: block; margin-bottom: 8px; }
+
+.arch-map { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px 14px; }
+.arch-map-foot { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.arch-map-note { font-size: 12.5px; color: var(--text); }
+.arch-map-note strong { color: var(--muted); font-weight: 500; margin-right: 6px; }
+.arch-runtime-badge { display: inline-flex; align-items: center; gap: 8px; }
+.arch-runtime-badge code { color: var(--text); }
+
+.arch-kb { display: grid; grid-template-columns: minmax(220px, 280px) 1fr; gap: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); min-height: 320px; overflow: hidden; }
+.arch-kb-list { border-right: 1px solid var(--border); padding: 10px; overflow-y: auto; max-height: 520px; }
+.arch-kb-version { font-family: var(--mono); font-size: 10.5px; margin-bottom: 8px; }
+.arch-kb-group { margin-bottom: 10px; }
+.arch-kb-group-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; padding: 0 4px; }
+.arch-kb-item { display: flex; width: 100%; align-items: center; gap: 6px; padding: 5px 6px; border-radius: var(--radius-sm); border: 1px solid transparent; background: none; color: var(--text); font-size: 12px; text-align: left; cursor: pointer; }
+.arch-kb-item:hover { background: var(--panel-2); }
+.arch-kb-item.active { background: var(--panel-2); border-color: var(--border-2); color: var(--accent); }
+.arch-kb-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.arch-kb-item-size { font-size: 10.5px; flex: 0 0 auto; }
+.arch-kb-pane { padding: 14px 16px; overflow-y: auto; max-height: 520px; min-width: 0; }
+.arch-kb-pane-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.arch-kb-content { margin: 10px 0 0; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+
+.arch-tools-table th:first-child, .arch-tools-table td:first-child { width: 22%; }
+.arch-tools-table th:nth-child(2) { width: 8%; }
+.arch-tools-table th:nth-child(4), .arch-tools-table th:nth-child(5) { width: 20%; }
+
+.arch-runs { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 14px; align-items: start; }
+.arch-runs-list { display: flex; flex-direction: column; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; max-height: 560px; overflow-y: auto; }
+.arch-run-item { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; width: 100%; padding: 7px 9px; border-radius: var(--radius-sm); border: 1px solid transparent; background: none; text-align: left; cursor: pointer; }
+.arch-run-item:hover { background: var(--panel-2); }
+.arch-run-item.active { background: var(--panel-2); border-color: var(--border-2); }
+.arch-run-q { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.arch-run-when { font-size: 10.5px; }
+.arch-run-detail { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
+.arch-run-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+@media (max-width: 860px) {
+  .arch-kb { grid-template-columns: 1fr; }
+  .arch-kb-list { border-right: none; border-bottom: 1px solid var(--border); max-height: 200px; }
+  .arch-runs { grid-template-columns: 1fr; }
+}
+
 /* a11y: consistent keyboard-focus affordance */
 button:focus-visible, input:focus-visible, textarea:focus-visible,
 a:focus-visible, [role="option"]:focus-visible {

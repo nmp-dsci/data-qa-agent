@@ -47,6 +47,12 @@ const ExplorePage = lazy(() =>
 // The Ops deck (s32) is admin-only and rarely the landing tab, so it code-splits
 // as well — its chart wrappers only load when an admin opens it.
 const OpsPage = lazy(() => import("../features/ops/OpsPage").then((m) => ({ default: m.OpsPage })));
+// s45 M5: the Architecture tab — admin-only, code-split like Ops.
+const ArchitecturePage = lazy(() =>
+  import("../features/architecture/ArchitecturePage").then((m) => ({
+    default: m.ArchitecturePage,
+  })),
+);
 // s38 P2.5: the visitor-analytics dashboard — admin-only, code-split like Ops.
 const AnalyticsPage = lazy(() =>
   import("../features/analytics/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })),
@@ -97,11 +103,12 @@ const ROUTES: View[] = [
   "goldens",
   "evals",
   "ops",
+  "architecture",
   "admin",
   "analytics",
   "settings",
 ];
-const ADMIN_ROUTES: View[] = ["goldens", "evals", "ops", "admin", "analytics"];
+const ADMIN_ROUTES: View[] = ["goldens", "evals", "ops", "architecture", "admin", "analytics"];
 // s38: demo visitors may open the admin tabs as read-only static exhibits
 // (D4) — every mutation 403s server-side — but never Analytics, which is
 // about them, not for them.
@@ -408,6 +415,12 @@ export default function App() {
     ...(user?.role === "admin"
       ? [
           { id: "ops", label: "Go to Operations", hint: "navigate", run: () => setView("ops") },
+          {
+            id: "architecture",
+            label: "Go to Architecture",
+            hint: "navigate",
+            run: () => setView("architecture"),
+          },
           { id: "admin", label: "Go to Admin", hint: "navigate", run: () => setView("admin") },
         ]
       : []),
@@ -501,6 +514,19 @@ export default function App() {
               }
             >
               <OpsPage />
+            </Suspense>
+          )}
+          {view === "architecture" && (
+            <Suspense
+              fallback={
+                <main aria-busy="true">
+                  <div className="skel" style={{ height: 28, width: "30%" }} />
+                  <div className="skel" style={{ height: 120, marginTop: 12 }} />
+                  <div className="skel" style={{ height: 220, marginTop: 12 }} />
+                </main>
+              }
+            >
+              <ArchitecturePage />
             </Suspense>
           )}
           {view === "analytics" && (

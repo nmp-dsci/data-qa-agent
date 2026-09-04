@@ -305,6 +305,15 @@ class _SbDeps:
             if kind not in self.pages_emitted:
                 self.emit_frame("page", {"index": index, "kind": kind, "status": "skipped"})
 
+    def after_frame(self, name: str, frame: Any) -> None:
+        """Hook fired once a governed extract lands a DataFrame in ``frames``.
+
+        A no-op for the pydantic-ai runtime, which hands frames straight to the
+        sandbox. The Agent SDK runtime overrides it to also drop a head-sample
+        CSV into the run workspace's ``frames/`` directory, so the model can
+        Read what it actually extracted (agent_sdk M1).
+        """
+
 
 async def answer_with_sandbox(
     question: str,
@@ -693,40 +702,259 @@ def _decision_log(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Tool implementations, shared by both runtimes.
+#
+# Each ``_do_*`` coroutine is the tool's whole behaviour — quota accounting,
+# telemetry steps, page emission, the exact strings returned to the model. The
+# pydantic-ai tools below are thin wrappers over them, and the Agent SDK
+# runtime (``sdk_agent.py``) wraps the SAME coroutines as in-process MCP tools.
+# Extracted from the pydantic-ai closures verbatim so the challenger cannot
+# drift from the champion: there is one implementation, not two.
+# ---------------------------------------------------------------------------
+
+
+async def _do_search_knowledge(deps: _SbDeps, query: str, why: str = "") -> str:
+    deps.emit("Searching knowledge", query)
+    text, inlined = search_knowledge_result(query)
+    for name in inlined:
+        if name not in deps.knowledge_pages:
+            deps.knowledge_pages.append(name)
+            deps.knowledge_reads += 1
+            deps.steps.append({"kind": "knowledge", "status": "inlined", "name": name, "why": why})
+    return text
+
+
+async def _do_read_knowledge(deps: _SbDeps, name: str, why: str = "") -> str:
+    if name in deps.knowledge_pages:
+        return f"(already loaded '{name}' earlier — see above.)"
+    if deps.knowledge_reads >= settings.max_knowledge_reads:
+        return "knowledge read limit reached; proceed with the pages you have."
+    deps.emit("Reading knowledge", name)
+    deps.knowledge_pages.append(name)
+    deps.knowledge_reads += 1
+    deps.steps.append({"kind": "knowledge", "status": "read", "name": name, "why": why})
+    return read_knowledge(name)
+
+
+async def _do_describe_table(deps: _SbDeps, table: str, why: str = "") -> str:
+    deps.emit("Inspecting schema", table)
+    deps.steps.append({"kind": "schema", "status": "described", "table": table, "why": why})
+    return describe_table(table)
+
+
+async def _do_lookup_values(
+    deps: _SbDeps, column: str, pattern: str, table: str, why: str = ""
+) -> str:
+    deps.emit("Resolving values", f"{table}.{column}")
+    sql = _lookup_values_sql(table, column, pattern)
+    if sql is None:
+        return f"lookup_values: unknown table/column {table!r}.{column!r}."
+    from .db import run_select
+
+    try:
+        result = await run_select(sql, user_id=deps.user_id)
+    except Exception as exc:  # noqa: BLE001
+        return f"lookup_values failed: {exc}"
+    values = [row[0] for row in result["rows"]]
+    deps.steps.append(
+        {"kind": "lookup", "table": table, "column": column, "values": values, "why": why}
+    )
+    return json.dumps({"column": column, "matches": values})
+
+
+async def _do_extract(
+    deps: _SbDeps,
+    sql: str,
+    name: str = "df",
+    purpose: str = "",
+    why: str = "",
+    *,
+    max_extracts: int,
+) -> str:
+    if deps.sql_calls >= max_extracts:
+        deps.sql_refusals += 1
+        if deps.sql_refusals > 1:
+            raise SandboxBudgetExhausted(
+                f"extract called after the {max_extracts}-attempt budget was spent"
+            )
+        return "STOP: no extract attempts left. Analyse the frames you have."
+    deps.sql_calls += 1
+    remaining = max_extracts - deps.sql_calls
+    deps.emit("Querying data", purpose or f"attempt {deps.sql_calls}")
+    try:
+        frame, result = await run_extract(sql, user_id=deps.user_id)
+    except Exception as exc:  # noqa: BLE001 — let the model self-correct
+        deps.steps.append(
+            {
+                "kind": "sql",
+                "sql": sql,
+                "status": "error",
+                "error": str(exc),
+                "purpose": purpose,
+                "why": why,
+            }
+        )
+        return f"extract failed: {exc}. Use schema-qualified names. {remaining} attempt(s) left."
+    ref = deps.next_id("Q", deps.queries)
+    deps.queries[ref] = {
+        "sql": result["sql"],
+        "columns": result["columns"],
+        "rows": result["rows"],
+        "row_count": result["row_count"],
+        "purpose": purpose,
+    }
+    deps.frames[name] = frame
+    deps.after_frame(name, frame)
+    deps.steps.append(
+        {
+            "kind": "sql",
+            "sql": result["sql"],
+            "status": "success",
+            "row_count": result["row_count"],
+            "ref": ref,
+            "frame": name,
+            "purpose": purpose,
+            "why": why,
+        }
+    )
+    head = [dict(zip(result["columns"], row, strict=True)) for row in result["rows"][:5]]
+    return json.dumps(
+        {
+            "frame": name,
+            "ref": ref,
+            "columns": result["columns"],
+            "row_count": result["row_count"],
+            "head": head,
+            "attempts_remaining": remaining,
+        },
+        default=str,
+    )
+
+
+async def _do_run_analysis(deps: _SbDeps, code: str, why: str = "", *, max_runs: int) -> str:
+    if not deps.frames:
+        return "no data yet — call extract(sql) first to load a DataFrame."
+    if deps.run_calls >= max_runs:
+        deps.run_refusals += 1
+        if deps.report is None:
+            raise SandboxBudgetExhausted(
+                "run_analysis budget was spent before a report was built. "
+                "The analysis code must assign `result = skills.build_report(...)`."
+            )
+        if deps.run_refusals > 1:
+            raise SandboxBudgetExhausted(
+                f"run_analysis called after the {max_runs}-attempt budget was spent"
+            )
+        return "STOP: no run_analysis attempts left. Use the report already built."
+    deps.run_calls += 1
+    deps.emit("Building the report", "")
+    # s40 M0: run_code blocks on a subprocess; off the event loop so one
+    # sandbox pass can't stall every other request on this worker.
+    result = await asyncio.to_thread(run_code, code, frames=deps.frames)
+    # Accumulate across passes — pass 2's telemetry must not erase pass 1's.
+    for name in result.skills_used:
+        if name not in deps.skills_used:
+            deps.skills_used.append(name)
+    deps.skill_gaps.extend(g.model_dump() for g in result.skill_gaps)
+    deps.used_inline_math = deps.used_inline_math or result.used_inline_math
+    deps.steps.append(
+        {
+            "kind": "analysis",
+            "status": "error" if result.error else "ok",
+            "skills_used": result.skills_used,
+            "skill_gaps": [g.model_dump() for g in result.skill_gaps],
+            "error": result.error,
+            "why": why,
+        }
+    )
+    if result.error:
+        return f"run_analysis error (fix and retry): {result.error}"
+    if result.report is None:
+        missing_report = (
+            "sandbox code completed but did not assign a report dict to `result`. "
+            "Fix the code and end with `result = skills.build_report(...)`."
+        )
+        deps.steps[-1]["status"] = "error"
+        deps.steps[-1]["error"] = missing_report
+        return f"run_analysis error (fix and retry): {missing_report}"
+    gap_note = f" Skill gaps recorded: {deps.skill_gaps}." if deps.skill_gaps else ""
+
+    # --- PASS 2: an insights patch merges into the pass-1 report -------------
+    if result.report.get("element_id") == "insights_patch":
+        if deps.report is None:
+            missing_pass1 = (
+                "build_insights ran before build_report: run PASS 1 first "
+                "(result = skills.build_report(...)), then add insights."
+            )
+            deps.steps[-1]["status"] = "error"
+            deps.steps[-1]["error"] = missing_pass1
+            return f"run_analysis error (fix and retry): {missing_pass1}"
+        deps.report["insights"] = result.report.get("insights") or []
+        if result.report.get("profiles"):
+            deps.report["profiles"] = result.report["profiles"]
+        page, _ = compose_insights_page(deps.report)
+        if page is not None:
+            deps.emit("Streaming page 2", "insights")
+            deps.emit_page("insights", page)
+        return (
+            f"insights merged into the report. Skills used: {result.skills_used}."
+            f"{gap_note} Now return a one-line confirmation."
+        )
+
+    # --- PASS 1 (or a single-pass full report) -------------------------------
+    deps.report = result.report
+    page, _ = compose_summary_page(deps.report)
+    if page is not None:
+        deps.emit("Streaming page 1", "summary")
+        deps.emit_page("summary", page)
+    # A single-pass model may have included insights already — stream them.
+    if deps.report.get("insights") or deps.report.get("profiles"):
+        page2, _ = compose_insights_page(deps.report)
+        if page2 is not None:
+            deps.emit_page("insights", page2)
+    elif "insights" in deps.page_indexes:
+        return (
+            f"report built — Page 1 is streaming. Skills used: {result.skills_used}."
+            f"{gap_note} Now run PASS 2: slice the same frame by its attribute "
+            "columns and assign result = skills.build_insights(insights=[...]) "
+            "to explain the headline. Do NOT extract again."
+        )
+    return (
+        f"report built. Skills used: {result.skills_used}.{gap_note} "
+        "Now return a one-line confirmation."
+    )
+
+
+async def _do_no_answer(deps: _SbDeps, reason: str, why: str = "") -> str:
+    deps.emit("Concluding", "data can't answer this")
+    deps.no_answer = reason
+    deps.steps.append({"kind": "no_answer", "reason": reason, "why": why})
+    return "recorded no_answer; now return a one-line confirmation."
+
+
+async def _do_remember(deps: _SbDeps, fact: str) -> str:
+    deps.emit("Saving preference", fact)
+    await remember_memory(deps.user_id, fact)
+    deps.steps.append({"kind": "memory", "status": "saved", "fact": fact})
+    return "remembered"
+
+
 def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_runs: int) -> None:
     @agent.tool(name="search_knowledge")
     async def search_knowledge_tool(ctx: RunContext[_SbDeps], query: str, why: str = "") -> str:
         """Search the Insight Playbook for pages relevant to the question."""
-        ctx.deps.emit("Searching knowledge", query)
-        text, inlined = search_knowledge_result(query)
-        for name in inlined:
-            if name not in ctx.deps.knowledge_pages:
-                ctx.deps.knowledge_pages.append(name)
-                ctx.deps.knowledge_reads += 1
-                ctx.deps.steps.append(
-                    {"kind": "knowledge", "status": "inlined", "name": name, "why": why}
-                )
-        return text
+        return await _do_search_knowledge(ctx.deps, query, why)
 
     @agent.tool(name="read_knowledge")
     async def read_knowledge_tool(ctx: RunContext[_SbDeps], name: str, why: str = "") -> str:
         """Load the full body of a knowledge page by name."""
-        if name in ctx.deps.knowledge_pages:
-            return f"(already loaded '{name}' earlier — see above.)"
-        if ctx.deps.knowledge_reads >= settings.max_knowledge_reads:
-            return "knowledge read limit reached; proceed with the pages you have."
-        ctx.deps.emit("Reading knowledge", name)
-        ctx.deps.knowledge_pages.append(name)
-        ctx.deps.knowledge_reads += 1
-        ctx.deps.steps.append({"kind": "knowledge", "status": "read", "name": name, "why": why})
-        return read_knowledge(name)
+        return await _do_read_knowledge(ctx.deps, name, why)
 
     @agent.tool(name="describe_table")
     async def describe_table_tool(ctx: RunContext[_SbDeps], table: str, why: str = "") -> str:
         """Full column-level docs for one table (schema.table)."""
-        ctx.deps.emit("Inspecting schema", table)
-        ctx.deps.steps.append({"kind": "schema", "status": "described", "table": table, "why": why})
-        return describe_table(table)
+        return await _do_describe_table(ctx.deps, table, why)
 
     @agent.tool
     async def lookup_values(
@@ -744,21 +972,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         matching is case-insensitive contains, so plain words work — never retry
         with different casing.
         """
-        ctx.deps.emit("Resolving values", f"{table}.{column}")
-        sql = _lookup_values_sql(table, column, pattern)
-        if sql is None:
-            return f"lookup_values: unknown table/column {table!r}.{column!r}."
-        from .db import run_select
-
-        try:
-            result = await run_select(sql, user_id=ctx.deps.user_id)
-        except Exception as exc:  # noqa: BLE001
-            return f"lookup_values failed: {exc}"
-        values = [row[0] for row in result["rows"]]
-        ctx.deps.steps.append(
-            {"kind": "lookup", "table": table, "column": column, "values": values, "why": why}
-        )
-        return json.dumps({"column": column, "matches": values})
+        return await _do_lookup_values(ctx.deps, column, pattern, table, why)
 
     # NOTE: no list_skills tool — the full catalog is already in the system
     # prompt verbatim; a tool for it just tempted the model into a wasted turn.
@@ -772,65 +986,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         why: str = "",
     ) -> str:
         """Run a governed SELECT; the result is loaded as a pandas DataFrame `name`."""
-        if ctx.deps.sql_calls >= max_extracts:
-            ctx.deps.sql_refusals += 1
-            if ctx.deps.sql_refusals > 1:
-                raise SandboxBudgetExhausted(
-                    f"extract called after the {max_extracts}-attempt budget was spent"
-                )
-            return "STOP: no extract attempts left. Analyse the frames you have."
-        ctx.deps.sql_calls += 1
-        remaining = max_extracts - ctx.deps.sql_calls
-        ctx.deps.emit("Querying data", purpose or f"attempt {ctx.deps.sql_calls}")
-        try:
-            frame, result = await run_extract(sql, user_id=ctx.deps.user_id)
-        except Exception as exc:  # noqa: BLE001 — let the model self-correct
-            ctx.deps.steps.append(
-                {
-                    "kind": "sql",
-                    "sql": sql,
-                    "status": "error",
-                    "error": str(exc),
-                    "purpose": purpose,
-                    "why": why,
-                }
-            )
-            return (
-                f"extract failed: {exc}. Use schema-qualified names. {remaining} attempt(s) left."
-            )
-        ref = ctx.deps.next_id("Q", ctx.deps.queries)
-        ctx.deps.queries[ref] = {
-            "sql": result["sql"],
-            "columns": result["columns"],
-            "rows": result["rows"],
-            "row_count": result["row_count"],
-            "purpose": purpose,
-        }
-        ctx.deps.frames[name] = frame
-        ctx.deps.steps.append(
-            {
-                "kind": "sql",
-                "sql": result["sql"],
-                "status": "success",
-                "row_count": result["row_count"],
-                "ref": ref,
-                "frame": name,
-                "purpose": purpose,
-                "why": why,
-            }
-        )
-        head = [dict(zip(result["columns"], row, strict=True)) for row in result["rows"][:5]]
-        return json.dumps(
-            {
-                "frame": name,
-                "ref": ref,
-                "columns": result["columns"],
-                "row_count": result["row_count"],
-                "head": head,
-                "attempts_remaining": remaining,
-            },
-            default=str,
-        )
+        return await _do_extract(ctx.deps, sql, name, purpose, why, max_extracts=max_extracts)
 
     @agent.tool
     async def run_analysis(ctx: RunContext[_SbDeps], code: str, why: str = "") -> str:
@@ -840,97 +996,7 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         the skills used on success, or the error to fix. Prefer skills; if none
         fits you MAY use pandas but MUST call skills.skill_gap(need, why).
         """
-        if not ctx.deps.frames:
-            return "no data yet — call extract(sql) first to load a DataFrame."
-        if ctx.deps.run_calls >= max_runs:
-            ctx.deps.run_refusals += 1
-            if ctx.deps.report is None:
-                raise SandboxBudgetExhausted(
-                    "run_analysis budget was spent before a report was built. "
-                    "The analysis code must assign `result = skills.build_report(...)`."
-                )
-            if ctx.deps.run_refusals > 1:
-                raise SandboxBudgetExhausted(
-                    f"run_analysis called after the {max_runs}-attempt budget was spent"
-                )
-            return "STOP: no run_analysis attempts left. Use the report already built."
-        ctx.deps.run_calls += 1
-        ctx.deps.emit("Building the report", "")
-        # s40 M0: run_code blocks on a subprocess; off the event loop so one
-        # sandbox pass can't stall every other request on this worker.
-        result = await asyncio.to_thread(run_code, code, frames=ctx.deps.frames)
-        # Accumulate across passes — pass 2's telemetry must not erase pass 1's.
-        for name in result.skills_used:
-            if name not in ctx.deps.skills_used:
-                ctx.deps.skills_used.append(name)
-        ctx.deps.skill_gaps.extend(g.model_dump() for g in result.skill_gaps)
-        ctx.deps.used_inline_math = ctx.deps.used_inline_math or result.used_inline_math
-        ctx.deps.steps.append(
-            {
-                "kind": "analysis",
-                "status": "error" if result.error else "ok",
-                "skills_used": result.skills_used,
-                "skill_gaps": [g.model_dump() for g in result.skill_gaps],
-                "error": result.error,
-                "why": why,
-            }
-        )
-        if result.error:
-            return f"run_analysis error (fix and retry): {result.error}"
-        if result.report is None:
-            missing_report = (
-                "sandbox code completed but did not assign a report dict to `result`. "
-                "Fix the code and end with `result = skills.build_report(...)`."
-            )
-            ctx.deps.steps[-1]["status"] = "error"
-            ctx.deps.steps[-1]["error"] = missing_report
-            return f"run_analysis error (fix and retry): {missing_report}"
-        gap_note = f" Skill gaps recorded: {ctx.deps.skill_gaps}." if ctx.deps.skill_gaps else ""
-
-        # --- PASS 2: an insights patch merges into the pass-1 report ---------
-        if result.report.get("element_id") == "insights_patch":
-            if ctx.deps.report is None:
-                missing_pass1 = (
-                    "build_insights ran before build_report: run PASS 1 first "
-                    "(result = skills.build_report(...)), then add insights."
-                )
-                ctx.deps.steps[-1]["status"] = "error"
-                ctx.deps.steps[-1]["error"] = missing_pass1
-                return f"run_analysis error (fix and retry): {missing_pass1}"
-            ctx.deps.report["insights"] = result.report.get("insights") or []
-            if result.report.get("profiles"):
-                ctx.deps.report["profiles"] = result.report["profiles"]
-            page, _ = compose_insights_page(ctx.deps.report)
-            if page is not None:
-                ctx.deps.emit("Streaming page 2", "insights")
-                ctx.deps.emit_page("insights", page)
-            return (
-                f"insights merged into the report. Skills used: {result.skills_used}."
-                f"{gap_note} Now return a one-line confirmation."
-            )
-
-        # --- PASS 1 (or a single-pass full report) ---------------------------
-        ctx.deps.report = result.report
-        page, _ = compose_summary_page(ctx.deps.report)
-        if page is not None:
-            ctx.deps.emit("Streaming page 1", "summary")
-            ctx.deps.emit_page("summary", page)
-        # A single-pass model may have included insights already — stream them.
-        if ctx.deps.report.get("insights") or ctx.deps.report.get("profiles"):
-            page2, _ = compose_insights_page(ctx.deps.report)
-            if page2 is not None:
-                ctx.deps.emit_page("insights", page2)
-        elif "insights" in ctx.deps.page_indexes:
-            return (
-                f"report built — Page 1 is streaming. Skills used: {result.skills_used}."
-                f"{gap_note} Now run PASS 2: slice the same frame by its attribute "
-                "columns and assign result = skills.build_insights(insights=[...]) "
-                "to explain the headline. Do NOT extract again."
-            )
-        return (
-            f"report built. Skills used: {result.skills_used}.{gap_note} "
-            "Now return a one-line confirmation."
-        )
+        return await _do_run_analysis(ctx.deps, code, why, max_runs=max_runs)
 
     @agent.tool
     async def no_answer(ctx: RunContext[_SbDeps], reason: str, why: str = "") -> str:
@@ -941,15 +1007,9 @@ def _register_sandbox_tools(agent: Agent[_SbDeps, str], max_extracts: int, max_r
         report. Give a short, user-facing reason (what's missing / what the data
         does cover). Then return a one-line confirmation.
         """
-        ctx.deps.emit("Concluding", "data can't answer this")
-        ctx.deps.no_answer = reason
-        ctx.deps.steps.append({"kind": "no_answer", "reason": reason, "why": why})
-        return "recorded no_answer; now return a one-line confirmation."
+        return await _do_no_answer(ctx.deps, reason, why)
 
     @agent.tool
     async def remember(ctx: RunContext[_SbDeps], fact: str) -> str:
         """Store a durable user preference about how they want answers."""
-        ctx.deps.emit("Saving preference", fact)
-        await remember_memory(ctx.deps.user_id, fact)
-        ctx.deps.steps.append({"kind": "memory", "status": "saved", "fact": fact})
-        return "remembered"
+        return await _do_remember(ctx.deps, fact)

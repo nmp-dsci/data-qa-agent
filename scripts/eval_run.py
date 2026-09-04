@@ -315,6 +315,15 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
             "error": f"ask failed: {exc}",
             "latency_ms": int((time.time() - started) * 1000),
         }
+    # s44 M3b: the raw answer, kept only for the opt-in MLflow per-case capture
+    # below (never persisted to app.eval_results — persist() reads a fixed set
+    # of keys and ignores this one).
+    raw_answer = {
+        "answer": answer.get("answer", ""),
+        "report": answer.get("report"),
+        "input_tokens": answer.get("input_tokens"),
+        "output_tokens": answer.get("output_tokens"),
+    }
 
     latency_ms = int((time.time() - started) * 1000)
     golden_rows = golden_truth(case, token)
@@ -396,6 +405,7 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
         "g4": g4,
         "passed": passed,
         "latency_ms": latency_ms,
+        "_raw": raw_answer,
     }
 
 
@@ -473,6 +483,146 @@ def persist(
     return run_id
 
 
+def mlflow_enabled() -> bool:
+    """One gate for every MLflow sink this script writes (s43 M3 + s45 M3b).
+
+    Defaults ON, matching s43 M3's original behaviour (and AGENTS.md):
+    ``EVAL_MLFLOW=0`` opts out. Every sink is soft-fail, so a down tracking
+    server degrades to a skipped mirror, never a failed ``make eval``. s45
+    M3b added a second, heavier sink — one MLflow run per graded case, with
+    the run's actual output as artifacts — sharing this flag and default.
+    """
+    return os.environ.get("EVAL_MLFLOW", "1") != "0"
+
+
+_FINGERPRINT_CACHE: dict[str, Any] | None = None
+
+
+def _fingerprint_components() -> dict[str, Any]:
+    """The live agent build fingerprint, fetched once per eval invocation.
+
+    Unlike the DB row (``app.agent_versions``, a fixed set of text columns —
+    see ``version.build_fingerprint``'s report), ``/agent/version`` returns
+    every component the running build computed, including the Agent SDK
+    runtime's extra ones (workspace/ordinals/quota hashes) that have nowhere
+    to live in the DB without a migration. Cached so N cases cost one HTTP
+    call, not N, and so every case in one run is stamped with the same
+    reading even if the agent wobbles mid-run.
+    """
+    global _FINGERPRINT_CACHE
+    if _FINGERPRINT_CACHE is None:
+        try:
+            _FINGERPRINT_CACHE = _http(f"{AGENT}/agent/version", timeout=10)
+        except Exception as exc:  # noqa: BLE001 — observability must not fail the eval
+            print(f"    ! /agent/version unavailable for MLflow params: {exc}")
+            _FINGERPRINT_CACHE = {}
+    return _FINGERPRINT_CACHE
+
+
+def _run_extras(run_id: str | None) -> dict[str, Any]:
+    """cost_usd + the full trace for a query_run.
+
+    Neither is on the ``/ask`` response for a non-admin replay user (cost_usd
+    isn't returned to any caller; the trace is admin-gated — see
+    ``backend-api/app/routers/ask.py``), so this reads them from the audit
+    trail the same way ``_turns_for`` above already does. Only called when
+    MLflow logging is on.
+    """
+    if not run_id:
+        return {}
+    out = _scalar(
+        "SELECT row_to_json(t) FROM (SELECT cost_usd, trace, agent_version_id "
+        f"FROM app.query_runs WHERE id = {_lit(run_id)}::uuid) t"
+    )
+    return json.loads(out) if out else {}
+
+
+def log_case_mlflow(
+    result: dict[str, Any],
+    *,
+    eval_run_id: str,
+    experiment: str | None,
+) -> None:
+    """s44 M3b: one MLflow run per graded case, with its actual output logged
+    as artifacts — the corpus a future optimisation loop (prompt/skill/
+    workspace tuning, or a judge trained on real answers) reads from.
+
+    Additive to ``log_mlflow``'s per-invocation summary above: that run is
+    what the Evaluations tab's base-vs-experiment compare reads; this one is
+    for looking at what the agent actually SAID on one specific case, with
+    every fingerprint component available as a param even where the DB has no
+    column for it. Both share the ``mlflow_enabled()`` gate. Soft-fail, same
+    reasoning as ``log_mlflow``: a down tracking server must never fail
+    `make eval`, so one case's logging failure is swallowed and reported, not
+    raised.
+    """
+    if not mlflow_enabled():
+        return
+    if result.get("error"):
+        return  # nothing ran; not worth a run row
+    try:
+        import mlflow_client as mc  # noqa: PLC0415 — optional sink, same dir
+
+        fp = _fingerprint_components()
+        extras = _run_extras(result.get("query_run_id"))
+        exp_id = mc.ensure_experiment(mc.EVALS_EXPERIMENT)
+        run_id = mc.start_run(
+            exp_id,
+            f"case · {result.get('case_key', '?')}",
+            tags={
+                "kind": "eval_case",
+                "eval_run_id": eval_run_id,
+                "case_key": result.get("case_key"),
+                "experiment": experiment,
+                "agent_version_id": extras.get("agent_version_id"),
+            },
+        )
+        g1 = result.get("g1") or {}
+        g2 = result.get("g2") or {}
+        g3 = result.get("g3") or {}
+        g3_format = g3.get("format") or {}
+        g3_insight = g3.get("insight") or {}
+        raw = result.get("_raw") or {}
+        mc.log_batch(
+            run_id,
+            params={
+                "case_key": result.get("case_key"),
+                "dataset": result.get("dataset"),
+                "tier": result.get("tier"),
+                "model": fp.get("model_id"),
+                "runtime": fp.get("runtime", "pydantic_ai"),
+                "provider": fp.get("provider"),
+                "agent_version_fingerprint": fp.get("fingerprint"),
+                # Every fingerprint component the build computed, namespaced so
+                # it never collides with the explicit params above — this is
+                # what carries the Agent SDK runtime's individual components
+                # (claude_md_hash, ordinals_hash, quota_settings, ...) that
+                # app.agent_versions itself has no column for.
+                **{f"fp_{k}": v for k, v in fp.items()},
+            },
+            metrics={
+                "g1_score": g1.get("score"),
+                "g2_score": g2.get("score"),
+                "g3_format_passed": 1.0 if g3_format.get("passed") else 0.0,
+                "g3_insight_total": g3_insight.get("total"),
+                "passed": 1.0 if result.get("passed") else 0.0,
+                "turns": (result.get("g4") or {}).get("turns"),
+                "input_tokens": raw.get("input_tokens"),
+                "output_tokens": raw.get("output_tokens"),
+                "cost_usd": extras.get("cost_usd"),
+                "latency_ms": result.get("latency_ms"),
+            },
+        )
+        mc.log_text_artifact(run_id, "answer.txt", str(raw.get("answer") or ""))
+        if raw.get("report") is not None:
+            mc.log_json_artifact(run_id, "report.json", raw["report"])
+        if extras.get("trace") is not None:
+            mc.log_json_artifact(run_id, "trace.json", extras["trace"])
+        mc.end_run(run_id)
+    except Exception as exc:  # noqa: BLE001 — observability must not fail the eval
+        print(f"    mlflow(case) · skipped ({exc})")
+
+
 def log_mlflow(
     results: list[dict[str, Any]],
     totals: dict[str, Any],
@@ -488,9 +638,10 @@ def log_mlflow(
     source of truth, so a down tracking server must never fail `make eval`.
     Params carry the build fingerprint + the experiment framing; metrics carry
     the totals plus per-tier pass rates; tags carry the DB ids so the two
-    stores reconcile. EVAL_MLFLOW=0 skips entirely.
+    stores reconcile. Skipped when ``EVAL_MLFLOW=0`` (see
+    ``mlflow_enabled()``).
     """
-    if os.environ.get("EVAL_MLFLOW", "1") == "0":
+    if not mlflow_enabled():
         return
     try:
         import mlflow_client as mc  # noqa: PLC0415 — optional sink, same dir
@@ -624,6 +775,12 @@ def main() -> None:
     log_mlflow(
         results, totals, args=args, pack_v=pack_v, eval_run_id=run_id, agent_version_id=version_id
     )
+    # s44 M3b: one MLflow run per graded case (the eval_run_id above is only
+    # known once persist() has written it, so this is a pass over the already-
+    # graded results rather than logged inline during the scoring loop).
+    if mlflow_enabled():
+        for r in results:
+            log_case_mlflow(r, eval_run_id=run_id, experiment=args.experiment)
 
     print(f"\nrun {run_id}")
     for r in results:

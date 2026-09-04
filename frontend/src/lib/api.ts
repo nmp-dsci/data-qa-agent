@@ -2008,3 +2008,56 @@ export function getOpsRuns(limit = 25): Promise<OpsRun[]> {
 export function refreshOps(): Promise<{ refreshed: string[] }> {
   return adminPost<{ refreshed: string[] }>("/admin/ops/refresh", {});
 }
+
+/* ---------------------------------------------------------------------------
+ * Architecture tab (M5, agent_sdk migration) — a live snapshot of the GenAI
+ * system itself, proxied from the data-agent's GET /agent/architecture(/content).
+ * The run walk-through panel reuses getAdminQueryRuns above (source: "agent"),
+ * not a dedicated endpoint — see services/backend-api/app/routers/architecture.py.
+ * ------------------------------------------------------------------------- */
+
+export interface ArchitectureRuntime {
+  agent_runtime: string; // "pydantic_ai" (champion) | "agent_sdk" (challenger)
+  model: string;
+  provider: string;
+  sandbox_runtime: string;
+  quotas: Record<string, number>;
+  fingerprint: Record<string, string>; // av-* + component hashes (version.build_fingerprint)
+}
+
+export interface ArchitectureKnowledgeFile {
+  kind: "claude_md" | "marts" | "schema" | "knowledge";
+  id: string; // pass as `name` to getArchitectureContent; "" when not needed
+  filename: string; // the name this file has inside a real run workspace
+  label: string;
+  description: string;
+  size: number;
+  sha256?: string | null;
+}
+
+export interface ArchitectureTool {
+  kind: "mcp" | "builtin";
+  name: string;
+  server: string | null;
+  description: string;
+  input_schema: Record<string, unknown> | null;
+  quota: string;
+  guardrail: string;
+}
+
+export interface ArchitectureData {
+  available: boolean;
+  error?: string;
+  runtime?: ArchitectureRuntime;
+  knowledge?: { knowledge_version: string; files: ArchitectureKnowledgeFile[] };
+  tools?: ArchitectureTool[];
+}
+
+export function getArchitecture(): Promise<ArchitectureData> {
+  return adminGet<ArchitectureData>("/architecture");
+}
+
+export function getArchitectureContent(kind: string, name = ""): Promise<{ content: string }> {
+  const qs = new URLSearchParams({ kind, name });
+  return adminGet<{ content: string }>(`/architecture/content?${qs}`);
+}

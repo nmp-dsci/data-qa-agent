@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s45 · Data agent → Claude Agent SDK migration plan</title>
+<style>
+/* Night Flight tokens (frontend/src/styles.css), same as s40–s44. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae; --hud:#35803f;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.cards,.cols,.matrix-wrap,.two)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,td,th,.badge){overflow-wrap:anywhere}
+:where(img,svg){max-width:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+header.hero{padding:52px 0 28px;border-bottom:1px solid var(--border);margin-bottom:34px}
+h1{font-size:30px;line-height:1.2;margin:10px 0 10px;letter-spacing:-.02em}
+h1 .gold{color:var(--accent-soft)}
+h2{font-size:20px;margin:0 0 6px;letter-spacing:-.01em}
+h3{font-size:15px;margin:0 0 6px}
+h4{font-size:13.5px;margin:0 0 4px}
+p{margin:8px 0}
+.sub{color:var(--muted);max-width:82ch}
+section{margin:44px 0}
+.badge{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;
+  padding:2px 9px;border-radius:999px;border:1px solid var(--border-2);
+  color:var(--muted);background:var(--panel-2);letter-spacing:.04em;white-space:nowrap}
+.badge.gold{color:var(--accent-soft);border-color:var(--accent);background:transparent}
+.badge.good{color:var(--good);border-color:var(--good-border)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border)}
+.badge.info{color:var(--info);border-color:var(--info-border)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tinted{background:var(--panel-2)}
+.cards{display:grid;gap:14px}
+.cols-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.cols-3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.verdict{border-left:3px solid var(--good);background:var(--panel);
+  border-radius:0 var(--radius-lg) var(--radius-lg) 0;padding:16px 20px;margin:18px 0}
+.verdict strong{color:var(--good)}
+.callout{border-left:3px solid var(--warn);background:var(--panel);
+  border-radius:0 var(--radius-lg) var(--radius-lg) 0;padding:14px 18px;margin:16px 0}
+.callout strong{color:var(--warn)}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.55;margin:10px 0}
+pre code{background:none;border:none;padding:0}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+.matrix-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel);margin:12px 0}
+th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--faint);text-align:left;padding:10px 12px;border-bottom:1px solid var(--border-2);
+  background:var(--panel-2);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.impact{white-space:nowrap}
+.fig{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px;margin:14px 0}
+.fig figcaption{color:var(--muted);font-size:13px;margin-top:10px}
+.two{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+ol.steps{margin:8px 0;padding-left:22px}
+ol.steps li{margin:6px 0}
+ul.tight{margin:6px 0;padding-left:20px}
+ul.tight li{margin:4px 0}
+.phase{display:grid;grid-template-columns:110px minmax(0,1fr);gap:16px;
+  border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  padding:16px 18px;margin:12px 0}
+.phase .tag{font-family:var(--mono);font-weight:700;color:var(--accent-soft);font-size:14px}
+.phase .tag small{display:block;color:var(--faint);font-weight:400;font-size:10.5px;
+  letter-spacing:.1em;text-transform:uppercase;margin-top:4px}
+@media (max-width:640px){.phase{grid-template-columns:1fr}}
+.tree{font-family:var(--mono);font-size:12.5px;line-height:1.7;color:var(--muted)}
+.tree b{color:var(--text);font-weight:600}
+.tree .new{color:var(--good)}
+.tree .cm{color:var(--faint)}
+form.q{border:1px solid var(--border-2);border-radius:var(--radius-lg);
+  background:var(--panel-2);padding:16px 18px;margin:12px 0}
+form.q label{display:flex;gap:10px;align-items:flex-start;padding:7px 0;cursor:pointer}
+form.q input[type=radio]{margin-top:4px;accent-color:var(--accent)}
+form.q .opt b{display:block;font-size:14px}
+form.q .opt span{color:var(--muted);font-size:13px}
+form.q button{margin-top:10px;font-family:var(--mono);font-size:12px;font-weight:700;
+  background:var(--accent);color:var(--accent-ink);border:none;border-radius:6px;
+  padding:8px 14px;cursor:pointer;letter-spacing:.05em}
+form.q button:hover{background:var(--accent-soft)}
+.small{font-size:12.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <span class="lbl accent">s45 · plan for review · branch <span class="mono">agent_sdk</span></span>
+  <h1>Move the data agent onto the <span class="gold">Claude Agent SDK</span></h1>
+  <p class="sub">The data agent is a ReAct loop — one LLM making tool calls — currently driven by
+  <b>pydantic-ai</b> over DeepSeek. This plan swaps the loop engine for the <b>Claude Agent SDK</b>
+  (Python), running on the Claude subscription, moves knowledge / grounding to filesystem-native
+  patterns, and keeps everything else — sandbox, SQL guardrails, pages contract, evals, infra —
+  byte-for-byte identical. <b>Success = 5 golden questions answered through the app with the new
+  runtime, reproducing today's outputs.</b></p>
+  <div class="chips">
+    <span class="badge gold">rewrite ≈ 1.9k LOC</span>
+    <span class="badge good">untouched ≈ 7.8k LOC</span>
+    <span class="badge info">side-by-side rollout, flag-gated</span>
+    <span class="badge purple">MLflow champion / challenger ready</span>
+    <span class="badge good">decided: prod stays demo mode — no API-key prod</span>
+  </div>
+</header>
+
+<!-- ============ GOAL ============ -->
+<section id="goal">
+  <span class="lbl">Goal</span>
+  <h2>Recreate the status quo — only the loop engine changes</h2>
+  <div class="cards cols-3">
+    <div class="card">
+      <h3>What changes</h3>
+      <p class="sub" style="font-size:13.5px">The <b>agent runtime</b>: pydantic-ai's
+      <code>Agent.run()</code> tool-loop → Agent SDK <code>query()</code> with in-process MCP tools.
+      Knowledge lookup moves from bespoke tools to filesystem <code>Read</code>/<code>Grep</code>
+      over a per-run workspace. Auth moves from DeepSeek API key → Claude subscription token.</p>
+    </div>
+    <div class="card">
+      <h3>What must not change</h3>
+      <p class="sub" style="font-size:13.5px">The <code>/agent/ask</code> + SSE contract
+      (<code>plan / page / progress / status / result</code> frames), the
+      <code>AgentAnswer</code> &amp; <code>report.pages</code> shapes, SQL guardrails + RLS,
+      the sandbox, <code>query_runs</code> persistence, <code>make eval</code>, the frontend.</p>
+    </div>
+    <div class="card tinted">
+      <h3>Definition of success</h3>
+      <p class="sub" style="font-size:13.5px"><b>5 questions</b> run through the app on the
+      <code>agent_sdk</code> runtime and reproduce outputs similar to what the app already gives —
+      graded by the existing deterministic graders + judge, and eyeballed side-by-side in the
+      browser. Details in <a href="#gate" style="color:var(--accent-2)">the success gate</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CURRENT ============ -->
+<section id="current">
+  <span class="lbl">Current state</span>
+  <h2>One loop, eight tools, everything governed outside the model</h2>
+  <p class="sub">There is exactly one agent architecture today. <code>services/data-agent/agent/sandbox_agent.py</code>
+  (955 LOC) owns the whole loop: system-prompt assembly, tool registration, budgets, trace capture.
+  pydantic-ai owns retries and message history; <code>model_factory.py</code> adds a 4-attempt backoff
+  wrapper; budgets are tool-call quotas, not turn counts (extract ≤ 8, sandbox runs ≤ 4, knowledge
+  reads ≤ 6, model requests ≤ 22, tokens ≤ 600k).</p>
+
+  <figure class="fig">
+    <svg viewBox="0 0 1080 380" width="100%" role="img" aria-label="Current architecture: pydantic-ai loop with eight tools">
+      <title>Current: pydantic-ai ReAct loop</title>
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--faint)"/>
+        </marker>
+      </defs>
+      <g font-family="JetBrains Mono,monospace" font-size="12">
+        <!-- entry chain -->
+        <g id="cur-entry">
+          <rect x="20" y="40" width="150" height="52" rx="8" fill="var(--panel-2)" stroke="var(--border-2)"/>
+          <text x="95" y="62" text-anchor="middle" fill="var(--text)">frontend</text>
+          <text x="95" y="80" text-anchor="middle" fill="var(--faint)" font-size="10">askStreamInner · SSE</text>
+          <rect x="20" y="130" width="150" height="52" rx="8" fill="var(--panel-2)" stroke="var(--border-2)"/>
+          <text x="95" y="152" text-anchor="middle" fill="var(--text)">backend-api</text>
+          <text x="95" y="170" text-anchor="middle" fill="var(--faint)" font-size="10">ask.py · persists runs</text>
+          <rect x="20" y="220" width="150" height="52" rx="8" fill="var(--panel-2)" stroke="var(--border-2)"/>
+          <text x="95" y="242" text-anchor="middle" fill="var(--text)">data-agent</text>
+          <text x="95" y="260" text-anchor="middle" fill="var(--faint)" font-size="10">main.py /agent/ask</text>
+          <line x1="95" y1="92" x2="95" y2="130" stroke="var(--faint)" marker-end="url(#arr)"/>
+          <line x1="95" y1="182" x2="95" y2="220" stroke="var(--faint)" marker-end="url(#arr)"/>
+          <text x="105" y="212" fill="var(--faint)" font-size="10">or Redis queue → worker.py</text>
+        </g>
+        <!-- loop box -->
+        <g id="cur-loop">
+          <rect x="230" y="30" width="380" height="320" rx="10" fill="var(--panel)" stroke="var(--accent)" stroke-dasharray="0"/>
+          <text x="420" y="56" text-anchor="middle" fill="var(--accent-soft)" font-weight="700">sandbox_agent.py · 955 LOC</text>
+          <text x="420" y="74" text-anchor="middle" fill="var(--faint)" font-size="10">pydantic-ai Agent · deepseek-chat · REWRITTEN</text>
+          <rect x="255" y="90" width="330" height="46" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="420" y="110" text-anchor="middle" fill="var(--text)">system prompt (assembled)</text>
+          <text x="420" y="126" text-anchor="middle" fill="var(--faint)" font-size="10">skill catalog · workflow · mart index · memories</text>
+          <rect x="255" y="148" width="330" height="46" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="420" y="168" text-anchor="middle" fill="var(--text)">8 @agent.tool registrations</text>
+          <text x="420" y="184" text-anchor="middle" fill="var(--faint)" font-size="10">search/read_knowledge · describe_table · lookup_values</text>
+          <rect x="255" y="206" width="330" height="46" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="420" y="226" text-anchor="middle" fill="var(--text)">budgets + trace capture</text>
+          <text x="420" y="242" text-anchor="middle" fill="var(--faint)" font-size="10">UsageLimits(22 req, 600k tok) · _build_trace()</text>
+          <rect x="255" y="264" width="330" height="46" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="420" y="284" text-anchor="middle" fill="var(--text)">emit plan / page frames</text>
+          <text x="420" y="300" text-anchor="middle" fill="var(--faint)" font-size="10">asyncio.Queue → SSE</text>
+          <line x1="170" y1="246" x2="230" y2="246" stroke="var(--faint)" marker-end="url(#arr)"/>
+        </g>
+        <!-- governed side -->
+        <g id="cur-governed">
+          <rect x="670" y="30" width="390" height="320" rx="10" fill="var(--panel)" stroke="var(--good-border)"/>
+          <text x="865" y="56" text-anchor="middle" fill="var(--good)" font-weight="700">governed, provider-agnostic · UNTOUCHED</text>
+          <rect x="690" y="72" width="170" height="56" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="775" y="94" text-anchor="middle" fill="var(--text)">sql_guardrails</text>
+          <text x="775" y="110" text-anchor="middle" fill="var(--faint)" font-size="10">sqlglot AST · denylist</text>
+          <rect x="880" y="72" width="160" height="56" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="960" y="94" text-anchor="middle" fill="var(--text)">db.run_select</text>
+          <text x="960" y="110" text-anchor="middle" fill="var(--faint)" font-size="10">RLS · timeout · 5k rows</text>
+          <rect x="690" y="142" width="170" height="56" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="775" y="164" text-anchor="middle" fill="var(--text)">sandbox/</text>
+          <text x="775" y="180" text-anchor="middle" fill="var(--faint)" font-size="10">Pyodide/WASM · subprocess</text>
+          <rect x="880" y="142" width="160" height="56" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="960" y="164" text-anchor="middle" fill="var(--text)">skills/</text>
+          <text x="960" y="180" text-anchor="middle" fill="var(--faint)" font-size="10">tested pandas lib</text>
+          <rect x="690" y="212" width="170" height="56" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="775" y="234" text-anchor="middle" fill="var(--text)">pages.py</text>
+          <text x="775" y="250" text-anchor="middle" fill="var(--faint)" font-size="10">compose_pages · ordinals</text>
+          <rect x="880" y="212" width="160" height="56" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="960" y="234" text-anchor="middle" fill="var(--text)">knowledge/</text>
+          <text x="960" y="250" text-anchor="middle" fill="var(--faint)" font-size="10">markdown playbook</text>
+          <rect x="690" y="282" width="350" height="52" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="865" y="302" text-anchor="middle" fill="var(--text)">observability</text>
+          <text x="865" y="318" text-anchor="middle" fill="var(--faint)" font-size="10">logfire → OTLP → MLflow · query_runs trace · av-fingerprint</text>
+          <line x1="610" y1="180" x2="670" y2="180" stroke="var(--faint)" marker-end="url(#arr)"/>
+          <text x="615" y="170" fill="var(--faint)" font-size="10">tools call</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption>Today: pydantic-ai loop (gold box, rewritten) calling governed machinery (green box, untouched).
+    Facts verified against <code>sandbox_agent.py</code>, <code>model_factory.py</code>, <code>agent/config.py</code>, <code>main.py:576-747</code>.</figcaption>
+  </figure>
+
+  <div class="matrix-wrap">
+    <table>
+      <thead><tr><th>Surface</th><th>Where</th><th>LOC</th><th>Migration fate</th></tr></thead>
+      <tbody>
+        <tr><td>ReAct loop + tools + prompt</td><td><code>agent/sandbox_agent.py</code></td><td>955</td><td><span class="badge bad">rewrite</span></td></tr>
+        <tr><td>Trace flattening (pydantic-ai shapes)</td><td><code>agent/agent_common.py</code></td><td>171</td><td><span class="badge bad">rewrite</span></td></tr>
+        <tr><td>Model/retry policy (provider exceptions)</td><td><code>agent/model_factory.py</code></td><td>262</td><td><span class="badge bad">rewrite</span></td></tr>
+        <tr><td>Entry handlers <code>_answer</code> / worker</td><td><code>agent/main.py</code> (~250) · <code>agent/worker.py</code></td><td>~540</td><td><span class="badge warn">touched (signatures)</span></td></tr>
+        <tr><td>Single-shot LLM call sites (titles, sql_assist, codegen, judge)</td><td>5 modules</td><td>~1,300</td><td><span class="badge info">out of scope — later, independently</span></td></tr>
+        <tr><td>Sandbox, skills, SQL guard, db, schema, knowledge, ordinals, pages, queue, otlp, version, pricing, backend-api, frontend, evals, infra</td><td>everything else</td><td>~7,800+</td><td><span class="badge good">untouched</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ TARGET ============ -->
+<section id="target">
+  <span class="lbl">Target state</span>
+  <h2>Agent SDK runtime + per-run filesystem workspace</h2>
+  <p class="sub">A new <code>agent/sdk_agent.py</code> implements the same
+  <code>answer_with_sandbox()</code> contract behind a runtime flag. The SDK's <code>query()</code>
+  drives the loop; the four <b>side-effecting</b> tools stay as in-process MCP tools (governance
+  cannot move to the filesystem); the four <b>read-only grounding</b> tools become files the agent
+  explores with the SDK's native <code>Read</code>/<code>Grep</code>/<code>Glob</code>.</p>
+
+  <figure class="fig">
+    <svg viewBox="0 0 1080 400" width="100%" role="img" aria-label="Target architecture: Agent SDK query loop with MCP tools and filesystem workspace">
+      <title>Target: Claude Agent SDK runtime</title>
+      <g font-family="JetBrains Mono,monospace" font-size="12">
+        <g id="tgt-loop">
+          <rect x="20" y="30" width="400" height="340" rx="10" fill="var(--panel)" stroke="var(--accent)"/>
+          <text x="220" y="56" text-anchor="middle" fill="var(--accent-soft)" font-weight="700">agent/sdk_agent.py · NEW</text>
+          <text x="220" y="74" text-anchor="middle" fill="var(--faint)" font-size="10">claude-agent-sdk query() · claude-sonnet-5</text>
+          <rect x="45" y="90" width="350" height="50" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="220" y="110" text-anchor="middle" fill="var(--text)">ClaudeAgentOptions</text>
+          <text x="220" y="126" text-anchor="middle" fill="var(--faint)" font-size="10">max_turns · tools allowlist · cwd=workspace · stream</text>
+          <rect x="45" y="152" width="350" height="50" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="220" y="172" text-anchor="middle" fill="var(--text)">lean system prompt</text>
+          <text x="220" y="188" text-anchor="middle" fill="var(--faint)" font-size="10">workflow + pass plan + memories · knowledge → files</text>
+          <rect x="45" y="214" width="350" height="50" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="220" y="234" text-anchor="middle" fill="var(--text)">message stream consumer</text>
+          <text x="220" y="250" text-anchor="middle" fill="var(--faint)" font-size="10">SSE frames · trace rebuild · ResultMessage usage/cost</text>
+          <rect x="45" y="276" width="350" height="50" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="220" y="296" text-anchor="middle" fill="var(--text)">PreToolUse / PostToolUse hooks</text>
+          <text x="220" y="312" text-anchor="middle" fill="var(--faint)" font-size="10">budget quotas · per-tool trace events</text>
+          <text x="220" y="352" text-anchor="middle" fill="var(--faint)" font-size="10">flag: AGENT_RUNTIME=agent_sdk (pydantic-ai path kept)</text>
+        </g>
+        <g id="tgt-mcp">
+          <rect x="460" y="30" width="290" height="230" rx="10" fill="var(--panel)" stroke="var(--purple-border)"/>
+          <text x="605" y="56" text-anchor="middle" fill="var(--purple)" font-weight="700">in-process MCP tools</text>
+          <text x="605" y="74" text-anchor="middle" fill="var(--faint)" font-size="10">@tool + create_sdk_mcp_server · side effects</text>
+          <rect x="480" y="88" width="250" height="36" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="605" y="111" text-anchor="middle" fill="var(--text)">extract(sql) → guard + RLS</text>
+          <rect x="480" y="132" width="250" height="36" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="605" y="155" text-anchor="middle" fill="var(--text)">run_analysis(code) → sandbox</text>
+          <rect x="480" y="176" width="250" height="36" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="605" y="199" text-anchor="middle" fill="var(--text)">lookup_values · no_answer</text>
+          <rect x="480" y="220" width="250" height="30" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="605" y="240" text-anchor="middle" fill="var(--text)">remember → pgvector</text>
+          <line x1="420" y1="140" x2="460" y2="140" stroke="var(--faint)" marker-end="url(#arr)"/>
+        </g>
+        <g id="tgt-fs">
+          <rect x="460" y="280" width="290" height="90" rx="10" fill="var(--panel)" stroke="var(--info-border)"/>
+          <text x="605" y="304" text-anchor="middle" fill="var(--info)" font-weight="700">workspace (read-only files)</text>
+          <text x="605" y="324" text-anchor="middle" fill="var(--faint)" font-size="10">marts.md · schema/*.md · knowledge/*.md</text>
+          <text x="605" y="342" text-anchor="middle" fill="var(--faint)" font-size="10">explored via Read / Grep / Glob</text>
+          <line x1="420" y1="325" x2="460" y2="325" stroke="var(--faint)" marker-end="url(#arr)"/>
+        </g>
+        <g id="tgt-untouched">
+          <rect x="790" y="30" width="270" height="340" rx="10" fill="var(--panel)" stroke="var(--good-border)"/>
+          <text x="925" y="56" text-anchor="middle" fill="var(--good)" font-weight="700">unchanged</text>
+          <rect x="810" y="72" width="230" height="40" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="925" y="97" text-anchor="middle" fill="var(--text)">sql_guardrails + RLS db</text>
+          <rect x="810" y="122" width="230" height="40" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="925" y="147" text-anchor="middle" fill="var(--text)">Pyodide sandbox + skills</text>
+          <rect x="810" y="172" width="230" height="40" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="925" y="197" text-anchor="middle" fill="var(--text)">pages.py + ordinals</text>
+          <rect x="810" y="222" width="230" height="40" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="925" y="247" text-anchor="middle" fill="var(--text)">SSE frames + frontend</text>
+          <rect x="810" y="272" width="230" height="40" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="925" y="297" text-anchor="middle" fill="var(--text)">query_runs + /ops + evals</text>
+          <rect x="810" y="322" width="230" height="40" rx="8" fill="var(--panel-3)" stroke="var(--border-2)"/>
+          <text x="925" y="347" text-anchor="middle" fill="var(--text)">OTLP → MLflow registry</text>
+          <line x1="750" y1="145" x2="790" y2="145" stroke="var(--faint)" marker-end="url(#arr)"/>
+        </g>
+      </g>
+    </svg>
+    <figcaption>Target: the SDK loop (gold) calls governed MCP tools (purple) for side effects and reads a
+    per-run workspace (blue) for grounding. Everything green is byte-identical to today.</figcaption>
+  </figure>
+
+  <div class="two">
+    <div class="card">
+      <h3>Per-run workspace layout</h3>
+      <div class="tree">
+runs/&lt;run_id&gt;/ <span class="cm">· built per request, deleted after</span><br>
+├─ <b>CLAUDE.md</b> <span class="new">← workflow + two-pass plan + contract</span><br>
+├─ <b>marts.md</b> <span class="cm">· tier 0: list_marts() rendered</span><br>
+├─ <b>schema/</b> <span class="cm">· tier 1: describe_table() per mart</span><br>
+│&nbsp;&nbsp; ├─ mart_sales.md · mart_rent.md · mart_yield.md<br>
+├─ <b>knowledge/</b> <span class="cm">· tier 2: Insight Playbook (symlink/copy)</span><br>
+│&nbsp;&nbsp; └─ *.md <span class="cm">· grain, join keys, non-additive traps</span><br>
+└─ <b>frames/</b> <span class="new">← extract() also drops head-sample CSVs</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp; └─ df.head.csv <span class="cm">· agent can Read to sanity-check</span>
+      </div>
+      <p class="small">Schema/knowledge renders reuse <code>schema.py</code> and <code>knowledge/</code>
+      verbatim — the files are generated <i>from</i> the same sources the current tools read, so content
+      parity is automatic and <code>knowledge_version()</code> hashing still applies.</p>
+      <p class="small"><b>The CLAUDE.md is an optimisable artifact.</b> It's rendered per run from a
+      versioned template in the repo (<code>agent/prompts/workspace_claude.md</code>) — the agent-sdk
+      runtime's equivalent of the system prompt. Its hash feeds the <code>av-*</code> fingerprint, so
+      every CLAUDE.md or prompt edit is a new challenger version the eval pack can score: prompt
+      <i>and</i> CLAUDE.md are both levers in the optimisation loop.</p>
+    </div>
+    <div class="card">
+      <h3>Tool disposition — what moves, what stays</h3>
+      <div class="matrix-wrap" style="margin:8px 0 0">
+      <table>
+        <thead><tr><th>Today's tool</th><th>Becomes</th></tr></thead>
+        <tbody>
+          <tr><td><code>search_knowledge</code> / <code>read_knowledge</code></td><td><span class="badge info">files</span> <code>Grep</code>/<code>Read</code> over <code>knowledge/</code></td></tr>
+          <tr><td><code>describe_table</code></td><td><span class="badge info">files</span> <code>Read schema/&lt;table&gt;.md</code></td></tr>
+          <tr><td>mart index (prompt-pinned)</td><td><span class="badge info">files</span> <code>marts.md</code> + pointer in CLAUDE.md</td></tr>
+          <tr><td><code>extract(sql)</code></td><td><span class="badge purple">MCP tool</span> — guard + RLS must stay server-side</td></tr>
+          <tr><td><code>run_analysis(code)</code></td><td><span class="badge purple">MCP tool</span> — sandbox execution unchanged</td></tr>
+          <tr><td><code>lookup_values</code> / <code>no_answer</code> / <code>remember</code></td><td><span class="badge purple">MCP tools</span> — DB / control-flow side effects</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">Built-ins restricted via <code>tools=["Read","Grep","Glob", "mcp__dp__*"]</code> —
+      no Bash, no Write, no WebSearch. The workspace is the agent's entire visible filesystem
+      (<code>cwd</code> pinned there).</p>
+    </div>
+  </div>
+
+  <div class="verdict"><strong>Auth — decided.</strong>
+  The <code>agent_sdk</code> runtime runs on the Claude subscription via <code>claude setup-token</code> →
+  <code>CLAUDE_CODE_OAUTH_TOKEN</code> in the local data-agent container, and it is
+  <b>local/dev-only: there is no API-key prod version — prod stays demo mode</b>, which already
+  deploys no data-agent service at all (recorded answers only), so nothing about the prod topology,
+  Terraform, or quota changes. Notes that still matter: personal dev use of the subscription token is
+  the SDK docs' grey zone (they steer products to API keys); subscription rate limits are shared with
+  interactive Claude Code use; and if both <code>ANTHROPIC_API_KEY</code> and the OAuth token are set
+  the API key wins, so the container env must set exactly one.</div>
+</section>
+
+<!-- ============ ALTERNATIVE ============ -->
+<section id="alternative">
+  <span class="lbl">Investigated alternative</span>
+  <h2>Keep pydantic-ai and put Claude Code <i>under</i> it?</h2>
+  <p class="sub">Asked and investigated: instead of replacing pydantic-ai, can it be used <i>with</i> the
+  Agent SDK? Yes, mechanically — a community bridge,
+  <a href="https://pypi.org/project/pydantic-ai-claude-code/" style="color:var(--accent-2)">pydantic-ai-claude-code</a>
+  (v0.8.1, Oct 2025, beta), registers the local Claude Code CLI as a pydantic-ai model provider:
+  the existing loop, tools, and traces stay, only <code>model_factory.py</code> learns a
+  <code>claude-code:sonnet</code> spec. The two loops can't be merged the other way round (pydantic-ai
+  inside the SDK = two competing agent loops). Side-note either way: Logfire has a first-party
+  <a href="https://pydantic.dev/docs/logfire/integrations/llms/claude-agent-sdk/" style="color:var(--accent-2)">Claude Agent SDK integration</a>,
+  so the current logfire instrumentation story survives a full migration too.</p>
+  <div class="two">
+    <div class="card">
+      <h3><span class="badge info">option A</span> Bridge: pydantic-ai loop, Claude Code as model</h3>
+      <ul class="tight" style="font-size:13.5px">
+        <li><b>Cost:</b> tiny — ~50 LOC in <code>model_factory.py</code>; <code>sandbox_agent.py</code>, traces, evals untouched.</li>
+        <li><b>But:</b> a beta, single-maintainer package in the critical path; OAuth token expires ~7h in long-running processes (bad for a server); one CLI subprocess per <i>model request</i> (×~15 per run).</li>
+        <li><b>And the point is lost:</b> Claude Code is reduced to a completion endpoint — no filesystem knowledge base, no SDK hooks, no skills. The "migrate tool calls to filesystem" goal dies; this is a model swap, not an Agent SDK migration.</li>
+      </ul>
+    </div>
+    <div class="card tinted">
+      <h3><span class="badge gold">chosen</span> Full Agent SDK runtime (this plan)</h3>
+      <ul class="tight" style="font-size:13.5px">
+        <li>The goals — filesystem knowledge, SDK-native tracing/hooks, subscription runtime, Architecture tab — live in the SDK's <i>loop</i>, not in its model call.</li>
+        <li>First-party SDK, one subprocess per <i>run</i> (not per request), and the pydantic-ai champion stays runnable side-by-side for A/B.</li>
+        <li><b>Verdict: option A is the documented fallback</b> if the SDK migration stalls at M0, not the plan.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RUBRIC ============ -->
+<section id="rubric">
+  <span class="lbl">Review rubric</span>
+  <h2>Impact rubric — every migration surface, scored and addressed</h2>
+  <p class="sub">The review the plan is built on: each dimension gets an impact rating
+  (how much the migration could break or improve it), what concretely changes, how the plan addresses
+  it, and the check that proves parity. This doubles as the PR-review checklist for the
+  <code>agent_sdk</code> branch.</p>
+
+  <div class="matrix-wrap">
+    <table>
+      <thead><tr><th>Dimension</th><th>Impact</th><th>What changes</th><th>How the migration addresses it</th><th>Parity check</th></tr></thead>
+      <tbody>
+        <tr id="r-tracing">
+          <td><b>Tracing / ML observability</b></td>
+          <td class="impact"><span class="badge bad">high</span></td>
+          <td><code>capture_run_messages()</code> + logfire pydantic-ai instrumentation disappear for this path; today they feed <code>query_runs.trace</code>, token/cost columns, and OTLP→MLflow.</td>
+          <td>Rebuild the same flat trace (system/user/model/tool_call/tool_return/retry) from the SDK message stream + PostToolUse hooks in a new <code>agent/sdk_trace.py</code>; token/cost from <code>ResultMessage.usage</code> / <code>model_usage</code>; wrap each run in a manual OTel span via existing <code>otlp.py</code> (same exporter → MLflow <code>/v1/traces</code>); enable SDK OTLP env (<code>CLAUDE_CODE_ENABLE_TELEMETRY</code> + <code>OTEL_*</code>) pointed at the same endpoint. <code>query_runs</code> schema untouched → <code>inspect_run.py</code>, /ops, A/B ttfp_ms all keep working. <b>Beyond parity:</b> log what the agent <i>returns</i> — final answer, <code>report.pages</code>, grader/judge scores — to MLflow alongside the trace, so every run is scoreable fuel for the <a href="#optloop" style="color:var(--accent-2)">optimisation loop</a>.</td>
+          <td><code>inspect_run.py</code> renders an sdk-runtime run indistinguishably; MLflow shows the trace <b>and</b> the run's answer/report/scores as artifacts; tokens & cost_usd non-null.</td>
+        </tr>
+        <tr id="r-kb">
+          <td><b>Knowledge base → filesystem</b></td>
+          <td class="impact"><span class="badge bad">high</span></td>
+          <td>3-tier disclosure (mart index / describe_table / playbook search) moves from bespoke tools to <code>Read</code>/<code>Grep</code> over the workspace; hand-rolled ranker retired on this path.</td>
+          <td>Workspace builder renders files from the <i>same</i> sources (<code>schema.py</code>, <code>knowledge/</code>) so content is identical; CLAUDE.md teaches the tier order; <code>max_knowledge_reads</code> quota re-expressed as a PreToolUse hook on Read. Grep is a strictly stronger search than the token scorer.</td>
+          <td>Trace shows Read/Grep hits on the same pages the old tools returned for the 5 gate questions; <code>knowledge_pages_used</code> still populated (from Read paths).</td>
+        </tr>
+        <tr id="r-sql">
+          <td><b>SQL generation & governance</b></td>
+          <td class="impact"><span class="badge bad">high</span></td>
+          <td>Model now writes SQL for Claude, not DeepSeek; the execution path must not loosen.</td>
+          <td><code>extract</code> stays an MCP tool delegating to the untouched <code>sql_guardrails.validate_select()</code> → <code>db.run_select()</code> (RLS user, statement timeout, 5k-row cap). No Bash/Write tools, so the guarded tool remains the <i>only</i> route to the DB. Attempt quota (≤8) enforced in the tool wrapper — same STOP-return + hard-stop exception pattern as today.</td>
+          <td>Guardrail unit tests unchanged & green; trace shows rejected SQL producing tool-return errors, not crashes; RLS spot-check as non-admin user.</td>
+        </tr>
+        <tr id="r-report">
+          <td><b>Report / pages generation</b></td>
+          <td class="impact"><span class="badge warn">medium</span></td>
+          <td>Nothing in the contract — but the two-pass protocol (pass 1 <code>build_report</code>, pass 2 <code>build_insights</code>) must survive a new model's instincts.</td>
+          <td><code>run_analysis</code> MCP tool keeps the identical sandbox + <code>AnalysisResult</code> contract; <code>compose_pages()</code>, ordinals, page-plan entitlements, ghost slots all untouched. Two-pass instructions move into workspace CLAUDE.md. Pages still stream as each pass completes (tool wrapper pushes onto the same asyncio queue → <code>plan/page/progress/status/result</code> frames).</td>
+          <td>Frontend renders sdk-runtime answers with zero changes; <code>grade_presentation_format</code> passes on the gate questions.</td>
+        </tr>
+        <tr id="r-auth">
+          <td><b>Auth & subscription</b></td>
+          <td class="impact"><span class="badge good">low (decided)</span></td>
+          <td>DeepSeek API key → Claude subscription OAuth token (<code>claude setup-token</code>), local/dev only.</td>
+          <td><b>Decided: no API-key prod — prod stays demo mode</b> (no data-agent service deployed there at all). Token via env/<code>.env</code> locally; ensure exactly one auth var set in the container (API key would win over the OAuth token).</td>
+          <td>M0 spike proves an end-to-end answer on the subscription token from inside the container.</td>
+        </tr>
+        <tr id="r-cost">
+          <td><b>Cost & budget control</b></td>
+          <td class="impact"><span class="badge warn">medium</span></td>
+          <td><code>UsageLimits</code> (pydantic-ai) gone; Claude tokens cost differently than DeepSeek (whose bill is cache-dominated, billed_full ≈ 1/6th nominal).</td>
+          <td><code>max_turns≈22</code> mirrors the request cap; per-tool quotas via hooks; <code>ResultMessage.total_cost_usd</code> recorded into the existing <code>cost_usd</code> column (with <code>pricing.py</code> retained as fallback + for the deepseek path). Subscription runs record tokens even though marginal cost is quota, not dollars.</td>
+          <td>Gate run reports tokens/turns per question; compare against champion's ~10–15 requests/run baseline.</td>
+        </tr>
+        <tr id="r-eval">
+          <td><b>Eval loop & regression safety</b></td>
+          <td class="impact"><span class="badge good">low-med</span></td>
+          <td>Nothing structural — evals replay through the real <code>/ask</code> path, which is preserved.</td>
+          <td><code>version.py</code> fingerprint picks up provider=<code>claude-agent-sdk</code> + new prompt hash → a distinct <code>av-*</code> challenger id; MLflow champion/challenger promotion gate (s43) is <i>exactly</i> the mechanism to compare runtimes; judge stays cross-family (judge model ≠ answer model — flip judge to DeepSeek or pin a different Claude family model to preserve the no-self-preference rule).</td>
+          <td>The 5-question gate below + <code>eval_compare.py</code> base-vs-experiment report.</td>
+        </tr>
+        <tr id="r-stream">
+          <td><b>Streaming & latency</b></td>
+          <td class="impact"><span class="badge warn">medium</span></td>
+          <td>SSE frames now sourced from the SDK message stream; the SDK spawns a bundled CLI subprocess per <code>query()</code>.</td>
+          <td>Frame vocabulary unchanged; heartbeat stays in <code>main.py</code>. Subprocess spawn adds ~1–3s startup — measured via the existing <code>ttfp_ms</code> column; ghost page plan still emitted before any model work, masking startup. Prod perf memory: chat p50 ≈ 95.7s today, so a few seconds of spawn is noise, but concurrency = one CLI process per in-flight ask (worker slots already bound this on the queue path).</td>
+          <td>ttfp_ms and wall-clock A/B on the 5 gate questions vs champion.</td>
+        </tr>
+        <tr id="r-infra">
+          <td><b>Infra / deploy</b></td>
+          <td class="impact"><span class="badge good">low</span></td>
+          <td><code>uv add claude-agent-sdk</code>; SDK bundles the Claude Code CLI binary.</td>
+          <td>The image already ships Node 18 for the Pyodide sandbox host, so worst-case CLI fallback is covered; compose/App Runner/queue topology unchanged; new env vars only (<code>AGENT_RUNTIME</code>, auth token, optional OTEL_*). DEMO_MODE unaffected (no data-agent service there at all).</td>
+          <td>Image builds; <code>make up && make smoke</code> green with the flag off <i>and</i> on.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ PHASES ============ -->
+<section id="phases">
+  <span class="lbl">Plan</span>
+  <h2>Phases — M0 spike → M4 gate → M5 architecture tab, all on branch <span class="mono">agent_sdk</span></h2>
+
+  <div class="phase" id="m0">
+    <div class="tag">M0<small>spike · ½ day</small></div>
+    <div>
+      <h3>Prove the runtime in isolation</h3>
+      <ul class="tight">
+        <li>Standalone <code>scripts/sdk_spike.py</code>: <code>query()</code> + one MCP tool (<code>extract</code>) + a hand-built mini workspace answers one real question against local Postgres.</li>
+        <li>Verify: subscription token works from inside the data-agent container; streaming events arrive; <code>ResultMessage</code> carries usage/cost; built-ins fully suppressed.</li>
+        <li>Kill criteria surfaced early: auth blocked, or no reliable tool-event stream → revisit approach before touching the service.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase" id="m1">
+    <div class="tag">M1<small>runtime · 1–2 days</small></div>
+    <div>
+      <h3>Flag-gated runtime adapter</h3>
+      <ul class="tight">
+        <li><code>agent/sdk_agent.py</code> — implements the <code>answer_with_sandbox()</code> contract: same inputs (question, user, plan tier, page indexes), same <code>AgentAnswer</code> out, same frame queue.</li>
+        <li>MCP server <code>dp</code> with <code>extract</code> / <code>run_analysis</code> / <code>lookup_values</code> / <code>no_answer</code> / <code>remember</code> — thin wrappers over the existing implementations, quotas via wrappers + PreToolUse hooks.</li>
+        <li><code>AGENT_RUNTIME=pydantic_ai|agent_sdk</code> in <code>config.py</code>; <code>main.py:_answer</code> and <code>worker.py</code> dispatch on it. DeepSeek path untouched — this is a challenger, not a replacement.</li>
+        <li><code>LLM_STUB</code> continues to bypass both runtimes (CI unaffected).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase" id="m2">
+    <div class="tag">M2<small>filesystem · 1 day</small></div>
+    <div>
+      <h3>Workspace knowledge base</h3>
+      <ul class="tight">
+        <li><code>agent/workspace.py</code> — builds <code>runs/&lt;id&gt;/</code> per request from <code>schema.py</code> + <code>knowledge/</code>; writes CLAUDE.md (workflow, two-pass plan, memories); cleans up after.</li>
+        <li>Allow <code>Read/Grep/Glob</code>, pin <code>cwd</code>; <code>extract</code> drops <code>frames/&lt;name&gt;.head.csv</code> samples for self-inspection.</li>
+        <li>Record Read paths into <code>knowledge_pages_used</code> for report parity.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase" id="m3">
+    <div class="tag">M3<small>observability · 1 day</small></div>
+    <div>
+      <h3>Trace, tokens, fingerprint parity — plus output capture for the optimisation loop</h3>
+      <ul class="tight">
+        <li><code>agent/sdk_trace.py</code> — SDK message stream + hooks → the existing flat trace shape; usage totals → the existing token/cost columns.</li>
+        <li>Manual OTel span per run through <code>otlp.py</code> → MLflow; optionally SDK-native OTLP env for depth.</li>
+        <li><b>Capture the return, not just the path:</b> per run, log final answer + <code>report.pages</code> + grader/judge scores to MLflow (artifacts + metrics on the trace's run), keyed by <code>agent_version_id</code> — the raw material for the optimisation loop below.</li>
+        <li><code>version.py</code> fingerprint: provider/model/prompt-hash inputs from the new runtime → distinct challenger <code>av-*</code> id; register in MLflow — and log each component hash (prompt, CLAUDE.md template, knowledge_version, dbt-manifest, ordinals snapshot, model+quotas) as individual run params for attribution.</li>
+        <li>Ordinals transaction log: append-only <code>app.dataset_ordinals_log</code> via trigger (migration), closing the one non-versioned knowledge input (see input-provenance table).</li>
+        <li>Judge independence: gate judge pinned to a non-answering model family.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase" id="m4">
+    <div class="tag">M4<small>gate · ½ day</small></div>
+    <div>
+      <h3>The 5-question success gate</h3>
+      <p class="sub" style="font-size:13.5px">Detailed next section. Passing it = definition of success met; then decide promote/park via the MLflow gate.</p>
+    </div>
+  </div>
+
+  <div class="phase" id="m5">
+    <div class="tag">M5<small>arch tab · 1 day</small></div>
+    <div>
+      <h3>"Architecture" tab — the GenAI system, visualised in the app</h3>
+      <p class="sub" style="font-size:13.5px">Part of the build: a new Data Pilot tab that shows the system itself —
+      making the migration legible and doubling as the demo surface for the portfolio.</p>
+      <ul class="tight">
+        <li><b>System map</b> — the target diagram above rendered live in-app (frontend → backend-api → agent runtime → MCP tools / workspace / sandbox / Postgres), badged with the active runtime, model, and <code>av-*</code> fingerprint.</li>
+        <li><b>Knowledge base browser</b> — the actual workspace files (marts.md, schema/*.md, knowledge/*.md) listed and readable, with <code>knowledge_version()</code> hash shown; served by a new read-only <code>GET /agent/architecture</code> endpoint that reuses <code>workspace.py</code>'s builder.</li>
+        <li><b>Tools / MCP registry</b> — every MCP tool with name, signature, one-liner, quota, and guardrail note (extract → sql_guardrails+RLS, run_analysis → Pyodide sandbox), generated from the tool definitions so it can't drift.</li>
+        <li><b>Full run walk-through</b> — pick a recent <code>query_runs</code> row and step through its trace (question → workspace reads → SQL attempts → sandbox passes → pages emitted), i.e. <code>inspect_run.py</code> as a UI. Admin-scoped, reusing the existing trace jsonb — no new persistence.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ OPTIMISATION LOOP ============ -->
+<section id="optloop">
+  <span class="lbl">After the gate</span>
+  <h2>The optimisation loop the logging pays for</h2>
+  <p class="sub">Scope discipline: <b>this migration just implements the agent_sdk runtime</b> — the loop below is
+  not built now. But because M3 logs every run's <i>return</i> (answer, pages, scores) next to its <i>path</i>
+  (trace) in MLflow, the loop becomes a query away rather than a new build:</p>
+  <div class="cards cols-3">
+    <div class="card">
+      <h3>1 · Score accuracy</h3>
+      <p class="sub" style="font-size:13.5px">Every run (live or eval) carries grader + judge scores as MLflow metrics
+      per <code>agent_version_id</code> — accuracy over time per runtime/model/prompt-hash, straight off the
+      champion/challenger dashboard.</p>
+    </div>
+    <div class="card">
+      <h3>2 · Mine traces for ideas</h3>
+      <p class="sub" style="font-size:13.5px">Filter low-scoring runs, read their traces: wasted knowledge reads,
+      SQL retry patterns, pass-2 failures. <code>eval_diagnose.py</code>'s failure clustering already does this
+      offline — MLflow makes it browsable per version.</p>
+    </div>
+    <div class="card">
+      <h3>3 · Ship a challenger</h3>
+      <p class="sub" style="font-size:13.5px">Each improvement idea (prompt tweak, CLAUDE.md edit, new skill,
+      quota change) = new <code>av-*</code> fingerprint → run the golden pack → <code>mlflow_registry.py promote</code>
+      if it beats the champion. Goldens stay the training signal.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:26px">Input provenance — every model input gets an id</h3>
+  <p class="sub" style="font-size:13.5px">For the loop to attribute a score change to the input that caused
+  it, the composite <code>av-*</code> fingerprint isn't enough — M3 also logs each component hash
+  <b>individually</b> (MLflow run params + the fingerprint registry), so any past run's inputs can be
+  reconstructed exactly:</p>
+  <div class="matrix-wrap">
+    <table>
+      <thead><tr><th>Model input</th><th>Id / version mechanism</th><th>Reproducible how</th></tr></thead>
+      <tbody>
+        <tr><td>Question + user/plan context</td><td><code>query_runs</code> row (per-run id)</td><td>Already persisted per ask.</td></tr>
+        <tr><td>System prompt</td><td><code>prompt_hash</code> → feeds <code>av-*</code></td><td>Template in git; hash logged per run.</td></tr>
+        <tr><td>Workspace CLAUDE.md</td><td>Template <code>agent/prompts/workspace_claude.md</code> content hash (new, logged separately from prompt_hash)</td><td>Git history = its transaction log.</td></tr>
+        <tr><td>Knowledge playbook (<code>knowledge/</code>)</td><td><code>knowledge_version()</code> sha256 of the whole tree, recorded on every report</td><td><b>Git is the transaction log</b> — every edit is a commit; <code>git log -- services/data-agent/knowledge/</code> is the update history, and checking out the commit whose tree hashes to a run's <code>knowledge_version</code> reproduces exactly what the agent read.</td></tr>
+        <tr><td>Schema docs (marts.md, schema/*.md)</td><td>Derived from the dbt manifest — manifest hash logged as a new run param</td><td>Manifest is a build artifact of <code>services/data-pipeline</code> (git-versioned models).</td></tr>
+        <tr><td>Curated DB knowledge (<code>app.dataset_ordinals</code>)</td><td><span class="badge warn">gap today</span> — mutable table, curator edits leave no history</td><td><b>M3 closes it:</b> append-only <code>app.dataset_ordinals_log</code> (trigger-fed transaction log) + ordinals snapshot hash added to the fingerprint inputs.</td></tr>
+        <tr><td>Per-user memories</td><td>Recalled block captured verbatim in the run's trace</td><td>Trace jsonb — inspectable per run; deliberately per-user, not versioned globally.</td></tr>
+        <tr><td>Model + options (quotas, turns)</td><td>Model id + settings logged as run params; part of fingerprint</td><td><code>config.py</code> in git; values logged per run.</td></tr>
+        <tr><td>Extracted frames</td><td>Not stored — but the SQL that produced them is in the trace</td><td>Re-running the traced SQL against the versioned marts reproduces them (marts rebuilt from the pipeline).</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ GATE ============ -->
+<section id="gate">
+  <span class="lbl">Success gate</span>
+  <h2>5 questions, graded like any challenger</h2>
+  <div class="two">
+    <div class="card">
+      <h3>Selection</h3>
+      <p class="sub" style="font-size:13.5px">Pick 5 goldens from <code>app.eval_cases</code> that the
+      <b>current champion passes</b> (parity needs a passing baseline), spanning marts and the tier
+      ladder — e.g. one T1 scalar (sales), one trend series (rent), one breakdown (yield), one
+      compare, one insight-tier question. Final ids picked at M4 from the latest eval run.</p>
+      <h3 style="margin-top:14px">Mechanics</h3>
+      <ol class="steps" style="font-size:13.5px">
+        <li><code>AGENT_RUNTIME=agent_sdk</code> on the data-agent service, restart.</li>
+        <li><code>scripts/eval_run.py</code> limited to the 5 cases → replays through the real <code>/ask</code> path, tagged with the challenger fingerprint.</li>
+        <li><code>scripts/eval_compare.py</code> champion-vs-challenger on those cases.</li>
+        <li>Ask the same 5 in the browser; screenshot side-by-side (pages render, charts ordered, ghost slots fill).</li>
+      </ol>
+    </div>
+    <div class="card tinted">
+      <h3>Pass criteria — "similar to existing outputs"</h3>
+      <ul class="tight" style="font-size:13.5px">
+        <li><span class="badge good">must</span> deterministic graders (scalar/row-set/series/extraction) pass on all 5 — same numbers out of the same governed SQL.</li>
+        <li><span class="badge good">must</span> <code>grade_presentation_format</code> + structural lint pass — same page/object shapes.</li>
+        <li><span class="badge good">must</span> zero guardrail violations; RLS intact; no budget hard-stops.</li>
+        <li><span class="badge warn">target</span> judge rubric score ≥ champion − 0.5 on the 5-criterion rubric (wording may differ; insight quality must not regress).</li>
+        <li><span class="badge warn">target</span> wall-clock and turns within 1.5× champion; ttfp_ms recorded for the A/B.</li>
+      </ul>
+      <p class="small">Not required for success: matching prose verbatim, matching DeepSeek's tool-call
+      order, or migrating the single-shot call sites (titles, sql_assist, codegen, judge).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RISKS ============ -->
+<section id="risks">
+  <span class="lbl">Risks & open questions</span>
+  <h2>What could bite</h2>
+  <div class="cards cols-2">
+    <div class="card">
+      <h3><span class="badge good">decided</span> Subscription-auth scope</h3>
+      <p class="sub" style="font-size:13.5px">No API-key prod version — prod stays demo mode (no data-agent service deployed). The subscription token serves local dev + the gate only. Residual watch-item: gate runs share your interactive Claude Code quota, so schedule eval runs accordingly.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge bad">risk</span> Two-pass protocol drift</h3>
+      <p class="sub" style="font-size:13.5px">A stronger model may try to do everything in one pass or over-explore the workspace. Mitigation: CLAUDE.md is explicit about pass 1/pass 2; hooks enforce the same quotas that tamed DeepSeek; the budget hard-stop pattern is preserved. And because the CLAUDE.md is generated from a versioned template, any drift fix is itself an optimisable, fingerprinted prompt change.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge warn">risk</span> Trace fidelity gaps</h3>
+      <p class="sub" style="font-size:13.5px">SDK message stream may not expose every retry/validation event pydantic-ai did. Mitigation: hooks capture every tool in/out; accept a slightly coarser <code>retry</code> record; <code>inspect_run.py</code> is the acceptance test.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge warn">risk</span> Per-request CLI subprocess</h3>
+      <p class="sub" style="font-size:13.5px">Spawn latency + memory per concurrent ask on App Runner. Mitigation: measure at M0; queue path already bounds concurrency via worker slots; s41 showed 1 process × 4 slots is the sweet spot.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge info">open</span> Data egress</h3>
+      <p class="sub" style="font-size:13.5px">Rows now flow to Anthropic instead of DeepSeek — for this public NSW dataset that's fine, but note it in AGENTS.md's security model when the runtime lands.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge info">open</span> Judge model conflict</h3>
+      <p class="sub" style="font-size:13.5px">Judge is Claude today (cross-family vs DeepSeek). With Claude answering, keep independence by judging with a different family/model — decided at M3.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DECISIONS ============ -->
+<section id="decisions">
+  <span class="lbl">Decisions</span>
+  <h2>All locked — 2026-09-04</h2>
+  <div class="matrix-wrap">
+    <table>
+      <thead><tr><th>Decision</th><th>Locked choice</th></tr></thead>
+      <tbody>
+        <tr><td><b>Approach</b></td><td>Full Agent SDK runtime <b>replaces</b> pydantic-ai for the data-agent loop; the community pydantic-ai↔Claude-Code bridge is the documented fallback only if M0 stalls.</td></tr>
+        <tr><td><b>Auth</b></td><td>Claude subscription token (<code>claude setup-token</code>), local/dev only. No API-key prod version — prod stays demo mode.</td></tr>
+        <tr><td><b>Model</b></td><td><code>claude-sonnet-5</code>, pinned via <code>ClaudeAgentOptions(model=...)</code>.</td></tr>
+        <tr><td><b>Filesystem scope</b></td><td>Knowledge + schema move to workspace files; <code>extract</code> and <code>run_analysis</code> stay governed MCP tools (guardrails + RLS + sandbox unchanged).</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="verdict"><strong>Plan locked — build starts at M0.</strong> Order: M0 spike → M1 runtime →
+  M2 workspace → M3 observability + output capture → M4 five-question gate → M5 architecture tab.</div>
+</section>
+
+<footer style="border-top:1px solid var(--border);padding-top:18px">
+  <p class="small">Design source: the project's own Night Flight tokens (<code>frontend/src/styles.css</code>),
+  consistent with s40–s44 — chosen because this artifact documents Data Pilot itself.
+  Architecture facts verified against the repo on branch <code>agent_sdk</code> (= main @ f430981);
+  SDK facts from code.claude.com/docs/en/agent-sdk (quickstart, custom-tools, skills, streaming-output,
+  observability, cost-tracking, hosting).</p>
+</footer>
+
+</div>
+</body>
+</html>

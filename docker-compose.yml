@@ -190,6 +190,13 @@ services:
       WARMUP_ON_START: "1"
       # s40 M1: where the worker (and future queue reads) find the job streams.
       REDIS_URL: redis://redis:6379/0
+      # s45: loop engine — "pydantic_ai" (champion, default) or "agent_sdk"
+      # (Claude Agent SDK challenger). LLM_STUB still wins over both.
+      AGENT_RUNTIME: ${AGENT_RUNTIME:-pydantic_ai}
+      # s45: subscription auth for the agent_sdk runtime inside the container
+      # (`claude setup-token` on the host, then set in .env). The runtime blanks
+      # ANTHROPIC/DEEPSEEK keys in the CLI subprocess env so this token wins.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
     volumes:
       - dbt_target:/dbt-target:ro
     ports:

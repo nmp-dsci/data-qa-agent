@@ -26,6 +26,12 @@ llm = [
     "pandas>=2.2",
     "pydantic-ai-slim[anthropic,openai]>=2.3.0",
 ]
+# M0 agent_sdk migration spike (standalone, not wired into the app yet). Enable
+# with: uv sync --extra llm --extra agentsdk. CI installs only --extra llm, so
+# this must stay a separate extra until the SDK replaces the pydantic-ai loop.
+agentsdk = [
+    "claude-agent-sdk>=0.1.0",
+]
 
 [dependency-groups]
 dev = [

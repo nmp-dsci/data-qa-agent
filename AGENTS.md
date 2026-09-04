@@ -573,6 +573,7 @@ All capabilities live in one Postgres, all under RLS.
 | `datasets` | Datasets | Registry of ingested datasets the agent can answer over | readable if access granted |
 | `dataset_access` | Datasets | Which users/roles may query which dataset | self; admin manages |
 | `dataset_ordinals` | Datasets | Curator-editable ordinal band order per `(dataset, column)` (e.g. `area_band`) so ordinal chart axes sort naturally, not alphabetically | admin/CI-curated; no RLS |
+| `dataset_ordinals_log` | Datasets | Append-only trigger-populated audit trail of every `dataset_ordinals` INSERT/UPDATE/DELETE (plus day-one `SEED` rows), so a past agent run's ordinal input stays reproducible after a curator edit | admin/CI-curated; no RLS |
 | `conversations` | Q&A | A user's chat sessions | owner; admin sees all |
 | `messages` | Q&A | Turns: question, answer, generated SQL, tokens, latency | via conversation owner |
 | `query_runs` | Q&A | Audit of every SQL executed (`source` = `agent` / `sql_editor` / `explore`); s32 adds the cache-token split, priced `cost_usd`, `degraded`, `attempts`, `ttfp_ms` and the `otel_trace_id` Logfire deep-link; s40 adds `queue_wait_ms` / `worker_id` / `deliveries` (all `NULL` off the queue path) | via owner; admin audits |
@@ -658,10 +659,12 @@ literal, which had silently locked `nsw_yield` out of golden authoring since mig
 **Scored runner + judge (s24 M2).** `make eval` (`scripts/eval_run.py`) drives the golden pack against the
 running agent, works down to a single case (`CASE=`), and calls the data-agent's `POST /agent/eval/grade`
 to score G1/G2/G3-structural plus the G3 insight judge. The judge (`agent/eval_judge.py`) grades a frozen,
-hashed rubric (`judge_prompt_hash`) and refuses to grade a model of its own family — with DeepSeek
-answering, only an Anthropic key can judge — recording a `skipped` verdict rather than fabricating a score
-when no cross-family judge key is configured. Insight is scored and reported but does not gate a case on
-its own; a case passes on G1 + G3-structural.
+hashed rubric (`judge_prompt_hash`) and refuses to grade a model of its own family, keyed off which family
+actually answered (the agent_sdk runtime always answers as Claude, regardless of `llm_provider`) rather
+than `llm_provider` alone — with DeepSeek answering, only an Anthropic key can judge, and with Claude
+answering (agent_sdk), only a DeepSeek key can — recording a `skipped` verdict rather than fabricating a
+score when no cross-family judge key is configured. Insight is scored and reported but does not gate a
+case on its own; a case passes on G1 + G3-structural.
 
 **Regression gate + pack lint (s24 M3).** `make eval-compare A=<run> B=<run>` (`scripts/eval_compare.py`,
 also served at `GET /admin/eval-runs/{id}`) is the base-vs-experiment gate: it blocks on **any** case

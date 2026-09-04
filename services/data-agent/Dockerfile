@@ -3,7 +3,10 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 WORKDIR /app
 
 COPY pyproject.toml ./
-RUN uv sync --no-dev --extra llm
+# agentsdk: the Claude Agent SDK runtime (AGENT_RUNTIME=agent_sdk, s45). The
+# extra stays out of CI's `--extra llm` sync but ships in the image so the
+# container can run either loop engine.
+RUN uv sync --no-dev --extra llm --extra agentsdk
 
 # Pre-fetch the local embedding model so it's baked into the image instead of
 # downloaded on first request. Calls the venv's python directly (not `uv run`,

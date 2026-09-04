@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     admin_ro_database_url: str = "postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa"
     db_ssl: str = ""  # set to e.g. "require" in Azure (managed Postgres needs TLS)
     agent_url: str = "http://data-agent:8100"
+    # Non-streaming /agent/ask hop timeout. Must be >= the longest legitimate
+    # full-report run: the eval runner and Slack path use this hop and wait up
+    # to 300s themselves, and a 120s cap here cut off an agent_sdk run that
+    # finished successfully at 123s (s45 gate) — the agent had already done the
+    # work when the backend recorded "agent unavailable". The streaming path
+    # keeps its own rolling heartbeat timeout and is unaffected.
+    agent_ask_timeout_s: float = 300.0
     # Shared token sent as X-Agent-Token on every agent call. Required by the
     # cloud agent (s12), whose App Runner URL is public. Empty = not sent (local).
     agent_shared_token: str = ""

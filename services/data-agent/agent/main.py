@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import logfire
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -24,20 +26,32 @@ logfire.configure(
     additional_span_processors=otlp_processors(),
 )
 
-from . import analytics  # noqa: E402
+# M5 (architecture tab): only sdk_agent's own tool-metadata constants are read
+# here (TOOL_DESCRIPTIONS/TOOL_SCHEMAS/GOVERNED_TOOLS/BUILTIN_TOOLS/MCP_SERVER).
+# Importing the module is safe with no `claude_agent_sdk` installed — that
+# import is lazy inside sdk_agent._load_sdk(), called only when a run actually
+# drives the SDK — so this module-level import never breaks the offline stub
+# or the pydantic_ai champion path.
+from . import analytics, sdk_agent  # noqa: E402
 from .chart import trend_overlay_encoding, validate_chart_spec  # noqa: E402
 from .config import settings  # noqa: E402
 from .db import admin_engine, engine, load_database_catalog, run_select  # noqa: E402
 from .eval_graders import grade_extraction, grade_presentation_format  # noqa: E402
 from .eval_judge import judge_insight  # noqa: E402
-from .knowledge import knowledge_version  # noqa: E402
+from .knowledge import knowledge_version, load_pages, read_knowledge  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
 from .pages import chart_object_from_spec, compose_pages, page_plan, planned_kinds  # noqa: E402
 from .provider import choose_provider  # noqa: E402
 from .sandbox import explain_sandbox_error, run_code  # noqa: E402
 from .sandbox.extract import extract  # noqa: E402
 from .sandbox_agent import answer_with_sandbox  # noqa: E402
-from .schema import get_catalog, merge_catalogs  # noqa: E402
+from .schema import (  # noqa: E402
+    USER_VISIBLE_SCHEMAS,
+    describe_table,
+    get_catalog,
+    list_marts,
+    merge_catalogs,
+)
 from .sql_assist import sql_assist  # noqa: E402
 from .sql_guardrails import UnsafeSQLError  # noqa: E402
 from .titles import summarize_title  # noqa: E402
@@ -485,6 +499,11 @@ async def agent_config() -> ConfigSection:
             note="pyodide (WASM, hardened) | subprocess",
         ),
         ConfigItem(key="APP_ENV", value=s.app_env),
+        ConfigItem(
+            key="AGENT_RUNTIME",
+            value=s.agent_runtime,
+            note="pydantic_ai (champion) | agent_sdk (Claude Agent SDK challenger)",
+        ),
         ConfigItem(key="LLM_PROVIDER", value=s.llm_provider, note="deepseek | anthropic"),
         ConfigItem(key="model", value=active_model, note="model used by the active provider"),
         _secret_item("DEEPSEEK_API_KEY", s.deepseek_api_key, note="empty = offline stub"),
@@ -573,6 +592,31 @@ async def _pace_stub_frames(progress: asyncio.Queue[dict[str, Any]] | None) -> N
             )
 
 
+async def _run_agent(
+    body: AskRequest,
+    *,
+    user_id: str,
+    progress: asyncio.Queue[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Dispatch one question to the configured agent runtime (agent_sdk M1).
+
+    The single seam between champion and challenger. Both take the same
+    arguments and return the same contract (answer dict / no_answer report /
+    salvage dict / None), so everything downstream — SSE relay, persistence,
+    the queue worker, which reaches this through ``_answer`` — is untouched by
+    the choice. LLM_STUB is checked by the caller and still wins over both.
+    """
+    if settings.agent_runtime == "agent_sdk":
+        from .sdk_agent import answer_with_sdk
+
+        return await answer_with_sdk(
+            body.question, user_id=user_id, plan=body.user.plan, progress=progress
+        )
+    return await answer_with_sandbox(
+        body.question, user_id=user_id, plan=body.user.plan, progress=progress
+    )
+
+
 async def _answer(
     body: AskRequest, progress: asyncio.Queue[dict[str, Any]] | None = None
 ) -> AgentAnswer:
@@ -591,9 +635,7 @@ async def _answer(
     # paced by _pace_stub_frames so the run keeps a real run's timing shape.
     llm = None
     if not settings.llm_stub:
-        llm = await answer_with_sandbox(
-            body.question, user_id=user_id, plan=body.user.plan, progress=progress
-        )
+        llm = await _run_agent(body, user_id=user_id, progress=progress)
     salvage: dict[str, Any] | None = None
     if llm is not None:
         if not llm.get("fallback"):
@@ -1501,3 +1543,243 @@ async def agent_schema(role: str = "user") -> dict[str, Any]:
         except Exception:  # noqa: BLE001 — keep the editor usable if catalog introspection fails
             return {"tables": get_catalog(role="admin")}
     return {"tables": get_catalog(role=role)}
+
+
+# ---------------------------------------------------------------------------
+# Architecture tab (M5, agent_sdk migration): a live snapshot of THIS system —
+# runtime/model/quotas, the knowledge base index, and the tool registry — for
+# the Data Pilot UI that visualises the GenAI system itself. Deliberately reads
+# the same pure, dependency-light functions workspace.py calls (list_marts(),
+# describe_table(), knowledge.load_pages()) directly, WITHOUT ever calling
+# workspace.build_workspace()/workspace() — no per-run temp directory is
+# created just to answer this endpoint.
+# ---------------------------------------------------------------------------
+
+_WORKSPACE_TEMPLATE_PATH = Path(__file__).resolve().parent / "prompts" / "workspace_claude.md"
+
+
+def _template_bytes() -> bytes:
+    return _WORKSPACE_TEMPLATE_PATH.read_bytes() if _WORKSPACE_TEMPLATE_PATH.exists() else b""
+
+
+class ArchitectureRuntime(BaseModel):
+    agent_runtime: str  # "pydantic_ai" (champion) | "agent_sdk" (challenger)
+    model: str
+    provider: str
+    sandbox_runtime: str
+    quotas: dict[str, int]
+    fingerprint: dict[str, str]  # version.build_fingerprint() — av-* + component hashes
+
+
+class KnowledgeFile(BaseModel):
+    kind: str  # claude_md | marts | schema | knowledge
+    id: str  # what to pass as `name` to /agent/architecture/content ("" if n/a)
+    filename: str  # the name this shows up as inside a real run workspace
+    label: str
+    description: str = ""
+    size: int
+    sha256: str | None = None
+
+
+class ArchitectureKnowledge(BaseModel):
+    knowledge_version: str
+    files: list[KnowledgeFile]
+
+
+class ArchitectureTool(BaseModel):
+    kind: str  # mcp | builtin
+    name: str
+    server: str | None = None
+    description: str
+    input_schema: dict[str, Any] | None = None
+    quota: str
+    guardrail: str
+
+
+class ArchitectureResponse(BaseModel):
+    runtime: ArchitectureRuntime
+    knowledge: ArchitectureKnowledge
+    tools: list[ArchitectureTool]
+
+
+def _active_model_and_provider() -> tuple[str, str]:
+    """The model + provider label actually answering questions right now.
+
+    Mirrors ``sdk_agent.answer_with_sdk``'s model choice and ``_run_agent``'s
+    runtime dispatch — the SDK runtime drives ``sdk_model`` through the Claude
+    Code CLI (subscription/OAuth auth, not an API key); the champion uses
+    whichever provider key ``LLM_PROVIDER`` selects.
+    """
+    s = settings
+    if s.agent_runtime == "agent_sdk":
+        return s.sdk_model, "anthropic (Claude Agent SDK / Claude Code CLI)"
+    model = s.deepseek_model if s.llm_provider == "deepseek" else s.model
+    return model, s.llm_provider
+
+
+def _tool_registry() -> list[ArchitectureTool]:
+    """The live MCP + built-in tool surface, generated from sdk_agent's own
+    definitions — TOOL_DESCRIPTIONS/TOOL_SCHEMAS/GOVERNED_TOOLS/BUILTIN_TOOLS
+    are the exact constants ``build_tool_server`` wires up for a real run, so
+    this registry can't drift from what the agent_sdk runtime actually exposes.
+    """
+    guardrails = {
+        "extract": "sql_guardrails + RLS — governed SELECT through the read-only agent_ro role",
+        "run_analysis": (
+            f"sandbox ({settings.sandbox_runtime}) — isolated pandas execution, skills.* preferred"
+        ),
+        "lookup_values": "sql_guardrails — read-only distinct-value lookup",
+        "no_answer": "none — declarative refusal, no execution",
+        "remember": "per-user memory store (pgvector embeddings), no SQL",
+    }
+    quotas = {
+        "extract": f"{settings.max_sql_attempts} attempts/run (MAX_SQL_ATTEMPTS)",
+        "run_analysis": f"{settings.sandbox_run_attempts} attempts/run (SANDBOX_RUN_ATTEMPTS)",
+        "lookup_values": "unmetered",
+        "no_answer": "unmetered",
+        "remember": "unmetered",
+    }
+    builtin_descriptions = {
+        "Read": (
+            "Read one file in the run workspace (CLAUDE.md, marts.md, schema/*.md, "
+            "knowledge/*.md, frames/*.head.csv)."
+        ),
+        "Grep": "Search file contents across the run workspace.",
+        "Glob": "List files in the run workspace by pattern.",
+    }
+    tools = [
+        ArchitectureTool(
+            kind="mcp",
+            name=name,
+            server=sdk_agent.MCP_SERVER,
+            description=sdk_agent.TOOL_DESCRIPTIONS[name],
+            input_schema=sdk_agent.TOOL_SCHEMAS[name],
+            quota=quotas.get(name, "—"),
+            guardrail=guardrails.get(name, "—"),
+        )
+        for name in sdk_agent.GOVERNED_TOOLS
+    ]
+    tools += [
+        ArchitectureTool(
+            kind="builtin",
+            name=name,
+            server=None,
+            description=builtin_descriptions.get(name, ""),
+            input_schema=None,
+            quota=(
+                f"{settings.max_knowledge_reads} knowledge/ page reads/run "
+                "(MAX_KNOWLEDGE_READS); unmetered elsewhere in the workspace"
+            ),
+            guardrail="workspace-scoped filesystem — no Bash/Write/Edit, no host/network access",
+        )
+        for name in sdk_agent.BUILTIN_TOOLS
+    ]
+    return tools
+
+
+def _knowledge_files() -> list[KnowledgeFile]:
+    """Every file a real run workspace would contain, without building one.
+
+    Mirrors ``workspace.build_workspace``'s layout 1:1: CLAUDE.md, marts.md,
+    one schema/<schema>_<table>.md per user-visible table, and the knowledge
+    tree — each computed through the same pure functions that module calls.
+    """
+    template_bytes = _template_bytes()
+    marts_text = list_marts()
+    files = [
+        KnowledgeFile(
+            kind="claude_md",
+            id="",
+            filename="CLAUDE.md",
+            label="CLAUDE.md — workflow instructions template",
+            description="Rendered per-run as the agent_sdk runtime's system prompt.",
+            size=len(template_bytes),
+            sha256=hashlib.sha256(template_bytes).hexdigest(),
+        ),
+        KnowledgeFile(
+            kind="marts",
+            id="",
+            filename="marts.md",
+            label="marts.md — mart index",
+            description="Tier 0: table names + one-line purpose, always in context.",
+            size=len(marts_text),
+        ),
+    ]
+    for t in get_catalog(role="user"):
+        if t["schema"] not in USER_VISIBLE_SCHEMAS:
+            continue
+        rel = f"{t['schema']}.{t['table']}"
+        doc = describe_table(rel)
+        files.append(
+            KnowledgeFile(
+                kind="schema",
+                id=rel,
+                filename=f"{t['schema']}_{t['table']}.md",
+                label=rel,
+                description=t.get("description") or "",
+                size=len(doc),
+            )
+        )
+    for p in load_pages():
+        files.append(
+            KnowledgeFile(
+                kind="knowledge",
+                id=p.rel_path,
+                filename=p.rel_path,
+                label=p.name,
+                description=p.description,
+                size=len(p.raw or p.body),
+            )
+        )
+    return files
+
+
+@app.get("/agent/architecture", response_model=ArchitectureResponse)
+async def agent_architecture() -> ArchitectureResponse:
+    """A live snapshot of the running system for the Architecture tab (M5).
+
+    Runtime/model/quotas from settings, the knowledge base index (files a real
+    run workspace would contain), and the tool registry generated from
+    sdk_agent's own tool definitions — nothing here is hand-duplicated, and
+    nothing builds a per-run workspace (see ``_knowledge_files``).
+    """
+    model, provider = _active_model_and_provider()
+    return ArchitectureResponse(
+        runtime=ArchitectureRuntime(
+            agent_runtime=settings.agent_runtime,
+            model=model,
+            provider=provider,
+            sandbox_runtime=settings.sandbox_runtime,
+            quotas={
+                "max_sql_attempts": settings.max_sql_attempts,
+                "sandbox_run_attempts": settings.sandbox_run_attempts,
+                "agent_request_limit": settings.agent_request_limit,
+                "max_knowledge_reads": settings.max_knowledge_reads,
+            },
+            fingerprint=build_fingerprint(),
+        ),
+        knowledge=ArchitectureKnowledge(
+            knowledge_version=knowledge_version(),
+            files=_knowledge_files(),
+        ),
+        tools=_tool_registry(),
+    )
+
+
+@app.get("/agent/architecture/content")
+async def agent_architecture_content(kind: str, name: str = "") -> dict[str, str]:
+    """One knowledge-base file's body, for the Architecture tab's detail pane.
+
+    ``kind``/``name`` are exactly the ``kind``/``id`` a ``KnowledgeFile`` from
+    ``GET /agent/architecture`` carries, so the frontend never has to construct
+    a path itself.
+    """
+    if kind == "claude_md":
+        return {"content": _template_bytes().decode("utf-8", errors="replace")}
+    if kind == "marts":
+        return {"content": list_marts()}
+    if kind == "schema":
+        return {"content": describe_table(name)}
+    if kind == "knowledge":
+        return {"content": read_knowledge(name)}
+    raise HTTPException(status_code=400, detail=f"unknown kind: {kind!r}")

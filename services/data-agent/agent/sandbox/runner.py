@@ -2,8 +2,9 @@
 
 Runs model-written pandas over an injected DataFrame in a **spawned subprocess**
 with:
-  * a restricted ``__builtins__`` (no ``open`` / ``eval`` / ``exec`` /
-    ``__import__`` / ``input``), so the code can't open files or import ``os``;
+  * a restricted ``__builtins__`` (no ``open`` / ``eval`` / ``exec`` / ``input``,
+    and a guarded ``__import__`` allowing only preloaded/no-I/O modules), so the
+    code can't open files or import ``os``;
   * network blocked (``socket`` disabled in the child);
   * no DB handle, secrets, or env passed into the code's namespace — only ``df``,
     ``pd`` and ``skills``;
@@ -35,9 +36,10 @@ _CPU_SECONDS = 8
 _WALLCLOCK_SECONDS = 12  # parent-side hard stop; > CPU cap to allow spawn/import
 
 # Builtins the model code may use. Deliberately excludes open, eval, exec,
-# compile, __import__, input, globals, locals, vars, memoryview, help — the
-# obvious file / import / introspection escape hatches. pandas and skills are
-# already imported (they keep full builtins); this only limits the exec'd code.
+# compile, input, globals, locals, vars, memoryview, help — the obvious file /
+# introspection escape hatches. __import__ is added back below, guarded to the
+# allowlist. pandas and skills are already imported (they keep full builtins);
+# this only limits the exec'd code.
 _SAFE_BUILTIN_NAMES = (
     "abs",
     "all",
@@ -81,11 +83,38 @@ class SandboxError(RuntimeError):
     """Raised for infrastructure failures (timeout, crash) — not model code errors."""
 
 
+# Modules an `import` statement may name. All are preloaded (or stdlib with no
+# I/O surface), so allowing them grants no new capability — it only stops a
+# reflexive `import pandas as pd` from killing the run. Discovered the hard way
+# in the s45 gate: Claude habitually writes that line, the bare "__import__ not
+# found" pointed at the *call site*, and the model burned its whole analysis
+# budget bisecting the wrong function.
+_IMPORTABLE_MODULES = frozenset({"pandas", "numpy", "math", "statistics", "datetime"})
+
+
+def _guarded_import() -> Any:
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _limited(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name.split(".")[0] in _IMPORTABLE_MODULES:
+            return real_import(name, *args, **kwargs)
+        raise ImportError(
+            f"import of {name!r} is blocked in the sandbox — write import-free code: "
+            "pd (pandas) and skills are preloaded, and only "
+            f"{', '.join(sorted(_IMPORTABLE_MODULES))} may be imported"
+        )
+
+    return _limited
+
+
 def _safe_builtins() -> dict[str, Any]:
     import builtins
 
     safe = {name: getattr(builtins, name) for name in _SAFE_BUILTIN_NAMES}
     safe["True"], safe["False"], safe["None"] = True, False, None
+    safe["__import__"] = _guarded_import()
     # A few exceptions the model may legitimately raise/catch.
     for exc in ("Exception", "ValueError", "KeyError", "TypeError", "ZeroDivisionError"):
         safe[exc] = getattr(builtins, exc)

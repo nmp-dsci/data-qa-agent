@@ -6,7 +6,8 @@
 // Phase A subprocess. The Python runner (pyodide_runner.py) spawns this once per
 // run, writes a job as JSON on stdin, and reads one JSON result line on stdout.
 //
-// Job  (stdin) : {code, frames:{name:{columns,rows}}, safe_builtins:[...]}
+// Job  (stdin) : {code, frames:{name:{columns,rows}}, safe_builtins:[...],
+//                 importable_modules:[...]}
 // Result(stdout): {report|null, error|null, skills_used:[...], skill_gaps:[...],
 //                  used_inline_math:bool}
 //
@@ -60,6 +61,21 @@ _safe = {n: getattr(_b, n) for n in _job["safe_builtins"] if hasattr(_b, n)}
 _safe["True"], _safe["False"], _safe["None"] = True, False, None
 for _e in ("Exception", "ValueError", "KeyError", "TypeError", "ZeroDivisionError", "IndexError"):
     _safe[_e] = getattr(_b, _e)
+
+# Guarded __import__, mirroring runner.py: everything allowed is preloaded (or
+# stdlib with no I/O surface), so this grants no capability — it only stops a
+# reflexive "import pandas as pd" from killing the run.
+_allowed_mods = frozenset(_job.get("importable_modules", []))
+_real_import = _b.__import__
+def _limited_import(name, *args, **kwargs):
+    if name.split(".")[0] in _allowed_mods:
+        return _real_import(name, *args, **kwargs)
+    raise ImportError(
+        f"import of {name!r} is blocked in the sandbox — write import-free code: "
+        "pd (pandas) and skills are preloaded, and only "
+        + ", ".join(sorted(_allowed_mods)) + " may be imported"
+    )
+_safe["__import__"] = _limited_import
 
 skills.reset()
 _g = {"__builtins__": _safe, "pd": pd, "skills": skills, **_frames}

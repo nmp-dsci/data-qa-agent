@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s44 · Eval loop: persona golden set — SQL first, viz next</title>
+<style>
+/* Night Flight tokens (frontend/src/styles.css), same as s40–s43. */
+:root{
+  --bg:#0a0d15; --panel:#111522; --panel-2:#171c2b; --panel-3:#1e2434;
+  --border:#242b3d; --border-2:#333d55;
+  --text:#eaecf3; --muted:#9aa4bb; --faint:#7a84a0;
+  --accent:#d9a84e; --accent-soft:#f2ca79; --accent-ink:#1a1204; --accent-2:#7fb0ff;
+  --code-bg:#0a0d13; --good:#9ece6a; --good-border:#33502f; --hud:#9ece6a;
+  --warn:#e0af68; --warn-border:#6b5a2a; --bad:#f2777a; --bad-border:#6b2a2a;
+  --purple:#c58fff; --purple-border:#5a3a6b; --info:#7dcfff; --info-border:#2f5a7a;
+  --radius:8px; --radius-lg:10px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+    --border:#ddd7c7; --border-2:#c9c1ac;
+    --text:#23293a; --muted:#67604e; --faint:#7d7663;
+    --accent:#9a7328; --accent-soft:#7a5c22; --accent-ink:#fffaf0; --accent-2:#2456c9;
+    --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae; --hud:#35803f;
+    --warn:#8a6a12; --warn-border:#e0cf9a; --bad:#a3312f; --bad-border:#e5b4b2;
+    --purple:#6b3fa0; --purple-border:#d5c2ea; --info:#1d5f80; --info-border:#b6d8e8;
+    --elev-1:0 1px 2px rgba(50,40,20,.10);
+    color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+:where(.grid,.cards,.cols,.matrix-wrap)>*{min-width:0}
+:where(p,h1,h2,h3,h4,li,td,th,.badge){overflow-wrap:anywhere}
+:where(img,svg){max-width:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 96px}
+.lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.lbl.accent{color:var(--accent-soft)}
+header.hero{padding:52px 0 28px;border-bottom:1px solid var(--border);margin-bottom:34px}
+h1{font-size:30px;line-height:1.2;margin:10px 0 10px;letter-spacing:-.02em}
+h1 .gold{color:var(--accent-soft)}
+h2{font-size:20px;margin:0 0 6px;letter-spacing:-.01em}
+h3{font-size:15px;margin:0 0 6px}
+p{margin:8px 0}
+.sub{color:var(--muted);max-width:78ch}
+section{margin:44px 0}
+.badge{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;
+  padding:2px 9px;border-radius:999px;border:1px solid var(--border-2);
+  color:var(--muted);background:var(--panel-2);letter-spacing:.04em;white-space:nowrap}
+.badge.gold{color:var(--accent-soft);border-color:var(--accent);background:transparent}
+.badge.good{color:var(--good);border-color:var(--good-border)}
+.badge.warn{color:var(--warn);border-color:var(--warn-border)}
+.badge.bad{color:var(--bad);border-color:var(--bad-border)}
+.badge.info{color:var(--info);border-color:var(--info-border)}
+.badge.purple{color:var(--purple);border-color:var(--purple-border)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tinted{background:var(--panel-2)}
+.cards{display:grid;gap:14px}
+.cols-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.cols-3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.verdict{border-left:3px solid var(--good);background:var(--panel);
+  border-radius:0 var(--radius-lg) var(--radius-lg) 0;padding:16px 20px;margin:18px 0}
+.verdict strong{color:var(--good)}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.55;margin:10px 0}
+pre code{background:none;border:none;padding:0}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+.matrix-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+th,td{padding:9px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--faint);background:var(--panel-2)}
+tr:last-child td{border-bottom:none}
+tr.persona-head td{background:var(--panel-2);font-weight:700;color:var(--accent-soft);
+  font-size:13px;border-top:1px solid var(--border-2)}
+tr.persona-head td .why{color:var(--faint);font-weight:400;font-size:12px}
+td .near{display:block;color:var(--faint);font-size:11.5px;margin-top:3px}
+.klist{margin:8px 0 0;padding-left:20px}
+.klist li{margin:6px 0}
+.have li::marker{color:var(--good)}
+.build li::marker{color:var(--accent-2)}
+figure{margin:16px 0}
+figcaption{color:var(--faint);font-size:12.5px;margin-top:8px}
+.phase{display:grid;grid-template-columns:88px minmax(0,1fr);gap:0;border:1px solid var(--border);
+  border-radius:var(--radius-lg);background:var(--panel);margin:12px 0;overflow:hidden}
+.phase .pnum{background:var(--panel-2);border-right:1px solid var(--border);padding:16px 12px;
+  display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.phase .pnum .n{font-family:var(--mono);font-weight:700;font-size:17px;color:var(--accent-soft)}
+.phase .pbody{padding:14px 18px}
+.phase .pbody h3{margin-bottom:2px}
+.files{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.files code{font-size:11px;color:var(--info)}
+.risk{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1.6fr);gap:12px;
+  padding:10px 0;border-bottom:1px solid var(--border)}
+.risk:last-child{border-bottom:none}
+.risk .r{color:var(--warn);font-weight:600;font-size:13.5px}
+.risk .m{color:var(--muted);font-size:13.5px}
+.qcard{background:var(--panel);border:1px solid var(--border-2);border-radius:var(--radius-lg);
+  padding:16px 18px}
+.qcard .qt{font-weight:700;font-size:14px}
+.qcard .why{color:var(--faint);font-size:12.5px;margin:4px 0 10px}
+.qcard label{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border-radius:6px;
+  cursor:pointer;font-size:13.5px}
+.qcard label:hover{background:var(--panel-2)}
+.qcard input[type=radio]{margin-top:3px;accent-color:var(--accent)}
+.qcard .rec{color:var(--good);font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.08em}
+.qcard button{margin-top:10px;font-family:var(--mono);font-size:11px;font-weight:700;
+  letter-spacing:.06em;color:var(--accent-ink);background:var(--accent);border:none;
+  border-radius:6px;padding:8px 14px;cursor:pointer}
+.qcard button:hover{background:var(--accent-soft)}
+.qcard .queued{display:none;color:var(--good);font-family:var(--mono);font-size:11px;margin-top:8px}
+.qcard.answered .queued{display:block}
+.grading th:first-child,.grading td:first-child{white-space:nowrap}
+svg .nbox{fill:var(--panel);stroke:var(--border-2);stroke-width:1.2;rx:8}
+svg .nbox2{fill:var(--panel-2);stroke:var(--border-2);stroke-width:1.2}
+svg .agentbox{fill:none;stroke:var(--accent);stroke-width:1.2;stroke-dasharray:none}
+svg .gold-store{fill:var(--code-bg);stroke:var(--accent);stroke-width:1.2}
+svg text{font-family:var(--sans);font-size:12.5px;fill:var(--text)}
+svg text.small{font-size:10.5px;fill:var(--muted)}
+svg text.mono{font-family:var(--mono);font-size:10px;fill:var(--faint);letter-spacing:.08em}
+svg text.goldt{fill:var(--accent-soft);font-weight:700}
+svg .edge{stroke:var(--border-2);stroke-width:1.4;fill:none;marker-end:url(#arr)}
+svg .tap{stroke:var(--info);stroke-width:1.1;fill:none;stroke-dasharray:4 4;marker-end:url(#arrI)}
+svg .cut{stroke:var(--bad);stroke-width:1.6;stroke-dasharray:6 5}
+footer{border-top:1px solid var(--border);margin-top:60px;padding-top:18px;color:var(--faint);
+  font-size:12.5px}
+footer code{font-size:11px}
+@media (max-width:640px){
+  .wrap{padding:0 14px 80px}
+  h1{font-size:24px}
+  .phase{grid-template-columns:64px minmax(0,1fr)}
+  .risk{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <span class="lbl accent">s44 · plan for review · branch <span class="mono">eval-loop</span></span>
+  <h1>Persona golden set: <span class="gold">SQL first</span>, visualization next</h1>
+  <p class="sub">24 new questions asked the way a mortgage broker, investor, bank analyst, agent,
+  property manager, and developer would ask them — each with a curated golden SQL + headline
+  baseline, scored by the existing graders, then a viz rubric and a human-calibration loop on top.</p>
+  <div class="chips">
+    <span class="badge gold">builds on s27 pack (31 goldens)</span>
+    <span class="badge gold">s30 grader editor</span>
+    <span class="badge gold">s43 MLflow harness</span>
+    <span class="badge info">new: persona axis</span>
+    <span class="badge info">new: sql_only lane</span>
+    <span class="badge info">new: viz rubric</span>
+    <span class="badge info">new: human calibration</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p><strong>The harness you asked for is ~80% already built — this plan is mostly a content
+  build, plus three small mechanisms.</strong> Goldens already store a stage-① SQL extract
+  (<code>golden_sql</code>), get re-executed live as ground truth on every eval, and are graded
+  with tolerance-based value checks (G1). Draft→ready curation, the grader-spec editor, the
+  regression gate and MLflow logging all exist. What is genuinely new here: <b>(1)</b> the
+  24-question persona pack itself, <b>(2)</b> a <code>sql_only</code> fast lane on the <i>real</i>
+  answering agent, <b>(3)</b> a headline-value check, <b>(4)</b> a viz rubric (chart-type
+  appropriateness — nothing scores this today), and <b>(5)</b> judge-vs-human calibration, which
+  the code explicitly flags as not built.</p>
+</div>
+
+<section id="current-state">
+  <span class="lbl">Current state — what one eval already does</span>
+  <h2>The agent is one loop; the grading is already split</h2>
+  <p class="sub">Production answering is a single autonomous run: the model calls
+  <code>extract(sql)</code> (governed SQL, self-correcting, up to 8 attempts), then
+  <code>run_analysis(code)</code> (pandas sandbox that computes headlines and builds the report
+  pages). The eval runner replays the golden question through the real <code>POST /ask</code>
+  path — RLS, caps, persistence — and grades four pillars from the persisted run:</p>
+
+  <div class="matrix-wrap" style="margin-top:12px">
+  <table class="grading">
+    <thead><tr><th>Pillar</th><th>What it scores</th><th>How</th><th>Gates pass?</th></tr></thead>
+    <tbody>
+      <tr><td><b>G1</b> extraction</td>
+        <td>Did the agent's SQL produce the right numbers?</td>
+        <td>Agent extract rows vs live re-run of <code>golden_sql</code>; grader kinds
+            <code>scalar · series · row_set · ranked_set</code> with <code>tolerance_pct</code></td>
+        <td class="win">yes (≥ 0.8)</td></tr>
+      <tr><td><b>G2</b> preparation</td>
+        <td>Were the golden's named objects built?</td>
+        <td>Structural match on <code>golden_objects</code> types</td>
+        <td class="mid">advisory</td></tr>
+      <tr><td><b>G3</b> presentation</td>
+        <td>Report shape + insight quality</td>
+        <td>Deterministic format lint (gates) + LLM judge <code>insight-v1</code> /10 (advisory),
+            cross-family enforced</td>
+        <td class="win">format only</td></tr>
+      <tr><td><b>G4</b> ops</td>
+        <td>Turns, latency, tokens, rows</td>
+        <td>From <code>query_runs.trace</code></td>
+        <td class="mid">advisory</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <figure>
+  <svg viewBox="0 0 980 430" width="100%" role="img" aria-label="Answer pipeline with grading taps and the sql_only split point">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" fill="var(--border-2)"/>
+      </marker>
+      <marker id="arrI" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" fill="var(--info)"/>
+      </marker>
+    </defs>
+
+    <!-- question -->
+    <g id="node-question"><title>Persona question from the golden pack</title>
+      <rect class="nbox" x="14" y="88" width="136" height="64" rx="8"/>
+      <text x="82" y="114" text-anchor="middle">Persona</text>
+      <text x="82" y="132" text-anchor="middle">question</text>
+    </g>
+    <path class="edge" d="M150 120 H196"/>
+
+    <!-- agent loop -->
+    <g id="node-agent"><title>One autonomous agent run (sandbox_agent.py)</title>
+      <rect class="agentbox" x="200" y="46" width="470" height="150" rx="10"/>
+      <text class="mono" x="214" y="66">ONE AGENT RUN · /ask → answer_with_sandbox()</text>
+      <rect class="nbox" x="218" y="82" width="188" height="86" rx="8"/>
+      <text x="312" y="108" text-anchor="middle">① extract(sql)</text>
+      <text class="small" x="312" y="126" text-anchor="middle">governed SQL · RLS</text>
+      <text class="small" x="312" y="142" text-anchor="middle">self-corrects ⟲ ×8</text>
+      <rect class="nbox" x="462" y="82" width="188" height="86" rx="8"/>
+      <text x="556" y="104" text-anchor="middle">② run_analysis</text>
+      <text class="small" x="556" y="122" text-anchor="middle">pandas → headlines</text>
+      <text class="small" x="556" y="138" text-anchor="middle">③ build_report(pages)</text>
+      <path class="edge" d="M406 125 H458"/>
+    </g>
+
+    <!-- sql_only cut -->
+    <g id="cut-sqlonly"><title>Proposed sql_only mode stops after a successful extract</title>
+      <path class="cut" d="M432 60 V186"/>
+      <text class="mono" x="432" y="212" text-anchor="middle" fill="var(--bad)">✂ sql_only stops here (Phase B)</text>
+    </g>
+
+    <path class="edge" d="M670 120 H716"/>
+
+    <!-- answer -->
+    <g id="node-answer"><title>Persisted answer: sql + pages of objects + headlines</title>
+      <rect class="nbox" x="720" y="66" width="240" height="110" rx="8"/>
+      <text class="mono" x="736" y="90">ANSWER → query_runs</text>
+      <text class="small" x="736" y="112">sql · trace (every attempt)</text>
+      <text class="small" x="736" y="130">pages[ columns[i][j] objects ]</text>
+      <text class="small" x="736" y="148">headlines {label, value}</text>
+    </g>
+
+    <!-- grader taps -->
+    <g id="node-g1"><title>G1 grades extract rows against the live re-run of golden_sql</title>
+      <rect class="nbox2" x="218" y="252" width="188" height="66" rx="8"/>
+      <text x="312" y="276" text-anchor="middle">G1 · values ✓ gate</text>
+      <text class="small" x="312" y="294" text-anchor="middle">+ new headline check</text>
+    </g>
+    <g id="node-g23"><title>G2 object presence + G3 format gate and judges</title>
+      <rect class="nbox2" x="462" y="252" width="188" height="66" rx="8"/>
+      <text x="556" y="272" text-anchor="middle">G2 objects · G3 format</text>
+      <text class="small" x="556" y="290" text-anchor="middle">insight-v1 + new viz-v1</text>
+      <text class="small" x="556" y="304" text-anchor="middle">LLM judges (advisory)</text>
+    </g>
+    <g id="node-g4"><title>G4 operational cost from the trace</title>
+      <rect class="nbox2" x="720" y="252" width="240" height="66" rx="8"/>
+      <text x="840" y="276" text-anchor="middle">G4 · turns, latency, tokens</text>
+      <text class="small" x="840" y="294" text-anchor="middle">per persona in MLflow</text>
+    </g>
+    <path class="tap" d="M312 168 V248"/>
+    <path class="tap" d="M556 168 V248"/>
+    <path class="tap" d="M840 176 V248"/>
+
+    <!-- golden stores -->
+    <g id="store-golden-sql"><title>Golden artifact 1: curated SQL, re-executed live each eval</title>
+      <rect class="gold-store" x="218" y="352" width="188" height="52" rx="8"/>
+      <text class="goldt" x="312" y="374" text-anchor="middle">golden_sql</text>
+      <text class="small" x="312" y="392" text-anchor="middle">re-run live = baseline</text>
+    </g>
+    <g id="store-golden-objects"><title>Golden artifact 2: named presentation objects with editable specs</title>
+      <rect class="gold-store" x="462" y="352" width="188" height="52" rx="8"/>
+      <text class="goldt" x="556" y="374" text-anchor="middle">golden_objects</text>
+      <text class="small" x="556" y="392" text-anchor="middle">object_type + spec</text>
+    </g>
+    <path class="tap" d="M312 348 V322"/>
+    <path class="tap" d="M556 348 V322"/>
+  </svg>
+  <figcaption>The split you asked about already exists at the <b>grading</b> layer: G1 scores the
+  SQL/numbers independently of G2/G3 scoring the visualization — one golden case carries two
+  separately-scored artifacts (<code>golden_sql</code>, <code>golden_objects</code>). The product
+  stays one loop; Phase B adds the ✂ <code>sql_only</code> short-circuit for cheap iteration.</figcaption>
+  </figure>
+</section>
+
+<section id="split-question">
+  <span class="lbl">Your architecture question</span>
+  <h2>Keep SQL + viz together, or split the agent?</h2>
+  <div class="cards cols-3" style="margin-top:12px">
+    <div class="card">
+      <h3><span class="badge good">recommended</span> Keep the product together, split the evaluation</h3>
+      <p class="sub" style="font-size:13.5px">Production answering stays one autonomous loop —
+      that's the product. Evaluation already splits: G1 grades SQL alone, G2/G3 grade viz alone.
+      A golden is curated in two independent halves you can edit separately in the Golden tab.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge info">add</span> A <code>sql_only</code> lane on the real agent</h3>
+      <p class="sub" style="font-size:13.5px">For fast SQL-golden iteration: run
+      <code>answer_with_sandbox()</code> with only the <code>extract</code> tool registered and
+      stop on first success. Same system prompt, same self-correction, same knowledge — ~1–2 LLM
+      turns instead of ~20, no judge cost.</p>
+    </div>
+    <div class="card">
+      <h3><span class="badge bad">rejected</span> Reuse <code>/agent/sql/assist</code></h3>
+      <p class="sub" style="font-size:13.5px">It looks like the answer (NL→SQL endpoint exists
+      today) but it's a <i>different, simpler code path</i> — no extract-tool self-correction, no
+      entity lookup, different prompt. Scoring it would grade a generator production never uses.</p>
+    </div>
+  </div>
+</section>
+
+<section id="question-set">
+  <span class="lbl">The deliverable — for your review</span>
+  <h2>24 persona questions, drafted against the real marts</h2>
+  <p class="sub">Six personas × four questions. Every question is answerable at the marts' actual
+  grain (monthly aggregates by postcode/suburb/type/bedroom-band/area-band/zoning — there are no
+  per-transaction rows), checked against the 31 existing s27 goldens for duplication, and
+  deliberately limited to <b>gradeable tiers</b> (T1 lookup, T2 trend/compare, T3 join, T6 geo) —
+  ambiguous/adversarial/recommendation tiers (T4/T5/T7) are already covered once by the s27 pack
+  and don't fit a headline-baseline score. Annotate any row to reword, replace, or strike it.</p>
+  <div class="chips">
+    <span class="badge">nsw_sales ×16</span><span class="badge">nsw_rent ×4</span>
+    <span class="badge">nsw_yield ×2</span><span class="badge">cross-mart ×2</span>
+    <span class="badge">geo-joined ×5</span>
+    <span class="badge info">T1 ×4</span><span class="badge info">T2 ×13</span>
+    <span class="badge info">T3 ×2</span><span class="badge info">T6 ×5</span>
+  </div>
+
+  <div class="matrix-wrap" style="margin-top:14px">
+  <table>
+    <thead><tr><th>ID</th><th>Question</th><th>Dataset</th><th>Tier</th><th>Grader</th><th>Headline baseline</th></tr></thead>
+    <tbody>
+      <tr class="persona-head"><td colspan="6">🏦 Mortgage broker <span class="why">— what can my client borrow against, and where</span></td></tr>
+      <tr id="q-mb1"><td class="mono">MB1</td><td>What was the average sale price for houses in Hornsby over the last 12 months?<span class="near">your example — kept verbatim</span></td><td>nsw_sales</td><td>T1</td><td>scalar</td><td>trailing-12m avg price, houses, Hornsby</td></tr>
+      <tr id="q-mb2"><td class="mono">MB2</td><td>What would a 20% deposit be on the median unit in Parramatta (2150), and how has it moved over five years?</td><td>nsw_sales</td><td>T2</td><td>series</td><td>latest median × 0.2 + 5y series</td></tr>
+      <tr id="q-mb3"><td class="mono">MB3</td><td>Which suburbs in postcode 2145 have a median house price under $900k right now?</td><td>nsw_sales</td><td>T2</td><td>row_set</td><td>qualifying suburb list</td></tr>
+      <tr id="q-mb4"><td class="mono">MB4</td><td>Penrith (2750) vs Campbelltown (2560): which grew faster for houses over the last three years?</td><td>nsw_sales</td><td>T2</td><td>series</td><td>3y growth % for both</td></tr>
+
+      <tr class="persona-head"><td colspan="6">📈 Property investor <span class="why">— yield, liquidity, entry points</span></td></tr>
+      <tr id="q-inv1"><td class="mono">INV1</td><td>How many houses sold per month in Blacktown (2148) over the last two years — is the market getting more liquid?</td><td>nsw_sales</td><td>T2</td><td>series</td><td>monthly n_sold trend</td></tr>
+      <tr id="q-inv2"><td class="mono">INV2</td><td>What share of sales in Liverpool (2170) last year were units, and is that share rising?</td><td>nsw_sales</td><td>T2</td><td>scalar (ratio)</td><td>unit share % last 12m</td></tr>
+      <tr id="q-inv3"><td class="mono">INV3</td><td>How have unit prices and weekly rents in Newcastle (2300) moved since 2019?</td><td>sales + rent</td><td>T3</td><td>series</td><td>price &amp; rent growth since 2019</td></tr>
+      <tr id="q-inv4"><td class="mono">INV4</td><td>Within the Illawarra, which postcodes have the highest gross yield for units right now?</td><td>nsw_yield + geo</td><td>T6</td><td>ranked_set</td><td>top postcode + yield %</td></tr>
+
+      <tr class="persona-head"><td colspan="6">🏛 Bank / credit-risk analyst <span class="why">— portfolio exposure and downside</span></td></tr>
+      <tr id="q-bk1"><td class="mono">BK1</td><td>Is NSW sales volume in the last six months down on the same period a year earlier?</td><td>nsw_sales</td><td>T2</td><td>scalar</td><td>YoY volume change %</td></tr>
+      <tr id="q-bk2"><td class="mono">BK2</td><td>Which postcodes saw median house prices fall over the past year?</td><td>nsw_sales</td><td>T2</td><td>row_set</td><td>decliner list + worst fall %</td></tr>
+      <tr id="q-bk3"><td class="mono">BK3</td><td>What share of NSW's total sale value last quarter came from the ten biggest postcodes?</td><td>nsw_sales</td><td>T2</td><td>scalar (ratio)</td><td>concentration %</td></tr>
+      <tr id="q-bk4"><td class="mono">BK4</td><td>Are postcodes yielding above 6% seeing prices fall — where are the value traps?<span class="near">nearest s27 neighbour: T3 "growth vs yield compression" — inverse screen, kept; strike if too close</span></td><td>yield + sales</td><td>T3</td><td>row_set</td><td>flagged postcode list</td></tr>
+
+      <tr class="persona-head"><td colspan="6">🏘 Real estate agent <span class="why">— local pricing evidence for vendors</span></td></tr>
+      <tr id="q-rea1"><td class="mono">REA1</td><td>Which block-size band sells the most houses in Castle Hill (2154)?</td><td>nsw_sales</td><td>T2</td><td>ranked_set</td><td>top area_band by n_sold</td></tr>
+      <tr id="q-rea2"><td class="mono">REA2</td><td>Which months see the most sales across the Sutherland region — how seasonal is my market?</td><td>nsw_sales + geo</td><td>T6</td><td>ranked_set</td><td>peak sales month</td></tr>
+      <tr id="q-rea3"><td class="mono">REA3</td><td>What's a realistic asking price for a house on a 450–600m² block in Baulkham Hills (2153)?</td><td>nsw_sales</td><td>T1</td><td>scalar</td><td>latest avg for that area_band</td></tr>
+      <tr id="q-rea4"><td class="mono">REA4</td><td>Has Mount Druitt (2770) recovered to its 2022 peak median house price?</td><td>nsw_sales</td><td>T2</td><td>scalar</td><td>latest vs 2022 peak %</td></tr>
+
+      <tr class="persona-head"><td colspan="6">🔑 Property manager / renters <span class="why">— the rental side (rent mart is postcode-grained, no suburb)</span></td></tr>
+      <tr id="q-pm1"><td class="mono">PM1</td><td>What's the median weekly rent for a 3-bedroom house in Campbelltown (2560) right now?</td><td>nsw_rent</td><td>T1</td><td>scalar</td><td>latest median rent, 3-bed houses, 2560</td></tr>
+      <tr id="q-pm2"><td class="mono">PM2</td><td>What share of rentals in Bankstown (2200) are units, and is it growing?</td><td>nsw_rent</td><td>T2</td><td>scalar (ratio)</td><td>unit share of n_rented</td></tr>
+      <tr id="q-pm3"><td class="mono">PM3</td><td>Across Greater Sydney, which bedroom band has seen the fastest rent growth over three years?</td><td>nsw_rent + geo</td><td>T6</td><td>ranked_set</td><td>top band + growth %</td></tr>
+      <tr id="q-pm4"><td class="mono">PM4</td><td>Has rental stock in Zetland (2017) kept growing since 2016?</td><td>nsw_rent</td><td>T2</td><td>series</td><td>n_rented trend since 2016</td></tr>
+
+      <tr class="persona-head"><td colspan="6">🏗 Developer / planner <span class="why">— zoning and land (zoning dim is unused by the s27 pack)</span></td></tr>
+      <tr id="q-dev1"><td class="mono">DEV1</td><td>What's the sales mix by zoning in Marsden Park (2765), and is it shifting?</td><td>nsw_sales</td><td>T2</td><td>row_set</td><td>zoning mix %</td></tr>
+      <tr id="q-dev2"><td class="mono">DEV2</td><td>Do R3-zoned properties in Blacktown (2148) sell for more than R2 on average?</td><td>nsw_sales</td><td>T2</td><td>scalar</td><td>R3 vs R2 avg-price gap</td></tr>
+      <tr id="q-dev3"><td class="mono">DEV3</td><td>Which SA3 regions have the fastest-growing sales volumes?</td><td>nsw_sales + geo</td><td>T6</td><td>ranked_set</td><td>top SA3s by volume growth</td></tr>
+      <tr id="q-dev4"><td class="mono">DEV4</td><td>Do small blocks (under 300m²) trade at a premium in inner-Sydney postcodes?</td><td>nsw_sales + geo</td><td>T6</td><td>scalar</td><td>small-block premium %</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="sub" style="font-size:13px;margin-top:10px">Persona is stored as
+  <code>tags.persona</code> on each case (the <code>tags jsonb</code> column already exists) —
+  <code>as_user</code> stays <code>user1</code> since personas are framing, not RLS identities.
+  Suburb names in rent questions (Campbelltown, Bankstown, Zetland) are colloquial; the grader
+  keys on the postcode, which is what the rent mart carries.</p>
+</section>
+
+<section id="phases">
+  <span class="lbl">Build plan</span>
+  <h2>Phases — SQL first (A–C), then viz (D) and calibration (E)</h2>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">A</span><span class="badge info">~½ day</span></div>
+    <div class="pbody">
+      <h3>Author the persona pack (content, no product code)</h3>
+      <p class="sub" style="font-size:13.5px">Once you approve the table above: I draft each case's
+      <code>golden_sql</code> + grader spec + headline value as an agent first-pass (the s27
+      convention — drafts are un-curated first-passes, you correct them), sanity-run every
+      <code>golden_sql</code> through <code>POST /sql</code> to eyeball the baseline numbers, add
+      <code>tags.persona</code>, and land the 24 drafts in the three dataset YAML packs via
+      <code>eval-import</code>. Pack-lint keeps everything honest (SQL still runs, grader columns
+      exist, tiers valid). Also: clean the e2e debris rows in dev's <code>eval_cases</code>
+      (<code>case_key IS NULL</code>) so the pack is the unambiguous source of truth.</p>
+      <div class="files"><code>evals/cases/nsw_{sales,rent,yield}.yaml</code><code>scripts/eval_pack.py</code><code>tests/test_eval_pack.py</code></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">B</span><span class="badge info">~½ day</span></div>
+    <div class="pbody">
+      <h3>The <code>sql_only</code> fast lane (the one agent change)</h3>
+      <p class="sub" style="font-size:13.5px">Add <code>sql_only: bool</code> to
+      <code>answer_with_sandbox()</code>: register only the <code>extract</code> tool (drop
+      <code>run_analysis</code>), stop after the first successful extract, return
+      <code>{sql, columns, rows, row_count}</code>. Same prompt, knowledge, and self-correction as
+      production. Expose it on <code>/agent/ask</code> as a mode; teach the runner
+      <code>make eval SQL_ONLY=1</code> → grade G1 + headline only, skip G2/G3/judge. Iterating a
+      SQL golden drops from ~20 LLM turns + judge to ~1–2 turns.</p>
+      <div class="files"><code>services/data-agent/agent/sandbox_agent.py</code><code>agent/main.py</code><code>scripts/eval_run.py</code><code>Makefile</code></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">C</span><span class="badge info">iterative</span></div>
+    <div class="pbody">
+      <h3>Validate, curate, promote — "make sure it works"</h3>
+      <p class="sub" style="font-size:13.5px">Run the pack
+      (<code>make eval INCLUDE_DRAFTS=1</code>, SQL_ONLY for iteration, full judged runs at
+      milestones). You correct <code>golden_sql</code> / graders in the Golden tab; the existing
+      <code>graderIssue()</code> gate flips each case draft→ready. Add per-persona pass rates to
+      <code>eval_runs.totals</code> and MLflow (<code>pass_rate_persona_*</code>, next to the
+      existing per-tier metrics) so champion/challenger comparisons read by audience.
+      <code>make eval-compare</code> stays the regression gate.</p>
+      <div class="files"><code>frontend/src/features/goldens/</code><code>scripts/eval_run.py</code><code>scripts/eval_compare.py</code></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">D</span><span class="badge info">~1 day</span></div>
+    <div class="pbody">
+      <h3>Viz goldens + a viz rubric (phase 2)</h3>
+      <p class="sub" style="font-size:13.5px">For ready cases, author <code>golden_objects</code>
+      with the Structured Builder (exists), then add what nothing scores today: <b>(a)</b>
+      deterministic checks that the agent picked the right <i>object_type</i> per golden object
+      (trend vs compare vs breakdown) and sane spec fields; <b>(b)</b> a <code>viz-v1</code> LLM
+      rubric beside <code>insight-v1</code> — right chart for the question, right grain/encoding,
+      sensible ordering &amp; axes, placement, honesty with the data — 5 criteria /10, same
+      cross-family judge rule, advisory until calibrated. Golden viz stays editable: taste changes,
+      you re-curate the objects, the rubric re-scores.</p>
+      <div class="files"><code>agent/eval_graders.py</code><code>agent/eval_judge.py</code><code>evals/cases/*.yaml</code></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum"><span class="n">E</span><span class="badge info">~½ day</span></div>
+    <div class="pbody">
+      <h3>Human calibration of the judges (the missing loop)</h3>
+      <p class="sub" style="font-size:13.5px"><code>eval_judge.py</code> explicitly flags this as
+      not built. Add a 0–2 rating control per judge criterion on the Evals tab result view, store
+      <code>human_scores jsonb</code> on <code>eval_results</code>, and report judge↔human
+      agreement per rubric version. Rubric edits bump <code>RUBRIC_VERSION</code> and only ship
+      when agreement improves — that's how the rubric is "maintained" without silently drifting.</p>
+      <div class="files"><code>services/data-agent/agent/eval_judge.py</code><code>frontend/src/features/evals/</code><code>db-migrate (small migration)</code></div>
+    </div>
+  </div>
+</section>
+
+<section id="decisions">
+  <span class="lbl">Decisions — answer in place, then Send to Agent</span>
+  <h2>Four calls to lock before I build</h2>
+  <div class="cards cols-2" style="margin-top:12px">
+
+    <form class="qcard" data-lavish-question="d1-sql-only" onsubmit="event.preventDefault(); qd(this,'d1-sql-only','SQL-only lane');">
+      <div class="qt">D1 · The SQL-only lane</div>
+      <div class="why">How do we grade SQL without paying for a full visualization run each time?</div>
+      <label><input type="radio" name="a" value="Build sql_only mode on the real agent now (Phase B)"> <span><span class="rec">RECOMMENDED</span> Build <code>sql_only</code> on the real agent now — same extract tool/prompt as production; official scores still come from full runs</span></label>
+      <label><input type="radio" name="a" value="Defer sql_only; iterate with full /ask runs only"> <span>Defer it — iterate with full runs (~1–2 min + judge cost per case), zero agent change</span></label>
+      <label><input type="radio" name="a" value="Use the existing /agent/sql/assist path"> <span>Use <code>/agent/sql/assist</code> (not recommended — grades a different generator)</span></label>
+      <button type="submit">Queue answer</button><div class="queued">✓ queued</div>
+    </form>
+
+    <form class="qcard" data-lavish-question="d2-pack-home" onsubmit="event.preventDefault(); qd(this,'d2-pack-home','Persona pack home');">
+      <div class="qt">D2 · Where the 24 cases live</div>
+      <div class="why">The runner, lint and export/import are keyed by dataset.</div>
+      <label><input type="radio" name="a" value="Existing dataset packs + tags.persona"> <span><span class="rec">RECOMMENDED</span> In the existing three dataset packs, tagged <code>tags.persona</code> — zero schema/runner change, filterable later</span></label>
+      <label><input type="radio" name="a" value="Separate persona pack file"> <span>A separate <code>personas.yaml</code> pack (needs pack-loader changes; splits a dataset's coverage across files)</span></label>
+      <label><input type="radio" name="a" value="New persona DB column"> <span>A first-class <code>persona</code> column + migration (heavier; tags can graduate later if needed)</span></label>
+      <button type="submit">Queue answer</button><div class="queued">✓ queued</div>
+    </form>
+
+    <form class="qcard" data-lavish-question="d3-headline" onsubmit="event.preventDefault(); qd(this,'d3-headline','Headline grading');">
+      <div class="qt">D3 · Grading the headline number</div>
+      <div class="why">G1 grades the extract rows; nothing checks the number the report actually headlines.</div>
+      <label><input type="radio" name="a" value="Add headline check to grader spec"> <span><span class="rec">RECOMMENDED</span> Add a <code>headline</code> block to the grader spec — compare the report's headline value to the golden baseline within <code>tolerance_pct</code>, gate alongside G1</span></label>
+      <label><input type="radio" name="a" value="G1 on extract rows is enough for now"> <span>Skip for now — right SQL ⇒ right headline is close enough until viz phase</span></label>
+      <button type="submit">Queue answer</button><div class="queued">✓ queued</div>
+    </form>
+
+    <form class="qcard" data-lavish-question="d4-question-set" onsubmit="event.preventDefault(); qd(this,'d4-question-set','Question set');">
+      <div class="qt">D4 · The question set itself</div>
+      <div class="why">24 drafted above — sales-heavy (16/24) because that's what these personas ask; rebalance if you'd rather stress rent/yield.</div>
+      <label><input type="radio" name="a" value="Approve the 24 questions as drafted"> <span><span class="rec">RECOMMENDED</span> Approve as drafted (annotate individual rows for tweaks)</span></label>
+      <label><input type="radio" name="a" value="Approve overall but rebalance toward rent and yield"> <span>Approve, but swap ~4 sales questions for rent/yield ones</span></label>
+      <label><input type="radio" name="a" value="I will annotate substantial edits first"> <span>Hold — I'll annotate substantial edits before you author anything</span></label>
+      <button type="submit">Queue answer</button><div class="queued">✓ queued</div>
+    </form>
+
+  </div>
+</section>
+
+<section id="risks">
+  <span class="lbl">Risks &amp; honest limits</span>
+  <h2>What could bite</h2>
+  <div class="card" style="margin-top:12px">
+    <div class="risk"><div class="r">Marts are monthly aggregates</div><div class="m">No per-sale rows ⇒ no price-band histograms or days-on-market. Every question above was authored to the real grain; anything a reviewer adds must be too.</div></div>
+    <div class="risk"><div class="r">sql_only prompt divergence</div><div class="m">A model that knows it won't build a report may write slightly different SQL. Mitigation: sql_only is an <b>authoring/iteration lane only</b>; official scores always come from the full <code>/ask</code> path.</div></div>
+    <div class="risk"><div class="r">Ground truth is recomputed live</div><div class="m"><code>golden_truth()</code> re-runs <code>golden_sql</code> each eval — baselines move with data reloads by design. Tolerances (<code>tolerance_pct</code>) absorb drift; pack-lint catches breakage.</div></div>
+    <div class="risk"><div class="r">Dev DB debris</div><div class="m"><code>eval_cases</code> holds e2e leftovers (<code>case_key IS NULL</code>). Phase A cleans them; the YAML pack stays the reviewed source of truth.</div></div>
+    <div class="risk"><div class="r">Judge cost ×24 new cases</div><div class="m">Full judged runs only at milestones; day-to-day iteration uses <code>SQL_ONLY=1</code> / <code>NO_JUDGE=1</code>. Per s43, cost is cache-dominated — cut turns, not prompts.</div></div>
+    <div class="risk"><div class="r">Un-calibrated judges</div><div class="m">insight-v1 (and the new viz-v1) stay <b>advisory</b> until Phase E shows judge↔human agreement — no LLM score gates pass/fail before then.</div></div>
+  </div>
+</section>
+
+<footer>
+  <p>Verified against: <code>scripts/eval_run.py</code> (runner, G-pillars, MLflow sink) ·
+  <code>services/data-agent/agent/{sandbox_agent,eval_graders,eval_judge,pages,object_builder}.py</code> ·
+  <code>services/db-migrate/migrations/versions/{0019,0021,0023,0029,0030}*.py</code> ·
+  <code>evals/cases/*.yaml</code> (31 s27 goldens) · <code>services/backend-api/app/explore/manifest.py</code> ·
+  live marts: sales 2010→2026 (816k rows, Hornsby confirmed), rent 2016→2026 (367k, postcode grain),
+  yield 2016→2026 (63k). Branch <code>eval-loop</code> is cut from the freshly deployed main.</p>
+</footer>
+
+</div>
+<script>
+function qd(form, key, label){
+  var v = new FormData(form).get('a');
+  if(!v) return;
+  if(window.lavish && window.lavish.queuePrompt){
+    window.lavish.queuePrompt('s44 decision ' + key + ': ' + v, {
+      tag:'choice', text: label + ': ' + v, element: form,
+      queueKey: key, data:{question:key, answer:v}
+    });
+  }
+  form.classList.add('answered');
+}
+</script>
+</body>
+</html>

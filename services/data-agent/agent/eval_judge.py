@@ -67,16 +67,38 @@ def rubric_hash() -> str:
     return "jr-" + hashlib.sha256(INSIGHT_RUBRIC.encode("utf-8")).hexdigest()[:8]
 
 
-def judge_model() -> str:
-    """The model that grades insight.
+def _answering_family() -> str:
+    """The model family that authored the answers being graded.
 
-    Deliberately *not* the agent's own model: a judge from the same family
-    rewards its own phrasing. When no cross-family key is configured the caller
-    is told so explicitly rather than quietly grading with the agent itself.
+    ``llm_provider`` names the pydantic-ai champion's family, but the
+    agent_sdk runtime (s45) answers with Claude regardless of that setting —
+    keying the cross-family check off the provider alone would quietly let
+    Claude judge Claude.
     """
-    if settings.anthropic_api_key and settings.llm_provider != "anthropic":
-        return settings.model
-    return ""
+    if settings.agent_runtime == "agent_sdk" or settings.llm_provider == "anthropic":
+        return "anthropic"
+    return "deepseek"
+
+
+def judge_choice() -> tuple[str, str]:
+    """(provider, model) for a judge outside the answering family.
+
+    Deliberately *not* the agent's own family: a judge from the same family
+    rewards its own phrasing. Returns ("", "") when no cross-family key is
+    configured, so the caller reports the gap explicitly rather than quietly
+    grading with the agent itself.
+    """
+    if _answering_family() == "deepseek":
+        if settings.anthropic_api_key:
+            return "anthropic", settings.model
+    elif settings.deepseek_api_key:
+        return "deepseek", settings.deepseek_model
+    return "", ""
+
+
+def judge_model() -> str:
+    """The model that grades insight (kept for callers that only need the name)."""
+    return judge_choice()[1]
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -130,11 +152,12 @@ async def judge_insight(*, question: str, answer: str, evidence: str = "") -> di
     structural scores instead of failing outright — with the gap recorded, not
     hidden.
     """
-    model = judge_model()
+    provider, model = judge_choice()
     if not model:
+        needed = "DEEPSEEK_API_KEY" if _answering_family() == "anthropic" else "ANTHROPIC_API_KEY"
         return {
             "skipped": True,
-            "reason": "no cross-family judge configured (set ANTHROPIC_API_KEY)",
+            "reason": f"no cross-family judge configured (set {needed})",
             "total": None,
             "max": 2 * len(_CRITERIA),
             "rubric_version": RUBRIC_VERSION,
@@ -155,10 +178,14 @@ async def judge_insight(*, question: str, answer: str, evidence: str = "") -> di
 
         from .model_factory import build_model, model_settings, run_with_policy
 
-        assert settings.anthropic_api_key  # guaranteed by judge_model() returning non-empty
-        os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
+        if provider == "anthropic":
+            assert settings.anthropic_api_key  # guaranteed by judge_choice()
+            os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
+        else:
+            assert settings.deepseek_api_key  # guaranteed by judge_choice()
+            os.environ.setdefault("DEEPSEEK_API_KEY", settings.deepseek_api_key)
         judge: Agent[None, str] = Agent(
-            build_model("anthropic", model),
+            build_model(provider, model),
             system_prompt=INSIGHT_RUBRIC,
             model_settings=model_settings(),
         )

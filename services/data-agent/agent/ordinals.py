@@ -24,6 +24,8 @@ back to a column-only match (safe while the ordinal columns are dataset-disjoint
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from typing import Any
 
@@ -77,6 +79,35 @@ async def load_overrides(*, ttl: float = _TTL_SECONDS) -> None:
         if _OVERRIDES is None:
             _OVERRIDES = {}
     _loaded_at = now
+
+
+async def ordinals_snapshot_hash() -> str:
+    """Stable sha256 over the effective ordinals state (code seed + DB overrides).
+
+    ``app.dataset_ordinals`` (the DB override layer) is the one model input
+    with no version history of its own — see the ``0036_dataset_ordinals_log``
+    migration, which turns it into an append-only log. This hash is the
+    complementary piece: a query_run can record it alongside its trace so
+    that, given the log, the exact ordinal state behind a past answer is
+    reproducible even after later curator edits.
+
+    Refreshes the override cache the same (best-effort) way :func:`resolve_order`
+    relies on, then hashes a canonical (sorted, tight-separator) JSON encoding
+    of the merged ``(dataset, column) -> ordered_values`` state — DB overrides
+    win over the code seed for a matching key, exactly as :func:`resolve_order`
+    prefers them. A DB outage degrades :func:`load_overrides` to a no-op (the
+    override cache stays empty), so this falls back to hashing ``BAND_ORDERS``
+    alone — it never raises.
+    """
+    await load_overrides()
+    merged: dict[tuple[str, str], list[str]] = dict(BAND_ORDERS)
+    merged.update(_OVERRIDES or {})
+    canonical = [
+        {"dataset": dataset, "column": column, "order": order}
+        for (dataset, column), order in sorted(merged.items())
+    ]
+    payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _column_only(store: dict[tuple[str, str], list[str]], col: str) -> list[str] | None:

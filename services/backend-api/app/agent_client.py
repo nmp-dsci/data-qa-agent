@@ -174,9 +174,12 @@ async def ask_agent(
     # A full insight report legitimately runs many tool round-trips (knowledge
     # search, several SQL queries, compute_trend, make_chart) and can take well
     # over a minute on a complex multi-entity question. 60s cut those off with a
-    # 502 before the agent could even return its (possibly salvaged) report.
+    # 502 before the agent could even return its (possibly salvaged) report, and
+    # a fixed 120s later cut off an agent_sdk run that completed at 123s (s45).
     async def once() -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.agent_ask_timeout_s, headers=_headers()
+        ) as client:
             resp = await client.post(f"{settings.agent_url}/agent/ask", json=payload)
             resp.raise_for_status()
             return cast(dict[str, Any], resp.json())

@@ -184,47 +184,28 @@ export interface InsightReport {
   knowledge_version: string;
 }
 
-// Pages contract (s08 column model): the agent's answer as an ordered list of
-// pages, each naming a frontend-owned template and carrying ordered columns of
-// typed objects with data + intent (never chart specs or CSS). Placement is
-// positional (columns[i][j]); `role` is the semantic label (headline / chart /
-// insight — feedback + evals key off it) and never affects placement. Objects
-// may carry data.height (px or "sm"|"md"|"lg"|"fill").
-export type PageObjectType =
-  | "kpi"
-  | "trend"
-  | "breakdown"
-  | "compare"
-  | "insight"
-  | "text"
-  // s19 Explore additions to the shared chart library — usable by any surface.
-  | "table"
-  | "choropleth";
-
-/** What the Goldens structured builder can be asked to BUILD. A superset of the
- *  rendered object types: "pivot" is a recipe for shaping a table (rows x a
- *  pivoted column dimension), not a new visual primitive, so it still emits a
- *  `table` PageObject and the render registry stays untouched. */
-export type BuilderObjectType = PageObjectType | "pivot";
-
-export interface PageObject {
-  type: PageObjectType;
-  element_id: string;
-  role?: string | null;
-  data: Record<string, unknown>;
-  explains?: string | null;
+// s46: the Slides/Sheets artifact the agent builds per answer — replaces the
+// in-browser report-engine rendering (page objects/charts). embed_url is a
+// chrome-free viewer suitable for an iframe; deck_url/sheet_url are the full
+// editors the "open in" buttons link out to.
+export interface ArtifactSlide {
+  index: number;
+  layout: string;
+  headline: string;
+  has_chart: boolean;
+  has_table: boolean;
+  has_kpi: boolean;
+  sheet_tab: string | null;
+  rows: number;
 }
 
-export type TemplateId = "one-col" | "two-col" | "three-col";
-
-export interface Page {
-  template: TemplateId;
-  columns: PageObject[][];
-  /** Optional page-level headline that summarises what the page shows. */
-  headline?: string | null;
-  /** Optional per-column relative widths (fr weights) overriding the template's
-   *  default tracks; one entry per column, left→right. */
-  widths?: number[] | null;
+export interface Artifact {
+  deck_url: string;
+  embed_url: string;
+  sheet_url: string;
+  presentation_id: string;
+  spreadsheet_id: string;
+  slides: ArtifactSlide[];
 }
 
 export interface AskResult {
@@ -246,27 +227,13 @@ export interface AskResult {
    *  replays (which predate the field) type-check unchanged. */
   degraded?: boolean;
   steps: AgentStep[];
-  report: InsightReport | null;
-  pages: Page[] | null;
+  /** s46: the Google Slides/Sheets artifact this answer built. Null/absent for
+   *  pre-artifact answers (history replays, demo pack entries recorded
+   *  earlier) — the UI falls back to the plain SQL/rows view. */
+  artifact?: Artifact | null;
   /** s38 demo mode: free text fuzzy-matched this recorded question rather than
    *  hitting it exactly — the bubble shows a "closest recorded answer" note. */
   demo_matched_question?: string | null;
-}
-
-export interface FeedbackInput {
-  message_id: string;
-  rating: 1 | -1;
-  accurate: boolean | null;
-  issue_flag: boolean;
-  comment?: string;
-  target_kind: string;
-  target_ref: string;
-  target_snapshot: Record<string, unknown>;
-  target_render_html: string;
-  report_snapshot: InsightReport;
-  knowledge_version: string;
-  knowledge_pages: string[];
-  client_context: Record<string, unknown>;
 }
 
 export interface AdminFeedback {
@@ -641,15 +608,14 @@ export interface AskProgress {
 
 // s10 streaming pages: the `plan` frame declares up front how many pages this
 // answer will complete for this user (locked = paywall teaser for pages above
-// their plan); one `page` frame then arrives per finished page carrying the
-// exact Template Studio Page JSON. `result` stays authoritative — the UI
-// reconciles streamed pages against result.pages when it lands.
+// their plan); one `page` frame then arrives per finished page as a status
+// marker only (s46 removed the rendered page-object payload). `result` stays
+// authoritative once it lands.
 export type PageSlotStatus = "planned" | "building" | "complete" | "skipped" | "locked";
 
 export interface PagePlanSlot {
   index: number;
   kind: string; // summary | insights | opportunities
-  template?: TemplateId;
   status: PageSlotStatus;
 }
 
@@ -657,7 +623,6 @@ export interface PageFrame {
   index: number;
   kind?: string;
   status: string; // complete | skipped
-  page?: Page;
 }
 
 /** SSE variant of ask(): live status + step progress while the agent works,
@@ -947,9 +912,12 @@ export interface ProfileResult {
   target_filters: ExploreFilters;
   comparison_filters: ExploreFilters;
   geo: ExploreGeo | null;
-  /** The result assembled server-side as report-engine pages (s20) — the UI
-   *  renders these; Save-as-golden persists them unchanged. */
-  pages?: Page[];
+  /** The result assembled server-side as page objects (app/explore/pages_builder.py,
+   *  unchanged by s46 — Explore never got an artifact, it just lost its chart
+   *  renderer). Loosely typed since the removed PageObjectType/Page union no
+   *  longer exists on the frontend: the UI reads whatever tabular data each
+   *  object carries (data.rows) rather than interpreting it as a chart. */
+  pages?: Record<string, unknown>[];
 }
 
 export interface AskState {
@@ -1125,7 +1093,11 @@ export interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
   sql_generated: string | null;
-  report: (InsightReport & { pages?: Page[] }) | null;
+  // s46: only `artifact` is read out of the stored blob — a reopened thread
+  // restores the Slides/Sheets deck the same way it used to restore report
+  // pages. Older stored shapes may still carry other legacy fields; the UI no
+  // longer renders them.
+  report: { artifact?: Artifact | null } | null;
   created_at: string;
   // Joined from the message's latest query_run so a reopened thread restores
   // the same result meta an in-session answer shows. `steps` is admin-only
@@ -1241,16 +1213,6 @@ export async function revokeServiceAccount(id: string): Promise<{ id: string }> 
   return resp.json();
 }
 
-export async function submitFeedback(input: FeedbackInput): Promise<{ id: string }> {
-  const resp = await apiFetch(`${API}/feedback`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(input),
-  });
-  if (!resp.ok) throw new Error(`Feedback failed (${resp.status})`);
-  return resp.json();
-}
-
 export function getAdminFeedback(): Promise<AdminFeedback[]> {
   return adminGet<AdminFeedback[]>("/admin/feedback");
 }
@@ -1268,8 +1230,8 @@ export function getEvalCases(): Promise<EvalCase[]> {
  *  tolerance on ``key``→``value``). ``key: "_key"`` + ``key_fields`` is a
  *  composite key the runner joins; ``aggregate: "ratio"`` rolls both sides to
  *  the key grain and rebuilds ``value`` = ``numerator``/``denominator`` (so a
- *  weighted average is graded, never an average-of-averages). ``expected_objects``
- *  are the page object types the report must contain (G3-structural). */
+ *  weighted average is graded, never an average-of-averages). ``expect_chart`` /
+ *  ``min_slides`` are G5: what the delivered deck must contain. */
 export interface GraderSpec {
   kind?: "scalar" | "row_set" | "ranked_set" | "series" | "";
   key?: string;
@@ -1280,7 +1242,8 @@ export interface GraderSpec {
   aggregate?: "sum" | "ratio" | "";
   numerator?: string;
   denominator?: string;
-  expected_objects?: string[];
+  expect_chart?: boolean;
+  min_slides?: number;
 }
 
 export interface GoldenListItem {
@@ -1308,7 +1271,6 @@ export interface GoldenFull extends GoldenListItem {
   golden_sandbox: string | null;
   golden_data: unknown;
   golden_report: unknown;
-  golden_objects?: GoldenObject[] | null;
   grader?: GraderSpec | null;
 }
 
@@ -1324,152 +1286,18 @@ export interface GoldenInput {
   golden_sandbox?: string | null;
   golden_data?: unknown;
   golden_report?: unknown;
-  golden_objects?: GoldenObject[] | null;
   grader?: GraderSpec | null;
   expectation?: string | null;
 }
 
-/** A derived augmentation applied on top of a measure's base aggregation, over
- *  the window (s29). ``share`` = % of the total within the series; ``growth`` =
- *  the recent window vs the prior window, % change; ``latest`` = the most recent
- *  month; ``rolling`` = window mean; ``index`` = rebased to 100; ``cumulative`` =
- *  running total; ``rank`` = rank within the series; ``yoy`` = vs 12 months prior.
- *  ``share``/``cumulative`` need a ``sum`` base; the time ones need month. */
-export type MeasureDerive =
-  | ""
-  | "share"
-  | "growth"
-  | "latest"
-  | "rolling"
-  | "index"
-  | "cumulative"
-  | "rank"
-  | "yoy";
-
-/** One measure a Presentation Object builds — a base aggregation (``sum``/``mean``
- *  of one ``source`` column, or a weighted average ``num``/``den``) plus an
- *  optional ``derive`` that augments it deterministically over ``months``. ``how``
- *  is the pre-s29 augmentation field, still read so saved goldens keep working. */
-export interface SandboxMeasure {
-  label: string;
-  source?: string;
-  agg?: "sum" | "mean";
-  /** The derived augmentation (s29). Empty / absent = the plain window aggregate. */
-  derive?: MeasureDerive;
-  /** Pre-s29 augmentation field — mapped forward to ``derive`` on load. */
-  how?: "share" | "growth" | "latest";
-  num?: string;
-  den?: string;
-  months?: number | null;
-}
-
-/** The structured form state behind a named presentation object — grain +
- *  encoding + the bar/line measures. The deterministic builder emits code from
- *  it, and it stays on the object so the builder can re-edit columns (lineage). */
-export interface SandboxObjectSpec {
-  grain?: string[];
-  /** The x-axis column, or a list for a *composite* axis (col_a × col_b joined
-   *  into one nominal label, e.g. bedroom_band × property_type). */
-  dimension?: string | string[];
-  group?: string | null;
-  bar_measure?: SandboxMeasure;
-  line_measure?: SandboxMeasure;
-  months?: number;
-  title?: string;
-  summary?: string;
-  /** Exact WHERE predicate scoping the object's extract (e.g.
-   *  `property_type = 'house' AND suburb IN ('Hornsby','Normanhurst')`). Blank =
-   *  carry the golden's filters from the shared extract. Editable lineage. */
-  filter?: string;
-  /** Optional natural-language instruction (routes to the LLM scaffold path). */
-  instruction?: string;
-  /** Pivot only: the dimension whose values become column groups. */
-  pivot_column?: string;
-  /** Pivot only: one measure per metric tabulated under each column group. */
-  pivot_measures?: SandboxMeasure[];
-  /** Pivot only: append a per-metric difference across the two pivoted values. */
-  pivot_compare?: "" | "diff" | "pct_diff";
-  /** Table/pivot: colour numeric cells by sign (green up, red down). */
-  color_by_sign?: boolean;
-  /** Trend: rolling-average window in months (0 = no smoothing). */
-  rolling_window?: number;
-  /** Trend: draw the faint unsmoothed line under the rolling average. */
-  show_actual?: boolean;
-  /** Row order, highest priority first — see agent/object_builder.py _sort_lines. */
-  sort?: { col: string; dir: "asc" | "desc" }[];
-}
-
-/** A named presentation object persisted on a golden: its stable link id, the
- *  generating run_analysis code (lineage), and the form spec that produced it. */
-export interface GoldenObject {
-  name: string;
-  element_id: string;
-  object_type: BuilderObjectType;
-  code: string;
-  spec?: SandboxObjectSpec;
-}
-
-/** A derived frame the sandbox built and fed to a skill — the enrichment stage
- *  between the SQL extract and the report objects (Golden builder Sandbox view). */
-export interface SandboxFrame {
-  name: string;
-  columns: string[];
-  rows: unknown[][];
-  shape: [number, number];
-  /** True when this frame was fed to a skill, so its data is in a chart/analysis
-   *  object; false when it's a derived frame behind a KPI/scalar. */
-  fed_object?: boolean;
-}
-
-/** A named object recomputed against the extract during prep (s18). */
-export interface PrepObjectOut {
-  element_id: string;
-  object: PageObject | null;
-  error: string | null;
-}
-
+/** The extract a golden's SQL runs to (respecting `as_user` RLS impersonation).
+ *  The Goldens builder's Sandbox/report-object stages were removed with the
+ *  report-engine (s46) — this is now purely "run the SQL, see the rows". */
 export interface PrepResult {
   columns: string[];
   rows: unknown[][];
   row_count: number;
-  report: Record<string, unknown> | null;
-  pages?: Page[] | null;
-  frames?: SandboxFrame[];
-  skills_used: string[];
-  skill_gaps: { need: string; why: string }[];
-  objects_out?: PrepObjectOut[];
   error: string | null;
-}
-
-/** Result of deterministically building a named presentation object (s18). */
-export interface BuildObjectResult {
-  name: string;
-  element_id: string;
-  object_type: BuilderObjectType;
-  /** The extract that produced this — revised (extended) when the object needed
-   *  columns the shared extract lacked, else the caller's SQL unchanged. */
-  sql: string;
-  code: string;
-  object: PageObject | null;
-  columns: string[];
-  rows: unknown[][];
-  skills_used: string[];
-  skill_gaps: { need: string; why: string }[];
-  error: string | null;
-}
-
-export function buildGoldenObject(body: {
-  sql: string;
-  // Blank/omitted on the NL path (s22): the agent derives a slug from the instruction.
-  name?: string;
-  object_type: string;
-  spec: SandboxObjectSpec;
-  instruction?: string;
-  // Dataset slug — selects the mart profile for the deterministic builder (s22 P2).
-  dataset?: string;
-  as_user?: string | null;
-}): Promise<BuildObjectResult> {
-  return adminPost<BuildObjectResult>("/admin/eval-goldens/build-object", body);
 }
 
 async function adminSend<T>(path: string, method: string, body?: unknown): Promise<T> {
@@ -1489,52 +1317,6 @@ export function listGoldens(dataset?: string): Promise<GoldenListItem[]> {
 
 export function getGolden(id: string): Promise<GoldenFull> {
   return adminGet<GoldenFull>(`/admin/eval-goldens/${id}`);
-}
-
-export interface SkillInfo {
-  name: string;
-  group: string;
-  doc: string;
-  signature: string;
-}
-
-export function getGoldenSkills(): Promise<{ skills: SkillInfo[] }> {
-  return adminGet<{ skills: SkillInfo[] }>("/admin/eval-goldens/skills");
-}
-
-/** An ordinal band-order fact (s23) — the canonical order the chart lift sorts an
- *  ordinal x-axis (area_band, bedroom_band, …) by, per dataset. */
-export interface OrdinalRow {
-  column_name: string;
-  ordered_values: string[];
-  updated_at: string;
-}
-
-export function getOrdinals(dataset: string): Promise<OrdinalRow[]> {
-  return adminGet<OrdinalRow[]>(`/admin/eval-goldens/ordinals?dataset=${encodeURIComponent(dataset)}`);
-}
-
-export function putOrdinal(body: {
-  dataset: string;
-  column: string;
-  ordered_values: string[];
-}): Promise<{ status: string }> {
-  return adminSend<{ status: string }>("/admin/eval-goldens/ordinals", "PUT", body);
-}
-
-export interface ScaffoldResult {
-  code: string;
-  reasoning: { skill: string; why: string }[];
-  engine: string;
-  error: string | null;
-}
-
-export function scaffoldGolden(body: {
-  question: string;
-  columns: string[];
-  skills: string[];
-}): Promise<ScaffoldResult> {
-  return adminPost<ScaffoldResult>("/admin/eval-goldens/scaffold", body);
 }
 
 export function createGolden(body: GoldenInput): Promise<{ status: string; id: string }> {
@@ -1565,128 +1347,8 @@ export function deleteGolden(id: string): Promise<{ status: string; deleted: num
   return adminSend<{ status: string; deleted: number }>(`/admin/eval-goldens/${id}`, "DELETE");
 }
 
-export function prepGolden(body: {
-  sql: string;
-  code?: string;
-  objects?: { element_id: string; object_type: string; code: string }[];
-  as_user?: string | null;
-}): Promise<PrepResult> {
+export function prepGolden(body: { sql: string; as_user?: string | null }): Promise<PrepResult> {
   return adminPost<PrepResult>("/admin/eval-goldens/prep", body);
-}
-
-// Author one report object from a plain-English instruction: the agent rewrites
-// run_analysis to build the described chart, runs it in the sandbox, and returns
-// the lifted object (type + data) plus the refreshed sandbox report + code.
-export interface AuthorObjectResult {
-  code: string;
-  // The extract that produced this — the revised SQL when the agent had to add
-  // columns for the requested data, else the caller's SQL unchanged (s16).
-  sql: string | null;
-  object: { type: PageObjectType; data: Record<string, unknown> } | null;
-  report: Record<string, unknown> | null;
-  // The FULL recomposed report as pages (every object with fresh data) so the
-  // builder can refresh the whole presentation in sync, not just one object.
-  pages: Page[] | null;
-  columns: string[];
-  rows: unknown[][];
-  reasoning: { skill: string; why: string }[];
-  engine: string;
-  skills_used: string[];
-  skill_gaps: { need: string; why: string }[];
-  error: string | null;
-}
-
-/** A slim digest of a presentation object (no row payload) — tells the agent what
- *  to preserve and marks which object is being edited. */
-export interface ObjectDigest {
-  element_id: string;
-  type: string;
-  role: string | null;
-  data: Record<string, unknown>;
-  _target?: boolean;
-}
-
-export function authorObject(body: {
-  sql: string;
-  code?: string;
-  object_type: string;
-  instruction: string;
-  objects?: ObjectDigest[];
-  target_element_id?: string | null;
-  as_user?: string | null;
-}): Promise<AuthorObjectResult> {
-  return adminPost<AuthorObjectResult>("/admin/eval-goldens/object", body);
-}
-
-export interface DraftResult {
-  sql: string | null;
-  sandbox: string;
-  columns: string[];
-  rows: unknown[][];
-  report: Record<string, unknown> | null;
-  pages: Page[] | null;
-  summary: string | null;
-}
-
-export function draftGolden(body: {
-  question: string;
-  as_user?: string | null;
-  dataset?: string;
-}): Promise<DraftResult> {
-  return adminPost<DraftResult>("/admin/eval-goldens/draft", body);
-}
-
-/** Streaming draft: onStatus fires once per streamed agent object (a single
- *  updating line); resolves with the final shaped golden. */
-export async function draftGoldenStream(
-  body: { question: string; as_user?: string | null; dataset?: string },
-  onStatus: (label: string) => void,
-): Promise<DraftResult> {
-  const resp = await apiFetch(`${API}/admin/eval-goldens/draft/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok || !resp.body) throw new Error(`Draft failed (${resp.status})`);
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let draft: DraftResult | null = null;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    for (;;) {
-      const sep = buffer.indexOf("\n\n");
-      if (sep === -1) break;
-      const frame = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      const eventLine = frame.split("\n").find((l) => l.startsWith("event: "));
-      const dataLine = frame.split("\n").find((l) => l.startsWith("data: "));
-      if (!eventLine || !dataLine) continue;
-      const event = eventLine.slice(7).trim();
-      const raw = dataLine.slice(6);
-      if (event === "status") {
-        try {
-          onStatus(String((JSON.parse(raw) as { label?: string }).label ?? ""));
-        } catch {
-          /* ignore malformed status */
-        }
-      } else if (event === "draft") {
-        draft = JSON.parse(raw) as DraftResult;
-      } else if (event === "error") {
-        let detail = "draft error";
-        try {
-          detail = String((JSON.parse(raw) as { detail?: string }).detail ?? detail);
-        } catch {
-          /* ignore */
-        }
-        throw new Error(detail);
-      }
-    }
-  }
-  if (!draft) throw new Error("Draft stream ended without a result");
-  return draft;
 }
 
 async function adminPost<T>(path: string, body: unknown): Promise<T> {

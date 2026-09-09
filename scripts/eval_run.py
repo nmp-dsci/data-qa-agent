@@ -351,6 +351,9 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
                 "actual_rows": actual_rows,
                 "report": answer.get("report"),
                 "answer": answer.get("answer", ""),
+                # s46: the deck the user actually received. Grading this rather
+                # than only the in-process report tests what was delivered.
+                "artifact": answer.get("artifact"),
                 "judge": use_judge,
             },
             timeout=180,
@@ -366,6 +369,9 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
     g1 = graded.get("g1") or {}
     g3_format = graded.get("g3_format") or {}
     g3_insight = graded.get("g3_insight") or {}
+    # None when the run produced no artifact (deck export off) — which must not
+    # be read as a failure, only as "not applicable to this configuration".
+    g5_artifact = graded.get("g5_artifact")
 
     # G4 — ops. Turns is the headline cost metric: it is what actually drives
     # billed tokens on this stack, and it is the number an intervention can move.
@@ -392,6 +398,12 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
     # advisory until it has been calibrated against human ratings.
     g1_score = g1.get("score")
     passed = bool(g3_format.get("passed")) and (g1_score is None or g1_score >= 0.8)
+    # When a deck was produced, its well-formedness gates too: an answer whose
+    # deliverable is broken has not answered, however right the numbers are.
+    # Absent an artifact this is a no-op, so runs without deck export keep the
+    # exact gate they had before.
+    if g5_artifact is not None:
+        passed = passed and bool(g5_artifact.get("passed"))
 
     return {
         "case_key": key,
@@ -403,6 +415,7 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
         "g2": g2,
         "g3": {"format": g3_format, "insight": g3_insight},
         "g4": g4,
+        "g5": g5_artifact,
         "passed": passed,
         "latency_ms": latency_ms,
         "_raw": raw_answer,

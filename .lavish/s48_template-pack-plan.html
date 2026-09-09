@@ -1,0 +1,387 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>s48 · Template Packs</title><style>
+/* ---------------------------------------------------------------------------
+   Flight Deck / Night Flight tokens — lifted verbatim from
+   frontend/src/styles.css:9-147 so this plan renders in the product's own
+   design system rather than a generic one.
+--------------------------------------------------------------------------- */
+:root {
+  --gray-950:#0a0d15; --gray-900:#111522; --gray-850:#171c2b; --gray-800:#1e2434;
+  --gray-700:#242b3d; --gray-600:#333d55; --gray-100:#eaecf3; --gray-300:#9aa4bb;
+  --gray-400:#7a84a0; --ink-code:#0a0d13;
+  --gold-500:#d9a84e; --gold-ink:#1a1204; --gold-200:#f2ca79;
+  --blue-400:#7fb0ff; --green-400:#9ece6a; --amber-400:#e0af68;
+  --red-400:#f2777a; --purple-400:#c58fff; --cyan-400:#7dcfff;
+
+  --bg:var(--gray-950); --panel:var(--gray-900); --panel-2:var(--gray-850);
+  --panel-3:var(--gray-800); --border:var(--gray-700); --border-2:var(--gray-600);
+  --text:var(--gray-100); --muted:var(--gray-300); --faint:var(--gray-400);
+  --accent:var(--gold-500); --accent-ink:var(--gold-ink); --accent-soft:var(--gold-200);
+  --accent-2:var(--blue-400); --code-bg:var(--ink-code);
+  --good:var(--green-400); --good-border:#33502f;
+  --warn:var(--amber-400); --warn-border:#6b5a2a;
+  --bad:var(--red-400); --bad-border:#6b2a2a;
+  --purple:var(--purple-400); --purple-border:#5a3a6b;
+  --info:var(--cyan-400); --info-border:#2f5a7a;
+
+  --radius-sm:6px; --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+  --border:#ddd7c7; --border-2:#c9c1ac; --text:#23293a; --muted:#67604e;
+  --faint:#7d7663; --accent:#9a7328; --accent-ink:#fffaf0; --accent-soft:#7a5c22;
+  --accent-2:#2456c9; --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+  --warn:#8f6a12; --warn-border:#ddc48a; --bad:#c03535; --bad-border:#e3aaaa;
+  --purple:#7137c8; --purple-border:#cdb3ee; --info:#0d6e8c; --info-border:#a4cfdd;
+}
+
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 96px}
+
+h1{font-size:34px;line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;font-weight:650}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+  margin:0 0 6px;font-weight:600;font-family:var(--mono)}
+h3{font-size:21px;margin:0 0 12px;letter-spacing:-.01em;font-weight:620}
+h4{font-size:15px;margin:0 0 8px;font-weight:620}
+p{margin:0 0 14px;color:var(--muted)}
+p.lede{font-size:17px;color:var(--text);max-width:70ch}
+strong{color:var(--text);font-weight:620}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:1px 5px;
+  color:var(--accent-soft);overflow-wrap:anywhere}
+
+section{margin:0 0 64px}
+.sec-head{border-top:1px solid var(--border);padding-top:18px;margin-bottom:24px}
+
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tight{padding:14px 16px}
+
+.thesis{background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:1px solid var(--border-2);border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);padding:22px 24px;margin:28px 0 0}
+.thesis .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.thesis p{color:var(--text);font-size:16.5px;margin:0}
+
+.b{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid;
+  white-space:nowrap;font-weight:600}
+.b-good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,.08)}
+.b-warn{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,.08)}
+.b-bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,.08)}
+.b-info{color:var(--info);border-color:var(--info-border);background:rgba(125,207,255,.08)}
+.b-pur{color:var(--purple);border-color:var(--purple-border);background:rgba(197,143,255,.08)}
+.b-mut{color:var(--faint);border-color:var(--border-2)}
+
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;
+  padding:11px 14px;border-bottom:1px solid var(--border-2);white-space:nowrap;
+  background:var(--panel-2)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;
+  color:var(--muted)}
+tbody tr:last-child td{border-bottom:none}
+td.n{color:var(--text);font-weight:600}
+td.num{font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+tr.dead td{opacity:.62}
+tfoot td{border-top:1px solid var(--border-2);font-weight:700;color:var(--text);
+  background:var(--panel-2)}
+
+figure{margin:0 0 20px;background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{margin-top:14px;font-size:13px;color:var(--faint);
+  border-top:1px solid var(--border);padding-top:12px}
+.svg-l{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;fill:var(--faint)}
+.svg-t{font-family:var(--sans);font-size:12px;fill:var(--text);font-weight:600}
+.svg-s{font-family:var(--sans);font-size:10.5px;fill:var(--muted)}
+
+.note{border-left:3px solid;border-radius:0 var(--radius) var(--radius) 0;
+  padding:13px 16px;margin:0 0 16px;background:var(--panel-2);font-size:14px}
+.note p:last-child{margin-bottom:0}
+.n-bad{border-color:var(--bad)} .n-good{border-color:var(--good)}
+.n-warn{border-color:var(--warn)} .n-info{border-color:var(--info)}
+
+ul.clean{list-style:none;padding:0;margin:0 0 14px}
+ul.clean li{padding:5px 0 5px 20px;position:relative;color:var(--muted);font-size:14px}
+ul.clean li::before{content:"";position:absolute;left:4px;top:14px;width:5px;height:5px;
+  border-radius:50%;background:var(--accent);opacity:.65}
+
+/* done checklist */
+ul.dod{list-style:none;padding:0;margin:0}
+ul.dod li{display:flex;gap:12px;align-items:flex-start;padding:11px 0;
+  border-bottom:1px solid var(--border)}
+ul.dod li:last-child{border-bottom:none}
+ul.dod .box{flex-shrink:0;width:18px;height:18px;border:1.5px solid var(--accent);
+  border-radius:4px;margin-top:2px}
+ul.dod .t{font-size:14.5px;color:var(--text);font-weight:600}
+ul.dod .d{font-size:13px;color:var(--faint);display:block;margin-top:1px;font-weight:400}
+
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;overflow-x:auto;margin:0 0 16px}
+pre code{background:none;border:none;padding:0;color:var(--gray-100);font-size:12.5px;
+  line-height:1.6;display:block;white-space:pre}
+.cm{color:var(--faint)} .ck{color:var(--purple)} .cs{color:var(--good)}
+.cf{color:var(--accent-2)} .cd{color:var(--accent-soft)}
+
+.ms{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 20px}
+.ms-n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);
+  background:var(--accent);width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;grid-row:span 2}
+.ms-n.gate{background:var(--bad);color:#fff}
+.ms-rail{border-left:1px dashed var(--border-2);margin:8px 0 0 17px;grid-column:1}
+.ms-b{padding:0 0 26px}
+.ms-b h4{margin-bottom:4px}
+.ms-b p{font-size:13.5px;margin-bottom:8px}
+
+form.q{background:var(--panel);border:1px solid var(--border-2);
+  border-radius:var(--radius-lg);padding:20px;margin:0 0 16px}
+form.q h4{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+form.q .qid{font-family:var(--mono);font-size:11px;color:var(--accent);
+  border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:1px 6px}
+form.q .qsub{font-size:13px;color:var(--faint);margin:0 0 14px}
+label.opt{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;
+  border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;
+  cursor:pointer;background:var(--panel-2);transition:border-color .12s}
+label.opt:hover{border-color:var(--border-2)}
+label.opt:has(input:checked){border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 8%,var(--panel-2))}
+label.opt input{margin-top:3px;accent-color:var(--accent);flex-shrink:0}
+label.opt .ot{font-weight:620;color:var(--text);font-size:14px}
+label.opt .od{font-size:12.5px;color:var(--faint);display:block;margin-top:2px}
+button.send{font-family:var(--sans);font-weight:620;font-size:13.5px;
+  background:var(--accent);color:var(--accent-ink);border:none;
+  border-radius:var(--radius);padding:9px 18px;cursor:pointer}
+button.send:hover{background:var(--accent-soft)}
+
+.rec{border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--panel));
+  border-radius:var(--radius-lg);padding:20px 22px}
+.rec h4{color:var(--accent)}
+.foot{border-top:1px solid var(--border);padding-top:16px;color:var(--faint);font-size:12.5px}
+
+.k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+pre{margin:0;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+pre code{background:none;border:none;padding:0;color:var(--text)}
+.svg-m{font-family:var(--sans);font-size:11px;fill:var(--muted)}
+form.card label{display:block;padding:6px 0;color:var(--text);cursor:pointer}
+form.card input{margin-right:8px;accent-color:var(--accent)}
+form.card button{margin-top:10px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius-sm);padding:7px 14px;font-weight:600;font-family:var(--mono);font-size:12px;cursor:pointer}
+ul,ol{margin:0 0 10px;padding-left:20px;color:var(--muted)} li{margin-bottom:6px}
+header h2{margin-bottom:10px}
+</style></head><body>
+<div class="wrap">
+<header>
+  <h2>s48 · plan · branch presentation-handover</h2>
+  <h1>Template packs: Slides layouts that map to Sheet tables that map to the agent's JSON</h1>
+  <p class="lede">The deck path already works on this branch (<code>start_deck</code> / <code>add_slide</code>, a layout loader, a manifest, grader G5, migration 0037). What is missing is the <strong>pack</strong>: a curated set of Slides layouts, each bound to a Sheet table template with a pre-styled chart, so the agent's per-slide JSON lands in a house-styled deck backed by one Sheet. This plan defines the pack contract, seeds a catalogue for you to curate, adds a change log of what humans edit after handover, and turns that log into the metric the loop improves against.</p>
+  <div class="thesis"><div class="k">The one idea</div>
+  <p>A template is not a slide. It is a <strong>triple</strong>: a Slides layout (where things go), a Sheet table template (what data shape feeds it, with a chart the curator styled by hand), and a JSON slot list (what the agent must supply). The builder clones the curator's chart spec and swaps the data range. Curation therefore happens entirely inside Google Workspace, and every generated Sheet is a stack of those tables plus a manifest — one file, all the slides' data.</p></div>
+</header>
+
+<section id="s01">
+<div class="sec-head"><h2>01 · Where it stands</h2><h3>Built, uncommitted, one pack away from real</h3></div>
+<div class="grid g3">
+  <div class="card tight"><span class="b b-good">exists</span><h4>Agent tools</h4><p><code>start_deck(title)</code> once, <code>add_slide(layout, headline, commentary, kpi, frame, columns, chart_type)</code> per slide, capped by <code>max_slides=8</code>. Registered only when a credential exists and <code>DECK_EXPORT=1</code> (<code>sdk_agent.py:242-258, 908-929</code>).</p></div>
+  <div class="card tight"><span class="b b-good">exists</span><h4>Layout loader + manifest</h4><p><code>deck.py:174-217</code> reads a pack by <code>layoutProperties.displayName</code>, infers CHART / TABLE / BODY slots from placeholders; <code>SlideRecord</code> (<code>deck.py:267-319</code>) records layout, headline, has_chart/table/kpi, sheet_tab, rows. This <em>is</em> the JSON design output the templates must map to.</p></div>
+  <div class="card tight"><span class="b b-good">exists</span><h4>Grading + storage</h4><p>G5 <code>grade_artifact()</code> checks deck exists, ≥ min_slides, every headline non-empty, a chart or table present. Migration 0037 stores <code>artifact_deck_url</code> / <code>artifact_sheet_url</code> on <code>query_runs</code>; the manifest is folded into <code>messages.report</code>.</p></div>
+  <div class="card tight"><span class="b b-warn">gap</span><h4>No pack</h4><p><code>GOOGLE_SLIDES_TEMPLATE_ID</code> is empty, so runs use the 5-layout <code>DEFAULT_CATALOGUE</code> over predefined layouts. Charts are built from scratch (<code>basicChart</code>, type only), so nothing is house-styled.</p></div>
+  <div class="card tight"><span class="b b-warn">gap</span><h4>Sheet is one tab per slide</h4><p><code>_unique_tab()</code> creates <code>slide1, slide2…</code>. No Tables, no manifest tab, no number formats beyond <code>_number_format()</code>, no link back from a tab to its slide.</p></div>
+  <div class="card tight"><span class="b b-bad">absent</span><h4>No edit tracking</h4><p><code>gsuite.py</code> makes no revision, activity or watch calls. After handover the app never learns what the user changed. That is the feedback signal this plan is built to capture.</p></div>
+</div>
+</section>
+
+<section id="s02">
+<div class="sec-head"><h2>02 · The contract</h2><h3>Three artifacts, one JSON, one mapping</h3></div>
+<figure>
+<svg viewBox="0 0 1000 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t02"><title id="t02">Agent JSON flows through the pack into a Sheet and a deck</title>
+ <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+ <g id="n-agent"><title>Agent add_slide JSON</title><rect x="20" y="110" width="200" height="110" rx="10" fill="var(--panel-2)" stroke="var(--border-2)"/><text class="svg-l" x="36" y="134">agent · per slide</text><text class="svg-t" x="36" y="158">add_slide JSON</text><text class="svg-m" x="36" y="180">layout · headline</text><text class="svg-m" x="36" y="196">commentary · frame</text><text class="svg-m" x="36" y="212">columns · chart_type · kpi</text></g>
+ <g id="n-pack"><title>The pack: two Workspace files</title><rect x="290" y="20" width="300" height="290" rx="12" fill="none" stroke="var(--accent)" stroke-dasharray="5 4"/><text class="svg-l" x="306" y="42" fill="var(--accent)">pack · lives in google workspace</text>
+  <rect x="306" y="56" width="268" height="100" rx="8" fill="var(--panel-2)" stroke="var(--border-2)"/><text class="svg-t" x="320" y="80">Pack.slides</text><text class="svg-m" x="320" y="100">master + named layouts</text><text class="svg-m" x="320" y="116">TITLE · BODY · CHART · TABLE placeholders</text><text class="svg-m" x="320" y="132">theme, fonts, footer, page numbers</text>
+  <rect x="306" y="170" width="268" height="124" rx="8" fill="var(--panel-2)" stroke="var(--border-2)"/><text class="svg-t" x="320" y="194">Pack.sheet</text><text class="svg-m" x="320" y="214">_pack tab · layout ↔ table binding</text><text class="svg-m" x="320" y="230">one tab per table template</text><text class="svg-m" x="320" y="246">header row · column types · formats</text><text class="svg-m" x="320" y="262">a hand-styled chart per template</text><text class="svg-m" x="320" y="278">(the spec the builder clones)</text></g>
+ <g id="n-builder"><title>DeckBuilder in data-agent</title><rect x="640" y="110" width="150" height="110" rx="10" fill="var(--panel-3)" stroke="var(--border-2)"/><text class="svg-l" x="654" y="134">data-agent</text><text class="svg-t" x="654" y="158">DeckBuilder</text><text class="svg-m" x="654" y="180">bind · write table</text><text class="svg-m" x="654" y="196">clone chart spec</text><text class="svg-m" x="654" y="212">fill placeholders</text></g>
+ <g id="n-out"><title>Outputs</title><rect x="830" y="56" width="150" height="90" rx="8" fill="var(--panel-2)" stroke="var(--good-border)"/><text class="svg-t" x="844" y="80">Run.sheet</text><text class="svg-m" x="844" y="100">Data tab: all slide</text><text class="svg-m" x="844" y="116">tables stacked</text><text class="svg-m" x="844" y="132">+ Manifest tab</text>
+  <rect x="830" y="170" width="150" height="90" rx="8" fill="var(--panel-2)" stroke="var(--good-border)"/><text class="svg-t" x="844" y="194">Run.deck</text><text class="svg-m" x="844" y="214">layouts filled</text><text class="svg-m" x="844" y="230">LINKED charts</text><text class="svg-m" x="844" y="246">notes = commentary</text></g>
+ <g stroke="currentColor" fill="none" stroke-width="1.5" color="var(--faint)">
+  <path d="M220 165H290" marker-end="url(#ar)"/><path d="M590 165H640" marker-end="url(#ar)"/><path d="M790 150L830 110" marker-end="url(#ar)"/><path d="M790 180L830 210" marker-end="url(#ar)"/><path d="M905 146V170" marker-end="url(#ar)"/></g>
+ <text class="svg-l" x="236" y="156">names a layout</text><text class="svg-l" x="596" y="156">resolved</text><text class="svg-l" x="912" y="162">chart_id</text>
+</svg>
+<figcaption>The agent never sees the Sheet or the Slides API. It names a layout and supplies content; the pack decides shape and style; the builder does the writes in one atomic batch per slide, exactly as today. The new work is in the pack and in the builder's binding step.</figcaption>
+</figure>
+
+<h4>Mapping, made concrete for one layout</h4>
+<div class="grid g2">
+<div class="card"><div class="k">agent emits (today's <code>add_slide</code> args, unchanged)</div>
+<pre><code>{ "layout": "Headline + Trend",
+  "headline": "Median rent in 2077 rose 12.4% in three years",
+  "commentary": "Two-bed units drove most of the move.",
+  "frame": "rent_by_month",
+  "columns": ["month", "median_rent_2br", "median_rent_3br"],
+  "chart_type": "line" }</code></pre></div>
+<div class="card"><div class="k">pack binds it (<code>_pack</code> tab row, curated in the Sheet)</div>
+<pre><code>layout          | Headline + Trend
+enabled         | TRUE
+use_when        | One measure over time, 1-3 series.
+table_template  | tpl_series        # tab in Pack.sheet
+chart_template  | tpl_series!chart1 # chartId cloned
+x_role          | first column      # date or ordinal
+series_max      | 3
+notes_from      | commentary        # speaker notes
+placeholders    | TITLE→headline, BODY→commentary</code></pre></div>
+</div>
+<div class="card" style="margin-top:16px"><div class="k">builder does</div>
+<ol>
+<li>Append a block to <code>Data</code> tab: title row <code>#3 · Headline + Trend</code>, then <code>addTable</code> named <code>s03_rent_by_month</code> with column types from <code>units.py</code> (date, currency, currency).</li>
+<li><code>spreadsheets.get</code> the pack's <code>tpl_series</code> chart once per run (cached), take its <code>ChartSpec</code>, replace <code>domains[].sourceRange</code> / <code>series[].sourceRange</code> with the new table's ranges, drop extra series beyond <code>series_max</code>, <code>addChart</code>. Colours, fonts, axis format, legend position all come from the curator's chart.</li>
+<li><code>createSlide(layoutId)</code> with <code>placeholderIdMappings</code>, <code>insertText</code> headline into TITLE, commentary into BODY, <code>createSheetsChart</code> (LINKED) into the CHART slot rect, one atomic batch. Second call writes speaker notes (notes need the created slide's <code>speakerNotesObjectId</code>).</li>
+<li>Append a row to the <code>Manifest</code> tab: slide index, layout, table name, chart id, headline, frame, SQL query_ref, and a hyperlink to the slide.</li>
+</ol></div>
+<div class="card tight" style="margin-top:16px;border-left:3px solid var(--warn)"><span class="b b-warn">gap found</span><h4>The loader only recognises CHART / TABLE placeholders, which the Slides editor cannot create</h4><p><code>load_catalogue()</code> (<code>deck.py:196-206</code>) infers slot geometry from <code>placeholder.type</code>. Slides' theme editor only lets a curator insert text placeholders (title, subtitle, body); CHART and TABLE exist in the API enum but are not authorable in the UI. So a hand-curated pack would yield layouts with no chart slot. Fix in P1: accept a plain shape whose <strong>alt-text title</strong> is <code>chart</code>, <code>table</code>, <code>kpi</code> or <code>commentary</code> as the slot (the API exposes it as <code>pageElement.title</code>). Curators set it via Format options → Alt text. The <code>_pack</code> tab records which convention each layout uses so the Inspector can flag an unmapped layout.</p></div>
+</section>
+
+<section id="s03">
+<div class="sec-head"><h2>03 · Seed catalogue</h2><h3>Nine layouts for you to curate, each with its table template</h3></div>
+<div class="card tight" style="border-left:3px solid var(--warn);margin-bottom:16px"><span class="b b-warn">no url yet</span><h4>Where the templates live</h4><p>Nothing exists in Drive today. The pack is created by the P0 scaffold script, which makes the folder <code>Data Pilot / packs / nsw-property-v1</code> with <code>Pack.slides</code> and <code>Pack.sheet</code> under the deck credential's account, tags them with <code>appProperties</code>, and prints both URLs. Those URLs then land in <code>.env</code> as <code>GOOGLE_SLIDES_TEMPLATE_ID</code> / <code>GOOGLE_SHEET_TEMPLATE_ID</code> and in <code>packs/nsw-property/pack.json</code>. This section is updated with the live links the moment the scaffold runs.</p></div>
+<p>This is a starting menu; the kept set is recorded in §09. Every layout below maps to a shape the graders already know (<code>scalar</code>, <code>ranked_set</code>, <code>series</code>, <code>row_set</code>), which is what makes the deck gradeable per slide later.</p>
+<div class="tw"><table>
+<thead><tr><th>id</th><th>Layout</th><th>Placeholders</th><th>Table template</th><th>Chart</th><th>Agent supplies</th><th>Grader shape</th></tr></thead>
+<tbody>
+<tr><td class="num">L1</td><td class="n">Cover</td><td>CENTERED_TITLE · SUBTITLE</td><td>—</td><td>—</td><td>title, question, date, dataset</td><td>—</td></tr>
+<tr><td class="num">L2</td><td class="n">Headline + Trend</td><td>TITLE · CHART · BODY</td><td><code>tpl_series</code>: x (date/ordinal), 1-3 numeric series</td><td>line / area</td><td>frame, columns, headline, commentary</td><td>series</td></tr>
+<tr><td class="num">L3</td><td class="n">KPI + Trend</td><td>TITLE · BODY(kpi) · CHART · BODY</td><td><code>tpl_kpi</code> (label, value, delta, unit) + <code>tpl_series</code></td><td>line + scorecard</td><td>kpi, frame, columns, headline</td><td>scalar + series</td></tr>
+<tr><td class="num">L4</td><td class="n">Ranked Bars</td><td>TITLE · CHART · BODY</td><td><code>tpl_ranked</code>: label, value (sorted desc, ≤ 12)</td><td>horizontal bar</td><td>frame, columns[label,value], headline</td><td>ranked_set</td></tr>
+<tr><td class="num">L5</td><td class="n">Two Charts</td><td>TITLE · CHART ×2</td><td>two of <code>tpl_series</code> / <code>tpl_ranked</code></td><td>per slot</td><td>two frames (needs <code>frame2</code>, <code>columns2</code>)</td><td>series ×2</td></tr>
+<tr><td class="num">L6</td><td class="n">Table</td><td>TITLE · TABLE · BODY</td><td><code>tpl_table</code>: ≤ 6 cols × 12 rows</td><td>—</td><td>frame, columns, headline</td><td>row_set</td></tr>
+<tr><td class="num">L7</td><td class="n">Composition</td><td>TITLE · CHART · BODY</td><td><code>tpl_share</code>: category, share (sums to 100)</td><td>stacked column / pie</td><td>frame, columns, headline</td><td>row_set</td></tr>
+<tr><td class="num">L8</td><td class="n">Section</td><td>TITLE only</td><td>—</td><td>—</td><td>headline</td><td>—</td></tr>
+<tr><td class="num">L9</td><td class="n">Sources &amp; SQL</td><td>TITLE · TABLE</td><td><code>tpl_sources</code>: query_ref, mart, rows, sql (appendix, auto-added)</td><td>—</td><td>nothing — builder fills from the run trace</td><td>format (G3)</td></tr>
+</tbody></table></div>
+<div class="grid g2" style="margin-top:16px">
+<div class="card tight"><h4>Why the Sheet template carries the chart</h4><p>The Sheets API exposes every chart's full <code>ChartSpec</code> through <code>spreadsheets.get</code>. A curator who restyles a chart in the browser (palette, gridlines, axis number format, legend) is editing the spec the builder clones. No chart styling lives in code. This is the single largest "polish" lever and it costs zero Python per iteration.</p></div>
+<div class="card tight"><h4>What <code>add_slide</code> gains</h4><p>Only two optional fields: <code>frame2</code> / <code>columns2</code> for L5, and <code>kpi</code> already exists. Everything else in the table is pack-side. Unknown layouts are still rejected with the curated list, so a bad guess costs a turn, not a deck.</p></div>
+</div>
+</section>
+
+<section id="s04">
+<div class="sec-head"><h2>04 · Where templates come from</h2><h3>Options scanned, one recommended</h3></div><p><strong>No link to show yet.</strong> The seed deck is picked from SlidesCarnival's report category during P0 (the copy is made in the browser, since their "use as Google Slides theme" button has no API equivalent). Once copied, its URL becomes the pack link in §03.</p>
+<div class="tw"><table>
+<thead><tr><th>Source</th><th>Licence</th><th>Real master layouts?</th><th>Fit for data slides</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td class="n">SlidesCarnival</td><td>CC-BY 4.0, attribution on last slide</td><td>Yes, clean master + layouts</td><td>Good: Report / Consulting / Business categories</td><td><span class="b b-good">seed</span> pick 1-2 report decks, rebuild the 9 layouts on their master</td></tr>
+<tr><td class="n">Slidesgo · SlidesMania</td><td>Free with attribution; paid removes it</td><td>Mixed; often loose shapes on slides, not layouts</td><td>Decorative; needs per-template audit</td><td><span class="b b-mut">maybe</span> design inspiration only</td></tr>
+<tr><td class="n">Google's own gallery</td><td>Google ToS</td><td>Yes but generic</td><td>Weak on chart-first layouts</td><td><span class="b b-mut">fallback</span></td></tr>
+<tr><td class="n">Canva → Slides · Pitch</td><td>Various</td><td>No — flattened shapes on export</td><td>Breaks <code>placeholderIdMappings</code></td><td><span class="b b-bad">no</span></td></tr>
+<tr><td class="n">IBCS / consulting "action title" packs</td><td>Paid or PPTX only</td><td>Would need manual rebuild</td><td>Best <em>conventions</em> (headline = finding, one message per slide)</td><td><span class="b b-info">borrow rules</span> already in <code>workspace_claude.md</code> step 6</td></tr>
+<tr><td class="n">Flight Deck house pack</td><td>Ours</td><td>Yes, built by hand from <code>styles.css</code> tokens</td><td>Exact brand match</td><td><span class="b b-pur">v2</span> once the contract is proven on a seed pack</td></tr>
+</tbody></table></div>
+<p style="margin-top:14px"><strong>Workspace admin gallery and Shared Drives are not available to a gmail.com account.</strong> The deck credential is a personal Google account, so v1 packs live in a plain Drive folder <code>Data Pilot / packs / &lt;name&gt;-v&lt;n&gt;</code>, tagged with <code>appProperties</code>. Move to a Shared Drive and the org template gallery only if a Workspace domain enters the picture.</p>
+</section>
+
+<section id="s05">
+<div class="sec-head"><h2>05 · The Sheet</h2><h3>One Data tab, stacked Tables, plus a Manifest</h3></div>
+<div class="grid g2">
+<div class="card"><div class="k">current</div><h4>One tab per slide</h4><p><code>slide1</code>, <code>slide2</code>, … Each tab is a bare range with a chart floating beside it. Nothing says which slide a tab feeds. A human extending the analysis has to hunt.</p></div>
+<div class="card" style="border-left:3px solid var(--accent)"><div class="k">proposed</div><h4>Data + Manifest + README</h4>
+<pre><code>Data      #1 · Headline + Trend       ← title row, hyperlink to slide
+          s01_rent_by_month  [Table]  ← addTable, typed columns
+          (2 blank rows)
+          #2 · Ranked Bars
+          s02_growth_by_postcode [Table]
+Manifest  slide | layout | table | chart_id | headline | query_ref | sql
+README    question, dataset, run id, pack version, "how to extend"</code></pre>
+<p>Charts anchor next to their table. Sheets Tables (API GA April 2025) give named, typed, independently addressable blocks, which is what a human-editable single sheet needs. Tabs per slide stay as an option in §08 for very wide frames.</p></div>
+</div>
+<div class="card tight" style="margin-top:16px"><h4>Row cap and width</h4><p>Frames are already capped at 2000 rows (<code>skills/charts.py:21</code>). A Table block honours that; a frame wider than 26 columns or taller than 2000 rows overflows to its own tab and the Manifest says so. This keeps the "single sheet" promise without pretending every extract fits in a block.</p></div>
+</section>
+
+<section id="s06">
+<div class="sec-head"><h2>06 · Change log</h2><h3>Should a pipeline curate a transaction log of edits? Yes, as a revision diff, not an event stream</h3></div>
+<div class="tw"><table>
+<thead><tr><th>Mechanism</th><th>What it tells you</th><th>Field-level?</th><th>Slides</th><th>Sheets</th><th>Cost</th></tr></thead>
+<tbody>
+<tr><td class="n">Drive Activity API v2</td><td>"edit" / rename / comment / permission events, actor, time</td><td>No</td><td>yes</td><td>yes</td><td>free, but coarse</td></tr>
+<tr><td class="n">Workspace Events API (Drive)</td><td>Pub/Sub CloudEvent per new revision</td><td>No</td><td>yes</td><td>yes</td><td>Pub/Sub topic + push endpoint; preview-grade</td></tr>
+<tr><td class="n">Drive <code>revisions.list</code> + <code>presentations.get</code> / <code>values.get</code></td><td>Full snapshot per revision, diffable against the manifest</td><td><strong>Yes</strong>, computed by us</td><td>yes</td><td>yes</td><td>one read per changed file per poll</td></tr>
+<tr><td class="n">Apps Script <code>onEdit</code></td><td>Cell-level edit with old/new value</td><td>Yes</td><td><strong>no trigger exists</strong></td><td>yes</td><td>needs a bound script; simple triggers copy with the template</td></tr>
+</tbody></table></div>
+<div class="grid g2" style="margin-top:16px">
+<div class="card" style="border-left:3px solid var(--accent)"><div class="k">recommended v1</div><h4>Poll + snapshot diff</h4>
+<ol>
+<li>A scheduled job (the existing worker/queue path, or a <code>make</code> target for now) lists artifacts from <code>query_runs</code> with <code>artifact_deck_url</code> set and <code>last_seen_version</code> older than Drive's <code>files.get(version, modifiedTime)</code>.</li>
+<li>For each changed file: <code>presentations.get</code> and <code>values.get</code> on the Data + Manifest tabs, then diff against the stored manifest and the previous snapshot.</li>
+<li>Emit typed events into <code>app.artifact_edits</code> (migration 0038): <code>headline_changed</code>, <code>commentary_changed</code>, <code>chart_type_changed</code>, <code>chart_deleted</code>, <code>slide_added</code>, <code>slide_deleted</code>, <code>slide_reordered</code>, <code>table_values_changed</code>, <code>table_rows_added</code>, <code>notes_changed</code>, with before/after text, actor (from Activity API when available), and revision id.</li>
+</ol></div>
+<div class="card"><div class="k">why it makes sense</div><h4>The edit log is the metric</h4><p>Nothing else in the loop tells you whether the output was <em>good enough to keep</em>. A deck with zero edits after being opened is a pass. A headline rewritten on every run is a prompt problem. A chart type changed on the same layout three times is a pack problem. The log routes each to the right fix: prompt, pack, or golden.</p><p>It also feeds curation the way s21 promoted chat answers: an edited deck can be promoted to a golden with the human's headline as the judge's expected answer text, without touching G1 values.</p></div>
+</div>
+<div class="card tight" style="margin-top:16px"><h4>Guardrails</h4><p>Read-only scopes already cover this (<code>drive.file</code> sees files the app created). Never write back into a human-edited file. Snapshots store text and structure only, no thumbnails. Polling every 15 minutes for files touched in the last 30 days keeps well inside the 300 reads/min quota.</p></div>
+</section>
+
+<section id="s07">
+<div class="sec-head"><h2>07 · Measurable</h2><h3>What "up and running" reports, and where it shows</h3></div>
+<div class="tw"><table>
+<thead><tr><th>Metric</th><th>Source</th><th>Tells you</th><th>Surface</th></tr></thead>
+<tbody>
+<tr><td class="n">G5 pass rate · slides per deck · layout rejections</td><td>eval runner, manifest</td><td>Does the agent use the pack correctly</td><td>Goldens tab, MLflow run</td></tr>
+<tr><td class="n">Deck build latency, Google API calls per run</td><td><code>query_runs</code> + OTLP spans</td><td>Cost of the PRESENT phase</td><td>Ops</td></tr>
+<tr><td class="n">Opened rate · time to first edit · edits per deck</td><td><code>artifact_edits</code></td><td>Is the output kept as delivered</td><td>Analytics tab (new "Handover" panel)</td></tr>
+<tr><td class="n">Edit type mix by layout (headline vs chart vs data)</td><td><code>artifact_edits</code> × manifest</td><td>Which layouts and prompts need work</td><td>Pack Inspector, per layout</td></tr>
+<tr><td class="n">Layout usage distribution</td><td>manifest</td><td>Dead layouts to disable, missing shapes to add</td><td>Pack Inspector</td></tr>
+<tr><td class="n">Pack version per run (<code>av-*</code> fingerprint already moves)</td><td>workspace manifest</td><td>Which pack produced which outcome</td><td>MLflow</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="s08">
+<div class="sec-head"><h2>08 · Build order</h2><h3>Four phases, each usable on its own</h3></div>
+<div class="grid g2">
+<div class="card"><span class="b b-info">P0 · pack v1</span><h4>Hand-build, then sync (2-3 days, mostly curation)</h4>
+<ul><li>Copy a SlidesCarnival report deck; rebuild the ticked layouts as named master layouts with proper placeholders.</li>
+<li>Create <code>Pack.sheet</code>: <code>_pack</code> tab + one tab per table template with a styled chart.</li>
+<li><code>scripts/pack_sync.py</code>: reads both files, validates (every enabled layout has a bound table, every CHART slot has a chart template, every layout id resolves), writes <code>packs/&lt;name&gt;/pack.json</code> and thumbnails; <code>render_layouts_md()</code> reads pack.json. Curation stays in Workspace; the repo holds a reviewable snapshot.</li></ul></div>
+<div class="card"><span class="b b-info">P1 · builder</span><h4>Bind + clone (2 days)</h4>
+<ul><li>Single Data tab with <code>addTable</code> blocks, Manifest and README tabs; typed columns from <code>units.py</code> (and fix the <code>sale_count</code>-as-currency bug it exposes).</li>
+<li>Clone chart spec from the template; speaker notes from commentary; auto-append L9 Sources.</li>
+<li><code>appProperties</code> tag {run_id, pack, pack_version}; assert layouts after <code>files.copy</code>.</li>
+<li>Tests extend <code>test_deck.py</code> with a FakeClient that returns a template ChartSpec.</li></ul></div>
+<div class="card"><span class="b b-info">P2 · inspector</span><h4>Pack Inspector in Admin (2 days)</h4>
+<ul><li>Lists layouts with cached thumbnails, enabled toggle, use_when, bound table, chart preview.</li>
+<li>Edits write to the <code>_pack</code> tab via the Sheets API, then trigger pack_sync. Workspace remains the source of truth.</li>
+<li>Shows per-layout usage and edit-type mix once P3 lands.</li></ul></div>
+<div class="card"><span class="b b-info">P3 · change log</span><h4>Revision diff + Handover panel (3 days)</h4>
+<ul><li>Migration 0038 <code>app.artifact_edits</code> + <code>artifact_snapshots</code>; poller; differ with unit tests over recorded <code>presentations.get</code> fixtures.</li>
+<li>Analytics "Handover" panel; ★ promote-edited-deck-to-golden.</li>
+<li>Eval gate: three goldens with <code>expect_chart</code>, one per shape, pass on pack v1 before merging the branch.</li></ul></div>
+</div>
+<div class="card tight" style="margin-top:16px"><h4>Risks</h4>
+<ul><li><strong>Chart spec clone fragility.</strong> Cloned specs reference the template's sheetId in ranges; every <code>GridRange</code> must be rewritten, and any spec field the API rejects on write must be stripped. Pin with a fixture test per template.</li>
+<li><strong>Refresh-token expiry</strong> if the OAuth client sits in Testing status (7 days). Already noted in s47; matters more once a poller runs unattended.</li>
+<li><strong>Quota.</strong> Thumbnails are the expensive read (60/min user); cache per pack version. Pack sync is manual, not on every request.</li>
+<li><strong>Branch hygiene.</strong> Everything from s46/s47 is still uncommitted. Commit the current state first so P0-P3 are reviewable diffs.</li></ul></div>
+</section>
+
+<section id="s09">
+<div class="sec-head"><h2>09 · Decisions</h2><h3>Locked 2026-09-10</h3></div>
+<div class="tw"><table>
+<thead><tr><th>id</th><th>Decision</th><th>Consequence</th></tr></thead>
+<tbody>
+<tr><td class="num">D1</td><td class="n">Single Data tab with stacked Tables, plus Manifest and README tabs</td><td><code>_unique_tab()</code> per-slide tabs retire; overflow-to-own-tab only for frames wider than 26 columns.</td></tr>
+<tr><td class="num">D2</td><td class="n"><code>_pack</code> tab in the template Sheet is the source of truth, synced to <code>packs/&lt;name&gt;/pack.json</code></td><td>Curation happens in Workspace; the repo holds a reviewable snapshot; <code>render_layouts_md()</code> reads pack.json; fingerprint moves on sync.</td></tr>
+<tr><td class="num">D3</td><td class="n">Poll Drive file version, then snapshot diff</td><td>No Pub/Sub, no Apps Script. Migration 0038 <code>artifact_edits</code> + <code>artifact_snapshots</code>; 15-minute poll over files touched in 30 days.</td></tr>
+<tr><td class="num">D4</td><td class="n">Seed from a SlidesCarnival CC-BY report deck, rebuilt as master layouts</td><td>Attribution slide kept at the end of the pack. Flight Deck house pack is v2.</td></tr>
+<tr><td class="num">D5</td><td class="n">Pack v1 keeps L1 Cover, L2 Headline + Trend, L3 KPI + Trend, L4 Ranked Bars, L6 Table, L9 Sources &amp; SQL</td><td>L5 Two Charts, L7 Composition and L8 Section are dropped, so <code>frame2</code> / <code>columns2</code> are not added to <code>add_slide</code> in v1.</td></tr>
+<tr><td class="num">D6</td><td class="n">Commit the branch, then P0 scaffold + pack_sync</td><td>First deliverable is the Drive folder with both files and their URLs, so curation can start in Workspace while P1 is built.</td></tr>
+</tbody></table></div>
+<p style="margin-top:18px;color:var(--faint);font-size:13px">Design source: Flight Deck "Night Flight" tokens from <code>frontend/src/styles.css</code>, matching s46/s47. Facts in §01 verified against the working tree; API facts in §04-§06 from Google's Slides, Sheets, Drive Activity and Apps Script docs.</p>
+</section>
+</div>
+</body></html>

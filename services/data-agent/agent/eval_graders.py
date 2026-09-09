@@ -160,3 +160,46 @@ def grade_presentation_format(
         f"missing expected object: {want}" for want in expected_objects if want not in present
     )
     return {"issues": issues, "passed": not issues, "object_types": sorted(present)}
+
+
+def grade_artifact(
+    artifact: dict[str, Any] | None, *, expect_chart: bool = True, min_slides: int = 1
+) -> dict[str, Any]:
+    """Grade the deck the user actually received (s46).
+
+    Deliberately asserts **content presence and shape, never layout identity**.
+    The agent chooses layouts from the curated catalogue, so a grader that
+    checked "slide 2 used Two Charts" would be grading a model decision that is
+    free to vary between equally-correct runs — it would flake, and worse, it
+    would punish the agent for exercising judgement we asked it to exercise.
+
+    What is genuinely gradeable: the deck exists, it has slides, every slide
+    says something in its headline, and a question that needs a chart got one.
+    Whether that chart was the prettiest available arrangement is a job for the
+    judge or a human, not a deterministic gate.
+    """
+    issues: list[str] = []
+    if not artifact:
+        return {"issues": ["no artifact produced"], "passed": False, "slides": 0}
+
+    for key in ("deck_url", "sheet_url"):
+        if not artifact.get(key):
+            issues.append(f"missing {key}")
+
+    slides = list(artifact.get("slides") or [])
+    if len(slides) < min_slides:
+        issues.append(f"expected at least {min_slides} slide(s), got {len(slides)}")
+    for slide in slides:
+        if not str(slide.get("headline") or "").strip():
+            issues.append(f"slide {slide.get('index')} has no headline")
+    if expect_chart and not any(s.get("has_chart") or s.get("has_table") for s in slides):
+        issues.append("no slide carries a chart or a table")
+
+    return {
+        "issues": issues,
+        "passed": not issues,
+        "slides": len(slides),
+        # Recorded, not asserted on — useful when reviewing why a deck reads
+        # oddly, without turning layout choice into a pass/fail condition.
+        "layouts": [str(s.get("layout") or "") for s in slides],
+    }

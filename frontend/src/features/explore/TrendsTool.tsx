@@ -1,17 +1,12 @@
-// TrendsTool — two side-by-side chart apps (legacy trend1/trend2 parity). Each has
-// chart-type / metric / split / filter controls, and its result renders as a typed
-// page object (trend for line, breakdown/compare for bars) through the report
-// engine's ObjectBody — the same path chat answers and goldens use (s20). The
-// Ask-AI box sets both charts and they autorun (read-only aggregates).
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import {
-  AggregateResult,
-  ExploreDataset,
-  ExploreFilters,
-  exploreAggregate,
-  PageObject,
-} from "../../lib/api";
-import { ObjectBody } from "../../report-engine/PageLayout";
+// TrendsTool — two side-by-side "chart apps" (legacy trend1/trend2 parity). Each
+// has chart-type / metric / split / filter controls that shape a live aggregate
+// query; presentation-handover (s46) retired the in-browser chart renderer, so
+// the result renders as a plain table of the fetched rows (no charts — that
+// output now lands in Slides). The Ask-AI box sets both apps and they autorun
+// (read-only aggregates).
+import { memo, useCallback, useEffect, useState } from "react";
+import { AggregateResult, ExploreDataset, ExploreFilters, exploreAggregate } from "../../lib/api";
+import { SimpleColumn, SimpleTable } from "../../ui/SimpleTable";
 import { AskBox } from "./AskBox";
 import { FilterEditor, MetricSelect, Select, splittableDimensions } from "./controls";
 
@@ -107,7 +102,6 @@ const ChartApp = memo(function ChartApp({
   onChange: (c: ChartConfig) => void;
 }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
-  const [sql, setSql] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const splits = splittableDimensions(dataset).filter((d) => d.source !== "geo");
@@ -130,7 +124,6 @@ const ChartApp = memo(function ChartApp({
       .then((res) => {
         if (!live) return;
         setRows(rowsToObjects(res));
-        setSql(res.sql ?? null);
       })
       .catch((e) => live && setError((e as Error).message))
       .finally(() => live && setLoading(false));
@@ -139,46 +132,14 @@ const ChartApp = memo(function ChartApp({
     };
   }, [key, dataset.slug, timeDim]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The result as a typed page object — what a golden or chat answer would
-  // carry for this exact chart; ObjectBody renders it identically everywhere.
-  const chartObject = useMemo<PageObject>(() => {
-    // The manifest already says what this metric IS, so the chart declares it
-    // rather than leaving the renderer to read it off the column name.
-    const unit = dataset.metrics.find((m) => m.name === config.metric)?.format ?? null;
-    if (config.chartType === "line") {
-      return {
-        type: "trend",
-        element_id: `explore:trend:${index}`,
-        role: "chart",
-        data: {
-          x: timeDim,
-          y: config.metric,
-          y_unit: unit,
-          series: config.split,
-          height: 220,
-          sql,
-          rows,
-        },
-      };
-    }
-    return {
-      // Grouped bars over a second series = the agent's "compare"; plain = "breakdown".
-      type: config.split ? "compare" : "breakdown",
-      element_id: `explore:trend:${index}`,
-      role: "chart",
-      data: {
-        dimension: timeDim,
-        measure: config.metric,
-        unit,
-        group: config.split,
-        stacked: config.chartType === "stacked-bar",
-        sort_x: true, // time axis must read left-to-right in order
-        height: 220,
-        sql,
-        rows,
-      },
-    };
-  }, [config, rows, timeDim, sql, index, dataset]);
+  // The fetched rows as a plain table — no chart type/units, no ObjectBody:
+  // the chart picker above still shapes the query (via group_by) but no longer
+  // shapes a render (s46). Column order mirrors the group_by + metric shape.
+  const tableColumns: SimpleColumn[] = [
+    { key: timeDim, label: timeDim },
+    ...(config.split ? [{ key: config.split, label: config.split }] : []),
+    { key: config.metric, label: config.metric, align: "right" as const },
+  ];
 
   return (
     <div className="ex-card ex-chartapp">
@@ -218,10 +179,10 @@ const ChartApp = memo(function ChartApp({
         <p className="ex-error">{error}</p>
       ) : loading && rows.length === 0 ? (
         <div className="skel" style={{ height: 220 }} />
+      ) : rows.length > 0 ? (
+        <SimpleTable columns={tableColumns} rows={rows} max={100} />
       ) : (
-        <div data-object-type={chartObject.type}>
-          <ObjectBody o={chartObject} />
-        </div>
+        <p className="muted ex-hint">No rows for this selection.</p>
       )}
     </div>
   );

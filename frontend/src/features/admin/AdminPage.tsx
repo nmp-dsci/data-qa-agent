@@ -16,7 +16,6 @@ import {
 import { Annunciator } from "../../ui/flightdeck";
 import { formatTime } from "../../lib/format";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
-import { AgentConfigView } from "./AgentConfigView";
 import { ConfigView } from "./ConfigView";
 import { FeedbackAdmin } from "./FeedbackAdmin";
 
@@ -63,12 +62,11 @@ function Metric({ label, value, series }: { label: string; value: number; series
   );
 }
 
-type AdminTab = "observability" | "quality" | "template-studio";
+type AdminTab = "observability" | "quality";
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "observability", label: "Observability" },
   { id: "quality", label: "Quality" },
-  { id: "template-studio", label: "Template Studio" },
 ];
 
 export function AdminPage() {
@@ -165,7 +163,6 @@ export function AdminPage() {
           </div>
         )}
       </section>
-      {tab === "template-studio" && <AgentConfigView />}
       {tab === "quality" &&
         (loading ? (
           <p className="muted">Loading admin data...</p>

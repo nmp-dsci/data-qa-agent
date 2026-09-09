@@ -74,6 +74,11 @@ class AskResponse(BaseModel):
     # than hitting it exactly, this carries the question actually answered so
     # the chat bubble can say "closest recorded answer". None on exact/live.
     demo_matched_question: str | None = None
+    # s46: the Google Slides deck + backing Sheet this answer produced —
+    # deck_url / embed_url / sheet_url plus a per-slide manifest. None when the
+    # runtime has no deck export configured. This is what the answer area
+    # renders; there is no in-browser chart path any more.
+    artifact: dict[str, Any] | None = None
 
 
 async def _log_event(
@@ -242,6 +247,13 @@ async def _persist_answer(
     engine = result.get("engine", "stub")
     report = result.get("report")
     status = _run_status(result)
+    # s46: fold the artifact into the stored report so reopening a conversation
+    # restores the deck the same way it used to restore pages. messages.report
+    # is already the jsonb that history reads back, so this needs no new column
+    # — query_runs keeps its own flat URL columns for the audit/ops path.
+    artifact = result.get("artifact")
+    if artifact and isinstance(report, dict):
+        report = {**report, "artifact": artifact}
     async with rls_connection(user.id) as conn:
         message_id = str(
             (
@@ -273,13 +285,14 @@ async def _persist_answer(
                         "sql_text, engine, row_count, latency_ms, status, error, input_tokens, "
                         "output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, "
                         "degraded, attempts, ttfp_ms, otel_trace_id, trace, channel, "
-                        "agent_version_id, queue_wait_ms, worker_id, deliveries) "
+                        "agent_version_id, queue_wait_ms, worker_id, deliveries, "
+                        "artifact_deck_url, artifact_sheet_url) "
                         "VALUES (:cid, :mid, :uid, "
                         "(SELECT id FROM app.datasets WHERE slug = :slug), :question, :sql, "
                         ":engine, :row_count, :lat, :status, :err, :in_tok, :out_tok, "
                         ":cache_read, :cache_write, :cost_usd, :degraded, :attempts, :ttfp, "
                         ":trace_id, CAST(:trace AS jsonb), :channel, :agent_version_id, "
-                        ":queue_wait_ms, :worker_id, :deliveries) "
+                        ":queue_wait_ms, :worker_id, :deliveries, :deck_url, :sheet_url) "
                         "RETURNING id"
                     ),
                     {
@@ -322,6 +335,11 @@ async def _persist_answer(
                         "queue_wait_ms": result.get("queue_wait_ms"),
                         "worker_id": result.get("worker_id"),
                         "deliveries": result.get("deliveries"),
+                        # s46: where the answer actually lives. None when deck
+                        # export is off, which is the normal state for a run
+                        # that predates it or a deployment without credentials.
+                        "deck_url": (result.get("artifact") or {}).get("deck_url"),
+                        "sheet_url": (result.get("artifact") or {}).get("sheet_url"),
                     },
                 )
             ).scalar_one()
@@ -396,6 +414,7 @@ def _build_response(
         report=result.get("report"),
         pages=result.get("pages"),
         demo_matched_question=result.get("demo_matched_question"),
+        artifact=result.get("artifact"),
     )
 
 

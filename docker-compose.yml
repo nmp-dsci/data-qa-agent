@@ -197,6 +197,21 @@ services:
       # (`claude setup-token` on the host, then set in .env). The runtime blanks
       # ANTHROPIC/DEEPSEEK keys in the CLI subprocess env so this token wins.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # s46: the answer is a Google Slides deck + Sheet. One generating account,
+      # dev only — prod/demo runs no data-agent at all, so these are simply
+      # never set there and the deck tools are never registered. A *Desktop app*
+      # OAuth client, distinct from the Web client GOOGLE_CLIENT_ID that
+      # backend-api uses for Google Sign-in — hence the DECK_ prefix.
+      GOOGLE_DECK_CLIENT_ID: ${GOOGLE_DECK_CLIENT_ID:-}
+      GOOGLE_DECK_CLIENT_SECRET: ${GOOGLE_DECK_CLIENT_SECRET:-}
+      GOOGLE_DECK_REFRESH_TOKEN: ${GOOGLE_DECK_REFRESH_TOKEN:-}
+      # A curated layout pack; empty uses the built-in catalogue.
+      GOOGLE_SLIDES_TEMPLATE_ID: ${GOOGLE_SLIDES_TEMPLATE_ID:-}
+      DECK_EXPORT: ${DECK_EXPORT:-1}
+      # Public read-only sharing. Separate flag on purpose: this is the one call
+      # that puts a file outside RLS, and a public link cannot be un-published.
+      DECK_PUBLIC: ${DECK_PUBLIC:-0}
+      MAX_SLIDES: ${MAX_SLIDES:-8}
     volumes:
       - dbt_target:/dbt-target:ro
     ports:

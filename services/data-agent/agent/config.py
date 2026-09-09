@@ -138,6 +138,41 @@ class Settings(BaseSettings):
     # the model to proceed with what it has.
     max_knowledge_reads: int = 6
 
+    # --- s46: Google Sheets/Slides answers -------------------------------
+    # One generating account, dev only. There is no interactive flow and no
+    # fallback: without all three the deck tools are never registered, so a
+    # deployment that lacks them (prod/demo, which runs no data-agent at all)
+    # cannot reach Google even by accident. Mint a token with
+    # `uv run python scripts/google_auth.py`.
+    #
+    # Deliberately GOOGLE_DECK_* and not GOOGLE_CLIENT_ID: that name is already
+    # the backend's Google *Sign-in* Web client (the ID-token audience). These
+    # are a different OAuth client of a different type — a Desktop app, which is
+    # what the loopback flow in scripts/google_auth.py requires — so sharing one
+    # variable would silently break sign-in the moment AUTH_MODE=google.
+    google_deck_client_id: str = ""
+    google_deck_client_secret: str = ""
+    google_deck_refresh_token: str = ""
+    # A hand-built pack whose master carries named layouts. Empty = the built-in
+    # catalogue over predefined Slides layouts, so the feature works before a
+    # pack exists.
+    google_slides_template_id: str = ""
+
+    # Master switch, independent of whether credentials happen to be present —
+    # so a machine that has a token can still run the agent without exporting.
+    deck_export: bool = True
+
+    # Public read-only sharing (anyone-with-link). This is the one call that
+    # steps outside RLS, and a public link cannot be un-published, so it is
+    # gated by its own flag rather than riding on deck_export. Only turn it on
+    # where the data is genuinely public (the NSW property marts are).
+    deck_public: bool = False
+
+    # Per-run slide budget, mirroring max_sql_attempts/sandbox_run_attempts.
+    # The global turn ceiling can be loosened for a dev-only runtime; this
+    # counter is what still stops a confused model building 200 slides.
+    max_slides: int = 8
+
     # Local embeddings for agent memory (recall/remember) — no API key needed.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
 

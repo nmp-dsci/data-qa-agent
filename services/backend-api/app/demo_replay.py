@@ -71,6 +71,12 @@ class DemoAnswer:
     steps: tuple[dict[str, Any], ...]
     report: dict[str, Any] | None
     pages: tuple[dict[str, Any], ...]
+    # s46: the Slides/Sheets artifact recorded with this answer. Demo runs no
+    # agent and holds no Google credential — replay only hands back the URLs
+    # the dev run already produced and shared read-only.
+    # Defaulted: a pack entry recorded before s46 simply has no artifact, which
+    # is a normal state rather than a malformed file.
+    artifact: dict[str, Any] | None = None
 
 
 def _norm(text: str) -> str:
@@ -118,6 +124,7 @@ def load_pack() -> tuple[DemoAnswer, ...]:
             raw = json.loads(path.read_text())
             report = raw.get("report")
             pages = raw.get("pages") or (report or {}).get("pages") or []
+            artifact = raw.get("artifact") or (report or {}).get("artifact")
             answers.append(
                 DemoAnswer(
                     id=raw.get("id") or path.stem,
@@ -130,6 +137,7 @@ def load_pack() -> tuple[DemoAnswer, ...]:
                     steps=tuple(raw.get("steps") or []),
                     report=report,
                     pages=tuple(pages),
+                    artifact=artifact,
                 )
             )
         except Exception as exc:  # noqa: BLE001 — skip the bad file, keep the demo up
@@ -197,6 +205,7 @@ def result_for(question: str) -> dict[str, Any]:
         "steps": list(ans.steps),
         "report": ans.report,
         "pages": list(ans.pages) or None,
+        "artifact": ans.artifact,
         # The note the chat bubble renders when the reply is a near-match, not
         # the literal question asked ("closest recorded answer").
         "demo_matched_question": None if exact else ans.question,

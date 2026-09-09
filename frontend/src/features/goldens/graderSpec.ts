@@ -18,9 +18,6 @@ export const GRADER_KIND_INFO: Record<GraderKind, { label: string; hint: string 
   series: { label: "series — a curve", hint: "per-point tolerance on key → value" },
 };
 
-// The page object types a report can contain (G3-structural / expected_objects).
-export const REPORT_OBJECT_TYPES = ["trend", "breakdown", "compare", "kpi", "table"] as const;
-
 // AGENTS.md tier ladder → the grader kind that tier usually implies. Only a
 // starting suggestion; the curator can pick any kind.
 export const TIER_DEFAULT_KIND: Partial<Record<string, GraderKind>> = {
@@ -143,6 +140,9 @@ export function pruneGrader(g: GraderSpec): GraderSpec {
     }
   }
   if ((kind === "series" || g.aggregate === "sum") && g.value) out.value = g.value;
-  if (g.expected_objects?.length) out.expected_objects = g.expected_objects;
+  // G5 — deck grader fields. Defaults (expect_chart=true, min_slides=1) mirror
+  // eval_graders.grade_artifact, so only non-defaults are written.
+  if (g.expect_chart === false) out.expect_chart = false;
+  if (g.min_slides != null && g.min_slides !== 1) out.min_slides = g.min_slides;
   return out;
 }

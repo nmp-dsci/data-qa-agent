@@ -1,7 +1,6 @@
-"""Feedback capture + admin triage — the learning loop's front door (§06/§07).
+"""Admin feedback triage — the learning loop's front door (§06/§07).
 
-Any user can leave element-anchored feedback on a report (click-to-annotate).
-Admins review it beside the re-rendered report, batch-promote captures into
+Admins review stored element-anchored feedback, batch-promote captures into
 app.eval_cases, or reclassify them as user memory / dismiss. eval_cases status
 is toggleable stale<->active.
 """
@@ -16,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from ..agent_client import ask_agent
-from ..auth import CurrentUser, get_current_user, require_admin
+from ..auth import CurrentUser, require_admin
 from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["feedback"])
@@ -48,61 +47,6 @@ def _element_still_present(
         if text and (text == key or key in text or text in key):
             return True
     return False
-
-
-class FeedbackIn(BaseModel):
-    message_id: str
-    rating: int  # -1 or 1
-    accurate: bool | None = None
-    issue_flag: bool = False
-    comment: str | None = None
-    target_kind: str  # report|headline|insight|profile|chart|query
-    target_ref: str  # element_id, e.g. 'insight:2'
-    target_snapshot: dict[str, Any] = {}
-    target_render_html: str = ""
-    report_snapshot: dict[str, Any] = {}
-    knowledge_version: str = ""
-    knowledge_pages: list[str] = []
-    client_context: dict[str, Any] = {}
-
-
-@router.post("/feedback", status_code=201)
-async def submit_feedback(
-    body: FeedbackIn, user: CurrentUser = Depends(get_current_user)
-) -> dict[str, str]:
-    if body.rating not in (-1, 1):
-        raise HTTPException(status_code=400, detail="rating must be -1 or 1")
-    async with rls_connection(user.id) as conn:
-        fid = (
-            await conn.execute(
-                text(
-                    "INSERT INTO app.answer_feedback "
-                    "(message_id, user_id, rating, accurate, issue_flag, comment, "
-                    " target_kind, target_ref, target_snapshot, target_render_html, "
-                    " report_snapshot, knowledge_version, knowledge_pages, client_context) "
-                    "VALUES (:mid, :uid, :rating, :accurate, :issue_flag, :comment, "
-                    " :kind, :ref, CAST(:snap AS jsonb), :html, CAST(:report AS jsonb), "
-                    " :kv, CAST(:pages AS jsonb), CAST(:ctx AS jsonb)) RETURNING id"
-                ),
-                {
-                    "mid": body.message_id,
-                    "uid": user.id,
-                    "rating": body.rating,
-                    "accurate": body.accurate,
-                    "issue_flag": body.issue_flag,
-                    "comment": body.comment,
-                    "kind": body.target_kind,
-                    "ref": body.target_ref,
-                    "snap": json.dumps(body.target_snapshot),
-                    "html": body.target_render_html,
-                    "report": json.dumps(body.report_snapshot),
-                    "kv": body.knowledge_version,
-                    "pages": json.dumps(body.knowledge_pages),
-                    "ctx": json.dumps(body.client_context),
-                },
-            )
-        ).scalar_one()
-    return {"status": "ok", "id": str(fid)}
 
 
 @router.get("/admin/feedback")

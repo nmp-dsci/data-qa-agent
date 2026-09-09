@@ -128,9 +128,10 @@ eval-diagnose:
 eval-compare:
 	uv run python scripts/eval_compare.py --base $(A) --candidate $(B)
 
-# Playwright E2E against a running stack: Template Studio + playground matrix.
+# Playwright E2E against a running stack (full suite — Template Studio +
+# playground were retired with the report-engine, s46 presentation-handover).
 e2e:
-	cd frontend && npm run e2e:studio
+	cd frontend && npm run e2e
 
 # The slow live-LLM chat answer E2E (agent answers a real question).
 e2e-chat:

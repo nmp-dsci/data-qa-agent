@@ -1,8 +1,10 @@
 // ProfileTool — the cohort comparison. Two cohort rows (Target gold / Comparison
 // blue), a shared response metric, and (Ask-AI aside) a Run button. The result
-// arrives from the backend already assembled as report-engine pages (s20:
+// arrives from the backend already assembled as pages of objects (s20:
 // choropleth, KPI tiles, comparison/filter/uplift tables, per-predictor charts)
-// and renders through the same PageLayout as chat answers and goldens.
+// — presentation-handover (s46) retired the in-browser chart renderer, so each
+// object's underlying rows render as a plain table instead (no charts; that
+// output now lands in Slides).
 import { ArrowDownToLine } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { KitSelect } from "@/components/kit/KitSelect";
@@ -14,8 +16,8 @@ import {
   ProfileResult,
   track,
 } from "../../lib/api";
-import { PageLayout } from "../../report-engine/PageLayout";
 import { PlaneGlyph } from "../../ui/icons";
+import { ChartsMovedNote, SimpleColumn, SimpleTable } from "../../ui/SimpleTable";
 import { AskBox } from "./AskBox";
 import { FilterEditor } from "./controls";
 
@@ -339,24 +341,105 @@ function SaveAsGolden({ result }: { result: ProfileResult }) {
   );
 }
 
-// Memoized: the result subtree (the 616-shape map + per-predictor charts + tables)
-// is expensive, and it only depends on the result — so editing a setup control
-// (metric/filters) must not re-render it. Without this, every keystroke in a
-// filter box repainted the whole result, which made the controls feel sluggish.
+// The shape of one backend-assembled page object (app/explore/pages_builder.py)
+// — loosely typed since the frontend no longer interprets it as a chart spec,
+// only reads whatever tabular data it carries.
+interface RawObject {
+  type?: string;
+  element_id?: string;
+  data?: Record<string, unknown>;
+}
+interface RawPage {
+  headline?: string | null;
+  columns?: RawObject[][];
+}
+
+type Extracted =
+  | { kind: "table"; title: string; columns: SimpleColumn[]; rows: Record<string, unknown>[] }
+  | { kind: "text"; title: string; text: string }
+  | { kind: "empty"; title: string };
+
+/** Pull whatever tabular data a backend object carries — its own column spec
+ *  for a `table` object, else the keys of its first row (chart-shaped objects
+ *  carry their series as `data.rows`, an array of records). Text/insight
+ *  objects render as plain prose; anything with neither rows nor text falls
+ *  back to the "moved to Slides" note. KPIs are handled separately below (a
+ *  single value/label reads better as a tile than a one-row table). */
+function extractObject(o: RawObject): Extracted {
+  const d = o.data ?? {};
+  const title = String(d.title ?? d.label ?? d.heading ?? "");
+  if (o.type === "text" || o.type === "insight") {
+    const text = String(d.text ?? d.body ?? "");
+    return text ? { kind: "text", title, text } : { kind: "empty", title };
+  }
+  const rawRows = d.rows;
+  if (Array.isArray(rawRows) && rawRows.length > 0) {
+    const rows = rawRows as Record<string, unknown>[];
+    const colSpec = d.columns;
+    const columns: SimpleColumn[] =
+      Array.isArray(colSpec) && colSpec.length && typeof colSpec[0] === "object"
+        ? (colSpec as { key: string; label?: string }[]).map((c) => ({
+            key: c.key,
+            label: c.label ?? c.key,
+          }))
+        : Object.keys(rows[0]).map((k) => ({ key: k, label: k }));
+    return { kind: "table", title, columns, rows };
+  }
+  return { kind: "empty", title };
+}
+
+/** One object from a backend page, as a plain data element — a KPI keeps its
+ *  familiar tile styling (reused from the admin feedback report preview, which
+ *  never depended on the chart stack), everything else is a title + table (or
+ *  the "moved to Slides" note when there's nothing tabular to show). The
+ *  `data-object-type` attribute mirrors the backend's object `type` string —
+ *  just a test hook, not a reference to the removed PageObjectType union. */
+function ExploreObject({ o }: { o: RawObject }) {
+  const d = o.data ?? {};
+  if (o.type === "kpi") {
+    return (
+      <div className="h-tile" data-object-type="kpi">
+        <div className="h-label">{String(d.label ?? "")}</div>
+        <div className="h-value">{String(d.value ?? "")}</div>
+        {d.basis != null && d.basis !== "" && <div className="h-basis">{String(d.basis)}</div>}
+      </div>
+    );
+  }
+  const ex = extractObject(o);
+  return (
+    <div className="ex-card" data-object-type={o.type ?? ""}>
+      {ex.title && <h4>{ex.title}</h4>}
+      {ex.kind === "table" && <SimpleTable columns={ex.columns} rows={ex.rows} max={200} />}
+      {ex.kind === "text" && <p>{ex.text}</p>}
+      {ex.kind === "empty" && <ChartsMovedNote />}
+    </div>
+  );
+}
+
+// Memoized: the result subtree is expensive to rebuild, and it only depends on
+// the result — so editing a setup control (metric/filters) must not re-render
+// it. Without this, every keystroke in a filter box repainted the whole result.
 //
 // The pages arrive assembled from the backend (app/explore/pages_builder.py) —
-// cohort naming, value formatting and layout all happen there, so a Profile
-// result renders identically here, in the Golden editor, and anywhere else the
-// report engine runs.
+// cohort naming and value formatting happen there; this view just lays out
+// each object's data as a plain table (s46 — no in-browser charts anymore).
 const ProfileResultView = memo(function ProfileResultView({ result }: { result: ProfileResult }) {
-  const pages = result.pages ?? [];
+  const pages = (result.pages ?? []) as RawPage[];
   if (pages.length === 0) return null;
   return (
     <div className="ex-result">
       {pages.map((page, i) => (
         <section className="ex-result-page" key={i}>
           {page.headline && <p className="page-headline">{page.headline}</p>}
-          <PageLayout page={page} />
+          <div className="ex-grid2">
+            {(page.columns ?? []).map((col, ci) => (
+              <div key={ci} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+                {col.map((o, oi) => (
+                  <ExploreObject key={o.element_id ?? oi} o={o} />
+                ))}
+              </div>
+            ))}
+          </div>
         </section>
       ))}
     </div>

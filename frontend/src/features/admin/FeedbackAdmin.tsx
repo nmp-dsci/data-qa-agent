@@ -7,14 +7,12 @@ import { KitSelect } from "@/components/kit/KitSelect";
 import {
   AdminFeedback,
   EvalCase,
-  InsightReport,
   promoteFeedback,
   runEvalStaleness,
   setEvalCaseStatus,
   triageFeedback,
 } from "../../lib/api";
 import { formatTime, summarizeSnapshot } from "../../lib/format";
-import { ReportPreview } from "./ReportPreview";
 
 export function FeedbackAdmin({
   feedback,
@@ -26,7 +24,6 @@ export function FeedbackAdmin({
   onRefresh: () => Promise<void>;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [previewId, setPreviewId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
@@ -154,14 +151,6 @@ export function FeedbackAdmin({
                           <pre>{f.target_render_html}</pre>
                         </details>
                       )}
-                      {(f.report_snapshot ?? f.report) && (
-                        <button
-                          className="link"
-                          onClick={() => setPreviewId(previewId === f.id ? null : f.id)}
-                        >
-                          {previewId === f.id ? "hide report" : "review report"}
-                        </button>
-                      )}
                     </td>
                     <td>
                       <span className={`badge fb-status-${f.status}`}>{f.status}</span>
@@ -187,21 +176,6 @@ export function FeedbackAdmin({
                       )}
                     </td>
                   </tr>
-                  {previewId === f.id && (f.report_snapshot ?? f.report) && (
-                    <tr className="fb-preview-row">
-                      <td colSpan={7}>
-                        <div className="fb-preview-note">
-                          Feedback pinned to <strong>{f.target_ref}</strong>
-                          {f.comment ? `: "${f.comment}"` : ""}
-                        </div>
-                        <ReportPreview
-                          report={(f.report_snapshot ?? f.report) as InsightReport}
-                          selectedRef={f.target_ref}
-                          selectedSnapshot={f.target_snapshot}
-                        />
-                      </td>
-                    </tr>
-                  )}
                 </Fragment>
               ))}
               {filteredFeedback.length === 0 && (

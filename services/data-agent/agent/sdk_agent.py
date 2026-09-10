@@ -235,9 +235,12 @@ TOOL_DESCRIPTIONS = {
         "picture. `headline` is the slide title; `commentary` is one or two "
         "sentences on what the numbers mean, not what they show. Use `columns` "
         "to pick and order which of the frame's columns to plot; the first is "
-        "the x axis / label column. On a KPI layout, `kpi` is the number itself "
-        "and the optional `kpi_label` says what it measures (e.g. 'median sale "
-        "price'). The footer and the source line are filled in for you."
+        "the x axis / label column, which must be unique per row for a chart — "
+        "aggregate first, or pass a categorical second column and it is "
+        "pivoted into series automatically. On a KPI layout, `kpi` is the "
+        "number itself and the optional `kpi_label` says what it measures "
+        "(e.g. 'median sale price'). The footer and the source line are "
+        "filled in for you."
     ),
 }
 

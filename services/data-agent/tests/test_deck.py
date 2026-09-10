@@ -607,6 +607,41 @@ def test_table_requests_set_an_explicit_font_size_on_every_cell() -> None:
     assert all(s["textRange"] == {"type": "ALL"} for s in styles)
 
 
+def test_table_requests_skip_insert_and_style_for_an_empty_cell() -> None:
+    """A cell an `insertText("")` leaves genuinely empty must not also get an
+    `updateTextStyle` — Slides 400s on ``textRange: ALL`` over a text-empty
+    cell ("The object (...) has no text"), which is exactly what silently
+    broke the L9 Sources & SQL slide's own blank pointer-row cells."""
+    reqs = _table_requests(
+        "tbl",
+        Rect(0.5, 1.25, 9.0, 3.7),
+        "slide1",
+        ["a", "b", "c"],
+        [["", "", "Full SQL in the Sheet's Manifest tab"], [None, "x", ""]],
+    )
+    body_inserts = [
+        r["insertText"]
+        for r in reqs
+        if "insertText" in r and r["insertText"]["cellLocation"]["rowIndex"] != 0
+    ]
+    body_styled = {
+        (
+            r["updateTextStyle"]["cellLocation"]["rowIndex"],
+            r["updateTextStyle"]["cellLocation"]["columnIndex"],
+        )
+        for r in reqs
+        if "updateTextStyle" in r and r["updateTextStyle"]["cellLocation"]["rowIndex"] != 0
+    }
+    # Only the two non-empty body cells got anything at all.
+    assert {
+        (r["cellLocation"]["rowIndex"], r["cellLocation"]["columnIndex"]) for r in body_inserts
+    } == {
+        (1, 2),
+        (2, 1),
+    }
+    assert body_styled == {(1, 2), (2, 1)}
+
+
 _TEMPLATE_SPEC = {
     "title": "trend",
     "fontName": "Inter",
@@ -836,7 +871,26 @@ PACK_L9 = Layout(
         "table": _slot("table", "L9_table", Rect(0.5, 1.25, 9.0, 3.7)),
     },
 )
-PACK_CATALOGUE = (PACK_L2, PACK_L9)
+PACK_L4 = Layout(
+    name="Ranked Bars",
+    use_when="a ranking",
+    id="L4",
+    source="slide",
+    slide_object_id="lib_L4",
+    chart=Rect(0.5, 1.25, 9.0, 3.1),
+    slots={
+        "headline": _slot("headline", "L4_headline", Rect(0.5, 0.32, 9.0, 0.75)),
+        "chart": _slot("chart", "L4_chart", Rect(0.5, 1.25, 9.0, 3.1)),
+        "footer": _slot("footer", "L4_footer", Rect(0.5, 5.12, 5.0, 0.3)),
+        "source": _slot("source", "L4_source", Rect(5.6, 5.12, 3.9, 0.3)),
+        "slide_id": _slot("slide_id", "L4_slide_id", Rect(9.5, 0.02, 0.4, 0.2)),
+    },
+    table_template="tpl_ranked",
+    chart_template={"tab": "tpl_ranked", "title": "ranked", "chart_id": 4343, "sheet_id": 2},
+    series_max=1,
+    grader_shape="ranked_set",
+)
+PACK_CATALOGUE = (PACK_L2, PACK_L4, PACK_L9)
 
 
 def _pack_builder() -> tuple[DeckBuilder, FakePackClient]:
@@ -942,6 +996,92 @@ def test_a_chart_slide_with_no_data_still_loses_its_placeholder() -> None:
     assert not _requests(batch, "createSheetsChart")
 
 
+def test_duplicate_x_values_are_rejected_before_any_request_is_sent() -> None:
+    """A frame still carrying property_type/bedroom_band rows charts as a spike
+    train, not a trend — the guard must refuse it rather than build it."""
+    builder, client = _pack_builder()
+    rows = [
+        ["2026-01", "house", 700],
+        ["2026-01", "unit", 650],
+        ["2026-01", "townhouse", 680],
+        ["2026-01", "villa", 690],  # 4th category — over series_max (3)
+        ["2026-02", "house", 705],
+    ]
+    with pytest.raises(ValueError, match=r"2026-01.*×4"):
+        asyncio.run(
+            builder.add_slide(
+                layout=PACK_L2,
+                headline="H",
+                columns=["month", "property_type", "rent"],
+                rows=rows,
+                tab_name="rent_by_type",
+                chart_type="line",
+            )
+        )
+    assert not client.slides_batches, "nothing should be sent once the guard rejects the shape"
+
+
+def test_duplicate_x_with_a_categorical_second_column_auto_pivots_into_series() -> None:
+    """The common `month, property_type, value` shape pivots into one column
+    per category instead of costing the model a retry."""
+    builder, client = _pack_builder()
+    rows = [
+        ["2026-01", "house", 700],
+        ["2026-01", "unit", 650],
+        ["2026-02", "house", 705],
+        ["2026-02", "unit", 660],
+    ]
+    record = asyncio.run(
+        builder.add_slide(
+            layout=PACK_L2,
+            headline="H",
+            columns=["month", "property_type", "rent"],
+            rows=rows,
+            tab_name="rent_by_type",
+            chart_type="line",
+        )
+    )
+    assert record.pivoted_on == "property_type"
+    assert record.columns == ("month", "house", "unit")
+    assert record.spec()["pivoted_on"] == "property_type"
+    header = client.values["'Data'!A2"][0]
+    assert header == ["month", "house", "unit"]
+
+
+def test_unique_x_values_pass_through_unchanged() -> None:
+    builder, client = _pack_builder()
+    rows = [["2026-01", 700], ["2026-02", 705]]
+    record = asyncio.run(
+        builder.add_slide(
+            layout=PACK_L2,
+            headline="H",
+            columns=["month", "rent"],
+            rows=rows,
+            tab_name="rent",
+            chart_type="line",
+        )
+    )
+    assert record.pivoted_on == ""
+    assert record.columns == ("month", "rent")
+    assert record.has_chart
+
+
+def test_bar_layout_rejects_duplicate_labels_the_same_way() -> None:
+    builder, client = _pack_builder()
+    rows = [["Hornsby", 1200000], ["Hornsby", 1150000], ["Normanhurst", 1100000]]
+    with pytest.raises(ValueError, match=r"Hornsby.*×2"):
+        asyncio.run(
+            builder.add_slide(
+                layout=PACK_L4,
+                headline="H",
+                columns=["suburb", "median_price"],
+                rows=rows,
+                tab_name="ranked_prices",
+            )
+        )
+    assert not client.slides_batches
+
+
 def test_commentary_is_mirrored_into_the_speaker_notes() -> None:
     builder, client = _pack_builder()
     asyncio.run(builder.add_slide(layout=PACK_L2, headline="H", commentary="It is steady."))
@@ -1029,7 +1169,9 @@ def test_a_refused_add_table_falls_back_to_a_named_range_once() -> None:
 
 def test_an_oversized_frame_gets_its_own_tab_and_the_data_block_points_at_it() -> None:
     builder, client = _pack_builder()
-    rows = [["2026-01", i] for i in range(MAX_BLOCK_ROWS + 1)]
+    rows = [
+        [f"2026-{i:05d}", i] for i in range(MAX_BLOCK_ROWS + 1)
+    ]  # unique x — not a shape defect
     record = asyncio.run(
         builder.add_slide(
             layout=PACK_L2, headline="H", columns=["month", "rent"], rows=rows, tab_name="big"

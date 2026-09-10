@@ -304,6 +304,140 @@ CHART_TYPES = {
 }
 DEFAULT_CHART_TYPE = "COLUMN"
 
+# -- shape guard (s46 defect 1) ----------------------------------------------
+#
+# columns[0] is the x axis / label column. A line/area/column chart plotted
+# against an x with duplicate values is not a trend — it is a spike train,
+# every duplicate a vertical jag — and a bar/ranked chart with duplicate
+# labels renders two bars fighting for the same slot. Both are silently
+# "valid" to the Sheets API and meaningless on the slide, so the guard runs
+# BEFORE any request is sent: a bad shape costs the model one turn instead of
+# a broken deck.
+LINE_LIKE_CHART_TYPES = {"line", "area", "column"}
+BAR_CHART_TYPES = {"bar"}
+
+
+def _chart_kind(layout: Layout, chart_type: str | None) -> str | None:
+    """ "line" | "bar" | None (no chart / not covered by the guard).
+
+    Pack-mode layouts have no ``chart_type`` argument — the shape is baked
+    into the library chart the layout clones — so it is read off
+    ``grader_shape`` instead: "ranked_set" is the one bar-family layout
+    (Ranked Bars), everything else that carries a chart is a trend line.
+    """
+    if layout.from_pack:
+        if "chart" not in layout.slots:
+            return None
+        return "bar" if layout.grader_shape == "ranked_set" else "line"
+    if layout.chart is None:
+        return None
+    kind = (chart_type or "").strip().lower()
+    if kind in BAR_CHART_TYPES:
+        return "bar"
+    if kind in LINE_LIKE_CHART_TYPES or not kind:
+        return "line"
+    return None  # e.g. scatter — duplicate x is a normal shape there
+
+
+def _looks_numeric(value: Any) -> bool:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return True
+    try:
+        float(value)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _dup_counts(rows: list[list[Any]], col_index: int) -> dict[Any, int]:
+    counts: dict[Any, int] = {}
+    for row in rows:
+        key = row[col_index]
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _shape_error(tab_name: str, x_col: str, counts: dict[Any, int], *, kind: str) -> str:
+    worst_x, worst_n = max(counts.items(), key=lambda kv: kv[1])
+    name = tab_name or "frame"
+    if kind == "bar":
+        return (
+            f"frame {name!r} has up to {worst_n} rows per label {x_col!r} "
+            f"(e.g. {worst_x} ×{worst_n}): give each bar a unique label "
+            "(aggregate the duplicates) before add_slide"
+        )
+    return (
+        f"frame {name!r} has up to {worst_n} rows per {x_col!r} "
+        f"(e.g. {worst_x} ×{worst_n}): aggregate to one row per x (or pass "
+        "a categorical column to pivot into series) before add_slide"
+    )
+
+
+def _maybe_pivot_series(
+    columns: list[str], rows: list[list[Any]], *, series_max: int
+) -> tuple[list[str], list[list[Any]], str] | None:
+    """Pivot ``x, category, value`` rows into one column per category.
+
+    Only attempted for the common 3-column shape (x, a categorical second
+    column, one measure): anything wider is ambiguous about which column to
+    spread, so it is left to the reject message rather than guessed at. Returns
+    ``None`` when the shape does not pivot cleanly — a category value repeated
+    for the same x, or more distinct categories than the layout's series cap.
+    """
+    if len(columns) != 3:
+        return None
+    cat_values = [row[1] for row in rows]
+    if all(_looks_numeric(v) for v in cat_values if v is not None):
+        return None  # the second column looks numeric, not categorical
+    categories = sorted({str(v) for v in cat_values})
+    if not categories or len(categories) > series_max:
+        return None
+    grid: dict[tuple[Any, str], Any] = {}
+    x_values: list[Any] = []
+    seen_x: set[Any] = set()
+    for x, cat, value in rows:
+        key = (x, str(cat))
+        if key in grid:
+            return None  # duplicate (x, category) pair — not a clean grid
+        grid[key] = value
+        if x not in seen_x:
+            seen_x.add(x)
+            x_values.append(x)
+    new_columns = [columns[0], *categories]
+    new_rows = [[x, *[grid.get((x, cat), "") for cat in categories]] for x in x_values]
+    return new_columns, new_rows, columns[1]
+
+
+def _enforce_chart_shape(
+    *,
+    layout: Layout,
+    chart_type: str | None,
+    columns: list[str] | None,
+    rows: list[list[Any]] | None,
+    tab_name: str,
+) -> tuple[list[str] | None, list[list[Any]] | None, str]:
+    """Reject (or auto-pivot) a frame whose x/label column has duplicates.
+
+    Returns the (possibly pivoted) ``columns``/``rows`` and ``pivoted_on`` (the
+    category column name, or "" when nothing was pivoted). Raises ``ValueError``
+    — caught by the tool handler and returned to the model as a structured
+    error — when the shape cannot be built as-is or safely pivoted.
+    """
+    if not columns or not rows:
+        return columns, rows, ""
+    kind = _chart_kind(layout, chart_type)
+    if kind is None:
+        return columns, rows, ""
+    counts = _dup_counts(rows, 0)
+    if not counts or max(counts.values()) <= 1:
+        return columns, rows, ""
+    if kind == "line":
+        pivot = _maybe_pivot_series(columns, rows, series_max=layout.series_max or 3)
+        if pivot is not None:
+            new_columns, new_rows, pivoted_on = pivot
+            return new_columns, new_rows, pivoted_on
+    raise ValueError(_shape_error(tab_name, columns[0], counts, kind=kind))
+
 
 def _number_format(column: str) -> dict[str, Any] | None:
     """Sheets number format for a column, from the app's own unit vocabulary.
@@ -679,6 +813,9 @@ class SlideRecord:
     mart: str = ""
     notes_object_id: str = ""
     slide_url: str = ""
+    # Set when add_slide's shape guard auto-pivoted a duplicate-x frame into
+    # wide series (s46 defect 1) — the category column it spread, or "".
+    pivoted_on: str = ""
 
     def manifest_row(self) -> list[Any]:
         """One Manifest tab row (§5). Column order is the contract."""
@@ -711,6 +848,7 @@ class SlideRecord:
             "sheet_tab": self.sheet_tab,
             "rows": self.rows,
             "dropped": list(self.dropped),
+            "pivoted_on": self.pivoted_on,
         }
 
     def flat(self) -> dict[str, Any]:
@@ -1153,8 +1291,15 @@ class DeckBuilder:
         query_ref: str = "",
         mart: str = "",
     ) -> SlideRecord:
+        columns, rows, pivoted_on = _enforce_chart_shape(
+            layout=layout,
+            chart_type=chart_type,
+            columns=columns,
+            rows=rows,
+            tab_name=tab_name,
+        )
         if layout.from_pack:
-            return await self._add_pack_slide(
+            record = await self._add_pack_slide(
                 layout=layout,
                 headline=headline,
                 commentary=commentary,
@@ -1166,16 +1311,20 @@ class DeckBuilder:
                 query_ref=query_ref,
                 mart=mart,
             )
-        return await self._add_legacy_slide(
-            layout=layout,
-            headline=headline,
-            commentary=commentary,
-            kpi=kpi,
-            columns=columns,
-            rows=rows,
-            chart_type=chart_type,
-            tab_name=tab_name,
-        )
+        else:
+            record = await self._add_legacy_slide(
+                layout=layout,
+                headline=headline,
+                commentary=commentary,
+                kpi=kpi,
+                columns=columns,
+                rows=rows,
+                chart_type=chart_type,
+                tab_name=tab_name,
+            )
+        if pivoted_on:
+            record.pivoted_on = pivoted_on
+        return record
 
     async def _add_pack_slide(
         self,
@@ -1552,14 +1701,18 @@ class DeckBuilder:
         """
         if not self.pack_mode:
             return {}
-        with contextlib.suppress(Exception):
+        try:
             await self._append_sources(sources or [])
+        except Exception as exc:  # noqa: BLE001 — a deck missing Sources is still a deck
+            print(f"[data-agent] Sources & SQL slide not appended ({exc})")
         if self._library_slides:
-            with contextlib.suppress(Exception):
+            try:
                 await self.client.slides_batch(
                     self.presentation_id,
                     [{"deleteObject": {"objectId": oid}} for oid in self._library_slides],
                 )
+            except Exception as exc:  # noqa: BLE001 — leftover library slides beat a crash
+                print(f"[data-agent] library slides not cleared ({exc})")
             self._library_slides = []
         with contextlib.suppress(Exception):
             await self._write_sheet_tabs()
@@ -1837,12 +1990,21 @@ def _table_requests(
         reqs.append(_style(0, c, bold=True))
     for r, row in enumerate(body, start=1):
         for c, value in enumerate(row):
+            text = "" if value is None else str(value)
+            if not text:
+                # An empty cell needs neither request: `insertText` with "" is a
+                # no-op, and the API 400s on `updateTextStyle` over a text-empty
+                # cell ("The object (...) has no text") — this is exactly what
+                # broke the L9 Sources & SQL slide's own pointer row, which has
+                # blank cells by design (§ _append_sources). Skipping both is
+                # equivalent to Slides' own default-styled blank cell.
+                continue
             reqs.append(
                 {
                     "insertText": {
                         "objectId": object_id,
                         "cellLocation": {"rowIndex": r, "columnIndex": c},
-                        "text": "" if value is None else str(value),
+                        "text": text,
                     }
                 }
             )

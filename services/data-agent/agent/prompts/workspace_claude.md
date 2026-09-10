@@ -66,7 +66,10 @@ Work in this order:
       normally 2-4. Lead with the headline finding, then what explains it.
       Pass `frame` to chart a frame you already extracted — never re-extract —
       and `columns` to choose and order what is plotted (first column is the
-      x axis / label). Each layout lists the slots it accepts ("Accepts:
+      x axis / label, and must be unique per row — aggregate a frame with
+      several rows per x, e.g. property_type or bedroom_band still in it,
+      before add_slide; a categorical second column is pivoted into series
+      for you automatically when it fits). Each layout lists the slots it accepts ("Accepts:
       headline, chart, commentary") — pass only those; a Sources & SQL slide is
       appended for you, and so are the footer and the source line. The layout
       decides the chart's shape, so pick "Headline + Trend" for a series over

@@ -174,12 +174,9 @@ def _report() -> dict[str, Any]:
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """No DB, no dbt manifest, no memory store, workspaces under tmp_path."""
+    """No DB, no dbt manifest, workspaces under tmp_path."""
     monkeypatch.delenv("DBT_MANIFEST", raising=False)
     monkeypatch.setattr(settings, "sdk_workspace_dir", str(tmp_path))
-
-    async def fake_recall(user_id: str, question: str) -> list[str]:
-        return []
 
     async def fake_extract(sql: str, *, user_id: str) -> tuple[pd.DataFrame, dict[str, Any]]:
         result = {
@@ -193,7 +190,6 @@ def _offline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     def fake_run_code(code: str, *, frames: dict[str, Any] | None = None) -> _FakeAnalysis:
         return _FakeAnalysis(report=_report(), skills_used=["trend_series"])
 
-    monkeypatch.setattr(sdk_agent, "recall_memories", fake_recall)
     monkeypatch.setattr(sandbox_agent, "run_extract", fake_extract)
     monkeypatch.setattr(sandbox_agent, "run_code", fake_run_code)
 

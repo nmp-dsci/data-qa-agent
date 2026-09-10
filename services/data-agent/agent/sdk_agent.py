@@ -9,7 +9,7 @@ system prompt and exposes ``search_knowledge``/``read_knowledge``/
     ``schema/<schema>_<table>.md``, a copy of the knowledge tree, and a
     ``frames/`` directory — and lets the model explore it with Read/Grep/Glob;
   * exposes the governed tools (``extract``, ``run_analysis``, ``lookup_values``,
-    ``no_answer``, ``remember``) over an **in-process MCP server** named ``dp``;
+    ``no_answer``) over an **in-process MCP server** named ``dp``;
   * drives it with ``claude_agent_sdk.query()`` against the Claude Code CLI,
     which authenticates with a subscription/OAuth login rather than an API key.
 
@@ -41,7 +41,6 @@ from .config import settings
 from .deck import DEFAULT_CATALOGUE, DeckBuilder, Layout, load_catalogue, render_layouts_md
 from .gsuite import GoogleClient, credentials_present
 from .knowledge import knowledge_version
-from .memory import recall_memories
 from .ordinals import ordinals_snapshot_hash
 from .otlp import agent_span, child_span, clip, current_context, emit_span, set_attributes
 from .pack import PackSpec, load_pack, pack_path, pack_to_catalogue
@@ -53,7 +52,6 @@ from .sandbox_agent import (
     _do_extract,
     _do_lookup_values,
     _do_no_answer,
-    _do_remember,
     _do_run_analysis,
     _merge_decision_log,
     _query_list,
@@ -70,7 +68,7 @@ ENGINE = "agent_sdk"
 
 MCP_SERVER = "dp"
 BUILTIN_TOOLS = ["Read", "Grep", "Glob"]
-GOVERNED_TOOLS = ["extract", "run_analysis", "lookup_values", "no_answer", "remember"]
+GOVERNED_TOOLS = ["extract", "run_analysis", "lookup_values", "no_answer"]
 # s46: registered only when a generating credential is configured AND export is
 # on, so a run that cannot build a deck is never offered the tools.
 DECK_TOOLS = ["start_deck", "add_slide"]
@@ -233,7 +231,6 @@ TOOL_DESCRIPTIONS = {
         "report. Give a short, user-facing reason (what's missing / what the data "
         "does cover). Then return a one-line confirmation."
     ),
-    "remember": "Store a durable user preference about how they want answers.",
     "start_deck": (
         "Open the answer's Google Slides deck and its backing Sheet. Call ONCE, "
         "after your analysis is done and before the first add_slide.\n\n"
@@ -267,7 +264,6 @@ TOOL_SCHEMAS = {
         required=["column", "pattern", "table"],
     ),
     "no_answer": _schema({"reason": "string", "why": "string"}, required=["reason"]),
-    "remember": _schema({"fact": "string"}, required=["fact"]),
     "start_deck": _schema({"title": "string"}, required=["title"]),
     "add_slide": {
         "type": "object",
@@ -510,12 +506,6 @@ def build_tool_server(
             set_attributes(span, status=_status_of(out))
             return _text(out)
 
-    async def remember_tool(args: dict[str, Any]) -> dict[str, Any]:
-        with child_span("tool.remember", parent=deps.otel_context) as span:
-            out = await _do_remember(deps, str(args.get("fact") or ""))
-            set_attributes(span, status=_status_of(out))
-            return _text(out)
-
     async def start_deck_tool(args: dict[str, Any]) -> dict[str, Any]:
         with child_span("tool.start_deck", parent=deps.otel_context) as span:
             out = await _start_deck(args)
@@ -676,7 +666,6 @@ def build_tool_server(
         "run_analysis": run_analysis_tool,
         "lookup_values": lookup_values_tool,
         "no_answer": no_answer_tool,
-        "remember": remember_tool,
     }
     names = list(GOVERNED_TOOLS)
     if deck_ctx is not None:
@@ -912,11 +901,6 @@ def cli_env() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def _memories_block(recalled: list[str]) -> str:
-    """The champion's wording, so the two prompts differ only by structure."""
-    return "\n".join(f"- {m}" for m in recalled) if recalled else "(none stored yet)"
-
-
 def _finish_span(span: Any, *, deps: _SdkDeps, trace: SdkTrace | None) -> None:
     """Attach the run's outcome to its OTel span (s44 M3b).
 
@@ -1020,7 +1004,6 @@ async def answer_with_sdk(
             }
             deps.emit_frame("plan", {"pages": plan_slots})
 
-            recalled = await recall_memories(user_id, question)
             include_insights = "insights" in deps.page_indexes
             base_dir = Path(settings.sdk_workspace_dir) if settings.sdk_workspace_dir else None
             deck_ctx = await _build_deck_context()
@@ -1029,7 +1012,6 @@ async def answer_with_sdk(
                 rid,
                 question,
                 include_insights=include_insights,
-                memories_block=_memories_block(recalled),
                 layouts_md=layouts_md,
                 base_dir=base_dir,
             ) as ws:

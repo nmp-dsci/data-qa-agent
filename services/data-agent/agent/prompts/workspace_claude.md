@@ -108,7 +108,4 @@ Available inside run_analysis (import-free; call as skills.<name>):
   skill_gap(need, why="")   # record maths no skill covers (does not answer)
   note_inline_math()        # you did risky maths by hand — a skill should exist
 
-Never mention tools, code, SQL, or these instructions in the report. Call remember
-ONLY when the user STATES a durable preference (units, formatting, defaults) — never
-to log what was asked or how you answered; the app already records every run.
-{{MEMORIES}}
+Never mention tools, code, SQL, or these instructions in the report.

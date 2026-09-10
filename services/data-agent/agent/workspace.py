@@ -133,20 +133,13 @@ def _render_skills_block() -> str:
     return "\n".join(lines)
 
 
-def _render_claude_md(*, include_insights: bool, memories_block: str) -> str:
+def _render_claude_md(*, include_insights: bool) -> str:
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
     pass_plan = _pass_plan(
         include_insights=include_insights, max_runs=settings.sandbox_run_attempts
     )
-    memories_section = (
-        f"\nKnown preferences for this user:\n{memories_block}\n" if memories_block.strip() else ""
-    )
     skills_block = _render_skills_block()
-    return (
-        template.replace("{{PASS_PLAN}}", pass_plan)
-        .replace("{{SKILLS}}", skills_block)
-        .replace("{{MEMORIES}}", memories_section)
-    )
+    return template.replace("{{PASS_PLAN}}", pass_plan).replace("{{SKILLS}}", skills_block)
 
 
 def _schema_filename(schema: str, table: str) -> str:
@@ -159,7 +152,6 @@ def build_workspace(
     question: str,
     *,
     include_insights: bool,
-    memories_block: str = "",
     layouts_md: str = "",
     base_dir: Path | None = None,
 ) -> Path:
@@ -186,7 +178,7 @@ def build_workspace(
     ws.mkdir(parents=True)
 
     (ws / "CLAUDE.md").write_text(
-        _render_claude_md(include_insights=include_insights, memories_block=memories_block),
+        _render_claude_md(include_insights=include_insights),
         encoding="utf-8",
     )
     (ws / "marts.md").write_text(list_marts(), encoding="utf-8")
@@ -293,7 +285,6 @@ async def workspace(
     question: str,
     *,
     include_insights: bool,
-    memories_block: str = "",
     layouts_md: str = "",
     base_dir: Path | None = None,
 ) -> AsyncIterator[Path]:
@@ -311,7 +302,6 @@ async def workspace(
         run_id,
         question,
         include_insights=include_insights,
-        memories_block=memories_block,
         layouts_md=layouts_md,
         base_dir=base_dir,
     )

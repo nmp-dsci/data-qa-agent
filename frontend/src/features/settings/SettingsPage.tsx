@@ -1,14 +1,13 @@
-// Settings / Profile: theme toggle, model provider, the agent's remembered
-// preferences (read/forget — owner-only under RLS), and a data-access summary.
+// Settings / Profile: theme toggle, the live agent runtime, and a data-access
+// summary.
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArchitectureRuntime,
   createServiceAccount,
-  deleteMyMemory,
-  getAdminConfig,
+  getArchitecture,
   getExploreDatasets,
   getMyAccess,
-  getMyMemories,
   listServiceAccounts,
   revokeServiceAccount,
   ServiceAccountCreated,
@@ -73,81 +72,43 @@ function ThemeSection() {
   );
 }
 
-function ModelSection({ user }: { user: User }) {
-  const isAdmin = user.role === "admin";
-  const q = useQuery({
-    queryKey: ["admin", "config"],
-    queryFn: getAdminConfig,
-    enabled: isAdmin,
-  });
-  let provider = "managed by your administrator";
-  let model: string | null = null;
-  if (isAdmin && q.data) {
-    const agent = q.data.sections.find((s) => s.service === "data-agent");
-    provider = agent?.items.find((i) => i.key === "LLM_PROVIDER")?.value ?? "unknown";
-    model = agent?.items.find((i) => i.key === "model")?.value ?? null;
-  }
-  return (
-    <section>
-      <h3>Model provider</h3>
-      <div className="settings-row">
-        <span className="badge">{provider}</span>
-        {model && <code>{model}</code>}
-        {isAdmin ? (
-          <span className="muted">Configured via LLM_PROVIDER on the data-agent service.</span>
-        ) : (
-          <span className="muted">The agent answers with the provider your admin configured.</span>
-        )}
-      </div>
-    </section>
-  );
+/** s50: the Agent section shows the live runtime — the same
+ *  `ArchitectureRuntime` the Architecture tab reads via `GET /architecture`.
+ *  That route is admin-only (services/backend-api/app/routers/
+ *  architecture.py proxies the data-agent and is gated with
+ *  `require_admin`), and there's no non-admin equivalent yet, so non-admins
+ *  get a static "managed by your administrator" line instead of a fetch that
+ *  would just 403. */
+function runtimeLabel(runtime: ArchitectureRuntime): string {
+  return runtime.agent_runtime === "agent_sdk" ? "champion" : "challenger";
 }
 
-function MemoriesSection() {
-  const queryClient = useQueryClient();
-  const q = useQuery({ queryKey: ["me", "memories"], queryFn: getMyMemories });
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function forget(id: string) {
-    setBusy(id);
-    try {
-      await deleteMyMemory(id);
-      await queryClient.invalidateQueries({ queryKey: ["me", "memories"] });
-    } finally {
-      setBusy(null);
-    }
-  }
-
+function AgentSection({ user }: { user: User }) {
+  const isAdmin = user.role === "admin";
+  const q = useQuery({
+    queryKey: ["architecture"],
+    queryFn: getArchitecture,
+    enabled: isAdmin,
+  });
+  const runtime = q.data?.runtime;
   return (
     <section>
-      <h3>Remembered preferences</h3>
-      <p className="muted">
-        Durable preferences the agent has stored about how you like answers. Owner-only — even
-        admins can't read another user's memories.
-      </p>
-      {q.isLoading && <p className="muted">Loading…</p>}
-      {q.error && <p className="error">{(q.error as Error).message}</p>}
-      {q.data && q.data.length === 0 && <p className="muted">Nothing remembered yet.</p>}
-      {q.data && q.data.length > 0 && (
-        <div className="mem-list">
-          {q.data.map((m) => (
-            <div key={m.id} className="mem-card">
-              <div className="mem-body">
-                <div className="mem-text">{m.content}</div>
-                <div className="mem-meta">
-                  learned {formatTime(m.created_at)}
-                  {m.last_used_at ? ` · last used ${formatTime(m.last_used_at)}` : ""}
-                </div>
-              </div>
-              <button
-                className="btn-ghost mem-forget"
-                disabled={busy === m.id}
-                onClick={() => forget(m.id)}
-              >
-                {busy === m.id ? "…" : "forget"}
-              </button>
-            </div>
-          ))}
+      <h3>Agent</h3>
+      {!isAdmin && <p className="muted">Runtime details are managed by your administrator.</p>}
+      {isAdmin && q.isLoading && <p className="muted">Loading…</p>}
+      {isAdmin && q.data && !q.data.available && (
+        <p className="muted">{q.data.error ?? "Could not reach the data-agent."}</p>
+      )}
+      {isAdmin && runtime && (
+        <div className="settings-row">
+          <span className="badge">{runtime.agent_runtime}</span>
+          <span className="pill">{runtimeLabel(runtime)}</span>
+          <code>{runtime.model}</code>
+          {runtime.fingerprint?.fingerprint && (
+            <span className="muted" title="build fingerprint (version.build_fingerprint)">
+              {runtime.fingerprint.fingerprint}
+            </span>
+          )}
         </div>
       )}
     </section>
@@ -380,8 +341,7 @@ export function SettingsPage({ user }: { user: User }) {
         </p>
       </section>
       <ThemeSection />
-      <ModelSection user={user} />
-      <MemoriesSection />
+      <AgentSection user={user} />
       <AccessSection user={user} />
       {user.role === "admin" && <ServiceAccountsSection />}
     </main>

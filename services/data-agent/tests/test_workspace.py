@@ -111,13 +111,11 @@ def test_claude_md_has_no_leftover_template_slots(tmp_path: Path, include_insigh
         f"run-slots-{include_insights}",
         "any question",
         include_insights=include_insights,
-        memories_block="- prefers charts in AUD",
         base_dir=tmp_path,
     )
     content = (ws / "CLAUDE.md").read_text()
     assert "{{" not in content
     assert "}}" not in content
-    assert "prefers charts in AUD" in content
 
 
 def test_claude_md_generates_the_skills_block_from_the_registry(tmp_path: Path) -> None:
@@ -134,14 +132,6 @@ def test_claude_md_generates_the_skills_block_from_the_registry(tmp_path: Path) 
     # The mechanics footer (hand-written, never generated) is still present.
     assert "skill_gap(need, why=" in content
     assert "note_inline_math()" in content
-
-
-def test_claude_md_omits_memories_section_when_empty(tmp_path: Path) -> None:
-    ws = build_workspace(
-        "run-no-memories", "any question", include_insights=True, base_dir=tmp_path
-    )
-    content = (ws / "CLAUDE.md").read_text()
-    assert "Known preferences" not in content
 
 
 def test_workspace_manifest_has_stable_components(tmp_path: Path) -> None:

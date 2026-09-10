@@ -216,7 +216,7 @@ a.ext{color:var(--accent-2);text-decoration:none;border-bottom:1px dotted var(--
   <div class="stat good"><div class="v">PR #42</div><div class="l">optimiser draft PR, test-gated</div></div>
 </div>
 <nav class="toc">
-  <a href="#walk">1 · Walkthrough</a><a href="#trace">2 · Tracing</a><a href="#golden">3 · Goldens + judge</a><a href="#gate">4 · Champion vs challenger</a><a href="#version">5 · Version control</a><a href="#kb">6 · Knowledge curator</a><a href="#opt">7 · Optimiser</a><a href="#delivered">8 · What shipped</a><a href="#next">9 · What to review</a>
+  <a href="#walk">1 · Walkthrough</a><a href="#trace">2 · Tracing</a><a href="#depth">2b · Depth</a><a href="#settings">2c · Settings</a><a href="#golden">3 · Goldens + judge</a><a href="#gate">4 · Champion vs challenger</a><a href="#version">5 · Version control</a><a href="#kb">6 · Knowledge curator</a><a href="#opt">7 · Optimiser</a><a href="#delivered">8 · What shipped</a><a href="#next">9 · What to review</a>
 </nav>
 <div class="thesis"><div class="k">Verdict</div><p>The loop is <strong>fully tracked, judged against goldens, versioned and rewindable</strong>, and champion vs challenger promotion works on two goldens. The optimiser first declined to open a PR because its candidate failed the golden checkpoint test, then, once the checkpoint was corrected, opened <a class="ext" href="https://github.com/nmp-dsci/data-qa-agent/pull/42">draft PR #42</a> with a tested <code>period_metric</code> helper. Both behaviours are the D4 guarantee working.</p></div>
 </header>
@@ -244,6 +244,17 @@ a.ext{color:var(--accent-2);text-decoration:none;border-bottom:1px dotted var(--
 <tr><td class="n">Eval → trace join</td><td><code>eval_results.otel_trace_id</code>, <code>mlflow_run_id</code></td><td>populated on all 10 M5 rows</td></tr>
 <tr><td class="n">Grading as a span</td><td><code>eval.grade</code> span with run_id, trace id, case key</td><td>seen in data-agent logs during every eval</td></tr>
 </tbody></table></div>
+</section>
+
+
+<section id="depth">
+<div class="sec-head"><h2>2b · Investigation depth</h2><h3>Added after your review: tokens per case and a case drill-down</h3></div>
+<div class="shot"><img src="s50_shot_evals_case_drilldown.jpg" alt="Evaluations tab case drill-down"><div class="cap"><b>Evaluations tab, rent case expanded.</b> Tokens, cost and latency per case and per run. The drill-down shows the verdict with the judge's reason, the agent's answer beside the golden answer, then checkpoints as expected vs actual, the agent's SQL beside the golden SQL, every sandbox pass with its code and stdout, the deck slide by slide, and links to the MLflow trace and case run.</div></div>
+<p class="small">Two layout bugs surfaced and were fixed while building it: the case column overflowed the panel because of a global no-wrap rule on table cells, and the Evaluations page never scrolled.</p>
+</section>
+<section id="settings">
+<div class="sec-head"><h2>2c · Settings tab</h2><h3>Preferences feature dropped, live agent shown</h3></div>
+<div class="shot"><img src="s50_shot_settings.jpg" alt="Settings tab"><div class="cap"><b>Settings.</b> Remembered preferences are gone from the tab, the API and the agent (the <code>remember</code> tool and prompt slot are removed, which moved the fingerprint to <code>av-35a3adc47556</code>). The stale Model provider block is replaced by the live runtime, champion status, model and fingerprint. The <code>app.user_memories</code> table is left in place for now.</div></div>
 </section>
 
 <section id="golden">

@@ -97,16 +97,14 @@ SDK_PROVIDER = "claude-agent-sdk"
 def _sdk_workspace_hashes() -> dict[str, str]:
     """claude_md/marts/schema/combined content hashes for the SDK fingerprint.
 
-    Built from a throwaway REFERENCE workspace, not a model's real per-run one:
-    a real workspace's CLAUDE.md also bakes in that user's recalled memories,
-    which must never move a *build* identity. ``include_insights=True`` picks
-    the richer of the two pass-plan templates deterministically and
-    ``memories_block=""`` keeps the render user-independent, so this is a pure
-    function of the code (workspace.py, its template, schema.py, the knowledge
-    tree) — cached for the process lifetime like ``prompt_hash``/``skills_hash``
-    above. ``build_workspace`` touches only the filesystem (a temp dir) and
-    ``schema.list_marts``/``describe_table`` (dbt-manifest or curated-catalog,
-    no DB), so this is safe to compute at import-adjacent time.
+    Built from a throwaway REFERENCE workspace, not a model's real per-run one.
+    ``include_insights=True`` picks the richer of the two pass-plan templates
+    deterministically, so this is a pure function of the code (workspace.py,
+    its template, schema.py, the knowledge tree) — cached for the process
+    lifetime like ``prompt_hash``/``skills_hash`` above. ``build_workspace``
+    touches only the filesystem (a temp dir) and ``schema.list_marts``/
+    ``describe_table`` (dbt-manifest or curated-catalog, no DB), so this is
+    safe to compute at import-adjacent time.
     """
     import tempfile
 
@@ -117,7 +115,6 @@ def _sdk_workspace_hashes() -> dict[str, str]:
             "fingerprint-reference",
             "reference question for build fingerprinting",
             include_insights=True,
-            memories_block="",
             base_dir=Path(tmp),
         )
         try:

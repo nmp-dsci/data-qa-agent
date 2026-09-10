@@ -1158,33 +1158,10 @@ export async function getConversationMessages(id: string): Promise<ConversationM
 
 // --- Profile / Settings ---
 
-export interface UserMemory {
-  id: string;
-  kind: string | null;
-  content: string;
-  created_at: string;
-  last_used_at: string | null;
-}
-
 export interface MyAccess {
   role: string;
   rls_note: string;
   datasets: { slug: string; name: string; status: string; access: string }[];
-}
-
-export async function getMyMemories(): Promise<UserMemory[]> {
-  const resp = await apiFetch(`${API}/me/memories`, { headers: authHeaders() });
-  if (!resp.ok) throw new Error(`Could not load memories (${resp.status})`);
-  return resp.json();
-}
-
-export async function deleteMyMemory(id: string): Promise<{ deleted: boolean }> {
-  const resp = await apiFetch(`${API}/me/memories/${id}`, {
-    method: "DELETE",
-    headers: authHeaders(),
-  });
-  if (!resp.ok) throw new Error(`Could not delete memory (${resp.status})`);
-  return resp.json();
 }
 
 export async function getMyAccess(): Promise<MyAccess> {
@@ -1518,6 +1495,16 @@ export interface EvalRun {
     };
   };
   agent: EvalAgentVersion;
+  /** s50: spend summed over the run's query_runs (detail view only). */
+  tokens?: {
+    input: number;
+    output: number;
+    cache_read: number;
+    cache_write: number;
+    cost_usd: number;
+  };
+  /** s50: MLflow experiment that holds the OTLP traces, when the backend knows it. */
+  mlflow_experiment_id?: string;
 }
 
 export interface EvalCaseResult {
@@ -1535,6 +1522,8 @@ export interface EvalCaseResult {
     format?: { passed?: boolean; issues?: string[]; object_types?: string[] };
   };
   g4: { turns?: number; latency_ms?: number; input_tokens?: number | null };
+  /** s49 D2 — the delivered-deck gate (half of `passed`, with G1). */
+  g5?: { passed?: boolean; issues?: string[]; slides?: number; layouts?: string[] } | null;
   /** s49 M2 — the judge's verdict. Recorded and displayed; it does not gate. */
   judge?: {
     label?: GoldenLabel | null;
@@ -1548,10 +1537,118 @@ export interface EvalCaseResult {
   };
   /** Diagnostic per-stage scores (0-1, or null when unspecified). Never gates. */
   checkpoints?: {
-    sql?: { score?: number | null; rows_match?: number; missing?: string[] };
-    analysis?: { score?: number | null; missing_skills?: string[]; missing_cols?: string[] };
-    deck?: { score?: number | null; layout_hit?: boolean; kpi_hit?: boolean };
+    sql?: {
+      score?: number | null;
+      rows_match?: number;
+      missing?: string[];
+      key_cols?: string[];
+      matched?: number;
+      golden_keys?: number;
+      actual_keys?: number;
+    };
+    analysis?: {
+      score?: number | null;
+      missing_skills?: string[];
+      missing_cols?: string[];
+      skills_used?: string[];
+      derived_cols?: string[];
+      expected_skills?: string[];
+    };
+    deck?: {
+      score?: number | null;
+      layout_hit?: boolean;
+      kpi_hit?: boolean;
+      layouts_used?: string[];
+      kpi_labels?: string[];
+      layouts_any_of?: string[];
+      kpi_label_contains?: string;
+    };
   };
+  /** s49 M0: the deck the run specified — slides with layout/headline/kpi. */
+  artifact_manifest?: EvalArtifactManifest | null;
+
+  /* ---- s50: the evidence for the case drill-down. All nullable: older runs
+   * predate every one of these, and a case whose agent run was lost has no
+   * query_runs row at all. ---------------------------------------------- */
+  otel_trace_id?: string | null;
+  mlflow_run_id?: string | null;
+  /** The agent's answer text (app.messages.content). */
+  answer?: string | null;
+  /** The agent's primary extract SQL (query_runs.sql_text). */
+  sql_text?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_read_tokens?: number | null;
+  cache_write_tokens?: number | null;
+  cost_usd?: number | null;
+  latency_ms?: number | null;
+  degraded?: boolean | null;
+  artifact_deck_url?: string | null;
+  artifact_sheet_url?: string | null;
+  /** The reduced trace: every extract, and every run_analysis pass. */
+  trace?: EvalReducedTrace | null;
+  golden_answer?: string | null;
+  label?: GoldenLabel | null;
+  golden_sql?: string | null;
+  golden_sandbox?: string | null;
+  /** The golden's *expected* checkpoints (distinct from `checkpoints`, the scores). */
+  golden_checkpoints?: EvalGoldenCheckpoints | null;
+  grader?: Record<string, unknown> | null;
+  expectation?: string | null;
+}
+
+export interface EvalGoldenCheckpoints {
+  sql?: { key_cols?: string[] };
+  analysis?: { expected_skills?: string[]; derived_cols?: string[] };
+  deck?: { layouts_any_of?: string[]; kpi_label_contains?: string };
+}
+
+export interface EvalSqlStep {
+  sql: string | null;
+  status: string | null;
+  row_count: number | null;
+  frame: string | null;
+  purpose: string | null;
+  error: string | null;
+}
+
+export interface EvalAnalysisPass {
+  code_sha: string | null;
+  runtime: string | null;
+  status: string | null;
+  ms: number | null;
+  stdout: string | null;
+  error: string | null;
+  code: string | null;
+  skills_used: string[] | null;
+}
+
+export interface EvalReducedTrace {
+  sql: EvalSqlStep[];
+  analysis: {
+    runtime: string | null;
+    ms: number | null;
+    skills_used: string[];
+    skill_gaps: unknown[];
+    used_inline_math: boolean | null;
+    passes: EvalAnalysisPass[];
+  } | null;
+}
+
+export interface EvalArtifactSlide {
+  index?: number;
+  layout?: string;
+  headline?: string;
+  rows?: number;
+  slide_url?: string;
+  spec?: { kpi?: string; kpi_label?: string; chart_type?: string; rendered_as?: string };
+}
+
+export interface EvalArtifactManifest {
+  slides?: EvalArtifactSlide[];
+  deck_url?: string;
+  sheet_url?: string;
+  layouts_used?: string[];
 }
 
 export interface EvalComparison {

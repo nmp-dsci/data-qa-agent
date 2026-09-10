@@ -1343,7 +1343,6 @@ def _tool_registry() -> list[ArchitectureTool]:
         ),
         "lookup_values": "sql_guardrails — read-only distinct-value lookup",
         "no_answer": "none — declarative refusal, no execution",
-        "remember": "per-user memory store (pgvector embeddings), no SQL",
         "start_deck": (
             "Google Sheets/Slides via the service's own OAuth credential — the only "
             "third-party egress; never sandbox code; public sharing gated by DECK_PUBLIC"
@@ -1358,7 +1357,6 @@ def _tool_registry() -> list[ArchitectureTool]:
         "run_analysis": f"{settings.sandbox_run_attempts} attempts/run (SANDBOX_RUN_ATTEMPTS)",
         "lookup_values": "unmetered",
         "no_answer": "unmetered",
-        "remember": "unmetered",
         "start_deck": "once per run",
         "add_slide": f"{settings.max_slides} slides/run (MAX_SLIDES)",
     }

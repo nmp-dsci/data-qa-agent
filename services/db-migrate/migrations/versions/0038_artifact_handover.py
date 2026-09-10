@@ -13,6 +13,12 @@ Drive file id directly, because a run's deck/sheet ids already live on
 ``query_runs`` (0037) and every other handover query starts from "which runs
 have artifacts", not "which files exist".
 
+Read access: a snapshot carries the deck's headlines and the sheet's cell
+values, so both tables carry RLS policies scoped through ``query_runs`` to the
+run's owner (admin override, as on ``query_runs`` itself). The SQL editor runs
+as ``agent_ro``, which does not bypass RLS, so one user cannot read another's
+deck content through it.
+
 Write access: the poller runs unattended in the data-agent service, touching
 runs across every user, so it needs the same RLS bypass the admin SQL editor
 uses (``admin_ro``, 0012) — but that role is deliberately SELECT-only
@@ -82,6 +88,26 @@ def upgrade() -> None:
     for name, ddl_type in _QUERY_RUN_COLUMNS:
         op.execute(f"ALTER TABLE app.query_runs ADD COLUMN IF NOT EXISTS {name} {ddl_type}")
 
+    # RLS. Both tables hold per-user content (a snapshot carries the deck's
+    # headlines and the sheet's cell values), so they are policed like every
+    # other user-scoped app.* table rather than left open behind the SELECT
+    # grant below — without this, any signed-in user could read every other
+    # user's deck content through the SQL editor, which runs as agent_ro.
+    #
+    # Neither table has its own user_id: ownership lives on the run, so the
+    # policy reaches through query_runs. The WHOLE predicate is wrapped in
+    # (select ...) deliberately — a bare app.is_admin() in an RLS predicate is
+    # re-evaluated per row (STABLE does not help); see the Explore regression
+    # in AGENTS.md. admin_ro is BYPASSRLS, so the poller and /analytics/handover
+    # are unaffected.
+    for table in ("artifact_snapshots", "artifact_edits"):
+        op.execute(f"ALTER TABLE app.{table} ENABLE ROW LEVEL SECURITY")
+        op.execute(
+            f"CREATE POLICY {table}_owner ON app.{table} FOR ALL USING ((SELECT "
+            "app.is_admin() OR EXISTS (SELECT 1 FROM app.query_runs qr "
+            f"WHERE qr.id = app.{table}.run_id AND qr.user_id = app.current_user_id())))"
+        )
+
     # Reads: both new tables follow the same access pattern as every other
     # app.* table (agent_ro for the service, admin_ro for the SQL editor/ops).
     for role in ("agent_ro", "admin_ro"):
@@ -113,6 +139,8 @@ def downgrade() -> None:
         "REVOKE UPDATE (artifact_last_checked, artifact_opened_at, artifact_edit_count) "
         "ON app.query_runs FROM admin_ro"
     )
+    for table in ("artifact_snapshots", "artifact_edits"):
+        op.execute(f"DROP POLICY IF EXISTS {table}_owner ON app.{table}")
     op.execute("DROP TABLE IF EXISTS app.artifact_edits")
     op.execute("DROP TABLE IF EXISTS app.artifact_snapshots")
     for name, _ in _QUERY_RUN_COLUMNS:

@@ -14,23 +14,13 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from ..agent_client import (
-    ask_agent,
-    ask_agent_stream,
-    author_object,
-    build_object,
-    fetch_skills,
-    prep_golden,
-    scaffold_skills,
-)
+from ..agent_client import fetch_skills, prep_golden
 from ..auth import CurrentUser, admin_or_demo_read, require_admin
 from ..config import settings
 from ..db import jsonable, rls_connection
@@ -358,75 +348,6 @@ async def prep(body: PrepIn, admin: CurrentUser = Depends(require_admin)) -> dic
     )
 
 
-class BuildObjectIn(BaseModel):
-    sql: str
-    # Blank on the NL path (s22): the agent derives a slug from the instruction.
-    name: str = ""
-    object_type: str = "compare"
-    # Structured form state (grain, dimension, group, bar/line measures + windows).
-    spec: dict[str, Any] = {}
-    # Optional NL instruction — routes to the DeepSeek scaffold path instead.
-    instruction: str = ""
-    # Dataset slug — selects the mart profile for the deterministic builder (s22 P2).
-    dataset: str = "nsw_sales"
-    as_user: str | None = None
-
-
-@router.post("/admin/eval-goldens/build-object")
-async def build_object_endpoint(
-    body: BuildObjectIn, admin: CurrentUser = Depends(require_admin)
-) -> dict[str, Any]:
-    """Deterministically build a NAMED presentation object (Golden Sandbox, s18):
-    the data-agent emits run_analysis from the spec, extends the shared extract as
-    needed, runs the governed sandbox, and returns the lifted object + its code +
-    the (possibly revised) SQL so the Builder can add it and link it by name.
-    """
-    return await build_object(
-        sql=body.sql,
-        name=body.name,
-        object_type=body.object_type,
-        spec=body.spec,
-        instruction=body.instruction,
-        dataset=body.dataset,
-        user_id=await _resolve_user_id(body.as_user, admin),
-        role="user",
-    )
-
-
-class ObjectIn(BaseModel):
-    sql: str
-    code: str = ""
-    object_type: str = "compare"
-    instruction: str
-    # s16 full cascade: the golden's current presentation objects + which one is
-    # being edited, so the agent rebuilds the whole report and lifts the right one.
-    objects: list[dict[str, Any]] = []
-    target_element_id: str | None = None
-    # Author under this user id's RLS; defaults to the admin.
-    as_user: str | None = None
-
-
-@router.post("/admin/eval-goldens/object")
-async def author_object_endpoint(
-    body: ObjectIn, admin: CurrentUser = Depends(require_admin)
-) -> dict[str, Any]:
-    """Author one report object from a plain-English instruction (Golden Examples):
-    the data-agent rewrites run_analysis to build the described chart, runs it in
-    the governed sandbox, and returns the lifted object + refreshed report so the
-    Builder can populate + render the object without hand-writing the code.
-    """
-    return await author_object(
-        sql=body.sql,
-        code=body.code,
-        object_type=body.object_type,
-        instruction=body.instruction,
-        objects=body.objects,
-        target_element_id=body.target_element_id,
-        user_id=await _resolve_user_id(body.as_user, admin),
-        role="user",
-    )
-
-
 def _sandbox_code_from_steps(steps: list[Any]) -> str:
     """Recover a *runnable* run_analysis script from the trace.
 
@@ -458,53 +379,6 @@ def _sandbox_code_from_steps(steps: list[Any]) -> str:
                 ]
                 return "\n".join(lines).strip()
     return ""
-
-
-class DraftIn(BaseModel):
-    question: str
-    as_user: str | None = None
-    dataset: str = "nsw_sales"
-
-
-class ScaffoldIn(BaseModel):
-    question: str = ""
-    columns: list[str] = []
-    skills: list[str] = []
-
-
-@router.post("/admin/eval-goldens/scaffold")
-async def scaffold(body: ScaffoldIn, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
-    """Regenerate run_analysis code from a selected set of skills, with per-skill
-    reasoning (Golden Examples). The agent writes code using exactly those skills."""
-    return await scaffold_skills(question=body.question, columns=body.columns, skills=body.skills)
-
-
-@router.post("/admin/eval-goldens/draft")
-async def draft(body: DraftIn, admin: CurrentUser = Depends(require_admin)) -> dict[str, Any]:
-    """First pass: run the data-agent on the question so the human can review and
-    edit a pre-filled golden — the agent's SQL, sandbox script, extract rows, and
-    the rendered report/pages. The curator then corrects each stage; a run of an
-    upstream stage re-feeds the next. On a no-answer, `summary` explains why.
-    """
-    ans = await ask_agent(
-        question=body.question,
-        user_id=await _resolve_user_id(body.as_user, admin),
-        role="user",
-        plan="pro",
-        dataset_slug=body.dataset or "nsw_sales",
-    )
-    report = ans.get("report") or {}
-    queries = report.get("queries") or []
-    sql = ans.get("sql") or (queries[0].get("sql") if queries else None)
-    return {
-        "sql": sql,
-        "sandbox": _sandbox_code_from_steps(ans.get("steps") or []),
-        "columns": ans.get("columns", []),
-        "rows": ans.get("rows", []),
-        "report": ans.get("report"),
-        "pages": ans.get("pages"),
-        "summary": report.get("summary"),
-    }
 
 
 class FromRunIn(BaseModel):
@@ -595,92 +469,3 @@ async def golden_from_run(
             )
         ).scalar()
     return {"status": "ok", "id": jsonable(new_id), "created": True}
-
-
-def _sse(event: str, data: Any) -> str:
-    payload = data if isinstance(data, str) else json.dumps(data)
-    return f"event: {event}\ndata: {payload}\n\n"
-
-
-def _progress_label(data: Any) -> str:
-    if isinstance(data, dict):
-        for key in ("label", "step", "message", "detail", "note", "state"):
-            val = data.get(key)
-            if val:
-                return str(val)[:90]
-        return "working…"
-    return str(data)[:90]
-
-
-def _shape_draft(result: dict[str, Any], pages: list[Any] | None = None) -> dict[str, Any]:
-    report = result.get("report") or {}
-    queries = report.get("queries") or []
-    return {
-        "sql": result.get("sql") or (queries[0].get("sql") if queries else None),
-        "sandbox": _sandbox_code_from_steps(result.get("steps") or []),
-        "columns": result.get("columns", []),
-        "rows": result.get("rows", []),
-        "report": result.get("report"),
-        # Non-stream carries pages in the answer; the stream delivers page content
-        # as separate frames, so the caller may pass what it accumulated.
-        "pages": pages if pages else result.get("pages"),
-        "summary": report.get("summary"),
-    }
-
-
-@router.post("/admin/eval-goldens/draft/stream")
-async def draft_stream(
-    body: DraftIn, admin: CurrentUser = Depends(require_admin)
-) -> StreamingResponse:
-    """SSE variant of /draft: emits one ``status`` frame per streamed agent object
-    (the UI shows a single line that updates), then a final ``draft`` frame with
-    the shaped golden — same shaping as /draft.
-    """
-
-    async def gen() -> AsyncIterator[str]:
-        yield _sse("status", {"label": "starting the agent…"})
-        result: dict[str, Any] | None = None
-        pages_acc: dict[int, Any] = {}
-        n = 0
-        try:
-            async for ev in ask_agent_stream(
-                question=body.question,
-                user_id=await _resolve_user_id(body.as_user, admin),
-                role="user",
-                plan="pro",
-                dataset_slug=body.dataset or "nsw_sales",
-            ):
-                name, data = ev["event"], ev["data"]
-                if name == "progress":
-                    n += 1
-                    yield _sse("status", {"label": _progress_label(data), "n": n})
-                elif name == "plan":
-                    count = len(data) if isinstance(data, list) else "?"
-                    yield _sse("status", {"label": f"planning {count} pages…", "n": n})
-                elif name == "page":
-                    n += 1
-                    idx = data.get("index") if isinstance(data, dict) else None
-                    if isinstance(data, dict) and data.get("page") is not None:
-                        pages_acc[int(idx) if idx is not None else len(pages_acc)] = data["page"]
-                    label = f"page {idx if idx is not None else ''} ready".strip()
-                    yield _sse("status", {"label": label, "n": n})
-                elif name == "result":
-                    result = data
-                elif name == "error":
-                    yield _sse("error", data)
-                    return
-        except Exception as exc:  # noqa: BLE001 — surface agent/stream failures to the builder
-            yield _sse("error", {"detail": f"Agent unavailable: {exc}"})
-            return
-
-        if result is None:
-            yield _sse("error", {"detail": "Agent stream ended without a result"})
-            return
-        streamed_pages = [pages_acc[k] for k in sorted(pages_acc)] or None
-        yield _sse("draft", _shape_draft(result, pages=streamed_pages))
-
-    return StreamingResponse(
-        gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )

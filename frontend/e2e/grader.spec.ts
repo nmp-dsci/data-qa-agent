@@ -34,7 +34,7 @@ test("Grader editor: decodes a real grader and gates draft → ready", async ({ 
   await expect(page.getByTestId("grader-value")).toHaveAttribute("data-value", "avg_weekly_rent");
   await expect(page.getByTestId("grader-numerator")).toHaveAttribute("data-value", "total_weekly_rent");
   await expect(page.getByTestId("grader-denominator")).toHaveAttribute("data-value", "n_rented");
-  await expect(page.getByTestId("grader-expected-objects")).toHaveAttribute("data-value", "trend");
+  await expect(page.getByTestId("grader-expect-chart")).toBeChecked();
   // A valid grader on a `ready` golden reads as scoreable, not blocked.
   await expect(page.getByTestId("grader-status")).toContainText("ready");
   // The left-list badge reflects the grader kind (from the grader_kind column).

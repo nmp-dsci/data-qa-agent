@@ -1,17 +1,13 @@
 // DictionaryTool — the data dictionary (rendered from the manifest) plus an
 // extract builder: pick group-by dimensions and metrics, preview, download CSV.
-// Both tables render as typed `table` page objects through the report engine's
-// ObjectBody (s20) — the same path chat answers and goldens use.
+// Both tables render as plain HTML tables (s46 — the in-browser chart/report
+// renderer is gone).
 import { Download } from "lucide-react";
 import { useState } from "react";
-import { AggregateResult, ExploreDataset, exploreAggregate, PageObject } from "../../lib/api";
+import { AggregateResult, ExploreDataset, exploreAggregate } from "../../lib/api";
 import { downloadCsv } from "../../lib/csv";
-import { ObjectBody } from "../../report-engine/PageLayout";
+import { SimpleTable } from "../../ui/SimpleTable";
 import { splittableDimensions } from "./controls";
-
-function tableObject(element_id: string, data: PageObject["data"]): PageObject {
-  return { type: "table", element_id, role: "table", data };
-}
 
 export function DictionaryTool({ dataset }: { dataset: ExploreDataset }) {
   const [groupBy, setGroupBy] = useState<string[]>([]);
@@ -77,17 +73,14 @@ export function DictionaryTool({ dataset }: { dataset: ExploreDataset }) {
   return (
     <div className="ex-tool ex-grid2">
       <div className="ex-card" data-object-type="table">
-        <ObjectBody
-          o={tableObject("explore:dictionary", {
-            title: "Columns & values · from the manifest",
-            variant: "plain",
-            columns: [
-              { key: "column", label: "Column" },
-              { key: "role", label: "Role" },
-              { key: "values", label: "Values / range" },
-            ],
-            rows: dictRows,
-          })}
+        <h4>Columns &amp; values · from the manifest</h4>
+        <SimpleTable
+          columns={[
+            { key: "column", label: "Column" },
+            { key: "role", label: "Role" },
+            { key: "values", label: "Values / range" },
+          ]}
+          rows={dictRows}
         />
       </div>
 
@@ -139,13 +132,7 @@ export function DictionaryTool({ dataset }: { dataset: ExploreDataset }) {
         {error && <p className="ex-error">{error}</p>}
         {result && previewRows.length > 0 && (
           <div data-object-type="table">
-            <ObjectBody
-              o={tableObject("explore:extract-preview", {
-                variant: "plain",
-                columns: previewCols.map((c) => ({ key: c, label: c })),
-                rows: previewRows,
-              })}
-            />
+            <SimpleTable columns={previewCols.map((c) => ({ key: c, label: c }))} rows={previewRows} />
           </div>
         )}
       </div>

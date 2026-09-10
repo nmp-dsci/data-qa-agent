@@ -167,7 +167,7 @@ button, .chip, a, input, textarea {
     box-shadow var(--dur-1) var(--ease);
 }
 /* Numbers line up everywhere they are compared. */
-table, .h-value, .h-basis, .metric strong, .hud-box-value, .meta, .kpi-growth,
+table, .h-value, .h-basis, .metric strong, .hud-box-value, .meta,
 .conv-meta, .history-meta, .flight-strip-clock, .hud-readout-value {
   font-variant-numeric: tabular-nums;
 }
@@ -683,6 +683,15 @@ main > .answer.wide { width: min(960px, 100%); }
 .composer2-stop:hover { background: var(--panel-2); }
 
 .result { margin-top: 10px; }
+/* Artifact view (presentation-handover, s46): the Slides/Sheets-backed answer
+   — a responsive 16:9 chrome-free deck embed, then link-outs to the real docs. */
+.artifact { display: flex; flex-direction: column; gap: 10px; }
+.artifact-frame { position: relative; width: 100%; aspect-ratio: 16 / 9;
+  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  background: var(--panel); }
+.artifact-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+.artifact-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.artifact-actions a { text-decoration: none; }
 .meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
 /* Answer-first meta footer (issue #10): actions lead; internals demote to a
    faded cluster on the right that comes to full on hover (tokens/latency in the
@@ -700,8 +709,6 @@ main > .answer.wide { width: min(960px, 100%); }
 .link { background: none; border: none; color: var(--accent-2); padding: 0; }
 .sql { background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px;
   overflow-x: auto; font-size: 12px; }
-.chart { margin-top: 10px; background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 10px; overflow-x: auto; }
 .table-wrap { margin-top: 8px; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -758,38 +765,11 @@ tbody tr:last-child td { border-bottom: none; }
 .fb-user-meta { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .fb-user-meta > span:first-child { display: inline-flex; align-items: center; }
 
-/* Agent-Config: clickable registry rows + live demo preview panel */
-.selectable-row { cursor: pointer; transition: background .12s ease; }
-.selectable-row:hover > td { background: var(--panel-2); }
-.selectable-row.active > td { background: var(--accent-soft); }
-.selectable-row.active > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-.agent-demo-panel { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
-  background: var(--panel); }
-.agent-demo-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
-.agent-demo-caption { flex: 1; min-width: 0; font-size: 12px; }
-.agent-demo-canvas { padding: 16px; }
-.agent-demo-canvas .answer-page { margin: 0; }
-
-/* Template Studio: contract JSON inspector + playground */
-.contract-json { border-top: 1px solid var(--border); background: var(--panel-2); }
-.contract-json > summary { cursor: pointer; padding: 9px 14px; font-size: 12.5px; color: var(--accent-soft);
-  display: flex; align-items: center; gap: 10px; list-style: none; }
-.contract-json > summary::-webkit-details-marker { display: none; }
-.contract-json > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
-.contract-json[open] > summary::before { transform: rotate(90deg); }
-.contract-copy { margin-left: auto; font-size: 11px; padding: 2px 10px; }
-.contract-json pre { margin: 0; padding: 4px 14px 14px; overflow-x: auto; max-height: 360px;
-  font-size: 11.5px; line-height: 1.45; color: var(--text); }
-.playground-controls { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 12px; }
-.playground-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.playground-label { font-size: 12.5px; color: var(--muted); min-width: 72px; }
 .seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: 8px; overflow: hidden; }
 .seg button { font-size: 12.5px; padding: 6px 14px; background: var(--panel-2); color: var(--muted);
   border: none; border-right: 1px solid var(--border-2); cursor: pointer; font-family: inherit; }
 .seg button:last-child { border-right: none; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
-section > .agent-demo-canvas { border: 1px solid var(--border); border-radius: var(--radius); }
 .event-filters, .fb-admin-actions { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
 .event-list { display: grid; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .event-row { display: grid; grid-template-columns: 180px 1fr 120px; gap: 12px;
@@ -902,10 +882,6 @@ section > .agent-demo-canvas { border: 1px solid var(--border); border-radius: v
 .chip.promote-golden:disabled { opacity: .8; }
 .result-filter { margin: 8px 0; width: 220px; max-width: 100%; background: var(--panel);
   border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 6px 10px; font-size: 12px; }
-.chart-builder { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
-.chart-controls { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 8px; align-items: end; }
-.chart-controls label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.chart-controls label span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 .sort-ind { color: var(--accent); }
@@ -1002,47 +978,15 @@ th.sortable:hover { color: var(--text); }
 .page-status.building { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .page-status.locked { color: var(--muted); }
 
-/* Blacked-out object-shaped ghosts (kpi / note / chart) the page fills in. */
-.ghost-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 10px; }
-@media (max-width: 767px) { .ghost-grid { grid-template-columns: 1fr; } }
-.ghost-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.ghost-obj { background: var(--panel-2); border: 1px dashed var(--border-2);
-  border-radius: var(--radius-lg); padding: 12px; display: flex; flex-direction: column; gap: 8px;
-  animation: ghost-pulse 1.8s ease-in-out infinite; }
-.ghost-chart-box { flex: 1; }
-.ghost-cap { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.ghost-bar { height: 10px; border-radius: 5px; background: var(--panel-3); }
-.ghost-bar.w40 { width: 40%; }
-.ghost-bar.w60 { width: 60%; }
-.ghost-bar.w80 { width: 80%; }
-.ghost-bar.big { height: 22px; width: 65%; }
-.ghost-chart { flex: 1; min-height: 120px; border-left: 1px solid var(--panel-3);
-  border-bottom: 1px solid var(--panel-3); margin: 4px 2px 2px;
-  background: linear-gradient(180deg, var(--panel-3), transparent 60%); opacity: .5;
-  border-radius: 0 0 0 4px; }
-@keyframes ghost-pulse { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
-
 /* Paywall teaser for pages above the user's plan (plan-frame locked entries). */
 .locked-teaser { border: 1px dashed var(--border-2); border-radius: var(--radius-lg);
   padding: 12px 14px; color: var(--muted); font-size: 12.5px; }
 
-/* Admin render-JSON expander (chat): one ContractJson per answer page. */
-.render-json { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.render-json .contract-json { border: 1px solid var(--border); border-radius: var(--radius-lg);
-  overflow: hidden; }
-
 /* Insight report (K3) */
 .report { margin-top: 6px; display: flex; flex-direction: column; gap: 10px; position: relative; overflow: visible; }
-/* s25: section markers move to the instrument voice — mono, tracked, caps.
-   Type only: no size, spacing or layout change, because report pages have to
-   stay boardroom-neutral when they're exported. */
-.report-sec { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .14em;
-  color: var(--accent); font-weight: 700; margin: 6px 0 0; }
 .report-foot { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
 .related-hint { font-size: 10.5px; color: var(--muted); font-style: italic; margin: 2px 0 0; }
 
-.headline-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-@media (max-width: 767px) { .headline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .h-tile { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 12px;
   cursor: pointer; position: relative; }
 .h-tile:hover { border-color: var(--accent-2); }
@@ -1062,25 +1006,6 @@ th.sortable:hover { color: var(--text); }
 .h-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
 .h-value { font-size: 18px; font-weight: 700; }
 .h-basis { font-size: 11px; color: var(--muted); margin-top: 3px; }
-
-.insight-list { display: flex; flex-direction: column; gap: 8px; }
-.insight-card, .profile-card, .chart-card { background: var(--panel-2); border: 1px solid var(--border);
-  border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 10px 14px; cursor: pointer; position: relative; }
-.chart-card { border-left-color: var(--accent-2); }
-.insight-card:hover, .profile-card:hover, .chart-card:hover { border-color: var(--accent-2); }
-.insight-card.sel, .profile-card.sel, .chart-card.sel { outline: 2px solid var(--accent-2); outline-offset: 1px; }
-.insight-card .i-head { font-weight: 700; margin-bottom: 3px; }
-.i-body { line-height: 1.5; font-size: 13.5px; }
-.i-ref { color: var(--accent-2); font-size: 11.5px; }
-
-.qref { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; position: relative; }
-.qref-bar { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 12px;
-  color: var(--muted); background: var(--panel-2); flex-wrap: wrap; cursor: pointer; }
-.qref:hover { border-color: var(--accent-2); }
-.qref.sel { outline: 2px solid var(--accent-2); outline-offset: 1px; }
-.qref-bar .qtag { color: var(--accent); font-weight: 700; font-size: 11px; }
-.qref-actions { margin-left: auto; display: flex; gap: 6px; }
-.qref .sql { border: none; border-top: 1px solid var(--border); border-radius: 0; }
 
 /* Click-to-annotate feedback (K3) */
 .fb-cue { font-size: 11.5px; color: var(--muted); font-style: italic; margin: 4px 0 0; }
@@ -1125,12 +1050,6 @@ th.sortable:hover { color: var(--text); }
 .fb-html { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .fb-html pre { white-space: pre-wrap; max-height: 120px; overflow: auto; background: var(--code-bg);
   border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; color: var(--text); }
-.fb-preview-row > td { background: var(--bg); padding: 12px; }
-.fb-preview-note { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
-.fb-preview-note strong { color: var(--text); }
-.admin-report-preview { max-width: 980px; }
-.admin-report-preview .headline-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.admin-report-preview .sql, .admin-report-preview .chart { display: none; }
 .fb-status-new { color: var(--warn); border-color: var(--warn-border); }
 .fb-status-promoted_to_eval, .fb-status-active { color: var(--good); border-color: var(--good-border); }
 .fb-status-stale { color: var(--warn); border-color: var(--warn-border); }
@@ -1149,6 +1068,29 @@ th.sortable:hover { color: var(--text); }
 .config-table td code { color: var(--text); overflow-wrap: anywhere; }
 .config-note { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .badge.secret { color: var(--accent); border-color: var(--warn-border); margin-left: 6px; }
+
+/* ---------------------------------------------------------------------------
+   Pack Inspector (s48 §P2) — reuses .config-card for each layout tile;
+   only the thumbnail, toggle/textarea edit row and slot chips are new.
+   ------------------------------------------------------------------------- */
+.pack-header { margin-bottom: 12px; }
+.pack-header h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
+.pack-links { display: flex; gap: 14px; margin: 6px 0; font-size: 12.5px; }
+.pack-links a { color: var(--accent-2); }
+.pack-hint { font-size: 11.5px; margin: 6px 0; }
+.pack-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.pack-card { display: flex; flex-direction: column; gap: 8px; padding: 0; overflow: hidden; }
+.pack-thumb { aspect-ratio: 16 / 9; background: var(--panel-2); display: flex; align-items: center;
+  justify-content: center; border-bottom: 1px solid var(--border); }
+.pack-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pack-thumb-empty { font-size: 11px; }
+.pack-card-body { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px; }
+.pack-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.pack-card-body textarea { width: 100%; min-height: 52px; resize: vertical; font-size: 12.5px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; }
+.pack-slots { display: flex; flex-wrap: wrap; gap: 4px; }
+.pack-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; }
+.pack-issues { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 
 /* ---------------------------------------------------------------------------
    Architecture tab (M5, agent_sdk migration) — reuses .config-card/.config-
@@ -1221,18 +1163,10 @@ a:focus-visible, [role="option"]:focus-visible {
 .palette-item.active { background: var(--panel-2); }
 .palette-hint { color: var(--muted); font-size: 11.5px; }
 
-/* Onboarding + chart export */
+/* Onboarding */
 .onboard-hint { font-size: 12.5px; color: var(--muted); margin-top: 16px; }
 .onboard-hint kbd { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px;
   padding: 1px 6px; font-size: 11px; font-family: inherit; }
-.chart { position: relative; }
-/* Always discoverable (issue #14 — hover-only export is invisible on touch):
-   the button sits quiet at ~0.5 and comes to full on hover/focus. */
-.chart-export { position: absolute; top: 8px; right: 8px; z-index: 2; font-size: 10px;
-  color: var(--muted); background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 5px; padding: 2px 7px; cursor: pointer; opacity: .5; transition: opacity .12s; }
-.chart:hover .chart-export, .chart-export:focus-visible { opacity: 1; }
-.chart-export:hover { color: var(--accent-2); border-color: var(--accent-2); opacity: 1; }
 
 /* Chat history sidebar */
 .chat-layout { flex: 1; display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 0; }
@@ -1379,44 +1313,10 @@ a:focus-visible, [role="option"]:focus-visible {
 .obj-picker-foot { padding: 6px 11px 3px; font-size: 8.5px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--accent-2); }
 
-/* Report engine (s08 column model): pages, KPI tiles, visx charts */
-.answer-page { display: flex; flex-direction: column; gap: 8px; }
-/* Page-level headline: a one-line summary of what the page shows. */
-.page-headline { font-size: 15px; font-weight: 600; line-height: 1.35; margin: -2px 0 2px;
-  color: var(--text); }
-/* Positional columns: tracks come inline from the registry (per template). */
-.page-cols { display: grid; gap: 10px; align-items: stretch; }
-.page-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-/* Runs of consecutive KPI tiles share a responsive grid inside a column. */
-.tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-.page-obj { cursor: pointer; }
-/* height:"fill" — the card stretches to the tallest sibling column. */
-.page-obj.fill { flex: 1; display: flex; flex-direction: column; min-height: 260px; }
-.page-obj.fill .chart-vfill { flex: 1; display: flex; flex-direction: column; }
-.kpi-tile { min-width: 0; }
-.kpi-growth { font-size: 12px; font-weight: 600; margin-left: 8px; }
-.kpi-growth.up { color: var(--good); }
-.kpi-growth.down { color: var(--bad); }
-.kpi-spark { display: block; margin-top: 6px; opacity: .9; }
-.chart-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em;
-  margin-bottom: 6px; }
-.chart-plot svg { display: block; }
-.chart-plot rect[fill="transparent"] { cursor: crosshair; }
-/* Hover tooltip shared by the visx charts (see ui/charts/ChartTip.tsx). */
-.chart-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 96px; max-width: 220px;
-  padding: 7px 9px; background: var(--panel); border: 1px solid var(--border);
-  border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .28); font-size: 12px; line-height: 1.35; }
-.chart-tip-title { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
-.chart-tip-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.chart-tip-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-.chart-tip-label { color: var(--text); }
-.chart-tip-val { margin-left: auto; font-weight: 600; color: var(--text); padding-left: 10px; }
 .admin-subtabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .admin-subtabs .chip { font-size: 12.5px; padding: 5px 12px; }
 
 @media (max-width: 767px) {
-  /* !important: column tracks are set inline from the registry. */
-  .page-cols { grid-template-columns: 1fr !important; }
   /* Chat: the thread owns the phone; history lives in the ☰ sheet. */
   .chat-layout { grid-template-columns: 1fr; }
   .chat-layout > .conv-panel { display: none; }
@@ -1432,7 +1332,6 @@ a:focus-visible, [role="option"]:focus-visible {
   .event-row { grid-template-columns: 1fr; gap: 3px; }
   .sqled { grid-template-columns: 1fr; }
   .schema-panel { max-height: 180px; }
-  .chart-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fb-box.pinned { position: static; width: auto; max-width: none; box-shadow: none; }
   .config-grid { grid-template-columns: 1fr; }
 }
@@ -1500,7 +1399,7 @@ a:focus-visible, [role="option"]:focus-visible {
 
 .ex-error { color: var(--bad); font-size: 13px; }
 
-/* Result layout — profile results render as report-engine pages (s20). */
+/* Result layout — Explore/Ops results render as plain data cards + tables (s46). */
 .ex-result { display: flex; flex-direction: column; gap: 12px; }
 .ex-result-page { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .ex-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -1616,26 +1515,6 @@ table.dt .dt-num { font-variant-numeric: tabular-nums; }
 .ex-multi-bulk button:hover { border-color: var(--accent-soft); color: var(--accent-soft); }
 .ex-multi-bulk-note { margin-left: auto; color: var(--muted); font-size: 11px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Goldens builder — "running" indicator. A sandbox build takes seconds, so the
-   wait gets a moving bar rather than only a disabled button. */
-.builder-running { display: inline-flex; align-items: center; gap: 7px; color: var(--accent-soft); }
-.builder-running-bar { display: inline-block; width: 46px; height: 3px; border-radius: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent-soft), transparent);
-  background-size: 60% 100%; background-repeat: no-repeat;
-  animation: builder-running-slide 1.1s ease-in-out infinite; }
-@keyframes builder-running-slide {
-  0% { background-position: -60% 0; }
-  100% { background-position: 160% 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .builder-running-bar { animation: none; background-position: 50% 0; }
-}
-
-/* Chart -> SQL editor link button (sits to the left of the PNG export) */
-.chart-sql { right: 42px; }
-.chart:hover .chart-sql, .chart-sql:focus-visible { opacity: 1; }
-.chart-sql:hover { color: var(--accent-2); border-color: var(--accent-2); opacity: 1; }
 
 /* Goldens list rows: the status lamps sit tight under the question, so they
    need a slightly quieter scale than a standalone annunciator row. */

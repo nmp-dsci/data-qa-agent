@@ -76,9 +76,9 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
 - **data-pipeline** — dlt ingests the CSVs into `raw`; dbt transforms `raw → staging → marts` (tests + docs),
   building the two suburb-keyed growth marts with RLS applied by post-hooks.
 - **data-agent** — turns the question into a single read-only `SELECT` (JOINing the marts on `suburb` for the
-  combined view), runs it under RLS, phrases the answer, optionally renders a chart. Offline stub by default;
-  DeepSeek (or Claude) when a key is set, grounded in the dbt manifest, personalized by pgvector memory, traced
-  with Logfire (Decision G).
+  combined view), runs it under RLS, phrases the answer, and hands over a Google Slides deck backed by a
+  Google Sheet when the answer warrants one. Offline stub by default; DeepSeek (or Claude) when a key is set,
+  grounded in the dbt manifest, personalized by pgvector memory, traced with Logfire (Decision G).
 - **Postgres** — one DB, schemas `app` / `raw` / `staging` / `marts`; RLS enforces who sees which rows.
 
 ### How a question flows
@@ -221,7 +221,7 @@ own dataset since it needs both grants). A NSW postcode choropleth renders from 
 (`frontend/public/geo/poa_nsw.paths.json`, regenerated with `scripts/build_poa_paths.py` — see
 `scripts/build_topojson.md`) rather than a runtime geo-projection library. Reads run under the same RLS as
 everywhere else and are audited into `query_runs` with `source = 'explore'`, so caps and audit trails cover
-it too. Every chart, in Explore or chat, deep-links to the SQL editor with the query that produced it.
+it too. Every chart deep-links to the SQL editor with the query that produced it.
 
 Explore's UI is a modern port of a legacy static NSW profiling tool, vendored for reference at
 `docs/chronicle/` (see its README to run it or restore its gitignored data files).
@@ -340,22 +340,18 @@ worker reaper only ever redelivers real failures, and a job that keeps failing d
 ## Golden Examples (the eval loop)
 
 Admins also get a **Golden Examples** tab for authoring *golden answers* — the 100/100 benchmarks the eval
-loop scores the agent against — stage by stage (① SQL extract → ② sandbox analysis objects, built from the
-tested skill library → ③ presentation report), starting from an agent-drafted first pass. Stage-② objects
-are built with no LLM at all: a structured builder binds its dimension/group/measure dropdowns to each
-dataset's typed column vocabulary (derived from the ① SQL extract's `FROM` table, not the golden's dataset
-tag), lets each measure combine a base aggregation (sum / mean / weighted-average) with an optional derived
-augmentation (share / growth / latest / rolling / index / cumulative / rank / yoy) over additive columns,
-and can join two dimensions into a composite x-axis. Whenever the config is valid a debounced live preview
-renders the actual chart at the top of the builder, and a **◆ GRADER** panel authors the golden's grader
-spec and gates draft → ready promotion with the same checks CI's pack-lint runs — and a per-object error
-boundary renders one malformed object as a fallback card instead of blanking the tab. Goldens live on
-`app.eval_cases` (CRUD under `/admin/eval-goldens`; the backend proxies draft/build actions to the
-data-agent's `/agent/analysis*` and `/agent/skills*` helpers), and the dataset picker covers all three
-governed datasets (`nsw_sales`, `nsw_rent`, `nsw_yield`). Deterministic graders
-(`services/data-agent/agent/eval_graders.py`) compare a run's extracted values, built objects, and report
-shape against a `ready` golden; every `/ask` is stamped with an `agent_versions` build fingerprint (provider
-+ model + prompt/skills/knowledge hashes, `GET /agent/version`).
+loop scores the agent against — as a plain table of a golden's question, ① SQL extract, filter, and grader
+spec. (The live object-preview, the page-column drag/arrange report editor, and the Structured
+Object Builder were removed along with the in-browser chart stack — see "Answers are Google Slides decks"
+in `AGENTS.md`.) The filter renders as dimension chips (`BuilderFilter.tsx`, typed vocabulary derived from
+the SQL extract's `FROM` table) ANDed on top of the base extract's own preserved `WHERE`, with a raw-SQL
+escape hatch for anything the chips can't express. A **◆ GRADER** panel (`GraderEditor.tsx`/`graderSpec.ts`)
+turns the golden's `grader` jsonb into grain-driven dropdowns and gates draft → ready promotion with the
+same checks CI's pack-lint runs. Goldens live on `app.eval_cases` (CRUD under `/admin/eval-goldens`), and
+the dataset picker covers all three governed datasets (`nsw_sales`, `nsw_rent`, `nsw_yield`). Deterministic
+graders (`services/data-agent/agent/eval_graders.py`) compare a run's extracted values and manifest-derived
+KPI/table figures against a `ready` golden; every `/ask` is stamped with an `agent_versions` build
+fingerprint (provider + model + prompt/skills/knowledge hashes, `GET /agent/version`).
 
 Goldens are version-controlled: `make eval-export` serialises `app.eval_cases` to `evals/cases/*.yaml` (the
 repo is the source of truth, the DB a working surface), redacting anything promoted from a real prod answer
@@ -374,16 +370,11 @@ scores linked back to their `query_runs` trace. Batch scores land in `eval_runs`
 improvement cycles run against this loop are written up in `docs/evals/cycle-001.md`–`cycle-003.md`.
 
 A chat answer can skip straight to a draft golden: admins see a **"★ save as golden"** chip on any answered
-chat result, which copies the already-captured question/SQL/sandbox script/report into a new draft (no
-agent re-run) and opens it in the editor. Inside the editor, the structured builder is how a stage-②
-object gets added: a new object lets the curator pick its destination page and column, while a chart
-card's **◆ edit in Structured Builder** button seeds the builder from that object's stored spec (or, for a
-spec-less drafted chart, from safe defaults) and replaces it in place by `element_id` on Build — never
-orphaning a new object. The base extract's own `WHERE` is always preserved verbatim; the builder's `filter`
-field only ANDs a further predicate on top. Ordinal columns like `area_band`
-and `bedroom_band` render in their natural order rather than alphabetically; curators can tweak the order
-per dataset from a data-knowledge panel in the Sandbox tab (backed by `app.dataset_ordinals`), or override
-one chart's x-axis order manually in the report editor.
+chat result, which copies the already-captured question/SQL into a new draft (no agent re-run) and opens it
+in the editor. The base extract's own `WHERE` is always preserved verbatim; the filter chips' predicate only
+ANDs a further condition on top. Ordinal columns like `area_band` and `bedroom_band` render in their natural
+order rather than alphabetically; curators tweak the order per dataset from a data-knowledge panel in the
+Sandbox tab (backed by `app.dataset_ordinals`).
 
 ## Authentication (dev stub → Google Sign-in)
 
@@ -417,10 +408,10 @@ by `LLM_PROVIDER`:
 - **`deepseek` (default)** — set `DEEPSEEK_API_KEY`.
 - **`anthropic`** — set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`.
 
-With a real provider, the agent also gets a `make_chart` tool (renders a Vega-Lite chart in the chat UI when
-useful) and per-user memory: it recalls relevant past preferences (pgvector cosine search over
-`app.user_memories`, RLS-scoped — a user's memory is isolated like their data) at the start of every question,
-and calls `remember` when you state an explicit preference (e.g. "I only care about units, not houses").
+With a real provider, the agent also gets per-user memory: it recalls relevant past preferences (pgvector
+cosine search over `app.user_memories`, RLS-scoped — a user's memory is isolated like their data) at the
+start of every question, and calls `remember` when you state an explicit preference (e.g. "I only care about
+units, not houses").
 
 New conversations also get a short (3–5 word) sidebar title summarising the first question, generated by a
 small title agent kept isolated on the data-agent (`POST /agent/title`) and called from a background task —
@@ -434,6 +425,32 @@ server (s43): `make up` exports them to `OTLP_ENDPOINT=http://mlflow:5000` tagge
 `MLFLOW_TRACE_EXPERIMENT_ID`, so http://localhost:5500 shows span waterfalls, token/cost aggregates, eval runs
 and the `data-qa-agent` registry (@champion/@challenger) in one UI — no external account needed. Set
 `LOGFIRE_TOKEN` to *also* ship to Logfire Cloud; exporters are additive.
+
+### Template packs (the deck's design)
+
+The Slides deck the agent produces is built from a **template pack** — two Google files a curator edits by
+hand, plus a synced snapshot in the repo:
+
+| Piece | Where | Who edits |
+|---|---|---|
+| `Pack.slides` | Drive: `Data Pilot/packs/<name>-v<n>/` | curator, in Google Slides — one *library slide* per layout; a shape's **alt-text title** (`headline`, `chart`, `commentary`, …) is what makes it a slot |
+| `Pack.sheet` | same folder | curator, in Google Sheets — the `_pack` catalogue tab (which layouts exist and when to use each) plus `tpl_*` tabs whose hand-styled charts the builder clones |
+| `packs/<name>/pack.json` | this repo | `scripts/pack_sync.py` only — the snapshot the runtime reads; never edit it by hand |
+
+```bash
+make pack-scaffold    # create both Google files, write the two ids into .env, then sync
+make pack-sync        # re-read a curator's edits into packs/<name>/pack.json
+make pack-sync ARGS=--check   # CI-friendly: non-zero if pack.json is stale
+```
+
+`PACK_NAME` (default `nsw-property`) picks the pack; `PACK_DIR` says where the snapshots live (the container
+gets `./packs` mounted read-only). With no pack.json — or with `GOOGLE_SHEET_TEMPLATE_ID` unset — the agent
+falls back to the built-in catalogue and builds slides from predefined Slides layouts exactly as before.
+
+Each run then gets one Sheet with `Data` (a named Sheets **Table** per slide, typed from `units.py`, with the
+slide's chart anchored beside it), `Manifest` (one row per slide: layout, table, range, chart id, query, mart,
+slide link) and `README` tabs — and a deck whose last slide is an auto-appended **Sources & SQL** listing every
+query the answer rests on.
 
 ## Troubleshooting
 

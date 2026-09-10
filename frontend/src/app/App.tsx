@@ -58,7 +58,6 @@ const AnalyticsPage = lazy(() =>
   import("../features/analytics/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })),
 );
 import { Command, CommandPalette } from "../ui/CommandPalette";
-import { ChartSqlContext } from "../ui/charts/sqlLink";
 import { Canopy } from "../ui/Canopy";
 import { Login } from "./Login";
 
@@ -68,8 +67,7 @@ import { Login } from "./Login";
  *  trace expander an in-session answer does — not just report-bearing ones. */
 function messageToChat(m: ConversationMessage): ChatMsg {
   if (m.role === "user") return { role: "user", content: m.content };
-  const report = m.report;
-  const hasRenderable = report != null || m.steps.length > 0 || m.sql_generated != null;
+  const hasRenderable = m.report != null || m.steps.length > 0 || m.sql_generated != null;
   const result: AskResult | undefined = hasRenderable
     ? {
         conversation_id: "",
@@ -86,8 +84,10 @@ function messageToChat(m: ConversationMessage): ChatMsg {
         output_tokens: m.output_tokens,
         latency_ms: m.latency_ms,
         steps: m.steps,
-        report,
-        pages: report?.pages ?? null,
+        // s46: only the Slides/Sheets artifact survives in the stored report
+        // blob — a reopened thread restores the deck the same way it used to
+        // restore report pages.
+        artifact: m.report?.artifact ?? null,
       }
     : undefined;
   return { role: "assistant", content: m.content, result };
@@ -463,7 +463,7 @@ export default function App() {
   }
 
   return (
-    <ChartSqlContext.Provider value={openInSqlEditor}>
+    <>
     {/* The same night-flight scene the login flies over, at ambient strength.
         A sibling of .app, never a child: .app's view-in keyframe uses a
         transform, which would make it the containing block for a fixed
@@ -624,6 +624,6 @@ export default function App() {
         </Sheet>
       )}
     </div>
-    </ChartSqlContext.Provider>
+    </>
   );
 }

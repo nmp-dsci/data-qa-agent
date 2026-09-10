@@ -1,4 +1,4 @@
-// Shared E2E helpers: dev-auth login + navigation to Template Studio.
+// Shared E2E helpers: dev-auth login + common Radix-select interactions.
 import { Locator, Page, expect } from "@playwright/test";
 
 /** Pick a value from a KitSelect (s33 · Radix Select replaced every native
@@ -19,11 +19,4 @@ export async function login(page: Page, user: "Admin" | "User One" | "User Two" 
   await page.getByText(user, { exact: true }).click();
   // Landed in the app shell (Chat tab is the default route).
   await expect(page.getByPlaceholder(/Ask about/)).toBeVisible();
-}
-
-/** Open Admin → Template Studio. */
-export async function openTemplateStudio(page: Page) {
-  await page.getByRole("tab", { name: "Admin" }).click();
-  await page.getByRole("button", { name: "Template Studio" }).click();
-  await expect(page.getByTestId("template-preview")).toBeVisible();
 }

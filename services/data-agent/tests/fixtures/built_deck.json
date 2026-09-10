@@ -1,0 +1,982 @@
+{
+  "slides": [
+    {
+      "objectId": "s01_slide",
+      "pageElements": [
+        {
+          "objectId": "s01_headline",
+          "title": "headline",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Rents in 2077 rose 12% over three years\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s01_subtitle",
+          "title": "subtitle",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "What's the rent trend for postcode 2077?\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s01_footer",
+          "title": "footer",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Data Pilot \u00b7 smoke001 \u00b7 2026-09-10\n"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "slideProperties": {
+        "notesPage": {
+          "pageElements": [
+            {
+              "objectId": "SLIDES_API757013082_0",
+              "shape": {}
+            },
+            {
+              "objectId": "s01_notes",
+              "shape": {
+                "shapeType": "TEXT_BOX"
+              }
+            }
+          ],
+          "notesProperties": {
+            "speakerNotesObjectId": "s01_notes"
+          }
+        }
+      }
+    },
+    {
+      "objectId": "s02_slide",
+      "pageElements": [
+        {
+          "objectId": "s02_headline",
+          "title": "headline",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Rents rose 12% in postcode 2077\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s02_commentary",
+          "title": "commentary",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Growth is steady, not a spike.\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s02_source",
+          "title": "source",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Source: marts.property_rent_monthly; SQL in the Sheet's Manifest tab\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s02_footer",
+          "title": "footer",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Data Pilot \u00b7 smoke001 \u00b7 2026-09-10\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s02_chartobj",
+          "sheetsChart": {
+            "spreadsheetId": "1YryPdziBgR4nd4nVlsM8OoKxdBpXDN1gWfm_VsFVLr0",
+            "chartId": 1437352028
+          }
+        }
+      ],
+      "slideProperties": {
+        "notesPage": {
+          "pageElements": [
+            {
+              "objectId": "SLIDES_API180480034_0",
+              "shape": {}
+            },
+            {
+              "objectId": "s02_notes",
+              "shape": {
+                "shapeType": "TEXT_BOX",
+                "text": {
+                  "textElements": [
+                    {},
+                    {
+                      "textRun": {
+                        "content": "Growth is steady, not a spike.\n"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "notesProperties": {
+            "speakerNotesObjectId": "s02_notes"
+          }
+        }
+      }
+    },
+    {
+      "objectId": "s03_slide",
+      "pageElements": [
+        {
+          "objectId": "s03_headline",
+          "title": "headline",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Median weekly rent is now $777\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s03_kpi",
+          "title": "kpi",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "$777\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s03_kpi_label",
+          "title": "kpi_label",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "median weekly rent\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s03_commentary",
+          "title": "commentary",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Up from $700 in Jan 2025.\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s03_source",
+          "title": "source",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Source: marts.property_rent_monthly; SQL in the Sheet's Manifest tab\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s03_footer",
+          "title": "footer",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Data Pilot \u00b7 smoke001 \u00b7 2026-09-10\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s03_chartobj",
+          "sheetsChart": {
+            "spreadsheetId": "1YryPdziBgR4nd4nVlsM8OoKxdBpXDN1gWfm_VsFVLr0",
+            "chartId": 1440151444
+          }
+        }
+      ],
+      "slideProperties": {
+        "notesPage": {
+          "pageElements": [
+            {
+              "objectId": "SLIDES_API187786351_0",
+              "shape": {}
+            },
+            {
+              "objectId": "s03_notes",
+              "shape": {
+                "shapeType": "TEXT_BOX",
+                "text": {
+                  "textElements": [
+                    {},
+                    {
+                      "textRun": {
+                        "content": "Up from $700 in Jan 2025.\n"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "notesProperties": {
+            "speakerNotesObjectId": "s03_notes"
+          }
+        }
+      }
+    },
+    {
+      "objectId": "s04_slide",
+      "pageElements": [
+        {
+          "objectId": "s04_headline",
+          "title": "headline",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Yields are highest in Suburb A\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s04_commentary",
+          "title": "commentary",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "The spread is 1.4 points.\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s04_source",
+          "title": "source",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Source: marts.property_yield; SQL in the Sheet's Manifest tab\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s04_footer",
+          "title": "footer",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Data Pilot \u00b7 smoke001 \u00b7 2026-09-10\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s04_chartobj",
+          "sheetsChart": {
+            "spreadsheetId": "1YryPdziBgR4nd4nVlsM8OoKxdBpXDN1gWfm_VsFVLr0",
+            "chartId": 332658286
+          }
+        }
+      ],
+      "slideProperties": {
+        "notesPage": {
+          "pageElements": [
+            {
+              "objectId": "SLIDES_API1146764607_0",
+              "shape": {}
+            },
+            {
+              "objectId": "s04_notes",
+              "shape": {
+                "shapeType": "TEXT_BOX",
+                "text": {
+                  "textElements": [
+                    {},
+                    {
+                      "textRun": {
+                        "content": "The spread is 1.4 points.\n"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "notesProperties": {
+            "speakerNotesObjectId": "s04_notes"
+          }
+        }
+      }
+    },
+    {
+      "objectId": "s05_slide",
+      "pageElements": [
+        {
+          "objectId": "s05_headline",
+          "title": "headline",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Yield by suburb\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s05_commentary",
+          "title": "commentary",
+          "shape": {}
+        },
+        {
+          "objectId": "s05_source",
+          "title": "source",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Source: marts.property_yield; SQL in the Sheet's Manifest tab\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s05_footer",
+          "title": "footer",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Data Pilot \u00b7 smoke001 \u00b7 2026-09-10\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s05_tableobj",
+          "table": {
+            "rows": 9,
+            "columns": 2,
+            "tableRows": [
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "suburb\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "gross_yield_pct\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Suburb A\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "5.5\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Suburb B\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "5.3\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Suburb C\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "5.1\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Suburb D\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "4.9\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Suburb E\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "4.7\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Suburb F\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "4.5\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Suburb G\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "4.3\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Suburb H\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "4.1\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "slideProperties": {
+        "notesPage": {
+          "pageElements": [
+            {
+              "objectId": "SLIDES_API816483212_0",
+              "shape": {}
+            },
+            {
+              "objectId": "s05_notes",
+              "shape": {
+                "shapeType": "TEXT_BOX"
+              }
+            }
+          ],
+          "notesProperties": {
+            "speakerNotesObjectId": "s05_notes"
+          }
+        }
+      }
+    },
+    {
+      "objectId": "s06_slide",
+      "pageElements": [
+        {
+          "objectId": "s06_headline",
+          "title": "headline",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Sources & SQL\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s06_footer",
+          "title": "footer",
+          "shape": {
+            "text": {
+              "textElements": [
+                {},
+                {
+                  "textRun": {
+                    "content": "Data Pilot \u00b7 smoke001 \u00b7 2026-09-10\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "objectId": "s06_tableobj",
+          "table": {
+            "rows": 3,
+            "columns": 4,
+            "tableRows": [
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "query_ref\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "mart\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "rows\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "sql\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Q1\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "marts.property_rent_monthly\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "12\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "select month, avg_weekly_rent from marts.property_rent_monthly where postcode='2077'\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tableCells": [
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "Q2\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "marts.property_yield\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "8\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": {
+                      "textElements": [
+                        {},
+                        {
+                          "textRun": {
+                            "content": "select suburb, gross_yield_pct from marts.property_yield order by 2 desc\n"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "slideProperties": {
+        "notesPage": {
+          "pageElements": [
+            {
+              "objectId": "SLIDES_API840977387_0",
+              "shape": {}
+            },
+            {
+              "objectId": "s06_notes",
+              "shape": {
+                "shapeType": "TEXT_BOX"
+              }
+            }
+          ],
+          "notesProperties": {
+            "speakerNotesObjectId": "s06_notes"
+          }
+        }
+      }
+    }
+  ]
+}

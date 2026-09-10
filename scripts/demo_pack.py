@@ -65,6 +65,23 @@ def _psql(query: str, service: str = "db") -> str:
     return proc.stdout
 
 
+def _artifact_from_row(row: dict) -> dict | None:
+    """Rebuild the artifact links from query_runs' flat columns (0037).
+
+    The report jsonb carries the full manifest for runs made after s46; this is
+    the fallback for a run whose message predates it but whose URLs were still
+    recorded on the run row.
+    """
+    deck = row.get("artifact_deck_url")
+    sheet = row.get("artifact_sheet_url")
+    if not deck and not sheet:
+        return None
+    out = {"deck_url": deck, "sheet_url": sheet}
+    if deck:
+        out["embed_url"] = deck.replace("/edit", "/embed")
+    return out
+
+
 def _slugify(question: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", question.lower()).strip("-")
     return slug[:60].rstrip("-") or "question"
@@ -83,6 +100,8 @@ def _fetch_runs(where: str) -> list[dict[str, Any]]:
             'latency_ms', qr.latency_ms,
             'steps', coalesce(qr.trace, '[]'::jsonb),
             'report', m.report,
+            'artifact_deck_url', qr.artifact_deck_url,
+            'artifact_sheet_url', qr.artifact_sheet_url,
             'recorded_at', qr.created_at
         )
         FROM app.query_runs qr
@@ -143,12 +162,20 @@ def cmd_export(args: argparse.Namespace) -> None:
             "steps": row["steps"],
             "report": report,
             "pages": report.get("pages") or [],
+            # s46: the artifact the dev run produced. Recorded here because demo
+            # runs no agent and holds no Google credential — replay can only hand
+            # back a link that already exists and was already shared read-only.
+            # It lands in a reviewed diff, which is the control on what goes public.
+            "artifact": report.get("artifact") or _artifact_from_row(row),
             "recorded_at": row["recorded_at"],
             "run_id": row["run_id"],
         }
         path = PACK_DIR / f"{slug}.json"
         path.write_text(json.dumps(entry, indent=1) + "\n")
-        print(f"exported {path.relative_to(REPO_ROOT)}  ({len(entry['pages'])} pages)")
+        artifact_note = " + slides" if entry["artifact"] else ""
+        print(
+            f"exported {path.relative_to(REPO_ROOT)}  ({len(entry['pages'])} pages{artifact_note})"
+        )
 
 
 def cmd_show(_args: argparse.Namespace) -> None:

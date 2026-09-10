@@ -29,6 +29,7 @@ from .explore.manifest import ManifestError, validate_manifest  # noqa: E402
 from .mcp_surface import McpPathNormalizer, build_mcp_app  # noqa: E402
 from .routers import (  # noqa: E402
     admin_config,
+    admin_pack,
     analytics,
     architecture,
     ask,
@@ -289,6 +290,7 @@ app.include_router(integrations.router)
 app.include_router(service_accounts.router)
 app.include_router(analytics.router)
 app.include_router(architecture.router)
+app.include_router(admin_pack.router)
 
 # s36: the MCP front door, mounted rather than run as its own service. The gate
 # wrapper authenticates a dpk_ key pinned to surface='mcp' before the JSON-RPC

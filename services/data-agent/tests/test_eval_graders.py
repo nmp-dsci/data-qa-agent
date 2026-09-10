@@ -9,6 +9,8 @@ from agent.eval_graders import (
     grade_row_set,
     grade_scalar,
     grade_series,
+    parse_scalar_number,
+    reduce_scalar_actual,
     within_tolerance,
 )
 
@@ -67,6 +69,172 @@ def test_grade_extraction_dispatch() -> None:
     assert ranked["score"] == 1.0
     bogus = grade_extraction(kind="bogus", golden_rows=[], actual_rows=[])
     assert bogus["score"] == 0.0 and "error" in bogus
+
+
+def test_parse_scalar_number() -> None:
+    assert parse_scalar_number("$718/wk") == 718.0
+    assert parse_scalar_number("$1.25m") == 1_250_000.0
+    assert parse_scalar_number("650k") == 650_000.0
+    assert parse_scalar_number("12.5%") == 12.5
+    assert parse_scalar_number("1,234.5") == 1234.5
+    assert parse_scalar_number(718) == 718.0
+    assert parse_scalar_number(None) is None
+    assert parse_scalar_number("refused") is None
+
+
+def test_reduce_scalar_manifest_kpi_takes_the_last_slide() -> None:
+    # s48: the agent's deck carried a stale KPI slide, then a "Correction: ..."
+    # slide — manifest_kpi must take the deck's current word, not its first.
+    artifact = {
+        "slides": [
+            {"index": 0, "spec": {"headline": "Cover"}},
+            {"index": 1, "spec": {"kpi": "$650/wk"}},
+            {"index": 2, "spec": {"kpi": "$718/wk"}},
+        ]
+    }
+    out = reduce_scalar_actual(
+        golden_rows=[{"median_weekly_rent": 718.0}],
+        actual_rows=[{"month": "2026-04", "median_weekly_rent": 700.0}] * 3,
+        artifact=artifact,
+    )
+    assert out == {"value": 718.0, "scalar_source": "manifest_kpi"}
+
+
+def test_reduce_scalar_manifest_kpi_reads_top_level_kpi_field() -> None:
+    artifact = {"slides": [{"index": 0, "kpi": "$999"}]}
+    out = reduce_scalar_actual(golden_rows=[{"v": 999.0}], actual_rows=[], artifact=artifact)
+    assert out == {"value": 999.0, "scalar_source": "manifest_kpi"}
+
+
+def test_reduce_scalar_manifest_kpi_matches_the_golden_field_not_the_last_slide() -> None:
+    # Two unrelated KPI slides — an unrelated metric appended AFTER the one the
+    # golden actually asks about. Taking "whichever came last" would silently
+    # grade against the wrong number; matching on kpi_label must not.
+    artifact = {
+        "slides": [
+            {"index": 0, "spec": {"kpi": "718", "kpi_label": "Median Weekly Rent"}},
+            {"index": 1, "spec": {"kpi": "42", "kpi_label": "Days on Market"}},
+        ]
+    }
+    out = reduce_scalar_actual(
+        golden_rows=[{"median_weekly_rent": 718.0}],
+        actual_rows=[],
+        artifact=artifact,
+    )
+    assert out == {"value": 718.0, "scalar_source": "manifest_kpi"}
+
+
+def test_reduce_scalar_manifest_kpi_no_label_match_falls_through_instead_of_guessing() -> None:
+    # Both KPI slides are labelled, but neither names the golden's field
+    # (vacancy_rate) — grading against "Days on Market" because it came last
+    # would silently produce the wrong number. manifest_kpi must decline so
+    # the caller falls through to key_match instead.
+    artifact = {
+        "slides": [
+            {"index": 0, "spec": {"kpi": "$718/wk", "kpi_label": "Median Weekly Rent"}},
+            {"index": 1, "spec": {"kpi": "42 days", "kpi_label": "Days on Market"}},
+        ]
+    }
+    golden_rows = [{"month": "2026-05", "vacancy_rate": 2.1}]
+    actual_rows = [{"month": "2026-05", "vacancy_rate": 2.1}]
+    out = reduce_scalar_actual(
+        golden_rows=golden_rows, actual_rows=actual_rows, artifact=artifact, value="vacancy_rate"
+    )
+    assert out == {"value": 2.1, "scalar_source": "key_match"}
+
+
+def test_reduce_scalar_key_match_joins_on_shared_columns() -> None:
+    golden_rows = [{"month": "2026-05", "median_weekly_rent": 718.0}]
+    actual_rows = [
+        {"month": "2026-03", "median_weekly_rent": 690.0},
+        {"month": "2026-05", "median_weekly_rent": 718.0},
+        {"month": "2026-04", "median_weekly_rent": 700.0},
+    ]
+    out = reduce_scalar_actual(
+        golden_rows=golden_rows, actual_rows=actual_rows, value="median_weekly_rent"
+    )
+    assert out == {"value": 718.0, "scalar_source": "key_match"}
+
+
+def test_reduce_scalar_key_match_excludes_the_value_column() -> None:
+    # A single-column golden row ({"median_weekly_rent": 718.0}) must not treat
+    # its own value as a join key — that would key-match on the answer itself.
+    golden_rows = [{"median_weekly_rent": 718.0}]
+    actual_rows = [
+        {"month": "2026-01", "median_weekly_rent": 650.0},
+        {"month": "2026-05", "median_weekly_rent": 718.0},
+    ]
+    out = reduce_scalar_actual(golden_rows=golden_rows, actual_rows=actual_rows)
+    # No key columns survive exclusion, so this falls through to last_row —
+    # not a spurious key_match on median_weekly_rent == median_weekly_rent.
+    assert out == {"value": 718.0, "scalar_source": "last_row", "reduced_from": 2}
+
+
+def test_reduce_scalar_last_row_for_chronological_series() -> None:
+    actual_rows = [{"median_weekly_rent": v} for v in (650.0, 680.0, 718.0)]
+    out = reduce_scalar_actual(golden_rows=[{"median_weekly_rent": 718.0}], actual_rows=actual_rows)
+    assert out == {"value": 718.0, "scalar_source": "last_row", "reduced_from": 3}
+
+
+def test_reduce_scalar_first_row_when_actual_is_a_single_row() -> None:
+    out = reduce_scalar_actual(golden_rows=[[718.0]], actual_rows=[[718.0]])
+    assert out == {"value": 718.0, "scalar_source": "first_row"}
+    empty = reduce_scalar_actual(golden_rows=[], actual_rows=[])
+    assert empty == {"value": None, "scalar_source": "first_row"}
+
+
+def test_reduce_scalar_explicit_reduce_overrides_precedence() -> None:
+    artifact = {"slides": [{"index": 0, "spec": {"kpi": "$999"}}]}
+    actual_rows = [{"v": 1.0}, {"v": 2.0}, {"v": 3.0}]
+    golden_rows = [{"v": 3.0}]
+
+    assert reduce_scalar_actual(
+        golden_rows=golden_rows, actual_rows=actual_rows, artifact=artifact, reduce="first_row"
+    ) == {"value": 1.0, "scalar_source": "first_row"}
+    assert reduce_scalar_actual(
+        golden_rows=golden_rows, actual_rows=actual_rows, artifact=artifact, reduce="last_row"
+    ) == {"value": 3.0, "scalar_source": "last_row", "reduced_from": 3}
+    assert reduce_scalar_actual(
+        golden_rows=golden_rows, actual_rows=actual_rows, artifact=artifact, reduce="max"
+    ) == {"value": 3.0, "scalar_source": "max"}
+    assert reduce_scalar_actual(
+        golden_rows=golden_rows, actual_rows=actual_rows, artifact=artifact, reduce="min"
+    ) == {"value": 1.0, "scalar_source": "min"}
+    # reduce="key_match" with no shared key columns besides "v" (excluded as
+    # the sole golden column) finds no match rather than falling back.
+    assert reduce_scalar_actual(
+        golden_rows=golden_rows, actual_rows=actual_rows, artifact=artifact, reduce="key_match"
+    ) == {"value": None, "scalar_source": "key_match"}
+
+
+def test_grade_extraction_scalar_uses_reduction_and_reports_source() -> None:
+    graded = grade_extraction(
+        kind="scalar",
+        golden_rows=[{"median_weekly_rent": 718.0}],
+        actual_rows=[{"median_weekly_rent": v} for v in (650.0, 680.0, 718.0)],
+        tolerance_pct=1.0,
+    )
+    assert graded == {
+        "kind": "scalar",
+        "score": 1.0,
+        "scalar_source": "last_row",
+        "reduced_from": 3,
+    }
+
+
+def test_grade_extraction_scalar_reads_golden_value_column_not_first_column() -> None:
+    """A golden row with {month, median_weekly_rent} names its value via
+    ``value``/``value_col`` on both sides; grading must not fall back to
+    "whichever column is first" for the golden the way it does for the actual.
+    """
+    graded = grade_extraction(
+        kind="scalar",
+        golden_rows=[{"month": "2026-05", "median_weekly_rent": 718.0}],
+        actual_rows=[{"month": "2026-05", "median_weekly_rent": 718.0}],
+        value="median_weekly_rent",
+        tolerance_pct=1.0,
+    )
+    assert graded["score"] == 1.0
 
 
 def test_grade_presentation_format() -> None:

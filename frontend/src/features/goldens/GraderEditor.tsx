@@ -16,7 +16,6 @@ import {
   graderIssue,
   keyColumns,
   namedColumns,
-  REPORT_OBJECT_TYPES,
   TIER_DEFAULT_KIND,
   withKeyColumns,
 } from "./graderSpec";
@@ -61,8 +60,6 @@ interface GraderEditorProps {
   onChange: (g: GraderSpec) => void;
   /** Columns the ① SQL extract produces — the grader may only name these. */
   columns: string[];
-  /** Object types present in the current ③ report (expected_objects suggestions). */
-  reportObjectTypes: string[];
   tier: string;
   status: string;
   onStatusChange: (status: string) => void;
@@ -72,7 +69,6 @@ export function GraderEditor({
   grader,
   onChange,
   columns,
-  reportObjectTypes,
   tier,
   status,
   onStatusChange,
@@ -85,8 +81,6 @@ export function GraderEditor({
   const ready = status === "ready";
   const suggested = TIER_DEFAULT_KIND[tier];
   const needsKey = kind === "row_set" || kind === "ranked_set" || kind === "series";
-
-  const objTypeOpts = Array.from(new Set<string>([...REPORT_OBJECT_TYPES, ...reportObjectTypes]));
 
   return (
     <div style={box} data-testid="grader-editor">
@@ -218,19 +212,30 @@ export function GraderEditor({
           </>
         )}
 
-        {/* expected objects — G3 structural: the report must contain these types */}
+        {/* G5 — the deck the user received: at least N slides, and a chart or
+            table somewhere. Layout identity is never graded (the agent chooses). */}
         <div style={field}>
-          <span style={label}>
-            expected objects{reportObjectTypes.length ? ` · report has: ${reportObjectTypes.join(", ")}` : ""}
-          </span>
-          <KitMultiSelect
-            testId="grader-expected-objects"
-            ariaLabel="Expected report objects"
-            values={g.expected_objects ?? []}
-            onValuesChange={(vals) => set({ expected_objects: vals })}
-            options={objTypeOpts.map((o) => ({ value: o, label: o }))}
-            className="min-w-40"
+          <span style={label}>min slides</span>
+          <input
+            data-testid="grader-min-slides"
+            type="number"
+            min={0}
+            style={num}
+            value={g.min_slides ?? 1}
+            onChange={(e) => set({ min_slides: Math.max(0, Number(e.target.value) || 0) })}
           />
+        </div>
+        <div style={field}>
+          <span style={label}>expect chart</span>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 32 }}>
+            <input
+              data-testid="grader-expect-chart"
+              type="checkbox"
+              checked={g.expect_chart ?? true}
+              onChange={(e) => set({ expect_chart: e.target.checked })}
+            />
+            <span className="muted">a chart or table on some slide</span>
+          </label>
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 // Playwright E2E — drives the running local stack (make up) through the same
 // interface a human uses: the browser at localhost:5230. No mocks: the suite
-// logs in via dev-auth, walks Template Studio + the playground, and (in
+// logs in via dev-auth, exercises chat/goldens/Explore/SQL, and (in
 // chat.spec.ts) asks the live agent a real question.
 import { defineConfig, devices } from "@playwright/test";
 

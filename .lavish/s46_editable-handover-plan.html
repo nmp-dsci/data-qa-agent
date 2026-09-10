@@ -1,0 +1,1201 @@
+<meta charset="utf-8" />
+<title>s46 · Slides Handover</title>
+<style>
+/* ---------------------------------------------------------------------------
+   Flight Deck / Night Flight tokens — lifted verbatim from
+   frontend/src/styles.css:9-147 so this plan renders in the product's own
+   design system rather than a generic one.
+--------------------------------------------------------------------------- */
+:root {
+  --gray-950:#0a0d15; --gray-900:#111522; --gray-850:#171c2b; --gray-800:#1e2434;
+  --gray-700:#242b3d; --gray-600:#333d55; --gray-100:#eaecf3; --gray-300:#9aa4bb;
+  --gray-400:#7a84a0; --ink-code:#0a0d13;
+  --gold-500:#d9a84e; --gold-ink:#1a1204; --gold-200:#f2ca79;
+  --blue-400:#7fb0ff; --green-400:#9ece6a; --amber-400:#e0af68;
+  --red-400:#f2777a; --purple-400:#c58fff; --cyan-400:#7dcfff;
+
+  --bg:var(--gray-950); --panel:var(--gray-900); --panel-2:var(--gray-850);
+  --panel-3:var(--gray-800); --border:var(--gray-700); --border-2:var(--gray-600);
+  --text:var(--gray-100); --muted:var(--gray-300); --faint:var(--gray-400);
+  --accent:var(--gold-500); --accent-ink:var(--gold-ink); --accent-soft:var(--gold-200);
+  --accent-2:var(--blue-400); --code-bg:var(--ink-code);
+  --good:var(--green-400); --good-border:#33502f;
+  --warn:var(--amber-400); --warn-border:#6b5a2a;
+  --bad:var(--red-400); --bad-border:#6b2a2a;
+  --purple:var(--purple-400); --purple-border:#5a3a6b;
+  --info:var(--cyan-400); --info-border:#2f5a7a;
+
+  --radius-sm:6px; --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+  --border:#ddd7c7; --border-2:#c9c1ac; --text:#23293a; --muted:#67604e;
+  --faint:#7d7663; --accent:#9a7328; --accent-ink:#fffaf0; --accent-soft:#7a5c22;
+  --accent-2:#2456c9; --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+  --warn:#8f6a12; --warn-border:#ddc48a; --bad:#c03535; --bad-border:#e3aaaa;
+  --purple:#7137c8; --purple-border:#cdb3ee; --info:#0d6e8c; --info-border:#a4cfdd;
+}
+
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 96px}
+
+h1{font-size:34px;line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;font-weight:650}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+  margin:0 0 6px;font-weight:600;font-family:var(--mono)}
+h3{font-size:21px;margin:0 0 12px;letter-spacing:-.01em;font-weight:620}
+h4{font-size:15px;margin:0 0 8px;font-weight:620}
+p{margin:0 0 14px;color:var(--muted)}
+p.lede{font-size:17px;color:var(--text);max-width:70ch}
+strong{color:var(--text);font-weight:620}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:1px 5px;
+  color:var(--accent-soft);overflow-wrap:anywhere}
+
+section{margin:0 0 64px}
+.sec-head{border-top:1px solid var(--border);padding-top:18px;margin-bottom:24px}
+
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tight{padding:14px 16px}
+
+.thesis{background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:1px solid var(--border-2);border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);padding:22px 24px;margin:28px 0 0}
+.thesis .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.thesis p{color:var(--text);font-size:16.5px;margin:0}
+
+.b{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid;
+  white-space:nowrap;font-weight:600}
+.b-good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,.08)}
+.b-warn{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,.08)}
+.b-bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,.08)}
+.b-info{color:var(--info);border-color:var(--info-border);background:rgba(125,207,255,.08)}
+.b-pur{color:var(--purple);border-color:var(--purple-border);background:rgba(197,143,255,.08)}
+.b-mut{color:var(--faint);border-color:var(--border-2)}
+
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;
+  padding:11px 14px;border-bottom:1px solid var(--border-2);white-space:nowrap;
+  background:var(--panel-2)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;
+  color:var(--muted)}
+tbody tr:last-child td{border-bottom:none}
+td.n{color:var(--text);font-weight:600}
+td.num{font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+tr.dead td{opacity:.62}
+tfoot td{border-top:1px solid var(--border-2);font-weight:700;color:var(--text);
+  background:var(--panel-2)}
+
+figure{margin:0 0 20px;background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{margin-top:14px;font-size:13px;color:var(--faint);
+  border-top:1px solid var(--border);padding-top:12px}
+.svg-l{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;fill:var(--faint)}
+.svg-t{font-family:var(--sans);font-size:12px;fill:var(--text);font-weight:600}
+.svg-s{font-family:var(--sans);font-size:10.5px;fill:var(--muted)}
+
+.note{border-left:3px solid;border-radius:0 var(--radius) var(--radius) 0;
+  padding:13px 16px;margin:0 0 16px;background:var(--panel-2);font-size:14px}
+.note p:last-child{margin-bottom:0}
+.n-bad{border-color:var(--bad)} .n-good{border-color:var(--good)}
+.n-warn{border-color:var(--warn)} .n-info{border-color:var(--info)}
+
+ul.clean{list-style:none;padding:0;margin:0 0 14px}
+ul.clean li{padding:5px 0 5px 20px;position:relative;color:var(--muted);font-size:14px}
+ul.clean li::before{content:"";position:absolute;left:4px;top:14px;width:5px;height:5px;
+  border-radius:50%;background:var(--accent);opacity:.65}
+
+/* done checklist */
+ul.dod{list-style:none;padding:0;margin:0}
+ul.dod li{display:flex;gap:12px;align-items:flex-start;padding:11px 0;
+  border-bottom:1px solid var(--border)}
+ul.dod li:last-child{border-bottom:none}
+ul.dod .box{flex-shrink:0;width:18px;height:18px;border:1.5px solid var(--accent);
+  border-radius:4px;margin-top:2px}
+ul.dod .t{font-size:14.5px;color:var(--text);font-weight:600}
+ul.dod .d{font-size:13px;color:var(--faint);display:block;margin-top:1px;font-weight:400}
+
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;overflow-x:auto;margin:0 0 16px}
+pre code{background:none;border:none;padding:0;color:var(--gray-100);font-size:12.5px;
+  line-height:1.6;display:block;white-space:pre}
+.cm{color:var(--faint)} .ck{color:var(--purple)} .cs{color:var(--good)}
+.cf{color:var(--accent-2)} .cd{color:var(--accent-soft)}
+
+.ms{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 20px}
+.ms-n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);
+  background:var(--accent);width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;grid-row:span 2}
+.ms-n.gate{background:var(--bad);color:#fff}
+.ms-rail{border-left:1px dashed var(--border-2);margin:8px 0 0 17px;grid-column:1}
+.ms-b{padding:0 0 26px}
+.ms-b h4{margin-bottom:4px}
+.ms-b p{font-size:13.5px;margin-bottom:8px}
+
+form.q{background:var(--panel);border:1px solid var(--border-2);
+  border-radius:var(--radius-lg);padding:20px;margin:0 0 16px}
+form.q h4{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+form.q .qid{font-family:var(--mono);font-size:11px;color:var(--accent);
+  border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:1px 6px}
+form.q .qsub{font-size:13px;color:var(--faint);margin:0 0 14px}
+label.opt{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;
+  border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;
+  cursor:pointer;background:var(--panel-2);transition:border-color .12s}
+label.opt:hover{border-color:var(--border-2)}
+label.opt:has(input:checked){border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 8%,var(--panel-2))}
+label.opt input{margin-top:3px;accent-color:var(--accent);flex-shrink:0}
+label.opt .ot{font-weight:620;color:var(--text);font-size:14px}
+label.opt .od{font-size:12.5px;color:var(--faint);display:block;margin-top:2px}
+button.send{font-family:var(--sans);font-weight:620;font-size:13.5px;
+  background:var(--accent);color:var(--accent-ink);border:none;
+  border-radius:var(--radius);padding:9px 18px;cursor:pointer}
+button.send:hover{background:var(--accent-soft)}
+
+.rec{border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--panel));
+  border-radius:var(--radius-lg);padding:20px 22px}
+.rec h4{color:var(--accent)}
+.foot{border-top:1px solid var(--border);padding-top:16px;color:var(--faint);font-size:12.5px}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div style="font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+       text-transform:uppercase;color:var(--faint);margin-bottom:14px">
+    s46 · plan · branch <span style="color:var(--accent)">presentation-handover</span>
+  </div>
+  <h1>Replacing the render layer:<br />the agent builds a deck, not a page</h1>
+  <p class="lede">Data Pilot currently answers by emitting objects that React draws with visx.
+  This plan moves the whole visualisation phase into Google Sheets and Slides — the agent picks
+  a layout from a template pack, writes the data, sets the headline and commentary — and then
+  <strong>decommissions the browser rendering stack entirely</strong>.</p>
+
+  <div class="thesis">
+    <div class="k">The honest headline</div>
+    <p>The move itself is sound and the API supports it. But the render layer is load-bearing for
+    <em>five</em> surfaces, not one: chat, Explore, Template Studio, the Goldens editor and the
+    Ops dashboard all render through the same components. <strong>Deleting it is a
+    ~10,000-line change across the app, not a swap behind chat.</strong> Everything below is
+    sized so you can decide how far the purge actually goes.</p>
+  </div>
+</header>
+
+<!-- ══════════════════ 01 DEFINITION OF DONE ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>01 · Definition of done</h2>
+  <h3>What “finished” means for this migration</h3></div>
+
+  <div class="card">
+    <ul class="dod">
+      <li><span class="box"></span><span><span class="t">The agent answers into Sheets + Slides</span>
+        <span class="d">The <code>agent_sdk</code> runtime orchestrates the visualisation phase:
+        find a layout in the pack, add the slide, write the sheet, set headline and
+        commentary.</span></span></li>
+      <li><span class="box"></span><span><span class="t">Artifacts come from a template pack</span>
+        <span class="d">Named layouts in a Slides master, swappable per use case without code
+        changes.</span></span></li>
+      <li><span class="box"></span><span><span class="t">Three golden questions prove the loop</span>
+        <span class="d">Authored fresh against the new contract, graded end to end. The existing
+        set is decommissioned.</span></span></li>
+      <li><span class="box"></span><span><span class="t">The browser rendering stack is gone</span>
+        <span class="d">report-engine, visx chart components, the object registry, the parity
+        gate, and every test that asserts on rendered chart DOM.</span></span></li>
+      <li><span class="box"></span><span><span class="t">Nothing half-migrated is left running</span>
+        <span class="d">No surface still depending on <code>PageLayout</code>. This is the
+        clause with the real cost — see §08.</span></span></li>
+    </ul>
+  </div>
+
+  <div class="note n-warn" style="margin-top:18px">
+    <p><strong>One sequencing recommendation, strongly held.</strong> Build the new path
+    alongside the old one and <em>gate the purge on the three goldens passing</em>. Deleting
+    first turns a migration into a rewrite with no working reference to compare against — and
+    the only proof that a deck is correct is diffing it against what the current engine
+    produces for the same question.</p>
+  </div>
+</section>
+
+<!-- ══════════════════ 02 CURRENT STATE ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>02 · What exists today</h2>
+  <h3>A data-first contract with exactly one renderer</h3></div>
+
+  <p>The agent never emits HTML. It emits a report dict; <code>compose_pages()</code>
+  (<code>agent/pages.py:451-480</code>) lifts that into a validated <code>Page</code> /
+  <code>PageObject</code> tree; React draws it. Crucially the objects carry
+  <strong>data, not geometry</strong> — <code>chart_object_from_spec</code>
+  (<code>pages.py:285-381</code>) repacks real dataframe rows (capped at 2000,
+  <code>skills/charts.py:21</code>) and visx computes scales at render time.</p>
+
+  <div class="grid g3">
+    <div class="card tight">
+      <span class="b b-good">Why the move is possible</span>
+      <h4 style="margin-top:10px">Rows travel inline</h4>
+      <p style="font-size:13.5px;margin:0">No server-side paths or pixel coordinates exist
+      anywhere. Every chart is <code>{fields, unit, rows[]}</code> — which is what a native
+      Sheets chart needs. Had this shipped as SVG, the plan would be “export a PNG”.</p>
+    </div>
+    <div class="card tight">
+      <span class="b b-warn">Why it is overdue</span>
+      <h4 style="margin-top:10px">Two channels already discard it</h4>
+      <p style="font-size:13.5px;margin:0">Slack sends <code>answer.answer</code> truncated
+      (<code>integrations.py:224</code>); the webhook sends answer/sql/row_count
+      (<code>:78-85</code>). A <code>channel=</code> argument exists with no renderer behind
+      it.</p>
+    </div>
+    <div class="card tight">
+      <span class="b b-info">Why it is expensive</span>
+      <h4 style="margin-top:10px">One renderer, five consumers</h4>
+      <p style="font-size:13.5px;margin:0">Chat, Explore, Template Studio, the Goldens editor
+      and Ops all call the same <code>PageLayout</code>/<code>ObjectBody</code>. There is no
+      second rendering path to fall back on.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 03 CONSTRAINT ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>03 · The constraint that decides the design</h2>
+  <h3>Native charts do not cross vendor boundaries</h3></div>
+
+  <p>Text, shapes and tables round-trip almost everywhere. Charts do not. A chart stays
+  <em>editable</em> only inside the vendor boundary it was authored in.</p>
+
+  <figure>
+    <svg viewBox="0 0 940 232" role="img" aria-labelledby="f2t">
+      <title id="f2t">Chart fidelity when crossing an ecosystem boundary</title>
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,1 L8,4.5 L0,8 z" fill="var(--border-2)"/></marker>
+        <marker id="arg" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,1 L8,4.5 L0,8 z" fill="var(--good)"/></marker>
+        <marker id="arb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,1 L8,4.5 L0,8 z" fill="var(--bad)"/></marker>
+      </defs>
+      <text x="0" y="14" class="svg-l">Authored in</text>
+      <text x="330" y="14" class="svg-l">Opened in</text>
+      <text x="700" y="14" class="svg-l">What the user gets</text>
+
+      <g id="path-native"><title>Google-native authoring keeps charts editable</title>
+        <rect x="0" y="28" width="250" height="52" rx="8" fill="var(--panel-2)"
+              stroke="var(--good-border)"/>
+        <text x="18" y="50" class="svg-t">Sheets API · addChart</text>
+        <text x="18" y="68" class="svg-s">native EmbeddedChart</text>
+        <line x1="250" y1="54" x2="322" y2="54" stroke="var(--good)" marker-end="url(#arg)"/>
+        <rect x="330" y="28" width="250" height="52" rx="8" fill="var(--panel-2)"
+              stroke="var(--good-border)"/>
+        <text x="348" y="50" class="svg-t">Google Sheets / Slides</text>
+        <text x="348" y="68" class="svg-s">same vendor — no boundary</text>
+        <line x1="580" y1="54" x2="652" y2="54" stroke="var(--good)" marker-end="url(#arg)"/>
+        <text x="700" y="49" class="svg-t" fill="var(--good)">Fully editable chart</text>
+        <text x="700" y="68" class="svg-s">re-type, re-colour, re-axis</text>
+      </g>
+      <g id="path-xlsx"><title>Excel charts import into Sheets acceptably</title>
+        <rect x="0" y="94" width="250" height="52" rx="8" fill="var(--panel-2)"
+              stroke="var(--warn-border)"/>
+        <text x="18" y="116" class="svg-t">xlsxwriter · .xlsx</text>
+        <text x="18" y="134" class="svg-s">OOXML chart XML</text>
+        <line x1="250" y1="120" x2="322" y2="120" stroke="var(--warn)" marker-end="url(#ar)"/>
+        <rect x="330" y="94" width="250" height="52" rx="8" fill="var(--panel-2)"
+              stroke="var(--warn-border)"/>
+        <text x="348" y="116" class="svg-t">Google Sheets import</text>
+        <text x="348" y="134" class="svg-s">spreadsheet boundary only</text>
+        <line x1="580" y1="120" x2="652" y2="120" stroke="var(--warn)" marker-end="url(#ar)"/>
+        <text x="700" y="115" class="svg-t" fill="var(--warn)">Mostly editable</text>
+        <text x="700" y="134" class="svg-s">bar/line/pie fine; combo risky</text>
+      </g>
+      <g id="path-pptx"><title>PowerPoint charts break when opened in Google Slides</title>
+        <rect x="0" y="160" width="250" height="52" rx="8" fill="var(--panel-2)"
+              stroke="var(--bad-border)"/>
+        <text x="18" y="182" class="svg-t">python-pptx · .pptx</text>
+        <text x="18" y="200" class="svg-s">OOXML + embedded workbook</text>
+        <line x1="250" y1="186" x2="322" y2="186" stroke="var(--bad)" stroke-dasharray="4 3"
+              marker-end="url(#arb)"/>
+        <rect x="330" y="160" width="250" height="52" rx="8" fill="var(--panel-2)"
+              stroke="var(--bad-border)"/>
+        <text x="348" y="182" class="svg-t">Google Slides import</text>
+        <text x="348" y="200" class="svg-s">deck boundary — data unreachable</text>
+        <line x1="580" y1="186" x2="652" y2="186" stroke="var(--bad)" stroke-dasharray="4 3"
+              marker-end="url(#arb)"/>
+        <text x="700" y="181" class="svg-t" fill="var(--bad)">Broken object</text>
+        <text x="700" y="200" class="svg-s">not even a usable image</text>
+      </g>
+    </svg>
+    <figcaption>Two consequences. Google-native is the only path to an editable deck for Google
+    users. And Slides has <strong>no primitive that authors a chart from data</strong> — its only
+    native chart object is <code>createSheetsChart</code>, embedding one that already lives in a
+    Sheet. The Sheet is not optional.</figcaption>
+  </figure>
+
+  <details style="margin-top:8px">
+    <summary style="cursor:pointer;color:var(--accent);font-size:14px;font-weight:600">
+      Why not Microsoft, Notion, or a BI tool — the full option scan</summary>
+    <div class="tw" style="margin-top:14px">
+      <table>
+        <thead><tr><th>Target</th><th>Native chart via API</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="n">Google Sheets</td><td><span class="b b-good">Yes</span> — bar, line,
+            area, column, scatter, combo, stepped-area, pie, histogram, waterfall, scorecard</td>
+            <td>Chosen. Maps near one-to-one onto the object model.</td></tr>
+          <tr><td class="n">Google Slides</td><td><span class="b b-warn">Only via Sheets</span></td>
+            <td>Chosen. Needs the Sheet underneath regardless.</td></tr>
+          <tr><td class="n">Microsoft 365</td><td><span class="b b-good">Yes</span> — xlsxwriter /
+            power-pptx → Graph <code>createLink(edit)</code></td>
+            <td>Most mature ecosystem, but a second identity stack. Future target.</td></tr>
+          <tr><td class="n">Notion</td><td><span class="b b-good">Yes (2025 Views API)</span></td>
+            <td>Vendor-neutral, genuinely capable, very new. Future target.</td></tr>
+          <tr><td class="n">Metabase / Superset</td><td><span class="b b-good">Yes</span></td>
+            <td>Real, but hands the user a BI tool to learn.</td></tr>
+          <tr class="dead"><td class="n">Confluence</td><td><span class="b b-bad">No</span> —
+            chart macro deprecated 2025</td><td>Tables and text only.</td></tr>
+          <tr class="dead"><td class="n">Google Docs</td><td><span class="b b-warn">Embed only</span>
+            — no chart refresh</td><td>Weakest of the three Google surfaces.</td></tr>
+          <tr class="dead"><td class="n">Tableau · Power BI · Looker Studio</td>
+            <td><span class="b b-bad">No</span></td>
+            <td>Structurally blocked. No API authors visuals.</td></tr>
+          <tr class="dead"><td class="n">Quarto · Marp · Slidev</td><td><span class="b b-bad">No</span>
+            — pptx export rasterizes</td><td>Finished-artifact renderers for developers.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════ 04 TARGET ARCHITECTURE ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>04 · Target architecture</h2>
+  <h3>How the agent builds a deck without burning the turn budget</h3></div>
+
+  <p>You described the visualisation phase as: search the template, copy a layout into a new
+  slide, update the attached sheet, set the headline and commentary. That is exactly right as a
+  <em>description of intent</em>. The question is how many round trips it costs.</p>
+
+  <div class="note n-info">
+    <p><strong>The turn ceiling is a dial, not a wall — but turn it deliberately.</strong>
+    Everything shares one budget: <code>max_turns=22</code> (<code>config.py:132</code>) and 600k
+    tokens (<code>config.py:133</code>), enforced in <code>sdk_agent.py:629-667</code>. Both are
+    already settings, so raising them for a dev-only runtime is a config change, not code. Worth
+    keeping in view: the <code>agent_sdk</code> runtime measured <strong>26–43 turns</strong> on
+    the M4 gate against a champion's 18–28, so a visualisation phase lands on top of a run that
+    is already the more expensive of the two. Loosening the ceiling is right; removing the
+    per-tool counters is not — a runaway loop should still hit a wall.</p>
+  </div>
+
+  <div class="rec">
+    <h4>One composite call <em>per slide</em> — the agent names the layout and fills it, in a
+    single round trip.</h4>
+    <p style="font-size:15px;color:var(--text);margin-bottom:0">The agent greps the curated
+    catalogue — free, and exactly how knowledge pages already work — then calls
+    <code>add_slide(...)</code> once per slide, naming the layout and carrying the frame, the
+    chart intent, the headline and the commentary together. It orchestrates slide by slide and
+    reacts to each result, which is what you described; it just does not pay a separate round
+    trip to find a layout, add it, fill the sheet and set the text. One turn per slide rather
+    than four, and each slide lands atomically.</p>
+  </div>
+
+  <figure style="margin-top:20px">
+    <svg viewBox="0 0 940 250" role="img" aria-labelledby="f3t">
+      <title id="f3t">The agent explores the catalogue then emits one deck spec</title>
+      <text x="0" y="14" class="svg-l">Existing workspace — free exploration</text>
+      <g id="t-ws"><title>The layout catalogue is a workspace file like any knowledge page</title>
+        <rect x="0" y="26" width="286" height="120" rx="8" fill="var(--panel-3)"
+              stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="18" y="52" class="svg-t">runs/&lt;id&gt;/layouts.md</text>
+        <text x="18" y="74" class="svg-s">“KPI + Chart” · “Two Charts”</text>
+        <text x="18" y="92" class="svg-s">“Table, full bleed” · “Divider”</text>
+        <text x="18" y="118" class="svg-s" fill="var(--accent-soft)">curated menu the agent</text>
+        <text x="18" y="134" class="svg-s" fill="var(--accent-soft)">greps before choosing</text>
+      </g>
+
+      <line x1="286" y1="86" x2="318" y2="86" stroke="var(--border-2)" marker-end="url(#ar)"/>
+      <text x="326" y="14" class="svg-l">One call per slide</text>
+      <g id="t-call"><title>A composite add_slide call carries everything one slide needs</title>
+        <rect x="326" y="26" width="286" height="120" rx="8" fill="var(--panel-2)"
+              stroke="var(--accent-2)"/>
+        <text x="344" y="52" class="svg-t">add_slide(layout, …)</text>
+        <text x="344" y="74" class="svg-s">frame · chart intent · headline</text>
+        <text x="344" y="92" class="svg-s">commentary — together</text>
+        <text x="344" y="118" class="svg-s" fill="var(--accent-2)">agent names the layout</text>
+        <text x="344" y="134" class="svg-s" fill="var(--accent-2)">and reacts to each result</text>
+      </g>
+
+      <line x1="612" y1="86" x2="644" y2="86" stroke="var(--good)" marker-end="url(#arg)"/>
+      <text x="652" y="14" class="svg-l">Deterministic execution</text>
+      <g id="t-exec"><title>The tool executes one atomic batch against both APIs</title>
+        <rect x="652" y="26" width="288" height="120" rx="8" fill="var(--panel-2)"
+              stroke="var(--good-border)"/>
+        <text x="670" y="52" class="svg-t">Sheets, then Slides</text>
+        <text x="670" y="74" class="svg-s">values.update + addChart</text>
+        <text x="670" y="92" class="svg-s">createSlide(layoutId)</text>
+        <text x="670" y="110" class="svg-s">+ placeholderIdMappings</text>
+        <text x="670" y="134" class="svg-s" fill="var(--good)">one atomic batchUpdate</text>
+      </g>
+
+      <g id="t-guard"><title>New egress boundary: the first third-party call from data-agent</title>
+        <rect x="0" y="170" width="940" height="66" rx="8" fill="var(--panel)"
+              stroke="var(--bad-border)"/>
+        <text x="18" y="194" class="svg-t" fill="var(--bad)">New boundary</text>
+        <text x="18" y="214" class="svg-s">This is the FIRST outbound third-party call from
+          data-agent. The sandbox blocks sockets outright (runner.py:124-134), so this can never</text>
+        <text x="18" y="230" class="svg-s">be sandbox code — it must be a governed MCP tool in the
+          service process, alongside extract, with its own budget counter.</text>
+      </g>
+    </svg>
+    <figcaption>One turn per slide rather than four, and the agent loses none of the authorship
+    you described. Each <code>add_slide</code> is internally one ordered atomic
+    <code>batchUpdate</code>, so a slide either lands whole or not at all.</figcaption>
+  </figure>
+
+  <h4 style="margin-top:26px">The tools, alongside the existing five</h4>
+  <pre><code><span class="cm"># sdk_agent.py — GOVERNED_TOOLS gains two entries; registration is unchanged</span>
+<span class="cm"># (sdk.tool(name, description, schema)(handler), server "dp", line 206-275)</span>
+
+GOVERNED_TOOLS = [<span class="cs">"extract"</span>, <span class="cs">"run_analysis"</span>, <span class="cs">"lookup_values"</span>,
+                  <span class="cs">"no_answer"</span>, <span class="cs">"remember"</span>,
+                  <span class="cs">"start_deck"</span>, <span class="cs">"add_slide"</span>]
+
+<span class="ck">async def</span> <span class="cf">start_deck</span>(title: <span class="cd">str</span>) -> DeckHandle:
+    <span class="cs">"""Copy the curated pack, create the backing Sheet. Once per run."""</span>
+
+<span class="ck">async def</span> <span class="cf">add_slide</span>(
+    layout:     <span class="cd">str</span>,               <span class="cm"># displayName from the curated catalogue</span>
+    headline:   <span class="cd">str</span>,
+    commentary: <span class="cd">str</span>,
+    frame:      <span class="cd">str</span> | <span class="cd">None</span> = <span class="cd">None</span>,   <span class="cm"># an already-extracted frame</span>
+    chart:      ChartIntent | <span class="cd">None</span> = <span class="cd">None</span>,  <span class="cm"># skills/charts.py vocabulary</span>
+) -> SlideResult:
+    <span class="cs">"""Writes the sheet range, adds the native chart, creates the slide
+    from the named layout and fills its placeholders — one atomic
+    batch. An unknown or disabled layout name is rejected with the
+    curated list, so a bad guess costs one turn, not a broken deck.
+
+    Budget-capped like extract/run_analysis via the
+    SandboxBudgetExhausted pattern (max_slides, default ~8)."""</span></code></pre>
+
+  <p><strong>Loosening the ceiling does not mean removing the counter.</strong>
+  <code>extract</code> and <code>run_analysis</code> each carry their own per-run cap
+  (<code>max_sql_attempts=8</code>, <code>sandbox_run_attempts=4</code>) that raises
+  <code>SandboxBudgetExhausted</code> independently of <code>max_turns</code>. A slide tool wants
+  the same treatment, so a confused agent produces a short deck rather than a 200-slide one.</p>
+
+  <p>Note what this reuses rather than reinvents. <code>skills/charts.py</code> already emits
+  chart intent (mark + encoding + values) and <code>agent/units.py</code> already classifies
+  currency/number/percent — which is precisely what a Sheets cell format needs. Both survive the
+  migration untouched and become <em>more</em> relevant, not less.</p>
+</section>
+
+<!-- ══════════════════ 05 TEMPLATE PACK ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>05 · The template pack</h2>
+  <h3>A catalogue of layouts, edited in Slides rather than in code</h3></div>
+
+  <p>Slides has a first-class concept for this. A presentation's master carries
+  <strong>layouts</strong>; <code>createSlide</code> accepts a <code>layoutId</code> naming one,
+  and <code>placeholderIdMappings</code> assigns your own object IDs to the placeholders it
+  creates — so <code>insertText</code> can fill them <em>in the same atomic batch</em>. Verified
+  against the Slides v1 discovery document.</p>
+
+  <div class="grid g2">
+    <div class="card">
+      <span class="b b-good">Confirmed supported</span>
+      <h4 style="margin-top:10px">What the API gives you</h4>
+      <ul class="clean">
+        <li><code>createSlide(layoutId)</code> targets any custom layout in the copied pack's own
+          master — not just the 12 predefined ones.</li>
+        <li><code>layoutProperties.displayName</code> exposes the human-readable name at runtime,
+          so the catalogue is discovered rather than hard-coded.</li>
+        <li><code>placeholderIdMappings</code> + <code>insertText</code> in one batch is Google's
+          own published sample.</li>
+        <li>Batches are ordered and atomic — a malformed slide fails the run rather than
+          producing a broken deck.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <span class="b b-warn">Confirmed gap</span>
+      <h4 style="margin-top:10px">Chart slots need a manifest</h4>
+      <p style="font-size:14px"><code>PlaceholderType</code> includes <code>CHART</code> and
+      <code>TABLE</code>, but <strong>no request fills them</strong>.
+      <code>createSheetsChart</code> takes explicit EMU <code>size</code> + <code>transform</code>
+      only — the schema has no “put this chart in that slot” field.</p>
+      <p style="font-size:14px;margin:0">So the pack ships a <strong>manifest</strong>: layout
+      name → chart-slot geometry, read once from the template and cached. Without it, every slide
+      costs a read-then-write round trip. With it, the whole deck is one batch.</p>
+    </div>
+  </div>
+
+  <div class="note n-info" style="margin-top:16px">
+    <p><strong>The pack is the lift-and-shift seam.</strong> A new internal workflow gets a new
+    pack and a new dataset — not new code. That is the part of the original ask a single
+    hard-coded template would never have delivered. Two smaller findings: speaker notes always
+    cost a round trip (<code>speakerNotesObjectId</code> is not returned by
+    <code>CreateSlideResponse</code>), and while <code>files.copy</code> duplicating masters is
+    universal in practice, Google does not guarantee it — so assert the expected layouts exist
+    after copying.</p>
+  </div>
+
+  <h3 style="margin-top:34px">Pack Inspector — the curation surface</h3>
+  <p>Template Studio dies with the renderer, but its <em>job</em> does not: you still need to see
+  every layout and decide which ones the agent may use. That job gets better, not worse — the
+  Inspector shows the real layouts from the real pack, rendered by Google, rather than a local
+  approximation of them.</p>
+
+  <p><strong>Curation here is prompt engineering with a UI.</strong> What you enable and how you
+  describe it <em>is</em> the <code>layouts.md</code> the agent greps at run time. A layout with
+  a vague “use when” line gets picked badly; that is now a thing you can see and fix without
+  touching code.</p>
+
+  <!-- Pack Inspector mock, in the product's own design system -->
+  <figure>
+    <div style="border:1px solid var(--border-2);border-radius:var(--radius);overflow:hidden">
+      <div style="background:var(--panel-2);border-bottom:1px solid var(--border-2);
+           padding:10px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <span style="font-weight:650;font-size:14px">Pack Inspector</span>
+        <span class="b b-mut">nsw-property · v3</span>
+        <span style="font-size:12.5px;color:var(--faint)">6 layouts · 4 enabled</span>
+        <span style="margin-left:auto"><span class="b b-good">manifest ok</span></span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));
+           gap:1px;background:var(--border)">
+
+        <div style="background:var(--panel);padding:14px">
+          <div style="aspect-ratio:16/9;background:var(--panel-3);border:1px solid var(--border-2);
+               border-radius:var(--radius-sm);position:relative;margin-bottom:10px">
+            <div style="position:absolute;left:8%;top:12%;width:38%;height:20%;
+                 background:var(--panel-2);border-radius:3px"></div>
+            <div style="position:absolute;left:8%;top:40%;width:38%;height:44%;
+                 background:var(--panel-2);border-radius:3px"></div>
+            <div style="position:absolute;right:8%;top:12%;width:44%;height:72%;
+                 border:1px dashed var(--accent);border-radius:3px;
+                 display:flex;align-items:center;justify-content:center;
+                 font-family:var(--mono);font-size:9px;color:var(--accent)">CHART</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input type="checkbox" checked style="accent-color:var(--accent)" />
+            <span style="font-weight:620;font-size:13.5px">KPI + Chart</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--faint);
+               margin-bottom:8px">TITLE · BODY · CHART · 5.2×3.1in</div>
+          <div style="font-size:12px;color:var(--muted);background:var(--panel-2);
+               border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px">
+            Use when one headline number carries the answer and a single trend explains it.
+          </div>
+        </div>
+
+        <div style="background:var(--panel);padding:14px">
+          <div style="aspect-ratio:16/9;background:var(--panel-3);border:1px solid var(--border-2);
+               border-radius:var(--radius-sm);position:relative;margin-bottom:10px">
+            <div style="position:absolute;left:8%;top:10%;width:84%;height:14%;
+                 background:var(--panel-2);border-radius:3px"></div>
+            <div style="position:absolute;left:8%;top:32%;width:40%;height:56%;
+                 border:1px dashed var(--accent);border-radius:3px;
+                 display:flex;align-items:center;justify-content:center;
+                 font-family:var(--mono);font-size:9px;color:var(--accent)">CHART</div>
+            <div style="position:absolute;right:8%;top:32%;width:40%;height:56%;
+                 border:1px dashed var(--accent);border-radius:3px;
+                 display:flex;align-items:center;justify-content:center;
+                 font-family:var(--mono);font-size:9px;color:var(--accent)">CHART</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input type="checkbox" checked style="accent-color:var(--accent)" />
+            <span style="font-weight:620;font-size:13.5px">Two Charts</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--faint);
+               margin-bottom:8px">TITLE · CHART ×2 · 4.1×3.4in</div>
+          <div style="font-size:12px;color:var(--muted);background:var(--panel-2);
+               border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px">
+            Use when two cohorts or measures are being compared side by side.
+          </div>
+        </div>
+
+        <div style="background:var(--panel);padding:14px;opacity:.55">
+          <div style="aspect-ratio:16/9;background:var(--panel-3);border:1px solid var(--bad-border);
+               border-radius:var(--radius-sm);position:relative;margin-bottom:10px">
+            <div style="position:absolute;left:8%;top:10%;width:84%;height:14%;
+                 background:var(--panel-2);border-radius:3px"></div>
+            <div style="position:absolute;left:8%;top:32%;width:84%;height:56%;
+                 border:1px dashed var(--bad);border-radius:3px;
+                 display:flex;align-items:center;justify-content:center;
+                 font-family:var(--mono);font-size:9px;color:var(--bad)">no slot found</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input type="checkbox" style="accent-color:var(--accent)" />
+            <span style="font-weight:620;font-size:13.5px">Big Number</span>
+            <span class="b b-bad" style="margin-left:auto">unmapped</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--faint);
+               margin-bottom:8px">TITLE only · no CHART placeholder</div>
+          <div style="font-size:12px;color:var(--faint);background:var(--panel-2);
+               border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px">
+            Disabled — the manifest found no chart slot, so the agent is never offered it.
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption>A mock in the product's own tokens, not a proposal for new visual language.
+    Thumbnails come from <code>presentations.pages.getThumbnail</code> — an “expensive read”
+    on a tighter quota (300/min project, 60/min user), so cache them per pack version rather than
+    fetching on every page load.</figcaption>
+  </figure>
+
+  <div class="grid g2">
+    <div class="card">
+      <h4>What the Inspector is for</h4>
+      <ul class="clean">
+        <li><strong>See what actually exists</strong> — every layout in the pack with its real
+          rendered thumbnail and the placeholders the manifest detected.</li>
+        <li><strong>Enable or withhold</strong> — only enabled layouts reach
+          <code>layouts.md</code>, so the agent's choices are a curated set rather than whatever
+          happens to be in the file.</li>
+        <li><strong>Write the “use when” line</strong> — the single highest-leverage text in the
+          whole feature, and the thing that decides whether layout choice is good.</li>
+        <li><strong>Catch breakage early</strong> — a renamed layout or a missing chart slot shows
+          as unmapped here instead of as a crooked deck later.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <span class="b b-warn">Consequence worth naming</span>
+      <h4 style="margin-top:10px">Curation moves the fingerprint</h4>
+      <p style="font-size:14px"><code>layouts.md</code> lives in the run workspace, and the
+      <code>av-*</code> fingerprint hashes the workspace (<code>version.py:95-124</code> via
+      <code>workspace_manifest</code>). So enabling a layout or editing a “use when” line
+      <strong>changes the agent version</strong>.</p>
+      <p style="font-size:14px;margin:0">That is correct behaviour, not a bug — curation is a
+      prompt change and should be visible to evals and MLflow. But it means the Inspector is an
+      agent-versioning surface, and edits deserve the same care as editing the system
+      prompt.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 06 TWO MODES ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>06 · One user, two modes</h2>
+  <h3>Dev generates. Demo replays. Prod holds no Google credentials.</h3></div>
+
+  <div class="note n-good">
+    <p><strong>This removes what would otherwise be the riskiest work.</strong> A single
+    generating account means no authorization-code flow, no per-user consent, no refresh tokens
+    encrypted under RLS. One long-lived token in <code>.env</code>, the same shape as
+    <code>ANTHROPIC_API_KEY</code> — and only ever in dev.</p>
+  </div>
+
+  <p>It fits what is already shipped: demo mode creates <strong>no data-agent service at all</strong>
+  (<code>apprunner.tf:121-123</code>), every LLM path is blocked at one choke point
+  (<code>agent_client.py:17-27</code>), and the replay pack already carries the full recorded
+  answer. Artifact URLs become two more recorded fields — and
+  <code>demo_pack.py</code> already writes <code>run_id</code> and <code>recorded_at</code> that
+  <code>load_pack()</code> never reads, so the slot exists.</p>
+
+  <div class="grid g2">
+    <div class="card">
+      <span class="b b-good">Verified</span>
+      <h4 style="margin-top:10px">Public read-only works, and cheaply</h4>
+      <ul class="clean">
+        <li><code>permissions.create {type:"anyone", role:"reader"}</code> is the whole call;
+          <code>allowFileDiscovery:false</code> (default) means link-only, not search-indexed.</li>
+        <li><strong><code>drive.file</code> is sufficient</strong> — listed on
+          <code>permissions.create</code>'s own scopes. No restricted <code>drive</code> scope,
+          no CASA assessment.</li>
+        <li><strong>A LINKED chart renders for anonymous viewers even when the Sheet is
+          private</strong> — it is a cached server-side render, not a live fetch.</li>
+        <li><strong>“Make a copy” works by default</strong>
+          (<code>copyRequiresWriterPermission</code> is <code>false</code>), so a read-only
+          visitor can take an editable copy. That is the handover.</li>
+        <li><span class="b b-good">decided</span> <strong>Both the deck and the Sheet go
+          public.</strong> The marts are public NSW property records, so a visitor can copy the
+          Sheet and genuinely continue the work rather than receiving a deck they cannot
+          re-derive.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <span class="b b-warn">Plan around these</span>
+      <ul class="clean">
+        <li>A Workspace admin can block <code>type:"anyone"</code> outright — hard 403. A
+          personal Gmail has no such policy layer, which argues for owning the demo artifacts
+          from one deliberately.</li>
+        <li>Normal share links cap near <strong>100 concurrent viewers</strong>; publish-to-web
+          via the Revisions resource is the sanctioned fix.</li>
+        <li>The linked-chart behaviour deserves a <strong>60-second smoke test</strong> before it
+          is load-bearing: private Sheet, public deck, incognito.
+          <code>NOT_LINKED_IMAGE</code> is the zero-ambiguity fallback.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 07 DEMOLITION ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>07 · What gets decommissioned</h2>
+  <h3>The purge is bigger than the chat answer area</h3></div>
+
+  <p>You asked for a review of what a frontend-visualisation purge actually touches. Here it is,
+  measured. The core rendering code is ~2,400 lines — but it is imported by five surfaces, and
+  <strong>there is no second rendering path anywhere in the app</strong>.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:34%">What</th><th style="width:11%">LOC</th>
+        <th>Consequence</th></tr></thead>
+      <tbody>
+        <tr><td class="n">report-engine/*<br /><span style="font-weight:400;font-size:12.5px">
+          PageLayout, PagesView, registry, ChartErrorBoundary</span></td>
+          <td class="num">565</td><td>The shared renderer every surface calls.</td></tr>
+        <tr><td class="n">ui/charts/*<br /><span style="font-weight:400;font-size:12.5px">
+          Bars, Combo, Trend, Choropleth, DataTable, KPITile, units.ts, tokens, exportPng…</span></td>
+          <td class="num">1,743</td><td>All visx rendering. Frees 5 <code>@visx/*</code> deps.</td></tr>
+        <tr><td class="n">SpecChart.tsx + ReportView.tsx</td><td class="num">439</td>
+          <td>Legacy pre-s08 path, still reachable for old stored messages.</td></tr>
+        <tr><td class="n">agent/pages.py</td><td class="num">741</td>
+          <td><strong>Dies as a schema.</strong> <code>columns[i][j]</code>, templates and pixel
+            heights are browser-layout concepts. Its <em>content decisions</em> are worth porting
+            into the deck planner.</td></tr>
+        <tr><td class="n">explore/pages_builder.py</td><td class="num">416</td>
+          <td>Its only consumer is the renderer.</td></tr>
+        <tr><td class="n">Template Studio<br /><span style="font-weight:400;
+          font-size:12.5px">TemplatePlayground, AgentConfigDemo, 2 e2e specs</span></td>
+          <td class="num">490</td><td>Deleted, but <strong>succeeded by the Pack Inspector</strong>
+            (§05) — same job, against real Google layouts instead of a local
+            approximation.</td></tr>
+        <tr><td class="n">Test suites<br /><span style="font-weight:400;font-size:12.5px">
+          registry_sync, test_pages, stream_pages, object_cascade, explore_pages_builder</span></td>
+          <td class="num">1,113</td><td>The 4-way parity gate and every layout test.</td></tr>
+        <tr><td class="n">Playwright e2e<br /><span style="font-weight:400;font-size:12.5px">
+          chat, goldens, goldens-ai-object, explore, playground, studio, chat-to-golden</span></td>
+          <td class="num">646</td><td>All assert on rendered chart DOM. <strong>No frontend unit
+            tests exist for any chart component</strong> — correctness is e2e-only today.</td></tr>
+      </tbody>
+      <tfoot><tr><td>Directly deleted or rewritten</td><td class="num">~6,150</td>
+        <td>Before the surfaces below.</td></tr></tfoot>
+    </table>
+  </div>
+
+  <h4 style="margin-top:28px">Three surfaces that are not obviously in scope</h4>
+  <p>These import the renderer but are not “the chat answer”. Each is a genuine product
+  decision, not a mechanical consequence — and together they are where most of the remaining
+  cost lives.</p>
+
+  <div class="grid g3">
+    <div class="card tight">
+      <span class="b b-bad">Not separable</span>
+      <h4 style="margin-top:10px">Explore</h4>
+      <p style="font-size:13.5px">All three tools render exclusively through
+      <code>ObjectBody</code>/<code>PageLayout</code> — <code>ProfileTool.tsx:359</code>,
+      <code>TrendsTool.tsx:223</code>, <code>DictionaryTool.tsx:80,142</code>. Killing the chart
+      components kills Explore's output automatically.</p>
+      <p style="font-size:13.5px;margin:0">Choropleth is Explore-only by design and has
+      <strong>no Sheets/Slides equivalent</strong> — a map cannot be a native chart. Filters and
+      pickers (~740 LOC) survive; the output does not.</p>
+    </div>
+    <div class="card tight">
+      <span class="b b-warn">Large surface</span>
+      <h4 style="margin-top:10px">Goldens editor</h4>
+      <p style="font-size:13.5px"><code>GoldensPage.tsx</code> is <strong>3,650 LOC</strong> and
+      imports <code>ObjectBody</code> at <code>:46</code> for live preview;
+      <code>ReportEditor.tsx</code> (1,060) is the drag-and-arrange page-column editor built
+      entirely on the registry.</p>
+      <p style="font-size:13.5px;margin:0">Grader vocabulary (<code>expected_objects: "trend"</code>)
+      names PageObject types and needs a new vocabulary. <code>GraderEditor</code> and
+      <code>graderSpec.ts</code> survive.</p>
+    </div>
+    <div class="card tight">
+      <span class="b b-bad">Easy to miss</span>
+      <h4 style="margin-top:10px">The Ops dashboard</h4>
+      <p style="font-size:13.5px"><code>OpsPage.tsx:28</code> imports <code>PageLayout</code>
+      directly — its own header comment says it deliberately reuses the chat rendering path for
+      its metrics panels.</p>
+      <p style="font-size:13.5px;margin:0"><strong>This is production monitoring.</strong>
+      Routing it through Google Slides would be absurd, so it needs its own small chart
+      implementation — which means the purge cannot be total.</p>
+    </div>
+  </div>
+
+  <div class="note n-warn" style="margin-top:18px">
+    <p><strong>The awkward conclusion.</strong> “Delete all frontend graphing” and “keep an Ops
+    dashboard” are in direct conflict. Either Ops keeps a minimal chart component — in which case
+    some visx survives and the purge is ~90% not 100% — or Ops loses its visuals. My
+    recommendation is the former: retain a deliberately tiny internal-only chart for Ops, and
+    delete everything in the <em>answer</em> path. That is decision D2.</p>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h4>Survives, and matters more after the move</h4>
+      <ul class="clean">
+        <li><code>skills/reporting.py</code> (183) — summary, headlines, insights, table payload.
+          Dataset-agnostic semantic content with no layout notion. <strong>Exactly the deck
+          planner's input.</strong></li>
+        <li><code>skills/charts.py</code> (242) — chart intent as mark + encoding + values, which
+          maps onto Sheets chart specs.</li>
+        <li><code>agent/units.py</code> (131) — currency/number/percent, now feeding Sheets number
+          formats. Its browser mirror <code>units.ts</code> dies.</li>
+        <li>SQL editor's result grid — a plain <code>&lt;table&gt;</code>
+          (<code>SqlEditor.tsx:1009</code>), independent of the chart stack. Only its chart toggle
+          dies.</li>
+        <li>Analytics and Architecture tabs — no renderer imports at all.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Changes shape rather than dying</h4>
+      <ul class="clean">
+        <li><code>app.messages.report</code> jsonb — still needed for history, feedback and audit,
+          but carrying artifact references instead of <code>Page[]</code>.</li>
+        <li>The demo pack — replay currently re-emits stored page JSON as SSE frames; it needs
+          redesigning around artifact links.</li>
+        <li>The SSE <strong>plan/page streaming protocol</strong>
+          (<code>pages.py:408-439</code> → <code>main.py:649-652</code> → ghost placeholders at
+          <code>ChatPage.tsx:185-230</code>). <span class="b b-good">decided</span> With content
+          parity chosen over progressive rendering, this <strong>collapses to a status line</strong>
+          — the frames, the ghost placeholders and <code>test_stream_pages.py</code> all go. The
+          wire shape would generalise to slides if you later want it back.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 08 EVALS ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>08 · Evals after the purge</h2>
+  <h3>More of the harness survives than you would expect</h3></div>
+
+  <p>The golden set is also smaller than it looks: the version-controlled pack holds
+  <strong>32 cases, of which only 2 are <code>ready</code></strong> — 30 are un-curated drafts
+  skipped by default. The live dev DB has drifted 9 rows ahead at 41/7. Decommissioning down to
+  three proof questions discards far less reviewed work than the raw count suggests.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:16%">Grader</th><th style="width:22%">Asserts on today</th>
+        <th style="width:16%">Fate</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td class="n">G1 — values</td>
+          <td>Generic <code>{columns, rows}</code> from the primary extracted SQL
+            (<code>eval_run.py:170-181</code>)</td>
+          <td><span class="b b-good">Survives</span></td>
+          <td><strong>Already decoupled from the report.</strong> Repoint <code>actual_rows</code>
+            to values read back from a Sheet range and every comparator — scalar, row_set,
+            ranked_set, series, tolerances — works unmodified.</td></tr>
+        <tr><td class="n">G4 — ops</td><td>turns, latency, tokens, row_count</td>
+          <td><span class="b b-good">Survives</span></td>
+          <td>Independent of presentation entirely.</td></tr>
+        <tr><td class="n">Judge — insight</td><td>question + answer text only
+          (<code>eval_judge.py:147-208</code>)</td>
+          <td><span class="b b-good">Survives</span></td>
+          <td>Never sees the report. Needs the agent to keep emitting a plain-text answer
+            alongside the deck — which it should anyway, for Slack.</td></tr>
+        <tr><td class="n">G2 — objects</td>
+          <td><code>golden_objects[].name</code> vs types scraped from
+            <code>report.pages[i].columns[j][k]</code></td>
+          <td><span class="b b-bad">Rebuild</span></td>
+          <td>Hard-wired to the dying shape. Rebuild by having the slide tools emit a
+            manifest of what it created — the <code>golden_objects</code> design is already the
+            template for “define a manifest, diff it”.</td></tr>
+        <tr><td class="n">G3 — format</td>
+          <td><code>report_structural_issues()</code> — summary present, every
+            <code>query_ref</code> resolves, insights have heading + body
+            (<code>report.py:14-51</code>)</td>
+          <td><span class="b b-bad">Rebuild</span></td>
+          <td><strong>This one gates <code>passed</code></strong>
+            (<code>eval_run.py:394</code>). Delete the report and the pass gate has nothing to
+            stand on. Replacement reads deck structure back via
+            <code>presentations.get</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note n-good" style="margin-top:16px">
+    <p><strong>The good news is structural.</strong> A Sheet is machine-readable in a way a
+    rendered <code>&lt;svg&gt;</code> never was. Grading currently reaches into in-process
+    objects; after the move it reads cell ranges over an API — which is a <em>better</em>
+    assertion target, because it tests what the user actually receives rather than an
+    intermediate the user never sees.</p>
+  </div>
+
+  <div class="note n-warn">
+    <p><strong>Consequence of the agent naming layouts: do not grade layout identity.</strong>
+    Layout choice is now a model decision, so a golden asserting “slide 2 used <em>Two
+    Charts</em>” is asserting on a coin flip and will flake. The rebuilt G2/G3 should check
+    <em>content presence and shape</em> — a chart exists for the trend, the headline is non-empty,
+    the sheet range holds the expected values — and leave layout identity to the judge, or to a
+    reviewer's eye, where a soft signal belongs.</p>
+    <p style="margin-top:8px">This is the price of D0, and it is a reasonable one to pay. But it
+    means the three proof goldens verify that the deck is <em>correct</em>, not that it is
+    <em>identical</em> run to run — worth knowing before they are authored.</p>
+  </div>
+</section>
+
+<!-- ══════════════════ 09 BUILD ORDER ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>09 · Build order</h2>
+  <h3>Prove it on three questions, then demolish</h3></div>
+
+  <div class="ms">
+    <div class="ms-n">M0</div>
+    <div class="ms-b">
+      <h4>Deck planner <span class="b b-mut">no credentials</span></h4>
+      <p>Port the content decisions out of <code>compose_pages()</code> into a pure
+      <code>report → DeckSpec</code> planner: which headline leads, which chart carries the
+      argument, what the commentary says. Map <code>units.py</code> classes to Sheets number
+      formats and chart intents to Sheets chart types. Fully unit-testable offline — this is
+      where the real complexity lives.</p>
+    </div>
+    <div class="ms-rail"></div><div></div>
+
+    <div class="ms-n">M1</div>
+    <div class="ms-b">
+      <h4>Template pack v1 + manifest + Pack Inspector</h4>
+      <p>Hand-build five or six named layouts in Slides. A loader reads the pack once via
+      <code>presentations.get</code>, maps <code>displayName</code> → <code>objectId</code>, and
+      caches each chart slot's EMU geometry. Ship a boot assertion so a renamed layout fails
+      loudly rather than producing crooked decks.</p>
+      <p>Then the <strong>Inspector</strong>: list every layout with its thumbnail and detected
+      placeholders, toggle which are enabled, and author each “use when” line. Only enabled
+      layouts render into the run workspace's <code>layouts.md</code>. This replaces Template
+      Studio's purpose and is where layout quality actually gets tuned.</p>
+    </div>
+    <div class="ms-rail"></div><div></div>
+
+    <div class="ms-n">M2</div>
+    <div class="ms-b">
+      <h4>Credential + egress boundary <span class="b b-bad">security review</span></h4>
+      <p>One Google refresh token in <code>.env</code>, dev only; prod gets no Google env vars at
+      all. Scopes <code>drive.file</code> + <code>spreadsheets</code> +
+      <code>presentations</code>.</p>
+      <p>This is <strong>the first outbound third-party call from <code>data-agent</code></strong>
+      — new egress for a service whose sandbox blocks sockets outright. It warrants an
+      independent review, not a self-review, and the public-sharing call must be structurally
+      unreachable outside demo mode.</p>
+    </div>
+    <div class="ms-rail"></div><div></div>
+
+    <div class="ms-n">M3</div>
+    <div class="ms-b">
+      <h4>Slide tools + agent orchestration</h4>
+      <p>Register <code>start_deck</code> and <code>add_slide</code> with a per-run counter
+      (<code>max_slides</code>, mirroring <code>SandboxBudgetExhausted</code>). Extend
+      <code>workspace_claude.md</code> with the visualisation phase — which changes the
+      <code>av-*</code> fingerprint, correctly, since the prompt is an optimisation lever. Raise
+      <code>agent_request_limit</code> and <code>agent_total_tokens_limit</code> for the dev
+      runtime, then <strong>record the turns actually used</strong> so the eventual number is
+      chosen from data rather than guessed.</p>
+    </div>
+    <div class="ms-rail"></div><div></div>
+
+    <div class="ms-n">M4</div>
+    <div class="ms-b">
+      <h4>Three goldens + rebuilt G2/G3</h4>
+      <p>Author three proof questions against the new contract — one single-chart, one
+      multi-slide, one table-led. Repoint G1 at Sheet ranges, rebuild G2 against the deck
+      manifest, and replace G3-format with a deck-structure check so <code>passed</code> has a
+      gate again. Assert on <strong>content presence, never layout identity</strong> — the agent
+      chooses layouts now, so grading the choice grades a coin flip.</p>
+    </div>
+    <div class="ms-rail"></div><div></div>
+
+    <div class="ms-n gate">M5</div>
+    <div class="ms-b">
+      <h4>The purge — <span style="color:var(--bad)">gated on M4 passing</span></h4>
+      <p>Only now delete: report-engine, ui/charts, SpecChart, ReportView, pages.py's layout
+      schema, pages_builder, Template Studio, the parity gate and the chart e2e specs. Decommission
+      the old golden set. Retire the visx dependencies.</p>
+      <p>Do this as its own PR, separate from everything above, so the diff is legible as a
+      deletion rather than tangled with new behaviour.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 10 RISKS ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>10 · Risks &amp; failure modes</h2>
+  <h3>What will actually go wrong</h3></div>
+
+  <div class="grid g2">
+    <div class="card">
+      <span class="b b-warn">Cost, not a wall</span>
+      <h4 style="margin-top:10px">Loosened budgets hide their own price</h4>
+      <p style="font-size:14px">Raising <code>agent_request_limit</code> and
+      <code>agent_total_tokens_limit</code> is the right call for a dev-only runtime — but the
+      SDK runtime already ran 26–43 turns against the champion's 18–28, and a visualisation
+      phase compounds that. The cost shows up as latency per answer and spend per eval sweep,
+      not as an error.</p>
+      <p style="font-size:14px;margin:0">Keep the <em>per-tool</em> counters
+      (<code>max_slides</code>) even while the global ceiling rises, so a confused agent produces
+      a short deck rather than a runaway one. Record turns at M4 so the eventual prod number is
+      chosen from data.</p>
+    </div>
+    <div class="card">
+      <span class="b b-bad">Security</span>
+      <h4 style="margin-top:10px">Public bypasses RLS, permanently</h4>
+      <p style="font-size:14px;margin:0">Every row is RLS-scoped for a reason; an
+      <code>anyone·reader</code> file is outside that model, and a leaked link cannot be un-seen.
+      The guard must be structural — unreachable outside demo mode, the way
+      <code>agent_client.py:17-27</code> makes LLM paths unreachable. Demo mode already produced
+      an auth-widening finding once.</p>
+    </div>
+    <div class="card">
+      <span class="b b-warn">Coverage</span>
+      <h4 style="margin-top:10px">Choropleth has no destination</h4>
+      <p style="font-size:14px;margin:0">Maps are not a native Sheets chart type. Explore's
+      choropleth cannot migrate — it either survives on its own renderer, degrades to a ranked
+      table, or the feature goes. Decide deliberately rather than discovering it mid-purge.</p>
+    </div>
+    <div class="card">
+      <span class="b b-warn">Testing</span>
+      <h4 style="margin-top:10px">Chart correctness is e2e-only today</h4>
+      <p style="font-size:14px;margin:0">There are <em>zero</em> frontend unit tests for any chart
+      component — all 646 lines of coverage are Playwright asserting on DOM. Deleting them
+      removes the only safety net, and the replacement (reading artifacts back over an API) is
+      slower and needs credentials in CI. Budget for that.</p>
+    </div>
+    <div class="card">
+      <span class="b b-warn">Ownership</span>
+      <h4 style="margin-top:10px">The pack lives outside git</h4>
+      <p style="font-size:14px;margin:0">Layouts are edited in Slides by whoever owns the house
+      style — the point, and the risk. Renaming a layout or nudging a chart slot silently
+      invalidates the cached manifest. M1's boot assertion is what stops a design tweak becoming
+      a production defect.</p>
+    </div>
+    <div class="card">
+      <span class="b b-good">Non-issue</span>
+      <h4 style="margin-top:10px">Network egress</h4>
+      <p style="font-size:14px;margin:0">App Runner runs managed public egress
+      (<code>apprunner.tf:2-5</code>) and already reaches the LLM API and Google JWKS. No
+      Terraform change. The boundary question is about the <em>service</em>, not the network.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 11 DECISIONS ══════════════════ -->
+<section>
+  <div class="sec-head"><h2>11 · Open decisions</h2>
+  <h3>Three calls still open</h3></div>
+
+  <div class="note n-good">
+    <p><strong>Settled:</strong> Google Sheets + Slides, driven by a curated template pack; one
+    generating account, live only in dev; the old golden set decommissioned to three proof
+    questions; turn and token ceilings loosened for the dev-only runtime.</p>
+    <p style="margin-top:8px"><strong>Settled in review:</strong>
+    <span class="b b-good" style="margin-right:6px">the agent names the layout</span>
+    <span class="b b-good" style="margin-right:6px">both deck and Sheet public</span>
+    <span class="b b-good" style="margin-right:6px">deck mirrors today's report content</span>
+    <span class="b b-good" style="margin-right:6px">total purge — all frontend graphing goes</span>
+    <span class="b b-good" style="margin-right:6px">Ops monitoring moves to observability (deferred)</span>
+    <span class="b b-good">in-app slide view + links out</span></p>
+    <p style="margin-top:8px;color:var(--text)"><strong>Status:</strong> all decisions closed.
+    Building end to end — the one external dependency is a Google refresh token, which needs a
+    consent step only you can perform.</p>
+  </div>
+
+
+  <form class="q" data-lavish-question="d1" onsubmit="event.preventDefault();
+    var v=new FormData(event.currentTarget).get('d1'); if(!v) return;
+    window.lavish.queuePrompt('D1 — deck-building granularity: '+v,
+      {tag:'decision',text:'D1: '+v,element:event.currentTarget,
+       data:{question:'granularity',answer:v}});">
+    <h4><span class="qid">D1</span> How granular are the agent's deck calls?</h4>
+    <p class="qsub">With the ceiling loosened for a dev-only runtime this is no longer a budget
+    question — it is about how finely the agent should steer, and how much atomicity you give up
+    to get that.</p>
+    <label class="opt"><input type="radio" name="d1" value="One composite add_slide call per slide, carrying layout, frame, chart intent, headline and commentary together" />
+      <span><span class="ot">One composite <code>add_slide</code> per slide <span class="b b-good"
+        style="margin-left:6px">recommended</span></span>
+      <span class="od">The agent orchestrates slide by slide and reacts to each result, as you
+      described — without four round trips to place one chart. Each slide lands atomically.</span></span></label>
+    <label class="opt"><input type="radio" name="d1" value="Fine-grained per-step tools — find_layout, copy_slide, write_sheet, add_chart, set_text — with its own budget counter" />
+      <span><span class="ot">Fine-grained per-step tools</span>
+      <span class="od">Most faithful to “copy one in and update it”, and the agent can recover
+      mid-slide. Costs ~4× the turns and gives up per-slide atomicity, so a failure can leave a
+      half-built slide.</span></span></label>
+    <label class="opt"><input type="radio" name="d1" value="One build_deck call carrying the entire deck spec at once" />
+      <span><span class="ot">One call for the whole deck</span>
+      <span class="od">Cheapest and fully atomic — the deck lands or it does not. But the agent
+      cannot see a slide before committing to the next, so it cannot
+      self-correct.</span></span></label>
+    <button class="send" type="submit">Queue this answer</button>
+  </form>
+
+  <form class="q" data-lavish-question="d2" onsubmit="event.preventDefault();
+    var v=new FormData(event.currentTarget).get('d2'); if(!v) return;
+    window.lavish.queuePrompt('D2 — how far the purge goes: '+v,
+      {tag:'decision',text:'D2: '+v,element:event.currentTarget,
+       data:{question:'purge-scope',answer:v}});">
+    <h4><span class="qid">D2</span> How far does the purge actually go?</h4>
+    <p class="qsub">The renderer is imported by chat, Explore, Template Studio, the Goldens
+    editor and <strong>the Ops dashboard</strong>. “Delete all graphing” and “keep Ops
+    monitoring” cannot both be true.</p>
+    <label class="opt"><input type="radio" name="d2" value="Purge the answer path; keep a deliberately minimal internal chart for the Ops dashboard only" />
+      <span><span class="ot">Purge the answer path, keep Ops on a minimal chart
+        <span class="b b-good" style="margin-left:6px">recommended</span></span>
+      <span class="od">Chat, Explore output, Template Studio and the Goldens preview all go.
+      Ops keeps a small internal-only chart — it is operational telemetry, not a customer
+      deliverable.</span></span></label>
+    <label class="opt"><input type="radio" name="d2" value="Total purge — Ops loses its visual panels and becomes tables and numbers" />
+      <span><span class="ot">Total purge, Ops goes to tables</span>
+      <span class="od">Genuinely deletes all graphing. You lose at-a-glance production
+      monitoring, which was built deliberately in s32.</span></span></label>
+    <label class="opt"><input type="radio" name="d2" value="Purge chat only; Explore, Ops and Template Studio keep the existing renderer for now" />
+      <span><span class="ot">Chat only, leave the rest</span>
+      <span class="od">Smallest change and lowest risk — but leaves two rendering paths alive
+      indefinitely, which is the state the migration exists to end.</span></span></label>
+    <button class="send" type="submit">Queue this answer</button>
+  </form>
+
+  <form class="q" data-lavish-question="d3" onsubmit="event.preventDefault();
+    var v=new FormData(event.currentTarget).get('d3'); if(!v) return;
+    window.lavish.queuePrompt('D3 — what the chat answer area shows: '+v,
+      {tag:'decision',text:'D3: '+v,element:event.currentTarget,
+       data:{question:'answer-view',answer:v}});">
+    <h4><span class="qid">D3</span> What does the chat answer area show?</h4>
+    <p class="qsub"><code>ResultView.tsx:74-86</code> is the exact line to replace. All three of
+    its current branches render a chart; none is chart-free today.</p>
+    <label class="opt"><input type="radio" name="d3" value="Answer text plus a card linking to the deck and the sheet" />
+      <span><span class="ot">Text + a link card <span class="b b-good"
+        style="margin-left:6px">recommended</span></span>
+      <span class="od">Honest about what the product now is: the artifact is the deliverable,
+      the app is where you ask. Fastest to build and nothing to keep in sync.</span></span></label>
+    <label class="opt"><input type="radio" name="d3" value="Embedded iframe of the published deck inline in the answer" />
+      <span><span class="ot">Embedded deck iframe</span>
+      <span class="od">Keeps the app feeling like it answers rather than delegating. Needs
+      publish-to-web, and the embed is a viewer — not the editable thing.</span></span></label>
+    <label class="opt"><input type="radio" name="d3" value="Slide thumbnails via the Slides thumbnail API with a link through to the deck" />
+      <span><span class="ot">Slide thumbnails</span>
+      <span class="od">Best-looking middle ground. Thumbnails are an “expensive read” on a
+      tighter quota, and add a per-answer API cost.</span></span></label>
+    <button class="send" type="submit">Queue this answer</button>
+  </form>
+
+
+  <div class="note n-info" style="margin-top:20px">
+    <p><strong>Deliberately still open.</strong> Which layouts the v1 pack contains (follows from
+    D0), whether packs are per-tenant, and what the three proof questions should be. That last one
+    is worth choosing from the 2 currently-<code>ready</code> goldens, so there is a like-for-like
+    comparison against today's output — which is also the only way to verify “the deck mirrors
+    the report” actually holds.</p>
+  </div>
+</section>
+
+<p class="foot">Grounded in three codebase surveys — the rendering/demolition inventory, the
+eval and golden harness, and the <code>agent_sdk</code> tool surface — plus API verification
+against the Google Slides v1 discovery document, the Sheets and Drive v3 references, and current
+research across Microsoft 365, Notion, Atlassian, Airtable/Coda/Smartsheet, Metabase/Superset,
+Tableau/Power BI/Looker Studio and the markdown-deck ecosystem. LOC figures are measured, not
+estimated. Design system: Flight Deck “Night Flight” tokens from
+<code>frontend/src/styles.css</code>.</p>
+
+</div>

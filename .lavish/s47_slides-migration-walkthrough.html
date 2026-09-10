@@ -1,0 +1,871 @@
+<meta charset="utf-8" />
+<title>s47 · Slides Migration</title>
+<style>
+/* Flight Deck / Night Flight tokens — taken from frontend/src/styles.css:9-147
+   so this walkthrough renders in the product's own design system. */
+:root {
+  --gray-950:#0a0d15; --gray-900:#111522; --gray-850:#171c2b; --gray-800:#1e2434;
+  --gray-700:#242b3d; --gray-600:#333d55; --gray-100:#eaecf3; --gray-300:#9aa4bb;
+  --gray-400:#7a84a0; --ink-code:#0a0d13;
+  --gold-500:#d9a84e; --gold-ink:#1a1204; --gold-200:#f2ca79;
+  --blue-400:#7fb0ff; --green-400:#9ece6a; --amber-400:#e0af68;
+  --red-400:#f2777a; --purple-400:#c58fff; --cyan-400:#7dcfff;
+  --bg:var(--gray-950); --panel:var(--gray-900); --panel-2:var(--gray-850);
+  --panel-3:var(--gray-800); --border:var(--gray-700); --border-2:var(--gray-600);
+  --text:var(--gray-100); --muted:var(--gray-300); --faint:var(--gray-400);
+  --accent:var(--gold-500); --accent-ink:var(--gold-ink); --accent-soft:var(--gold-200);
+  --accent-2:var(--blue-400); --code-bg:var(--ink-code);
+  --good:var(--green-400); --good-border:#33502f;
+  --warn:var(--amber-400); --warn-border:#6b5a2a;
+  --bad:var(--red-400); --bad-border:#6b2a2a;
+  --purple:var(--purple-400); --purple-border:#5a3a6b;
+  --info:var(--cyan-400); --info-border:#2f5a7a;
+  --radius-sm:6px; --radius:8px; --radius-lg:10px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4);
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+  --border:#ddd7c7; --border-2:#c9c1ac; --text:#23293a; --muted:#67604e;
+  --faint:#7d7663; --accent:#9a7328; --accent-ink:#fffaf0; --accent-soft:#7a5c22;
+  --accent-2:#2456c9; --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+  --warn:#8f6a12; --warn-border:#ddc48a; --bad:#c03535; --bad-border:#e3aaaa;
+  --purple:#7137c8; --purple-border:#cdb3ee; --info:#0d6e8c; --info-border:#a4cfdd;
+}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 96px}
+h1{font-size:34px;line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;font-weight:650}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+  margin:0 0 6px;font-weight:600;font-family:var(--mono)}
+h3{font-size:21px;margin:0 0 12px;letter-spacing:-.01em;font-weight:620}
+h4{font-size:15px;margin:0 0 8px;font-weight:620}
+p{margin:0 0 14px;color:var(--muted)}
+p.lede{font-size:17px;color:var(--text);max-width:70ch}
+strong{color:var(--text);font-weight:620}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:1px 5px;
+  color:var(--accent-soft);overflow-wrap:anywhere}
+section{margin:0 0 60px}
+.sec-head{border-top:1px solid var(--border);padding-top:18px;margin-bottom:22px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(235px,100%),1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tight{padding:14px 16px}
+.thesis{background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:1px solid var(--border-2);border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);padding:22px 24px;margin:28px 0 0}
+.thesis .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.thesis p{color:var(--text);font-size:16.5px;margin:0}
+.b{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid;
+  white-space:nowrap;font-weight:600}
+.b-good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,.08)}
+.b-warn{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,.08)}
+.b-bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,.08)}
+.b-info{color:var(--info);border-color:var(--info-border);background:rgba(125,207,255,.08)}
+.b-pur{color:var(--purple);border-color:var(--purple-border);background:rgba(197,143,255,.08)}
+.b-mut{color:var(--faint);border-color:var(--border-2)}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
+th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;padding:11px 14px;
+  border-bottom:1px solid var(--border-2);white-space:nowrap;background:var(--panel-2)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--muted)}
+tbody tr:last-child td{border-bottom:none}
+td.n{color:var(--text);font-weight:600}
+td.num{font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+tr.dead td{opacity:.6}
+figure{margin:0 0 20px;background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{margin-top:14px;font-size:13px;color:var(--faint);
+  border-top:1px solid var(--border);padding-top:12px}
+.svg-l{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;fill:var(--faint)}
+.svg-t{font-family:var(--sans);font-size:12px;fill:var(--text);font-weight:600}
+.svg-s{font-family:var(--sans);font-size:10.5px;fill:var(--muted)}
+.note{border-left:3px solid;border-radius:0 var(--radius) var(--radius) 0;
+  padding:13px 16px;margin:0 0 16px;background:var(--panel-2);font-size:14px}
+.note p:last-child{margin-bottom:0}
+.n-bad{border-color:var(--bad)} .n-good{border-color:var(--good)}
+.n-warn{border-color:var(--warn)} .n-info{border-color:var(--info)}
+ul.clean{list-style:none;padding:0;margin:0 0 14px}
+ul.clean li{padding:5px 0 5px 20px;position:relative;color:var(--muted);font-size:14px}
+ul.clean li::before{content:"";position:absolute;left:4px;top:14px;width:5px;height:5px;
+  border-radius:50%;background:var(--accent);opacity:.65}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;overflow-x:auto;margin:0 0 16px}
+pre code{background:none;border:none;padding:0;color:var(--gray-100);font-size:12.5px;
+  line-height:1.6;display:block;white-space:pre}
+.cm{color:var(--faint)} .ck{color:var(--purple)} .cs{color:var(--good)}
+.cf{color:var(--accent-2)} .cd{color:var(--accent-soft)}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px 18px}
+.stat .v{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--accent);
+  line-height:1.1;letter-spacing:-.02em}
+.stat .l{font-size:12.5px;color:var(--faint);margin-top:6px}
+.file{font-family:var(--mono);font-size:12px;color:var(--accent-soft);
+  background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:2px 7px;display:inline-block;margin-bottom:8px;overflow-wrap:anywhere}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+.steps li{counter-increment:s;position:relative;padding:0 0 20px 44px;
+  border-left:1px dashed var(--border-2);margin-left:14px}
+.steps li:last-child{border-left-color:transparent;padding-bottom:0}
+.steps li::before{content:counter(s);position:absolute;left:-14px;top:-2px;width:28px;
+  height:28px;border-radius:50%;background:var(--accent);color:var(--accent-ink);
+  font-family:var(--mono);font-size:12px;font-weight:700;display:flex;
+  align-items:center;justify-content:center}
+.steps h4{margin-bottom:3px}
+.steps p{font-size:13.5px;margin:0}
+.foot{border-top:1px solid var(--border);padding-top:16px;color:var(--faint);font-size:12.5px}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div style="font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+       text-transform:uppercase;color:var(--faint);margin-bottom:14px">
+    s47 · walkthrough · branch <span style="color:var(--accent)">presentation-handover</span>
+  </div>
+  <h1>The answer is a deck now</h1>
+  <p class="lede">Data Pilot used to answer by emitting objects that React drew with visx. It now
+  builds a Google Slides deck backed by a Google Sheet — native, editable charts the user can
+  re-style, and data they can copy and extend. The whole in-browser rendering stack is gone.</p>
+
+  <div class="thesis">
+    <div class="k">The one idea</div>
+    <p>An answer stopped being <em>a page we draw</em> and became <em>an artifact they own</em>.
+    Everything below follows from that: the agent gained two tools and a new egress boundary, the
+    frontend lost ~18k lines, and grading moved from inspecting our objects to reading back what
+    the user actually received.</p>
+  </div>
+
+  <div class="grid g4" style="margin-top:24px">
+    <div class="stat"><div class="v">72</div><div class="l">files changed</div></div>
+    <div class="stat"><div class="v">+4,279</div><div class="l">lines added</div></div>
+    <div class="stat"><div class="v">−18,263</div><div class="l">lines deleted</div></div>
+    <div class="stat"><div class="v">342</div><div class="l">tests passing</div></div>
+  </div>
+</header>
+
+<!-- ══════════ 01 SHAPE OF THE CHANGE ══════════ -->
+<section>
+  <div class="sec-head"><h2>01 · The shape of the change</h2>
+  <h3>One renderer removed, one artifact added</h3></div>
+
+  <figure>
+    <svg viewBox="0 0 940 300" role="img" aria-labelledby="f1t">
+      <title id="f1t">Before: one browser renderer. After: a deck the user owns.</title>
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,1 L8,4.5 L0,8 z" fill="var(--border-2)"/></marker>
+        <marker id="arg" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,1 L8,4.5 L0,8 z" fill="var(--good)"/></marker>
+        <marker id="arb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,1 L8,4.5 L0,8 z" fill="var(--bad)"/></marker>
+      </defs>
+
+      <text x="0" y="14" class="svg-l">Before</text>
+      <rect x="0" y="24" width="940" height="112" rx="10" fill="none"
+            stroke="var(--bad-border)" stroke-dasharray="5 4"/>
+      <g id="b-agent"><title>The agent emitted a report dict</title>
+        <rect x="20" y="46" width="170" height="68" rx="8" fill="var(--panel-2)"
+              stroke="var(--border-2)"/>
+        <text x="36" y="72" class="svg-t">Agent report</text>
+        <text x="36" y="92" class="svg-s">build_report(...)</text></g>
+      <line x1="190" y1="80" x2="218" y2="80" stroke="var(--border-2)" marker-end="url(#ar)"/>
+      <g id="b-ir"><title>compose_pages lifted it into Page objects</title>
+        <rect x="226" y="46" width="180" height="68" rx="8" fill="var(--panel-2)"
+              stroke="var(--border-2)"/>
+        <text x="242" y="72" class="svg-t">Page / PageObject</text>
+        <text x="242" y="92" class="svg-s">columns[i][j]</text></g>
+      <line x1="406" y1="80" x2="434" y2="80" stroke="var(--border-2)" marker-end="url(#ar)"/>
+      <g id="b-visx"><title>Five surfaces all rendered through one component</title>
+        <rect x="442" y="46" width="238" height="68" rx="8" fill="var(--panel-2)"
+              stroke="var(--bad-border)"/>
+        <text x="458" y="72" class="svg-t">PageLayout + visx</text>
+        <text x="458" y="92" class="svg-s">chat · Explore · Ops · Goldens · Studio</text></g>
+      <line x1="680" y1="80" x2="708" y2="80" stroke="var(--bad)" marker-end="url(#arb)"/>
+      <g id="b-out"><title>The user could look but not take</title>
+        <rect x="716" y="46" width="204" height="68" rx="8" fill="var(--panel-2)"
+              stroke="var(--bad-border)"/>
+        <text x="732" y="72" class="svg-t" fill="var(--bad)">Pixels only</text>
+        <text x="732" y="92" class="svg-s">nothing to take away</text></g>
+
+      <text x="0" y="176" class="svg-l">After</text>
+      <rect x="0" y="186" width="940" height="112" rx="10" fill="none"
+            stroke="var(--good-border)"/>
+      <g id="a-agent"><title>The agent now also chooses the presentation</title>
+        <rect x="20" y="208" width="170" height="68" rx="8" fill="var(--panel-2)"
+              stroke="var(--border-2)"/>
+        <text x="36" y="234" class="svg-t">Agent</text>
+        <text x="36" y="254" class="svg-s">analysis + presentation</text></g>
+      <line x1="190" y1="242" x2="218" y2="242" stroke="var(--border-2)" marker-end="url(#ar)"/>
+      <g id="a-tools"><title>Two new governed MCP tools</title>
+        <rect x="226" y="208" width="180" height="68" rx="8" fill="var(--panel-3)"
+              stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="242" y="234" class="svg-t">start_deck · add_slide</text>
+        <text x="242" y="254" class="svg-s">governed MCP tools</text></g>
+      <line x1="406" y1="242" x2="434" y2="242" stroke="var(--good)" marker-end="url(#arg)"/>
+      <g id="a-goog"><title>The Sheet owns the data and every native chart</title>
+        <rect x="442" y="208" width="238" height="68" rx="8" fill="var(--panel-2)"
+              stroke="var(--good-border)"/>
+        <text x="458" y="234" class="svg-t">Sheet + Slides deck</text>
+        <text x="458" y="254" class="svg-s">native editable charts</text></g>
+      <line x1="680" y1="242" x2="708" y2="242" stroke="var(--good)" marker-end="url(#arg)"/>
+      <g id="a-out"><title>The user can edit, copy and re-use it</title>
+        <rect x="716" y="208" width="204" height="68" rx="8" fill="var(--panel-2)"
+              stroke="var(--good-border)"/>
+        <text x="732" y="234" class="svg-t" fill="var(--good)">Theirs to edit</text>
+        <text x="732" y="254" class="svg-s">File → Make a copy</text></g>
+    </svg>
+    <figcaption>The old middle two boxes are deleted. The agent still produces a report dict
+    internally — the champion runtime needs it — but nothing renders it any more.</figcaption>
+  </figure>
+
+  <div class="note n-info">
+    <p><strong>Why a Sheet at all?</strong> The Slides API has <em>no primitive that authors a
+    chart from data</em>. Its only native chart object is <code>createSheetsChart</code>, which
+    embeds a chart that already exists in a spreadsheet. Anything else is a picture. So the Sheet
+    is not a convenience — it is the only way to hand over a chart that still works.</p>
+  </div>
+</section>
+
+<!-- ══════════ 02 ANSWER FLOW ══════════ -->
+<section>
+  <div class="sec-head"><h2>02 · How an answer works now</h2>
+  <h3>End to end, one question</h3></div>
+
+  <ol class="steps">
+    <li>
+      <h4>Ground and extract — unchanged</h4>
+      <p>The agent Reads <code>marts.md</code>, the schema files and the knowledge pages in its
+      per-run workspace, then <code>extract</code>s governed SQL into pandas frames and runs
+      <code>run_analysis</code> over them. Every guardrail — RLS, the SQL allowlist, the Pyodide
+      sandbox — is untouched.</p>
+    </li>
+    <li>
+      <h4>Grep the layout catalogue</h4>
+      <p><code>layouts.md</code> now sits in the workspace beside the knowledge pages. The agent
+      reads it the same way, and only <em>enabled</em> layouts appear in it — curation decides
+      the menu, so a withheld layout is invisible rather than merely discouraged.</p>
+    </li>
+    <li>
+      <h4><code>start_deck(title)</code> — once</h4>
+      <p>Creates the backing Sheet, then either copies the curated template pack or creates a
+      blank presentation, and clears its default slide. Returns the available layout names.</p>
+    </li>
+    <li>
+      <h4><code>add_slide(...)</code> — once per slide</h4>
+      <p>The agent names the layout and passes the frame, chart intent, headline and commentary
+      <em>together</em>. The tool writes the rows to their own Sheet tab, formats the numeric
+      columns, adds a native chart, then creates the slide and fills it — <strong>one ordered
+      atomic batch</strong>, so a slide lands whole or not at all.</p>
+    </li>
+    <li>
+      <h4>Publish — only if allowed</h4>
+      <p>When <code>DECK_PUBLIC=1</code>, both files are shared anyone-with-link read-only. The
+      deck URL, embed URL and sheet URL come back on <code>AskResponse.artifact</code>.</p>
+    </li>
+    <li>
+      <h4>The browser shows the deck</h4>
+      <p><code>ArtifactView</code> renders the answer text, an embedded deck viewer, and two
+      links out: <em>Open in Slides</em> and <em>Open the data</em>.</p>
+    </li>
+  </ol>
+
+  <h4 style="margin-top:28px">The tool the agent actually calls</h4>
+  <pre><code><span class="cm"># services/data-agent/agent/sdk_agent.py — registered on the "dp" MCP server</span>
+
+<span class="ck">async def</span> <span class="cf">add_slide</span>(
+    layout:     <span class="cd">str</span>,               <span class="cm"># exact name from layouts.md</span>
+    headline:   <span class="cd">str</span>,               <span class="cm"># the finding, not the topic</span>
+    commentary: <span class="cd">str</span>,               <span class="cm"># what it MEANS, 1-2 sentences</span>
+    frame:      <span class="cd">str</span> | <span class="cd">None</span> = <span class="cd">None</span>,   <span class="cm"># an already-extracted frame</span>
+    columns:    <span class="cd">list</span>[<span class="cd">str</span>] | <span class="cd">None</span> = <span class="cd">None</span>,  <span class="cm"># first = x axis</span>
+    chart_type: <span class="cd">str</span> | <span class="cd">None</span> = <span class="cd">None</span>,   <span class="cm"># line|bar|column|area|scatter</span>
+) -> SlideResult
+
+<span class="cm"># An unknown layout name is rejected WITH the curated list, so a bad</span>
+<span class="cm"># guess costs one turn instead of producing a broken deck.</span></code></pre>
+</section>
+
+<!-- ══════════ 03 BACKEND MODULES ══════════ -->
+<section>
+  <div class="sec-head"><h2>03 · What was built — backend</h2>
+  <h3>Two new modules, two new tools</h3></div>
+
+  <div class="grid g2">
+    <div class="card">
+      <span class="file">agent/gsuite.py</span>
+      <h4>The Google client</h4>
+      <p style="font-size:14px">Async httpx wrapper over Sheets, Slides and Drive — no
+      <code>google-api-python-client</code>, because the service is async throughout and this is
+      a handful of REST calls.</p>
+      <ul class="clean">
+        <li>Refresh-token auth with an expiry-skew cache, so a long deck build can't have the
+          token die mid-batch.</li>
+        <li>Scopes: <code>drive.file</code> + <code>spreadsheets</code> +
+          <code>presentations</code>. Deliberately <em>not</em> <code>drive</code>, which is a
+          restricted scope needing a security assessment.</li>
+        <li><code>share_public()</code> is the one call that leaves RLS behind — isolated, and
+          its caller gates it.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <span class="file">agent/deck.py</span>
+      <h4>The catalogue and the writer</h4>
+      <p style="font-size:14px">Layout definitions, EMU geometry, chart-intent mapping and the
+      slide builder.</p>
+      <ul class="clean">
+        <li>Ships a <strong>built-in catalogue over predefined Slides layouts</strong>, so it
+          works before anyone has hand-built a pack.</li>
+        <li>Reads custom layouts from a pack when <code>GOOGLE_SLIDES_TEMPLATE_ID</code> is set,
+          caching each chart slot's geometry.</li>
+        <li>Maps the app's own <code>units.py</code> vocabulary to Sheets number formats, so
+          currency reads as currency.</li>
+        <li>Emits a per-slide <strong>manifest</strong> — the thing the graders diff.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <span class="file">agent/workspace.py</span>
+      <h4>The catalogue reaches the agent</h4>
+      <p style="font-size:14px;margin:0">Renders <code>layouts.md</code> into the run workspace
+      when deck export is on — and folds its hash into the <code>av-*</code> fingerprint. So
+      <strong>curating layouts changes the agent version</strong>, which is correct: the
+      catalogue is prompt surface, and evals and MLflow should see it move. When export is off no
+      file is written and the fingerprint is byte-identical to before.</p>
+    </div>
+    <div class="card">
+      <span class="file">agent/prompts/workspace_claude.md</span>
+      <h4>The PRESENT phase</h4>
+      <p style="font-size:14px;margin:0">A new step 6 tells the agent to Grep the catalogue,
+      open a deck, and mirror its findings one slide at a time — headline states the finding,
+      commentary says what it means. It <strong>skips itself entirely</strong> when the tools
+      aren't in the tool list, so a run without credentials behaves exactly as before.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 04 SAFETY ══════════ -->
+<section>
+  <div class="sec-head"><h2>04 · The new boundary</h2>
+  <h3>This is the first third-party call this service makes</h3></div>
+
+  <div class="note n-bad">
+    <p><strong>Why that matters.</strong> Everything <code>data-agent</code> talked to before was
+    Postgres, the local sandbox, or the LLM provider — and its sandbox blocks sockets outright
+    (<code>sandbox/runner.py</code>). Google calls therefore <em>cannot</em> be sandbox code; they
+    are governed MCP tools in the service process, holding the only Google credential the app
+    has.</p>
+  </div>
+
+  <div class="grid g3">
+    <div class="card tight">
+      <span class="b b-good">Verified</span>
+      <h4 style="margin-top:10px">Tools can't appear by accident</h4>
+      <p style="font-size:13.5px;margin:0"><code>add_slide</code> is registered only when a full
+      credential exists <em>and</em> <code>DECK_EXPORT=1</code>. Tested directly in all three
+      states — no credential, credential + export, credential + export off.</p>
+    </div>
+    <div class="card tight">
+      <span class="b b-warn">Gated separately</span>
+      <h4 style="margin-top:10px">Public sharing is its own flag</h4>
+      <p style="font-size:13.5px;margin:0"><code>DECK_PUBLIC</code> is not implied by having
+      credentials. Anyone-with-link puts a file outside RLS permanently, and a leaked link cannot
+      be un-published — so it is a deliberate switch, defaulting off.</p>
+    </div>
+    <div class="card tight">
+      <span class="b b-info">Structural</span>
+      <h4 style="margin-top:10px">Prod holds nothing</h4>
+      <p style="font-size:13.5px;margin:0">Demo/prod deploys no <code>data-agent</code> service
+      at all, so it receives no Google env vars and cannot reach Google — not by policy, by
+      absence.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h4>Budgets: the ceiling moved, the counters did not</h4>
+    <p style="font-size:14px;margin:0">The global turn and token ceilings were loosened for the
+    dev-only runtime — they are settings, so that is config, not code. But <code>add_slide</code>
+    carries its own per-run counter (<code>max_slides</code>, default 8) mirroring
+    <code>max_sql_attempts</code> and <code>sandbox_run_attempts</code>. A confused agent produces
+    a short deck, not a 200-slide one.</p>
+  </div>
+</section>
+
+<!-- ══════════ 05 FRONTEND ══════════ -->
+<section>
+  <div class="sec-head"><h2>05 · Frontend</h2>
+  <h3>What died, and what stands in its place</h3></div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:30%">Deleted</th><th style="width:12%">LOC</th>
+        <th>Replaced by</th></tr></thead>
+      <tbody>
+        <tr><td class="n">report-engine/*</td><td class="num">565</td>
+          <td>Nothing — no browser rendering of report objects remains.</td></tr>
+        <tr><td class="n">ui/charts/* (all visx)</td><td class="num">1,743</td>
+          <td>Native Sheets charts. 5 <code>@visx/*</code> deps removed.</td></tr>
+        <tr><td class="n">SpecChart + ReportView</td><td class="num">439</td>
+          <td><code>ArtifactView.tsx</code> — embed + links out.</td></tr>
+        <tr><td class="n">Template Studio</td><td class="num">~600</td>
+          <td>The template pack itself; a Pack Inspector is the planned successor.</td></tr>
+        <tr><td class="n">GoldensPage (trimmed)</td><td class="num">3,650→726</td>
+          <td>List/CRUD, question, SQL, filter and grader editing. <strong>The Structured Object
+            Builder and AI drafting went with it.</strong></td></tr>
+        <tr><td class="n">ReportEditor</td><td class="num">1,060</td>
+          <td>Nothing — the page-column arrange mechanic has no meaning now.</td></tr>
+        <tr><td class="n">test_registry_sync.py</td><td class="num">212</td>
+          <td>Nothing — it enforced parity with files that no longer exist.</td></tr>
+        <tr><td class="n">Explore / Ops chart panels</td><td class="num">—</td>
+          <td>Plain tables (<code>SimpleTable.tsx</code>). Ops is interim, pending external
+            observability.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 style="margin-top:26px">The new answer area</h4>
+  <figure>
+    <div style="border:1px solid var(--border-2);border-radius:var(--radius);overflow:hidden">
+      <div style="background:var(--panel-2);border-bottom:1px solid var(--border-2);
+           padding:9px 14px;font-size:12.5px;color:var(--faint);font-family:var(--mono)">
+        chat · answer</div>
+      <div style="padding:16px 18px">
+        <p style="color:var(--text);font-size:14.5px;margin:0 0 14px">
+          Median weekly rent in postcode 2077 rose 12.4% over the last three years, with the
+          steepest move in 2-bedroom units.</p>
+        <div style="aspect-ratio:16/9;background:var(--panel-3);border:1px solid var(--border-2);
+             border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;
+             margin-bottom:14px">
+          <div style="text-align:center">
+            <div style="font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+                 text-transform:uppercase;color:var(--faint)">embedded deck</div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:4px">
+              /presentation/d/&lt;id&gt;/embed</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <span style="background:var(--accent);color:var(--accent-ink);font-weight:620;
+               font-size:13px;border-radius:var(--radius);padding:7px 14px">Open in Slides</span>
+          <span style="border:1px solid var(--border-2);color:var(--text);font-weight:620;
+               font-size:13px;border-radius:var(--radius);padding:7px 14px">Open the data</span>
+        </div>
+      </div>
+    </div>
+    <figcaption>The links are the point: a read-only viewer can use <strong>File → Make a
+    copy</strong> to take an editable copy into their own Drive. That is the handover the whole
+    migration exists for.</figcaption>
+  </figure>
+</section>
+
+
+<!-- ══════════ 05b PRODUCT ══════════ -->
+<section>
+  <div class="sec-head"><h2>05b · The product, right now</h2>
+  <h3>Live screenshots from <code>localhost:5230</code>, after the purge</h3></div>
+
+  <p>These are the real app on this branch, not mocks — the frontend is HMR-live, so it is
+  already serving the post-purge code. No deck appears yet because there is no Google credential;
+  that is the one remaining gap, not a defect.</p>
+
+  <figure>
+    <img src="s47_shot_chat_home.jpg" alt="Data Pilot chat home with the flight-plan prompts"
+         style="width:100%;border-radius:var(--radius);border:1px solid var(--border-2);display:block" />
+    <figcaption><strong>Chat.</strong> Unchanged — grounding, extraction and every guardrail were
+    never part of the rendering stack. The ghost-placeholder skeleton that used to mimic
+    kpi/chart/insight cards while a page streamed is gone, replaced by a plain status line.</figcaption>
+  </figure>
+
+  <figure>
+    <img src="s47_shot_answer.jpg" alt="An answer rendered without charts, showing text and SQL affordances"
+         style="width:100%;border-radius:var(--radius);border:1px solid var(--border-2);display:block" />
+    <figcaption><strong>An answer — the honest current state.</strong> This one predates the
+    migration, so it has no artifact and <code>ArtifactView</code> degrades exactly as designed:
+    answer text, <em>show SQL</em>, <em>open in SQL editor</em>, and the action row (copy, save as
+    golden, trace). Once a credential exists, an embedded deck and two link-out buttons sit
+    between the text and those actions.</figcaption>
+  </figure>
+
+  <figure>
+    <img src="s47_shot_ops.jpg" alt="Operations dashboard with HUD tiles and plain tables"
+         style="width:100%;border-radius:var(--radius);border:1px solid var(--border-2);display:block" />
+    <figcaption><strong>Operations — the clearest picture of what the purge did.</strong> The
+    annunciator strip and HUD tiles survive because they are Flight Deck primitives, not chart
+    components. Everything that <em>was</em> a chart panel is now a plain table: red-team pass
+    rates, the deploy timeline, data freshness. Deliberately interim, pending external
+    observability.</figcaption>
+  </figure>
+
+  <div class="grid g2">
+    <figure style="margin:0">
+      <img src="s47_shot_explore.jpg" alt="Explore tab with cohort pickers intact"
+           style="width:100%;border-radius:var(--radius);border:1px solid var(--border-2);display:block" />
+      <figcaption><strong>Explore.</strong> Filters, cohort pickers and the natural-language
+      set-up box all survive — only the rendered output changed to tables.</figcaption>
+    </figure>
+    <figure style="margin:0">
+      <img src="s47_shot_goldens.jpg" alt="Golden Examples page after trimming"
+           style="width:100%;border-radius:var(--radius);border:1px solid var(--border-2);display:block" />
+      <figcaption><strong>Golden Examples — the cut worth reviewing.</strong> Question metadata,
+      SQL extract, filter and the ◆ GRADER panel all work. The object builder and live preview
+      are gone. (The list still shows the old DB rows; the new 3-case pack lives in
+      <code>evals/cases/</code> until imported.)</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ══════════ 06 DATA ══════════ -->
+<section>
+  <div class="sec-head"><h2>06 · Where the artifact is remembered</h2>
+  <h3>Three places, each for a different reason</h3></div>
+
+  <div class="grid g3">
+    <div class="card tight">
+      <span class="file">migration 0037</span>
+      <h4>query_runs columns</h4>
+      <p style="font-size:13.5px;margin:0"><code>artifact_deck_url</code> +
+      <code>artifact_sheet_url</code>. Flat columns, following
+      <code>otel_trace_id</code>'s precedent of one deep link per run — for audit and ops, where
+      a jsonb walk would be wrong.</p>
+    </div>
+    <div class="card tight">
+      <span class="file">messages.report</span>
+      <h4>History reopen</h4>
+      <p style="font-size:13.5px;margin:0">The full manifest is folded into the stored report
+      jsonb, so reopening a conversation restores the deck the same way it used to restore pages.
+      No new column needed.</p>
+    </div>
+    <div class="card tight">
+      <span class="file">demo_pack/*.json</span>
+      <h4>Replay</h4>
+      <p style="font-size:13.5px;margin:0">Demo runs no agent and holds no credential, so replay
+      hands back URLs a dev run already produced. Pack files are reviewed in PRs — which is the
+      control on what goes public.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 07 EVALS ══════════ -->
+<section>
+  <div class="sec-head"><h2>07 · Evals</h2>
+  <h3>More survived than expected; one new grader</h3></div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:18%">Grader</th><th style="width:16%">Fate</th>
+        <th>Why</th></tr></thead>
+      <tbody>
+        <tr><td class="n">G1 — values</td><td><span class="b b-good">Unchanged</span></td>
+          <td>Already diffed generic <code>{columns, rows}</code> from the extracted SQL, never
+            the report. Nothing to repoint.</td></tr>
+        <tr><td class="n">G3 — format</td><td><span class="b b-good">Unchanged</span></td>
+          <td>Still lints the report dict, which the agent still produces internally.</td></tr>
+        <tr><td class="n">G4 — ops</td><td><span class="b b-good">Unchanged</span></td>
+          <td>Turns, latency, tokens. Never touched presentation.</td></tr>
+        <tr><td class="n">Judge</td><td><span class="b b-good">Unchanged</span></td>
+          <td>Consumes answer text only.</td></tr>
+        <tr><td class="n">G5 — artifact</td><td><span class="b b-info">New</span></td>
+          <td>Grades the deck the user received: it exists, has slides, every slide has a
+            headline, and something carries a chart or table. Gates <code>passed</code> only when
+            an artifact was produced, so runs without export keep their old gate exactly.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note n-warn" style="margin-top:16px">
+    <p><strong>G5 never grades layout identity — deliberately.</strong> The agent chooses layouts
+    now, so a golden asserting “slide 2 used <em>Two Charts</em>” would grade a model decision
+    that is free to vary between equally-correct runs. It would flake, and it would punish the
+    agent for exercising judgement we asked for. Layouts are <em>recorded</em> in the manifest for
+    review, never asserted on.</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h4>The golden set: 32 → 2</h4>
+    <p style="font-size:14px">The old pack graded a report contract that no longer exists — and
+    only <strong>2 of its 32 cases were ever curated</strong>; the rest were un-curated drafts
+    skipped by default. The replacement is two cases covering the shapes the catalogue is actually
+    asked for:</p>
+    <div class="grid g2" style="margin-top:12px">
+      <div style="background:var(--panel-2);border:1px solid var(--border);
+           border-radius:var(--radius);padding:12px 14px">
+        <span class="b b-mut">shape:chart</span>
+        <p style="font-size:13px;margin:8px 0 0">nsw_sales · Hornsby vs Normanhurst house-price
+        growth — <code>series</code> grader, tolerance 5%</p></div>
+      <div style="background:var(--panel-2);border:1px solid var(--border);
+           border-radius:var(--radius);padding:12px 14px">
+        <span class="b b-mut">shape:table</span>
+        <p style="font-size:13px;margin:8px 0 0">nsw_rent · fastest rent growth by postcode —
+        <code>ranked_set</code> grader, top-5 overlap</p></div>
+    </div>
+    <p style="font-size:13.5px;margin:14px 0 0">Both are <code>ready</code> in
+    <code>app.eval_cases</code>; the 39 decommissioned rows were pruned so the Goldens page and
+    the git pack finally agree. The old rows were dumped to a backup file first — the delete is
+    reversible.</p>
+  </div>
+
+  <div class="note n-bad" style="margin-top:16px">
+    <p><strong>One of the proof goldens was vacuous, and trimming found it.</strong> The
+    <code>nsw_rent</code> case had a <code>ranked_set</code> grader keyed on
+    <code>postcode</code>, but its <code>golden_sql</code> was
+    <code>SELECT month FROM marts.property_rent</code> — no postcode column at all.
+    <code>grade_ranked_set</code> receives an empty golden, hits its <code>if not g: return
+    1.0</code> guard, and <strong>scores a perfect 1.0 no matter what the agent answers</strong>.
+    It has been re-authored as a real weighted-growth query with an <code>n_rented >= 200</code>
+    floor, verified against the live mart before being written down.</p>
+    <p style="margin-bottom:0">Worth noting as a class of bug, not a one-off: <em>an empty golden
+    is indistinguishable from a passing one</em> in every grader that reduces over golden keys. A
+    pack-lint that rejects a grader whose <code>key</code> is absent from its own
+    <code>golden_sql</code> output would have caught it at authoring time.</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h4>What a golden looks like now</h4>
+    <p style="font-size:14px">Two fields were dropped from both cases:
+    <code>golden_objects</code> and <code>golden_report</code>. They pinned the named-builder
+    objects and the <code>Page</code>/<code>PageObject</code> tree — the deleted contract. Nothing
+    renders either any more, and the eval runner reads neither.</p>
+    <pre style="margin-bottom:0"><code>question:    <span class="cs">Which postcodes had the fastest rent growth…</span>
+tier:        T2
+tags:        [s46-proof, <span class="cs">shape:table</span>]
+grader:
+  kind:         ranked_set   <span class="cm"># scalar | row_set | ranked_set | series</span>
+  key:          postcode
+  k:            <span class="cd">5</span>
+  expect_chart: <span class="cd">true</span>        <span class="cm"># G5</span>
+  min_slides:   <span class="cd">1</span>
+golden_sql:  <span class="cm"># verified against the mart, with an n_rented floor</span>
+golden_sandbox: <span class="cm"># the reference prep</span></code></pre>
+  </div>
+</section>
+
+<!-- ══════════ 08 WHAT YOU NEED TO DO ══════════ -->
+<section>
+  <div class="sec-head"><h2>08 · Auth — done, and one trap it exposed</h2>
+  <h3>The credential is live; the naming was wrong</h3></div>
+
+  <div class="note n-good">
+    <p><strong>OAuth is set up and verified.</strong> No new client was minted — the Desktop
+    client already in <code>~/.env</code> (used by <code>google_workspace_mcp</code>) works, and
+    lives in the same GCP project as the sign-in client. Consent granted all three scopes; Drive,
+    Sheets and Slides APIs are all enabled.</p>
+  </div>
+
+  <div class="note n-bad">
+    <p><strong>The trap, found during setup.</strong> <code>GOOGLE_CLIENT_ID</code> was already
+    taken — it is the <em>Web</em> client the backend validates sign-in ID-token audiences
+    against (<code>auth.py:116</code>) — and compose was handing that same variable to the
+    data-agent as its deck credential. Following the original instructions would have overwritten
+    the sign-in client with a Desktop one and broken <code>AUTH_MODE=google</code>. The deck
+    credential is now <code>GOOGLE_DECK_CLIENT_ID</code> / <code>_SECRET</code> /
+    <code>_REFRESH_TOKEN</code> throughout.</p>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <h4>How the client type was established</h4>
+      <p style="font-size:14px">Not assumed — probed. Google's authorization endpoint accepted
+      <code>http://localhost:51999/</code> and <code>:8765</code> as redirects for that client,
+      while a bogus <code>https://example.invalid/</code> control was rejected with
+      <code>Error 400</code>. Accepting an <em>arbitrary</em> loopback port is the signature of an
+      installed/Desktop client; a Web client only accepts redirects registered exactly.</p>
+      <p style="font-size:13.5px;margin:0">That fact then fixed a second bug: the mint script
+      hardcoded port 8765 and died with <code>Address already in use</code>. It now falls back to
+      a kernel-assigned port — safe precisely because loopback redirects match on host alone.</p>
+    </div>
+    <div class="card">
+      <h4>The flow, as it now stands</h4>
+      <pre style="margin:10px 0 12px"><code><span class="cm"># .env — the two values, pasted once</span>
+GOOGLE_DECK_CLIENT_ID=...
+GOOGLE_DECK_CLIENT_SECRET=...
+
+<span class="cm"># reads those, writes the token back in</span>
+uv run python scripts/google_auth.py --write-env</code></pre>
+      <p style="font-size:13.5px;margin:0"><code>--write-env</code> exists so the refresh token is
+      never printed, pasted, or typed on a command line where it would land in shell history.</p>
+    </div>
+  </div>
+
+  <div class="note n-warn" style="margin-top:16px">
+    <p><strong>One thing to watch.</strong> Refresh tokens for an app in <em>Testing</em>
+    publishing status expire after 7 days. This client is in day-to-day use already, so it is
+    likely published — but if deck builds start failing with <code>invalid_grant</code> in about a
+    week, that is the cause, and one re-run of the mint script fixes it.</p>
+  </div>
+</section>
+
+
+<!-- ══════════ 09 EXTENDING ══════════ -->
+<section>
+  <div class="sec-head"><h2>09 · Extending it</h2>
+  <h3>Four things you are likely to want next, and where each one goes</h3></div>
+
+  <p>The architecture has deliberate seams. Ordered by how often you will reach for them.</p>
+
+  <!-- 1 -->
+  <div class="card" style="margin-bottom:16px">
+    <span class="b b-good">most common</span>
+    <h4 style="margin-top:10px">1 · Add a slide layout</h4>
+    <p style="font-size:14px">Two routes, and they give different things.</p>
+    <div class="grid g2" style="margin-top:12px">
+      <div style="background:var(--panel-2);border:1px solid var(--border);
+           border-radius:var(--radius);padding:14px 16px">
+        <h4 style="font-size:13.5px">In the pack <span class="b b-mut">no code</span></h4>
+        <p style="font-size:13px;margin:0">Add a named layout to the template presentation's
+        master in Slides, give it a <code>CHART</code> or <code>TABLE</code> placeholder where
+        content belongs, and restart. The loader picks it up by
+        <code>layoutProperties.displayName</code> and caches its geometry. This is the intended
+        route — design lives with whoever owns the house style.</p>
+      </div>
+      <div style="background:var(--panel-2);border:1px solid var(--border);
+           border-radius:var(--radius);padding:14px 16px">
+        <h4 style="font-size:13.5px">In code <span class="b b-mut">the fallback set</span></h4>
+        <p style="font-size:13px;margin:0">Append a <code>Layout(...)</code> to
+        <code>DEFAULT_CATALOGUE</code> in <code>agent/deck.py</code>. Geometry is in inches on a
+        10 × 5.625in page; a test already asserts every slot stays on the page.</p>
+      </div>
+    </div>
+    <pre style="margin-top:14px"><code><span class="cm"># agent/deck.py</span>
+Layout(
+    name=<span class="cs">"Two Charts"</span>,
+    use_when=<span class="cs">"Two cohorts or measures compared side by side."</span>,
+    predefined=<span class="cs">"TITLE_ONLY"</span>,
+    chart=Rect(<span class="cd">0.6</span>, <span class="cd">1.35</span>, <span class="cd">4.2</span>, <span class="cd">3.75</span>),
+)</code></pre>
+    <p style="font-size:13.5px;margin:0"><strong>The <code>use_when</code> line is the highest-leverage
+    string in the feature.</strong> It is what the agent reads to choose. Vague text produces
+    vague choices, and it costs nothing to iterate on.</p>
+  </div>
+
+  <!-- 2 -->
+  <div class="card" style="margin-bottom:16px">
+    <h4>2 · Add a chart type</h4>
+    <p style="font-size:14px;margin-bottom:10px">Sheets natively supports far more than the five
+    wired up — pie, histogram, waterfall, treemap, scorecard. Two edits, both in files you have
+    already seen:</p>
+    <ul class="clean">
+      <li><code>CHART_TYPES</code> in <code>agent/deck.py</code> — map your name to the Sheets
+        enum.</li>
+      <li>The <code>chart_type</code> enum in <code>TOOL_SCHEMAS["add_slide"]</code>
+        (<code>sdk_agent.py</code>), so the model is allowed to ask for it.</li>
+    </ul>
+    <p style="font-size:13.5px;margin:0">Anything outside <code>basicChart</code> (pie, waterfall)
+    needs its own spec shape rather than <code>domains</code>/<code>series</code> — that is a
+    branch in <code>_add_chart</code>, not a new module.</p>
+  </div>
+
+  <!-- 3 -->
+  <div class="card" style="margin-bottom:16px">
+    <h4>3 · Add an agent tool</h4>
+    <p style="font-size:14px">Four edits in <code>sdk_agent.py</code>, and one rule.</p>
+    <pre><code><span class="cm"># 1. describe it — this text IS the model's interface</span>
+TOOL_DESCRIPTIONS[<span class="cs">"refresh_charts"</span>] = <span class="cs">"Re-pull every linked chart..."</span>
+<span class="cm"># 2. a literal JSON Schema (the dict form makes every key required)</span>
+TOOL_SCHEMAS[<span class="cs">"refresh_charts"</span>] = _schema({}, required=[])
+<span class="cm"># 3. an async handler returning _text(...)</span>
+<span class="cm"># 4. register it in handlers + the tool-name list</span></code></pre>
+    <div class="note n-warn" style="margin:0">
+      <p><strong>The rule: give it a budget.</strong> Every tool that can be called repeatedly
+      carries its own per-run counter — <code>max_sql_attempts</code>,
+      <code>sandbox_run_attempts</code>, <code>max_slides</code> — raising
+      <code>SandboxBudgetExhausted</code> independently of the global turn ceiling. The ceiling is
+      tuned for cost; the counters are what stop a confused loop.</p>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="card">
+    <h4>4 · Add a golden</h4>
+    <p style="font-size:14px">A case in <code>evals/cases/&lt;dataset&gt;.yaml</code> with a
+    verified <code>golden_sql</code>, a value grader, and the G5 fields. Then
+    <code>uv run python scripts/eval_run.py</code>.</p>
+    <pre><code>grader:
+  kind: series          <span class="cm"># scalar | row_set | ranked_set | series</span>
+  key_fields: [month]
+  value: gross_yield_pct
+  tolerance_pct: <span class="cd">5.0</span>
+  expect_chart: <span class="cd">true</span>     <span class="cm"># G5: the deck must carry a chart or table</span>
+  min_slides: <span class="cd">1</span></code></pre>
+    <p style="font-size:13.5px;margin:0"><strong>Never assert which layout was used.</strong>
+    The agent chooses, so that is a coin flip. Assert the numbers and that the deliverable is
+    well-formed; leave taste to the judge or your own eye.</p>
+  </div>
+
+  <div class="note n-info" style="margin-top:20px">
+    <p><strong>What has <em>not</em> changed:</strong> adding a dataset, a knowledge page or a
+    mart works exactly as before. The deck layer is dataset-agnostic — it reads frames the agent
+    already extracted and column names it already classified through <code>units.py</code>. A new
+    dataset needs no deck work at all.</p>
+  </div>
+</section>
+
+<!-- ══════════ 09 OPEN ITEMS ══════════ -->
+<section>
+  <div class="sec-head"><h2>10 · Open items</h2>
+  <h3>Three things I would not let you discover later</h3></div>
+
+  <div class="grid g3">
+    <div class="card tight">
+      <span class="b b-warn">Look at this one</span>
+      <h4 style="margin-top:10px">The Goldens cut went deeper than scoped</h4>
+      <p style="font-size:13.5px;margin:0"><code>GoldensPage</code> went 3,650 → 726 lines. Once
+      <code>PageObject</code> left <code>api.ts</code>, the Structured Object Builder and AI
+      golden-drafting had to go with it. Editing survives — question, SQL, filter, grader — but
+      that is a real loss of authoring capability, and the part of this change most worth your
+      review.</p>
+    </div>
+    <div class="card tight">
+      <span class="b b-info">Deliberate</span>
+      <h4 style="margin-top:10px"><code>pages.py</code> is still there</h4>
+      <p style="font-size:13.5px;margin:0">Nothing renders it, but it remains the pydantic-ai
+      champion's output contract and drives the SSE plan frames — and the champion is still
+      <code>AGENT_RUNTIME</code>'s default. Deleting it is gated on retiring that runtime. Written
+      into <code>AGENTS.md</code> so it isn't rediscovered as a mystery.</p>
+    </div>
+    <div class="card tight">
+      <span class="b b-bad">Pre-existing bug</span>
+      <h4 style="margin-top:10px">Counts render as dollars</h4>
+      <p style="font-size:13.5px;margin:0"><code>unit_for_column("sale_count")</code> returns
+      <code>currency</code> — “sale” is a money word in <code>units.py</code>. Today's charts
+      classify it identically, so the deck inherits the bug rather than introducing it. Pinned in
+      a test that names it, rather than quietly changing a shared vocabulary that has its own
+      parity gate.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h4>Natural next steps, none of them blocking</h4>
+    <ul class="clean">
+      <li><strong>Hand-build a template pack</strong> — the built-in catalogue works, but a
+        house-styled pack is where the deck starts looking like yours. Swapping it needs no code.</li>
+      <li><strong>The Pack Inspector</strong> — list layouts with thumbnails, toggle which are
+        enabled, author each “use when” line. That text is the highest-leverage string in the
+        feature.</li>
+      <li><strong>Ops observability</strong> — its panels are plain tables now, explicitly
+        interim.</li>
+      <li><strong>Retire the champion runtime</strong>, which then unlocks deleting the backend
+        Page schema.</li>
+    </ul>
+  </div>
+</section>
+
+<p class="foot">Branch <code>presentation-handover</code>, staged and uncommitted. 72 files
+changed, +4,279 / −18,263. 270 data-agent + 72 backend-api tests pass; <code>tsc --noEmit</code>
+and <code>vite build</code> clean. The 94 repo-root ruff findings are pre-existing — identical
+count with these changes stashed. Design system: Flight Deck “Night Flight” tokens taken from
+<code>frontend/src/styles.css</code>, so this reads in the product's own language.</p>
+
+</div>

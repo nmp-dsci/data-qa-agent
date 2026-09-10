@@ -33,8 +33,6 @@ PROMPT_SOURCES = (
     "sandbox_agent.py",
     "nl2sql.py",
     "sql_assist.py",
-    "object_codegen.py",
-    "skill_codegen.py",
     "titles.py",
     "report.py",
 )

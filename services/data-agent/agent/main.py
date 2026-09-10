@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import logfire
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -36,10 +36,28 @@ from . import analytics, sdk_agent  # noqa: E402
 from .chart import trend_overlay_encoding, validate_chart_spec  # noqa: E402
 from .config import settings  # noqa: E402
 from .db import admin_engine, engine, load_database_catalog, run_select  # noqa: E402
-from .eval_graders import grade_extraction, grade_presentation_format  # noqa: E402
+from .deck import DEFAULT_CATALOGUE, render_layouts_md  # noqa: E402
+from .eval_graders import (  # noqa: E402
+    grade_artifact,
+    grade_extraction,
+    grade_presentation_format,
+)
 from .eval_judge import judge_insight  # noqa: E402
+from .gsuite import GoogleClient  # noqa: E402
 from .knowledge import knowledge_version, load_pages, read_knowledge  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
+from .pack import load_pack, pack_path, pack_to_catalogue  # noqa: E402
+from .pack_api import (  # noqa: E402
+    PackApiError,
+    PackLayoutNotFound,
+    PackLayoutUpdate,
+    PackLayoutUpdateOut,
+    PackOut,
+    PackUnavailable,
+    get_google_client,
+)
+from .pack_api import get_pack as _pack_api_get_pack  # noqa: E402
+from .pack_api import update_pack_layout as _pack_api_update_layout  # noqa: E402
 from .pages import chart_object_from_spec, compose_pages, page_plan, planned_kinds  # noqa: E402
 from .provider import choose_provider  # noqa: E402
 from .sandbox import explain_sandbox_error, run_code  # noqa: E402
@@ -158,6 +176,16 @@ class AgentAnswer(BaseModel):
     # Pages contract (s07): Summary → Insights pages of governed objects
     # (data + intent) the frontend's template registry renders with visx.
     pages: list[dict[str, Any]] | None = None
+    # s46: the Sheets/Slides deck this run produced — deck/embed/sheet URLs plus
+    # the per-slide manifest (which layout was picked and every option passed).
+    # None when deck export is off, which is every deployment but dev.
+    #
+    # This field being absent is what made three end-to-end runs report "no
+    # artifact" while the deck was in fact built correctly every time: the
+    # runtime returned it, and FastAPI silently dropped it serialising through
+    # this model. A response model omission is invisible at both ends — the
+    # producer sees success, the consumer sees a missing feature.
+    artifact: dict[str, Any] | None = None
 
 
 class SqlRequest(BaseModel):
@@ -404,6 +432,9 @@ class GradeRequest(BaseModel):
     actual_rows: list[dict[str, Any]] = []
     report: dict[str, Any] | None = None
     answer: str = ""
+    # s46: the Slides/Sheets manifest this run produced, when deck export is on.
+    # None on a run without it, which is a normal state, not a failure.
+    artifact: dict[str, Any] | None = None
     # Set false to score G1/G2/G3-structural only and skip the LLM call.
     judge: bool = True
 
@@ -447,7 +478,25 @@ async def eval_grade(req: GradeRequest) -> dict[str, Any]:
         else {"skipped": True, "reason": "judge disabled for this run"}
     )
 
-    return {"g1": g1, "g3_format": g3_format, "g3_insight": g3_insight}
+    # G5 — the artifact the user actually received (s46). Only scored when the
+    # run produced one: a deployment without deck export is not a failing run,
+    # it is a differently-configured one, so this stays None rather than 0.
+    g5_artifact = (
+        grade_artifact(
+            req.artifact,
+            expect_chart=bool(spec.get("expect_chart", True)),
+            min_slides=int(spec.get("min_slides", 1)),
+        )
+        if req.artifact
+        else None
+    )
+
+    return {
+        "g1": g1,
+        "g3_format": g3_format,
+        "g3_insight": g3_insight,
+        "g5_artifact": g5_artifact,
+    }
 
 
 class JudgeRequest(BaseModel):
@@ -1028,67 +1077,7 @@ async def agent_analysis(body: AnalysisRequest) -> AnalysisResponse:
     )
 
 
-class AnalysisObjectRequest(BaseModel):
-    sql: str
-    code: str = ""
-    object_type: str = "compare"
-    instruction: str
-    # s16 full cascade: the golden's current presentation objects (digest) + which
-    # one is being edited, so the agent rebuilds the WHOLE report (not one object)
-    # and we lift the right object back into the presentation.
-    objects: list[dict[str, Any]] = []
-    target_element_id: str | None = None
-    user: UserCtx
-
-
-class AnalysisObjectResponse(BaseModel):
-    code: str = ""
-    # The extract that produced this result — the revised SQL when the agent had
-    # to add columns for the requested data, else the caller's SQL unchanged.
-    sql: str = ""
-    object: dict[str, Any] | None = None
-    report: dict[str, Any] | None = None
-    # The FULL recomposed report as pages (every object with real data), so the
-    # builder can refresh the whole presentation in sync — not just one object.
-    pages: list[dict[str, Any]] | None = None
-    columns: list[str] = []
-    rows: list[list[Any]] = []
-    reasoning: list[dict[str, Any]] = []
-    engine: str = "stub"
-    skills_used: list[str] = []
-    skill_gaps: list[dict[str, Any]] = []
-    error: str | None = None
-
-
 _CHART_TYPES = {"trend", "breakdown", "compare", "table"}
-
-
-def _chart_sig(data: dict[str, Any]) -> tuple[str, str, str, str]:
-    """A chart's field signature — dimension/measure/line/group, from bar OR trend
-    shape — so we can tell which recomposed chart is the one the curator edited."""
-    dim = str(data.get("dimension") or data.get("x") or "")
-    meas = str(data.get("measure") or data.get("y") or "")
-    line = str(data.get("line_measure") or "")
-    grp = str(data.get("group") or data.get("series") or "")
-    return (dim, meas, line, grp)
-
-
-def _target_chart_sig(
-    existing: list[dict[str, Any]], target_element_id: str | None
-) -> tuple[str, str, str, str] | None:
-    """The field signature of the object the curator is editing — the digest entry
-    flagged ``_target`` (or whose element_id matches). Lets a DATA-ONLY edit
-    (reorder / filter / value change), which keeps dimension/measure/group
-    unchanged, still be matched back to its recomposed chart."""
-    for obj in existing or []:
-        if not isinstance(obj, dict):
-            continue
-        data = obj.get("data")
-        if obj.get("type") not in _CHART_TYPES or not isinstance(data, dict):
-            continue
-        if obj.get("_target") or (target_element_id and obj.get("element_id") == target_element_id):
-            return _chart_sig(data)
-    return None
 
 
 def _with_sql(obj: dict[str, Any] | None, sql: str | None) -> dict[str, Any] | None:
@@ -1099,347 +1088,6 @@ def _with_sql(obj: dict[str, Any] | None, sql: str | None) -> dict[str, Any] | N
         if isinstance(data, dict) and not data.get("sql"):
             data["sql"] = sql
     return obj
-
-
-def _lift_target(
-    pages: list[dict[str, Any]],
-    report: dict[str, Any] | None,
-    target_element_id: str | None,
-    existing: list[dict[str, Any]],
-    *,
-    sql: str | None = None,
-) -> dict[str, Any] | None:
-    """Pick the object the curator was editing out of the recomposed pages.
-
-    An explicit ``element_id`` match wins (editing an existing, stably-id'd
-    object). Otherwise the target is the chart whose field signature isn't among
-    the existing presentation charts — i.e. the one this instruction newly built
-    (robust to which chart the model made ``main_chart``). Returns ``None`` when no
-    new-or-changed chart was produced, so a run that failed to honour the edit
-    surfaces as an error rather than silently applying a stale duplicate.
-
-    ``sql`` — the governed extract — is stamped onto the returned chart so golden
-    charts carry an "open in SQL editor" action.
-    """
-    flat = [o for p in pages for col in p.get("columns", []) for o in col if isinstance(o, dict)]
-    if target_element_id:
-        for obj in flat:
-            if obj.get("element_id") == target_element_id:
-                return _with_sql(obj, sql)
-    charts = [o for o in flat if o.get("type") in _CHART_TYPES]
-    existing_sigs: set[tuple[str, str, str, str]] = set()
-    for obj in existing or []:
-        data = obj.get("data") if isinstance(obj, dict) else None
-        if obj.get("type") in _CHART_TYPES and isinstance(data, dict):
-            if data.get("dimension") or data.get("x"):
-                existing_sigs.add(_chart_sig(data))
-    for obj in charts:
-        if _chart_sig(obj.get("data") or {}) not in existing_sigs:
-            return _with_sql(obj, sql)
-    # Data-only edit (reorder / filter / value change): the field signature is
-    # UNCHANGED — e.g. "order the x-axis by the number before the dash" keeps the
-    # same dimension/measure/group — so the "new signature" pass above finds
-    # nothing. Match the recomposed chart back to the TARGET's own signature and
-    # lift it (with its fresh rows), instead of wrongly reporting "no chart".
-    target_sig = _target_chart_sig(existing, target_element_id)
-    if target_sig is not None:
-        for obj in charts:
-            if _chart_sig(obj.get("data") or {}) == target_sig:
-                return _with_sql(obj, sql)
-    # No id match, no new/changed chart, and no identifiable target. If the golden
-    # had NO charts before, this is the first-object case → lift the report's
-    # main_chart. Otherwise the edit didn't take (a chart with no known target) →
-    # None (error), so the caller surfaces it rather than a stale duplicate.
-    if not existing_sigs:
-        spec = report.get("main_chart") if isinstance(report, dict) else None
-        lifted = chart_object_from_spec(
-            spec, element_id="authored:chart", role="chart", height="md", sql=sql
-        )
-        return lifted.model_dump(exclude_none=True) if lifted is not None else None
-    return None
-
-
-@app.post("/agent/analysis/object", response_model=AnalysisObjectResponse)
-async def agent_analysis_object(body: AnalysisObjectRequest) -> AnalysisObjectResponse:
-    """Author ONE report object from a plain-English instruction (Golden Examples).
-
-    Codegen (``scaffold_object``) rewrites run_analysis to build exactly the chart
-    the curator described, then it runs in the SAME governed extract + sandbox path
-    as ``/agent/analysis``; the produced ``main_chart`` is lifted back into a page
-    object (combo-aware) so the builder can drop real, sandbox-computed data into
-    the presentation. Never raises — errors travel on ``error`` for the builder.
-    """
-    from .object_codegen import scaffold_object
-    from .ordinals import load_overrides
-
-    await load_overrides()  # s23: honour curator ordinal edits before the lift
-    try:
-        frame, meta = await extract(body.sql, user_id=body.user.id)
-    except UnsafeSQLError as exc:
-        return AnalysisObjectResponse(sql=body.sql, error=f"extract rejected: {exc}")
-    except Exception as exc:  # noqa: BLE001 — surface DB/extract errors to the builder
-        return AnalysisObjectResponse(sql=body.sql, error=f"extract failed: {exc}")
-
-    columns = meta.get("columns", [])
-    rows = meta.get("rows", [])
-    # The agent rewrites the WHOLE report (every object + the change) and may
-    # return a revised SQL when the requested data isn't in the extract. It runs
-    # the extract/sandbox tools to verify before finalizing (s16).
-    gen = await scaffold_object(
-        instruction=body.instruction,
-        object_type=body.object_type,
-        columns=columns,
-        code=body.code,
-        sql=body.sql,
-        objects=body.objects,
-        user_id=body.user.id,
-        frame=frame,
-    )
-    code = str(gen.get("code") or "")
-    reasoning = gen.get("reasoning", [])
-    engine = str(gen.get("engine") or "stub")
-    if not code.strip():
-        return AnalysisObjectResponse(
-            sql=body.sql,
-            columns=columns,
-            rows=rows,
-            reasoning=reasoning,
-            engine=engine,
-            error=gen.get("error") or "no code generated",
-        )
-
-    # Apply a revised extract, if the agent produced one — all-or-nothing: a bad
-    # SQL leaves every stage on the caller's original (no partial write).
-    effective_sql = body.sql
-    new_sql = str(gen.get("sql") or "").strip()
-    if new_sql and new_sql != body.sql.strip():
-        try:
-            frame, meta = await extract(new_sql, user_id=body.user.id)
-            columns = meta.get("columns", [])
-            rows = meta.get("rows", [])
-            effective_sql = new_sql
-        except UnsafeSQLError as exc:
-            return AnalysisObjectResponse(
-                sql=body.sql,
-                columns=columns,
-                rows=rows,
-                reasoning=reasoning,
-                engine=engine,
-                error=f"revised extract rejected: {exc}",
-            )
-        except Exception as exc:  # noqa: BLE001 — surface to the builder, keep old SQL
-            return AnalysisObjectResponse(
-                sql=body.sql,
-                columns=columns,
-                rows=rows,
-                reasoning=reasoning,
-                engine=engine,
-                error=f"revised extract failed: {exc}",
-            )
-
-    outcome = await asyncio.to_thread(run_code, code, df=frame, frames={"extract": frame})
-    pages: list[dict[str, Any]] = []
-    if outcome.report and isinstance(outcome.report, dict):
-        try:
-            pages, _ = compose_pages(outcome.report)
-        except Exception:  # noqa: BLE001 — page composition is best-effort here
-            pages = []
-    obj = _lift_target(
-        pages, outcome.report, body.target_element_id, body.objects, sql=effective_sql
-    )
-    return AnalysisObjectResponse(
-        code=code,
-        sql=effective_sql,
-        object=obj,
-        report=outcome.report,
-        pages=pages or None,
-        columns=columns,
-        rows=rows,
-        reasoning=reasoning,
-        engine=engine,
-        skills_used=outcome.skills_used,
-        skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
-        error=explain_sandbox_error(outcome.error) or gen.get("error"),
-    )
-
-
-class AnalysisBuildObjectRequest(BaseModel):
-    sql: str
-    # Blank on the NL path (s22): a slug is derived from the instruction below.
-    name: str = ""
-    object_type: str = "compare"
-    # Structured form state (grain, dimension, group, bar/line measures + windows)
-    # the deterministic builder emits code from — see agent.object_builder.
-    spec: dict[str, Any] = {}
-    # Optional NL instruction — when set, the DeepSeek scaffold_object path authors
-    # the code instead of the deterministic builder (relabelled with this name).
-    instruction: str = ""
-    # Dataset slug — selects the mart profile for the deterministic builder (s22 P2).
-    dataset: str = "nsw_sales"
-    user: UserCtx
-
-
-class AnalysisBuildObjectResponse(BaseModel):
-    name: str = ""
-    element_id: str = ""
-    object_type: str = "compare"
-    # The extract that produced this — extended to add the object's columns when
-    # they weren't already SELECTed, else the caller's SQL unchanged.
-    sql: str = ""
-    code: str = ""
-    object: dict[str, Any] | None = None
-    columns: list[str] = []
-    rows: list[list[Any]] = []
-    skills_used: list[str] = []
-    skill_gaps: list[dict[str, Any]] = []
-    error: str | None = None
-
-
-@app.post("/agent/analysis/build-object", response_model=AnalysisBuildObjectResponse)
-async def agent_analysis_build_object(
-    body: AnalysisBuildObjectRequest,
-) -> AnalysisBuildObjectResponse:
-    """Deterministically build a NAMED presentation object (s18 Golden Sandbox).
-
-    The builder emits run_analysis from the ``spec`` (or delegates to the NL
-    scaffold path), *extends the shared extract* when the object needs columns it
-    lacks (carrying the golden's suburb/property filters), runs it in the governed
-    sandbox, and lifts the ``main_chart`` back into a page object with the object's
-    stable ``element_id`` so the report can link to it by name.
-    """
-    from .object_builder import (
-        build_object_code,
-        canonical_extract_sql,
-        element_id_for,
-        extract_grain,
-        measure_source_cols,
-        name_from_instruction,
-        needed_columns,
-    )
-    from .ordinals import load_overrides
-
-    # s23: pick up any curator ordinal edits before the lift orders the axis.
-    await load_overrides()
-
-    # s22: the NL path may omit the name — derive a stable slug from the words of
-    # the instruction so the object still gets a linkable obj:<slug> element_id.
-    name = body.name.strip() or name_from_instruction(body.instruction)
-    eid = element_id_for(name)
-
-    def _err(msg: str, *, sql: str, code: str = "") -> AnalysisBuildObjectResponse:
-        return AnalysisBuildObjectResponse(
-            name=name,
-            element_id=eid,
-            object_type=body.object_type,
-            sql=sql,
-            code=code,
-            error=msg,
-        )
-
-    # 1. Run the current extract; extend it if the object needs columns it lacks.
-    # A failing base SQL (or a placeholder) doesn't block a deterministic build —
-    # when a spec is given we fall through to the canonical grain-level extract.
-    frame: Any = None
-    meta: dict[str, Any] = {}
-    columns: list[str] = []
-    base_error: str | None = None
-    try:
-        frame, meta = await extract(body.sql, user_id=body.user.id)
-        columns = meta.get("columns", [])
-    except UnsafeSQLError as exc:
-        base_error = f"extract rejected: {exc}"
-    except Exception as exc:  # noqa: BLE001 — surface DB/extract errors to the builder
-        base_error = f"extract failed: {exc}"
-    effective_sql = body.sql
-    need = needed_columns(body.spec)
-    must_rewrite = bool(body.spec) and (base_error is not None or not need.issubset(set(columns)))
-    if must_rewrite:
-        # The extract must carry every column the generated snippet groups by —
-        # a composite 2nd dimension or a group the curator didn't type into the
-        # grain field is appended for the bar family, exactly as the codegen's
-        # _bar_grain does; trend/kpi keep the typed grain.
-        grain = extract_grain(body.spec, object_type=body.object_type, dataset=body.dataset)
-        try:
-            new_sql = canonical_extract_sql(
-                body.sql,
-                grain=grain,
-                measure_source_cols=measure_source_cols(body.spec),
-                where_override=str(body.spec.get("filter") or ""),
-                dataset=body.dataset,
-            )
-        except ValueError as exc:
-            return _err(f"invalid spec: {exc}", sql=body.sql)
-        try:
-            frame, meta = await extract(new_sql, user_id=body.user.id)
-            columns = meta.get("columns", [])
-            effective_sql = new_sql
-        except UnsafeSQLError as exc:
-            return _err(f"revised extract rejected: {exc}", sql=body.sql)
-        except Exception as exc:  # noqa: BLE001 — keep the caller's SQL on failure
-            return _err(f"revised extract failed: {exc}", sql=body.sql)
-    elif base_error is not None:
-        # No spec to build a canonical extract from — surface the base failure.
-        return _err(base_error, sql=body.sql)
-
-    # 2. Code: the deterministic builder, or the NL scaffold path when instructed.
-    if body.instruction.strip():
-        from .object_codegen import scaffold_object
-
-        gen = await scaffold_object(
-            instruction=body.instruction,
-            object_type=body.object_type,
-            columns=columns,
-            code="",
-            sql=effective_sql,
-            objects=None,
-            user_id=body.user.id,
-            frame=frame,
-        )
-        code = str(gen.get("code") or "")
-        new_sql = str(gen.get("sql") or "").strip()
-        if new_sql and new_sql != effective_sql.strip():
-            try:
-                frame, meta = await extract(new_sql, user_id=body.user.id)
-                columns = meta.get("columns", [])
-                effective_sql = new_sql
-            except Exception as exc:  # noqa: BLE001
-                return _err(f"revised extract failed: {exc}", sql=effective_sql, code=code)
-        if not code.strip():
-            return _err(gen.get("error") or "no code generated", sql=effective_sql)
-    else:
-        try:
-            code = build_object_code(
-                object_type=body.object_type, spec=body.spec, dataset=body.dataset
-            )
-        except ValueError as exc:
-            return _err(f"invalid spec: {exc}", sql=effective_sql)
-
-    # 3. Run + lift the object (the lift orders any ordinal x-axis for the dataset).
-    outcome = await asyncio.to_thread(run_code, code, df=frame, frames={"extract": frame})
-    # The curator reads this in the builder's status line, so it must be a message
-    # rather than a Python traceback — the codegen loop has already spent its
-    # correction passes by the time we get here.
-    run_error = explain_sandbox_error(outcome.error)
-    obj = _lift_object(
-        outcome.report,
-        element_id=eid,
-        object_type=body.object_type,
-        sql=effective_sql,
-        dataset=body.dataset,
-    )
-    return AnalysisBuildObjectResponse(
-        name=name,
-        element_id=eid,
-        object_type=body.object_type,
-        sql=effective_sql,
-        code=code,
-        object=obj,
-        columns=columns,
-        rows=meta.get("rows", []),
-        skills_used=outcome.skills_used,
-        skill_gaps=[g.model_dump() for g in outcome.skill_gaps],
-        error=run_error if obj is not None else (run_error or "object produced no chart"),
-    )
 
 
 @app.get("/agent/skills")
@@ -1490,31 +1138,6 @@ async def agent_skills() -> dict[str, Any]:
             sig = "()"
         out.append({"name": name, "group": group_of(name), "doc": doc, "signature": sig})
     return {"skills": out}
-
-
-class ScaffoldRequest(BaseModel):
-    question: str = ""
-    columns: list[str] = []
-    skills: list[str] = []
-
-
-class ScaffoldResponse(BaseModel):
-    code: str = ""
-    reasoning: list[dict[str, Any]] = []
-    engine: str = "stub"
-    error: str | None = None
-
-
-@app.post("/agent/skills/scaffold", response_model=ScaffoldResponse)
-async def agent_skills_scaffold(body: ScaffoldRequest) -> ScaffoldResponse:
-    """Regenerate run_analysis code from a chosen set of skills, with a reason per
-    skill (s14 Golden Examples). The model writes the code using exactly those skills."""
-    from .skill_codegen import scaffold_from_skills
-
-    out = await scaffold_from_skills(
-        question=body.question, columns=body.columns, skills=body.skills
-    )
-    return ScaffoldResponse(**out)
 
 
 def _enrich_catalog_with_known_docs(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1572,7 +1195,7 @@ class ArchitectureRuntime(BaseModel):
 
 
 class KnowledgeFile(BaseModel):
-    kind: str  # claude_md | marts | schema | knowledge
+    kind: str  # claude_md | marts | layouts | schema | knowledge
     id: str  # what to pass as `name` to /agent/architecture/content ("" if n/a)
     filename: str  # the name this shows up as inside a real run workspace
     label: str
@@ -1631,6 +1254,14 @@ def _tool_registry() -> list[ArchitectureTool]:
         "lookup_values": "sql_guardrails — read-only distinct-value lookup",
         "no_answer": "none — declarative refusal, no execution",
         "remember": "per-user memory store (pgvector embeddings), no SQL",
+        "start_deck": (
+            "Google Sheets/Slides via the service's own OAuth credential — the only "
+            "third-party egress; never sandbox code; public sharing gated by DECK_PUBLIC"
+        ),
+        "add_slide": (
+            "layout name must be in the curated catalogue (layouts.md); one atomic "
+            "batchUpdate per slide"
+        ),
     }
     quotas = {
         "extract": f"{settings.max_sql_attempts} attempts/run (MAX_SQL_ATTEMPTS)",
@@ -1638,11 +1269,13 @@ def _tool_registry() -> list[ArchitectureTool]:
         "lookup_values": "unmetered",
         "no_answer": "unmetered",
         "remember": "unmetered",
+        "start_deck": "once per run",
+        "add_slide": f"{settings.max_slides} slides/run (MAX_SLIDES)",
     }
     builtin_descriptions = {
         "Read": (
-            "Read one file in the run workspace (CLAUDE.md, marts.md, schema/*.md, "
-            "knowledge/*.md, frames/*.head.csv)."
+            "Read one file in the run workspace (CLAUDE.md, marts.md, layouts.md, "
+            "schema/*.md, knowledge/*.md, frames/*.head.csv)."
         ),
         "Grep": "Search file contents across the run workspace.",
         "Glob": "List files in the run workspace by pattern.",
@@ -1657,7 +1290,7 @@ def _tool_registry() -> list[ArchitectureTool]:
             quota=quotas.get(name, "—"),
             guardrail=guardrails.get(name, "—"),
         )
-        for name in sdk_agent.GOVERNED_TOOLS
+        for name in sdk_agent.governed_tools()
     ]
     tools += [
         ArchitectureTool(
@@ -1675,6 +1308,25 @@ def _tool_registry() -> list[ArchitectureTool]:
         for name in sdk_agent.BUILTIN_TOOLS
     ]
     return tools
+
+
+def _layouts_md() -> str:
+    """layouts.md exactly as a run would see it, or "" when deck export is off.
+
+    Uses the process-wide catalogue cache sdk_agent keeps, so this never pays a
+    Slides round trip of its own — if no run has loaded the pack yet it falls
+    back to the built-in catalogue, which is what an unreadable pack yields too.
+    """
+    if not sdk_agent.deck_enabled():
+        return ""
+    # s48: a synced template pack is a repo file, so this resolves it directly
+    # rather than waiting for a run to warm the cache — the /agent/version
+    # fingerprint must reflect the pack the next run will actually use.
+    pack = load_pack(pack_path(settings.pack_dir, settings.pack_name))
+    if pack is not None and pack.slides_id:
+        return render_layouts_md(pack_to_catalogue(pack))
+    catalogue = sdk_agent._catalogue_cache.get(settings.google_slides_template_id)
+    return render_layouts_md(catalogue or DEFAULT_CATALOGUE)
 
 
 def _knowledge_files() -> list[KnowledgeFile]:
@@ -1720,6 +1372,22 @@ def _knowledge_files() -> list[KnowledgeFile]:
                 size=len(doc),
             )
         )
+    layouts_md = _layouts_md()
+    if layouts_md:
+        files.append(
+            KnowledgeFile(
+                kind="layouts",
+                id="",
+                filename="layouts.md",
+                label="layouts.md — slide layout catalogue",
+                description=(
+                    "Enabled layouts from the slide pack; the agent Greps this before "
+                    "add_slide. Curating it moves the av-* fingerprint."
+                ),
+                size=len(layouts_md),
+                sha256=hashlib.sha256(layouts_md.encode()).hexdigest(),
+            )
+        )
     for p in load_pages():
         files.append(
             KnowledgeFile(
@@ -1755,6 +1423,7 @@ async def agent_architecture() -> ArchitectureResponse:
                 "sandbox_run_attempts": settings.sandbox_run_attempts,
                 "agent_request_limit": settings.agent_request_limit,
                 "max_knowledge_reads": settings.max_knowledge_reads,
+                "max_slides": settings.max_slides if sdk_agent.deck_enabled() else 0,
             },
             fingerprint=build_fingerprint(),
         ),
@@ -1778,8 +1447,41 @@ async def agent_architecture_content(kind: str, name: str = "") -> dict[str, str
         return {"content": _template_bytes().decode("utf-8", errors="replace")}
     if kind == "marts":
         return {"content": list_marts()}
+    if kind == "layouts":
+        return {"content": _layouts_md()}
     if kind == "schema":
         return {"content": describe_table(name)}
     if kind == "knowledge":
         return {"content": read_knowledge(name)}
     raise HTTPException(status_code=400, detail=f"unknown kind: {kind!r}")
+
+
+# ---------------------------------------------------------------------------
+# Pack Inspector (s48 §P2): admin-facing read/edit surface over the synced
+# template pack. Both endpoints just delegate to agent/pack_api.py — the
+# reason this file gets a full module rather than a couple of inline
+# functions (unlike the Architecture endpoints above) is the PUT handler's
+# write path (Sheets values.update + a full re-sync), which needs to be
+# independently testable with a FakeClient (tests/test_pack_api.py).
+# ---------------------------------------------------------------------------
+
+
+@app.get("/agent/pack", response_model=PackOut)
+async def agent_pack(client: GoogleClient = Depends(get_google_client)) -> PackOut:
+    return await _pack_api_get_pack(client)
+
+
+@app.put("/agent/pack/layouts/{layout_id}", response_model=PackLayoutUpdateOut)
+async def agent_pack_layout_update(
+    layout_id: str,
+    body: PackLayoutUpdate,
+    client: GoogleClient = Depends(get_google_client),
+) -> PackLayoutUpdateOut:
+    try:
+        return await _pack_api_update_layout(layout_id, body, client=client)
+    except PackLayoutNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PackUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PackApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

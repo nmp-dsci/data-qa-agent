@@ -433,15 +433,79 @@ actions and a live "3 of 12"-style summary. Postcode filters (`controls.tsx`/`li
 search with a `POA:` prefix (`formatPoa`/`isPoaDimension`/`stripPoa`) to read as ABS Postal Area codes rather
 than bare digits, without changing the underlying stored/filtered value.
 
-**Chart-object unification (s20):** Explore, chat, and Golden Examples now render page objects through one
-shared contract (`frontend/src/report-engine/PageLayout.tsx` + `registry.ts`) instead of divergent chart
-code paths. `DataTable` was promoted to a first-class, agent-emittable chart object (migration 0027); the
-NSW postcode choropleth (`ui/charts/Choropleth.tsx`, pre-built paths from `scripts/build_poa_paths.py` —
-see `scripts/build_topojson.md`) is deliberately **Explore-only** and not agent-emittable. Every chart on
-every surface deep-links to the SQL editor via a `data.sql` field (`ui/charts/sqlLink.tsx`). An object-type
-parity gate (`services/data-agent/tests/test_registry_sync.py`) cross-checks the agent's `ObjectType`, the
-frontend's `PageObjectType`/`ObjectBody`/registry, and seeded chart migrations so a type added to only one
-of them fails CI instead of silently drifting.
+**Answers are Google Slides decks (s46) — the in-browser chart stack is gone.** The agent no longer emits
+objects for the browser to draw. In its visualisation phase it Greps the curated layout catalogue
+(`layouts.md`, rendered into the run workspace), then calls the governed `start_deck`/`add_slide` MCP tools
+(`services/data-agent/agent/deck.py`, `gsuite.py`) to build a Google Slides deck backed by a Google Sheet.
+Charts are **native, editable Sheets charts**, not pictures — the Slides API has no primitive that authors a
+chart from data, so every chart is born in the Sheet and embedded with `createSheetsChart(LINKED)`. The chat
+answer area is an embedded deck viewer plus links out (`features/chat/ArtifactView.tsx`); the URLs ride on
+`AskResponse.artifact` and are persisted to `app.query_runs.artifact_deck_url`/`artifact_sheet_url`
+(migration 0037).
+
+Deleted with the migration: `frontend/src/report-engine/`, `frontend/src/ui/charts/` (all visx rendering),
+`SpecChart`, `ReportView`, Template Studio, and the `test_registry_sync.py` object-parity gate — it enforced
+agreement with frontend files that no longer exist. Explore, Ops and the Goldens editor now show plain
+tables. Ops metrics are an interim surface pending external observability.
+
+**Still present, deliberately:** the backend `Page`/`PageObject` schema (`agent/pages.py`, `compose_pages`)
+and `explore/pages_builder.py`. Nothing renders them any more, but they remain the pydantic-ai champion
+runtime's output contract and drive the SSE plan frames. Removing them is gated on retiring that runtime —
+do not delete them piecemeal.
+
+**The deck's design is a template pack (s48).** `docs/template-packs.md` is the contract. A pack is two
+Google files a curator edits by hand — `Pack.slides` (one **library slide** per layout, where a shape's
+alt-text *title* is what makes it a slot: `headline`, `chart`, `table`, `commentary`, `kpi`, `kpi_label`,
+`subtitle`, `footer`, `source`) and `Pack.sheet` (the `_pack` catalogue tab plus `tpl_*` tabs carrying
+hand-styled charts) — plus `packs/<name>/pack.json`, the snapshot the runtime reads. `scripts/pack_scaffold.py`
+creates the two files from nothing; `scripts/pack_sync.py` is the **only** writer of pack.json (`make
+pack-scaffold` / `make pack-sync`). `agent/pack.py` parses it into the `deck.Layout` catalogue, so a curator's
+`use_when` sentences and slot geometry are what the agent reads in `layouts.md`.
+
+**Pack Inspector (s48 §P2).** Admin → Pack (`frontend/src/features/admin/PackView.tsx`) is a read/edit tab
+over the synced pack: `GET /admin/pack` → `services/backend-api/app/routers/admin_pack.py` (proxy, same
+pattern as `routers/architecture.py`) → `GET /agent/pack` (`agent/pack_api.py`), which renders pack.json plus a
+per-layout Slides thumbnail (`presentations.pages.getThumbnail`, cached in-process keyed on the Slides file's
+Drive `version` — never fetched per request) and `stale` (the Sheet's `modifiedTime` vs. the last sync).
+`PUT /agent/pack/layouts/{id}` writes only the changed `_pack`-tab cell(s) via Sheets `values.update`, then
+re-syncs through `agent/pack_sync.py::sync_pack` — the same function `scripts/pack_sync.py` calls, refactored
+out of the script so the CLI and the Inspector can never write pack.json differently — and busts `sdk_agent`'s
+in-process catalogue caches so the next run sees the change. Slides/charts themselves stay Google-only edits
+(enable/withhold and `use_when` are the only fields this tab can write). `packs/` is bind-mounted writable
+into the data-agent container (the worker's mount stays `:ro`) precisely so this PUT can persist pack.json;
+the repo copy is then the reviewable diff.
+
+Why library slides and not master layouts: the Slides API cannot author master layouts and the Slides editor
+cannot author CHART/TABLE placeholders, so a library slide is the only artifact authorable from *both* sides.
+Each `add_slide` is one atomic batch — `duplicateObject` with a deterministic `objectIds` map, `updateSlidesPosition`
+to the end, `deleteText`/`insertText` per text slot, `deleteObject` on the chart placeholder and
+`createSheetsChart(LINKED)` at its exact geometry — and `finish()` appends **Sources & SQL** (every query the
+answer rests on) before deleting the library slides that are left. Charts are **clones of the pack's chart
+spec** with the GridRanges rewritten (`deck.clone_chart_spec`), never composed here: styling is the curator's
+job. An enabled layout that fails validation is treated as disabled, so a half-edited pack degrades to a
+smaller menu rather than to broken slides. `footer` and `source` are filled by the builder, never the agent.
+
+The run Sheet is `Data` (a named Sheets **Table** per slide, typed from `units.py`, chart anchored beside it;
+oversized frames get their own tab), `Manifest` (the `SlideRecord` fields the change-log differs on:
+`layout_id`, `slide_object_id`, `table_name`/`table_range`/`table_kind`, `chart_id`, `query_ref`, `mart`,
+`notes_object_id`, `slide_url`) and `README`. Both generated files carry Drive `appProperties`
+(`dp_run_id`/`dp_pack`/`dp_pack_version`/`dp_kind`) and land in a `Data Pilot runs` folder. The builder also
+returns the **version-1 baseline snapshot** (`agent/handover_snapshot.py`, shared with the handover poller) on
+`artifact["baseline"]`, so a later diff compares against what the builder actually produced.
+
+Two live-API constraints are load-bearing and easy to undo by accident: `addTable` must carry **no**
+`columnProperties` (they land one column right and corrupt the header) — types go on a following `updateTable`;
+and a Sheets chart axis must not carry `titleTextPosition` without a title (500 INTERNAL). A refused `addTable`
+falls back to a named range and records `table_kind: "range"`.
+
+This is a **dev-only** capability: one generating Google account, a refresh token in `.env`
+(`scripts/google_auth.py --write-env` mints it), and `DECK_EXPORT=1`. The credential is
+`GOOGLE_DECK_CLIENT_ID`/`_SECRET`/`_REFRESH_TOKEN` — a **Desktop app** OAuth client, deliberately not the
+`GOOGLE_CLIENT_ID` Web client that Google Sign-in validates ID-token audiences against; one variable for
+both would break sign-in. `GOOGLE_SHEET_TEMPLATE_ID` (the pack's Sheet), `PACK_NAME` and `PACK_DIR` select the
+pack; `packs/` is bind-mounted into the container (writable for data-agent so the Pack Inspector can resync). Prod/demo deploys no data-agent service at all, so
+it holds no Google credential and cannot reach Google; demo replay hands back URLs recorded in the pack.
+`DECK_PUBLIC` is a separate flag because anyone-with-link sharing puts a file outside RLS permanently.
 
 The legacy static NSW profiling tool this feature replaces is vendored for reference at `docs/chronicle/`
 (see its README) — its heavy data files (`datafeed/`, the reduced POA geojson) are gitignored, with restore
@@ -621,6 +685,20 @@ datasets table (row counts, access — count of `dataset_access` grants), and Q&
 `query_runs` (latency, row counts, generated SQL, input/output token counts from the LLM path's
 `run.usage()` — null for the offline stub). Same stream feeds Logfire.
 
+### Handover analytics — what happens to a deck after it's handed over (s48 §7)
+
+A deck is a Google Slides file the app no longer controls once it's sent, so `scripts/handover_poll.py`
+(`make handover-poll ARGS=--once`, or the `handover-poller` compose service under `profiles: [handover]`,
+15-minute loop) watches for change: for every run with an `artifact_deck_url` checked more than
+`--interval` seconds ago within the last `--days` (30), it asks Drive `files.get` for the current
+`version`; if it moved, it snapshots the deck/sheet content (`agent.handover.normalise_deck`/
+`normalise_sheet`), diffs against the previous snapshot (`agent.handover.diff_snapshots`), and records the
+result in `app.artifact_snapshots` / `app.artifact_edits` (migration `0038_artifact_handover`), bumping
+`query_runs.artifact_last_checked` / `artifact_opened_at` / `artifact_edit_count`. Read-only against the
+user's files. `GET /analytics/handover?days=30` (admin-only, `admin_ro`) aggregates it for the Analytics
+tab's Handover section: decks/opened/edited/edit-rate/median-minutes-to-first-edit tiles, edits by layout,
+edits by event, and a recent-decks table with deck links.
+
 ## Evaluation & user-journey tests
 
 `evals/journeys.yaml` defines journeys (`as_user`, `question`, `expect`) that a **pytest** harness runs against
@@ -632,7 +710,8 @@ authors a golden answer stage by stage — ① SQL extract, ② sandbox analysis
 from the tested skill library), ③ the presentation report — starting from an agent-drafted first pass.
 Goldens are stored on `app.eval_cases` (CRUD via the backend's `/admin/eval-goldens` endpoints, which proxy
 draft/build actions to the data-agent's `/agent/analysis*` and `/agent/skills*` helpers; the object-type
-picker is generated from the report-engine registry so it can't drift from what the renderer supports).
+picker is generated from the agent's own object vocabulary. (s46: the browser no longer renders these — see
+the Slides section above.)
 Deterministic graders (`agent/eval_graders.py`) score G1 extraction values and the structural half of G3
 presentation against a `ready` golden — the LLM insight half of G3 is a judge, not code. G2 preparation
 (did the sandbox build the golden's objects) and G4 ops (turns, latency, tokens) are scored directly by the
@@ -709,9 +788,10 @@ line, where the success message belongs. `agent/sandbox/errors.py`'s `explain_sa
 traceback to its final exception line plus a targeted hint for the failure modes that come from a house
 skill's return shape rather than a typo (`skills.latest_value` always returns a dict; `skills.growth_rate`
 returns one once `group_col` is passed; `skills.top_growth` returns a DataFrame that must not be indexed
-like a mapping). It's wired into both `object_codegen`'s correction loop (only two passes, so the first
+like a mapping). It was wired into both `object_codegen`'s correction loop (only two passes, so the first
 piece of feedback has to carry the real cause) and every `/agent/analysis*` endpoint's `error` field, so
-the UI can never show a bare traceback.
+the UI can never show a bare traceback. (`object_codegen` was deleted in s46's dead-code cleanup — see
+below; `explain_sandbox_error` remains wired into `/agent/analysis`.)
 
 **Question tiers (s27).** Every golden carries a `tier` (`app.eval_cases.tier`, free-text; the Golden tab
 picker and the pack lint both accept `T1`–`T7`). A tier classifies *what kind of question* the golden is, so
@@ -733,14 +813,11 @@ four time-series shapes). Drafts (`authoring_status='draft'`) are skipped by `ma
 `INCLUDE_DRAFTS=1` is passed (the runner's `--include-drafts`; naming one directly via `CASE=` also runs
 it), so an un-curated question is never scored against empty ground truth.
 
-**Crash-proof object rendering + schema-driven builder (s28).** A rendering exception in any single report
-object used to unmount the whole SPA — opening a golden whose stored `golden_objects` carried a non-array
-`rows` (the pack exporter's old `{_truncated,…}`/`{_omitted,…}` digest stubs) white-screened the entire
-Golden tab. Every object now renders inside `frontend/src/report-engine/ChartErrorBoundary.tsx`, wrapped
-once in `PageLayout.tsx`'s `ObjectBody` so every consumer (chat, Explore, Goldens, the Template Studio
-preview) is covered: a failed object degrades to a fallback card, the rest of the report renders, and a
-data-derived `resetKey` un-fails the boundary when the object is rebuilt. Chart renderers also coerce
-`rows` through `asRows` (`ui/charts/tokens.ts`) so an unusable shape renders empty rather than throwing.
+**Crash-proof object rendering + schema-driven builder (s28) — HISTORICAL.** A rendering exception in any
+single report object used to unmount the whole SPA, so every object was wrapped in a `ChartErrorBoundary`
+inside `PageLayout`'s `ObjectBody`. **s46 deleted that entire rendering stack** — the browser no longer draws
+report objects at all, so this class of crash is gone with it. Kept here because the exporter half of the
+same bug fix is still live (below).
 The exporter side of the same bug is fixed too: `scripts/eval_pack.py` no longer wraps oversized rendered
 fields in digest envelopes — `golden_report`/`golden_objects` lists are truncated to a plain head (still
 lists, so they stay renderable), with ground-truth drift tracked by `golden_data_sha` alone.
@@ -763,6 +840,12 @@ drift (trend/kpi keep the typed grain, defensively including `group` when set, s
 that invariant). A bad spec surfaces as `invalid spec: …` from `/agent/analysis/build-object`, never a
 traceback.
 
+(Dead-code note: `agent/object_builder.py` and the `/agent/analysis/build-object`, `/agent/analysis/object`,
+and `/agent/skills/scaffold` endpoints described in this and the following two subsections had no remaining
+caller once the frontend Structured Object Builder was removed, and were deleted along with
+`agent/object_codegen.py` / `agent/skill_codegen.py` in s46's cleanup. The rest of this history is kept for
+provenance.)
+
 **Grader-spec editor — promote draft → ready from the Golden tab.** A golden's `grader` (jsonb, migration
 0030) is what the eval runner scores against (`scripts/eval_run.py` → `POST /agent/eval/grade`), but until
 now it could only be written by hand-editing the YAML pack, so a curator could never make a draft
@@ -782,7 +865,11 @@ passing), so the UI blocks exactly what CI would reject. The `grader` column is 
 asserts the real composite-ratio-series grader decodes on load and that a fresh golden can't promote without
 a kind.
 
-**Builder live preview + edit-in-place + filter preservation (s30).** Four connected refinements to the
+**Builder live preview + edit-in-place + filter preservation (s30) — MOSTLY HISTORICAL.** s46 deleted the
+Structured Object Builder, the report editor and the live `ObjectBody` preview along with the rendering
+stack; the Goldens tab now edits a golden's question, SQL, filter and grader against a plain table. Point (1)
+below (filter preservation in `canonical_extract_sql`) is backend and still live; points (2)-(4) describe
+surfaces that no longer exist and are kept for provenance only. Four connected refinements to the
 object builder / report editor: (1) **Filter preservation** — building an object could silently drop the
 question's own filter, because `canonical_extract_sql` replaced the WHERE with the builder's `filter` field
 (or best-effort per-column lifted it). An object is a summary of the *same* governed rows the question
@@ -892,8 +979,9 @@ grep through CloudWatch.
 **`/ops`** (`frontend/src/features/ops/OpsPage.tsx`) is an admin-only tab beside
 `/evals` — Evaluations answers "is the answer right?", Ops answers "is the service
 healthy?". It renders entirely through primitives the app already owns: the Flight
-Deck kit (`HudBox`/`Annunciator`/`InstrumentLabel`) for readouts and lamps, and
-`report-engine/PageLayout` + `ui/charts/*` for panels, so it inherits theming, the
+Deck kit (`HudBox`/`Annunciator`/`InstrumentLabel`) for readouts and lamps. Its charts
+were deleted by s46 along with the rest of the rendering stack — panels are now plain
+tables, pending a move to external observability. It still inherits theming, the
 chart error boundaries and the SQL-link affordance and adds no new object types.
 
 **One read per window (decision Q3).** `GET /admin/ops/summary` serves a
@@ -931,9 +1019,10 @@ bare runner, and it exits 0 on failure because telemetry must never fail a deplo
   and `frontend/e2e/ops.spec.ts` (admin gating + renders on a cold rollup).
 
 - **W1 · reliability** — `agent/model_factory.py` is now the single retry/timeout
-  policy for all **six** LLM call sites (`sandbox_agent`, `object_codegen`,
+  policy for all **six** LLM call sites at the time (`sandbox_agent`, `object_codegen`,
   `sql_assist`, `skill_codegen`, `titles`, `eval_judge`), which previously had
-  none. It retries transport failures and upstream 5xx/429 with full jitter,
+  none (`object_codegen`/`skill_codegen` were later deleted in s46's cleanup — four
+  call sites remain). It retries transport failures and upstream 5xx/429 with full jitter,
   **never a 4xx** (identical failure, real money) and never `UsageLimitExceeded`
   (that guard exists to stop runaway spend; retrying it inverts it) — classified
   by exception *name* down the `__cause__` chain so the module needs no

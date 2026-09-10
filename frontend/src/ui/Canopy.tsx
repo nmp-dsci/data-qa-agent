@@ -16,7 +16,7 @@
 // frame is painted instead — a designed still, not a blank. The loop also
 // stops whenever the tab is hidden, so a backgrounded app costs nothing.
 //
-// Report pages are deliberately NOT included: .answer-page exports to PNG for
+// Report pages are deliberately NOT included: they export to PNG for
 // boardrooms and must stay on a flat, neutral ground (see styles.css).
 import { useEffect, useRef } from "react";
 import { useAmbientMotion } from "../lib/motion";

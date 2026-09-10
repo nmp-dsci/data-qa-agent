@@ -37,10 +37,13 @@ from pathlib import Path
 from typing import Any
 
 from .config import settings
+from .deck import DEFAULT_CATALOGUE, DeckBuilder, Layout, load_catalogue, render_layouts_md
+from .gsuite import GoogleClient, credentials_present
 from .knowledge import knowledge_version
 from .memory import recall_memories
 from .ordinals import ordinals_snapshot_hash
 from .otlp import agent_span
+from .pack import PackSpec, load_pack, pack_path, pack_to_catalogue
 from .pages import compose_pages, page_plan, planned_kinds
 from .report import select_primary_query
 from .sandbox_agent import (
@@ -66,6 +69,24 @@ ENGINE = "agent_sdk"
 MCP_SERVER = "dp"
 BUILTIN_TOOLS = ["Read", "Grep", "Glob"]
 GOVERNED_TOOLS = ["extract", "run_analysis", "lookup_values", "no_answer", "remember"]
+# s46: registered only when a generating credential is configured AND export is
+# on, so a run that cannot build a deck is never offered the tools.
+DECK_TOOLS = ["start_deck", "add_slide"]
+
+
+def deck_enabled() -> bool:
+    return bool(settings.deck_export) and credentials_present()
+
+
+def governed_tools() -> list[str]:
+    return [*GOVERNED_TOOLS, *(DECK_TOOLS if deck_enabled() else [])]
+
+
+def allowed_tools() -> list[str]:
+    return [*BUILTIN_TOOLS, *(f"mcp__{MCP_SERVER}__{t}" for t in governed_tools())]
+
+
+# Retained for callers/tests that want the champion-era surface.
 ALLOWED_TOOLS = [*BUILTIN_TOOLS, *(f"mcp__{MCP_SERVER}__{t}" for t in GOVERNED_TOOLS)]
 
 # How many rows of each extracted frame are mirrored into frames/<name>.head.csv
@@ -114,13 +135,31 @@ class _SdkDeps(_SbDeps):
     """
 
     ws: Path | None = None
+    # s46: the run's deck, created lazily by start_deck. None until the agent
+    # reaches the visualisation phase (or forever, if export is off).
+    deck: Any = None
+    slide_calls: int = 0
+    # s48: the run's identity, so the deck can stamp its footer and its Drive
+    # appProperties without the tools having to be re-plumbed a run context.
+    run_id: str = ""
+    question: str = ""
+    # frame name -> the extract that produced it, so a slide can name its query
+    # in the manifest (the Sources & SQL slide is built from these).
+    frame_refs: dict[str, str] = field(default_factory=dict)
     # Set when a tool blows its budget past the courtesy STOP. The message loop
     # checks it after every message and closes the query — the SDK has no
     # exception channel back into the model's loop, so this is how the
     # champion's SandboxBudgetExhausted hard stop is reproduced.
     abort_reason: str | None = None
     knowledge_denials: int = 0
+    # s48 §7: the deck's version-1 snapshot, taken by the builder at finish().
+    deck_baseline: dict[str, Any] = field(default_factory=dict)
     hook_events: list[dict[str, Any]] = field(default_factory=list)
+    # Which artifact files publish() actually shared — None when publish was
+    # never attempted (deck export off, no deck, or deck_public off), so
+    # _artifact() knows to leave the (private-but-valid) URLs alone rather
+    # than a partial-failure dict meaning "omit the ones that are False".
+    publish_status: dict[str, bool] | None = None
 
     def after_frame(self, name: str, frame: Any) -> None:
         """Mirror a head sample of the extracted frame into ``frames/``.
@@ -131,6 +170,8 @@ class _SdkDeps(_SbDeps):
         """
         if self.ws is None:
             return
+        if self.queries:
+            self.frame_refs[name] = list(self.queries)[-1]
         safe = _UNSAFE_FRAME_CHARS.sub("_", name) or "frame"
         try:
             frames_dir = self.ws / "frames"
@@ -186,6 +227,26 @@ TOOL_DESCRIPTIONS = {
         "does cover). Then return a one-line confirmation."
     ),
     "remember": "Store a durable user preference about how they want answers.",
+    "start_deck": (
+        "Open the answer's Google Slides deck and its backing Sheet. Call ONCE, "
+        "after your analysis is done and before the first add_slide.\n\n"
+        "Give a short deck title naming the question's subject."
+    ),
+    "add_slide": (
+        "Append one slide to the deck, filling it in a single atomic write.\n\n"
+        "`layout` must be an exact name from layouts.md (Grep it first). Pass "
+        "`frame` to chart or tabulate a frame you already extracted \u2014 the rows "
+        "are written to the Sheet and the chart is NATIVE and editable, not a "
+        "picture. `headline` is the slide title; `commentary` is one or two "
+        "sentences on what the numbers mean, not what they show. Use `columns` "
+        "to pick and order which of the frame's columns to plot; the first is "
+        "the x axis / label column, which must be unique per row for a chart — "
+        "aggregate first, or pass a categorical second column and it is "
+        "pivoted into series automatically. On a KPI layout, `kpi` is the "
+        "number itself and the optional `kpi_label` says what it measures "
+        "(e.g. 'median sale price'). The footer and the source line are "
+        "filled in for you."
+    ),
 }
 
 TOOL_SCHEMAS = {
@@ -200,10 +261,124 @@ TOOL_SCHEMAS = {
     ),
     "no_answer": _schema({"reason": "string", "why": "string"}, required=["reason"]),
     "remember": _schema({"fact": "string"}, required=["fact"]),
+    "start_deck": _schema({"title": "string"}, required=["title"]),
+    "add_slide": {
+        "type": "object",
+        "properties": {
+            "layout": {"type": "string"},
+            "headline": {"type": "string"},
+            "commentary": {"type": "string"},
+            "kpi": {"type": "string"},
+            "kpi_label": {"type": "string"},
+            "frame": {"type": "string"},
+            "columns": {"type": "array", "items": {"type": "string"}},
+            "chart_type": {
+                "type": "string",
+                "enum": ["line", "bar", "column", "area", "scatter"],
+            },
+        },
+        "required": ["layout", "headline"],
+    },
 }
 
 
-def build_tool_server(sdk: Any, deps: _SdkDeps, *, max_extracts: int, max_runs: int) -> Any:
+# The first schema-qualified relation a query reads — what the deck's `source`
+# line and the Sources & SQL slide name. A regex, not sqlglot: this is a label
+# on a slide, and the guardrail that actually decides what may be read has
+# already run by the time a slide is built.
+_MART_RE = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*)", re.IGNORECASE)
+
+
+def mart_of(sql: str) -> str:
+    match = _MART_RE.search(sql or "")
+    return match.group(1) if match else ""
+
+
+@dataclass
+class DeckContext:
+    """Everything the deck tools need that is not per-call state."""
+
+    client: GoogleClient
+    catalogue: tuple[Layout, ...]
+    template_id: str
+    # s48: present when packs/<PACK_NAME>/pack.json was loaded; None = the s46
+    # built-in catalogue, which builds slides from predefined layouts instead.
+    pack: PackSpec | None = None
+
+
+# Cap rows written per slide. The marts are pre-aggregated, so a legitimate
+# monthly series is a few hundred rows; past this a chart is unreadable anyway
+# and the Sheet write gets slow.
+MAX_SLIDE_ROWS = 500
+
+# Rows a table slide can show before it stops being readable. Not a cap — the
+# slide is still built — but the model gets told, because the alternative is
+# what was observed: it added two 495-row slides, judged them wrong on its own,
+# and spent the rest of its turn budget re-extracting and redoing them.
+READABLE_TABLE_ROWS = 15
+
+# What ``_do_run_analysis`` says when the report is finished. It predates the
+# deck and tells the model the run is over — which, with deck tools registered,
+# lands exactly where step 6 (PRESENT) should begin and stops the agent one turn
+# short of the deliverable. Observed doing precisely that: the model answered
+# "Now let's build the deck", grepped layouts.md, and ended.
+#
+# Rewritten here rather than in sandbox_agent.py because that string is the
+# pydantic-ai champion's contract, and the champion has no deck to build.
+_CONFIRM_SUFFIX = "Now return a one-line confirmation."
+_DECK_SUFFIX = (
+    "Now do step 6 (PRESENT): read layouts.md, call start_deck once, then "
+    "add_slide per slide. The deck IS the deliverable — do not stop here. "
+    "Return the one-line confirmation only after the last slide is added."
+)
+
+
+def _with_deck_next_step(out: str, deck_active: bool) -> str:
+    """Point the model at the deck instead of at the exit, when there is one."""
+    if not deck_active or _CONFIRM_SUFFIX not in out:
+        return out
+    return out.replace(_CONFIRM_SUFFIX, _DECK_SUFFIX)
+
+
+def _cell(value: Any) -> Any:
+    """JSON-safe scalar for a Sheets cell (numpy scalars, NaT, Timestamps)."""
+    if value is None:
+        return ""
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            value = item()
+        except (ValueError, TypeError):
+            return str(value)
+    if isinstance(value, (int, float, str, bool)):
+        # NaN is not valid JSON and Sheets rejects it.
+        if isinstance(value, float) and value != value:  # noqa: PLR0124 — NaN check
+            return ""
+        return value
+    return str(value)
+
+
+def _frame_table(frame: Any, columns: list[str] | None) -> tuple[list[str], list[list[Any]]]:
+    """(columns, rows) for a pandas frame, honouring an explicit column choice."""
+    sub = frame
+    if columns:
+        wanted = [c for c in columns if c in frame.columns]
+        if wanted:
+            sub = frame[wanted]
+    sub = sub.head(MAX_SLIDE_ROWS)
+    cols = [str(c) for c in sub.columns]
+    rows = [[_cell(v) for v in rec] for rec in sub.itertuples(index=False)]
+    return cols, rows
+
+
+def build_tool_server(
+    sdk: Any,
+    deps: _SdkDeps,
+    *,
+    max_extracts: int,
+    max_runs: int,
+    deck_ctx: DeckContext | None = None,
+) -> Any:
     """The in-process ``dp`` MCP server wrapping the shared tool implementations.
 
     Descriptions mirror the champion's tool docstrings verbatim \u2014 the tool
@@ -241,7 +416,9 @@ def build_tool_server(sdk: Any, deps: _SdkDeps, *, max_extracts: int, max_runs: 
             )
         except SandboxBudgetExhausted as exc:
             return budget_stop(exc)
-        return _text(out, is_error=out.startswith("STOP:"))
+        return _text(
+            _with_deck_next_step(out, deck_ctx is not None), is_error=out.startswith("STOP:")
+        )
 
     async def lookup_values_tool(args: dict[str, Any]) -> dict[str, Any]:
         out = await _do_lookup_values(
@@ -261,16 +438,146 @@ def build_tool_server(sdk: Any, deps: _SdkDeps, *, max_extracts: int, max_runs: 
         out = await _do_remember(deps, str(args.get("fact") or ""))
         return _text(out)
 
-    handlers = {
+    async def start_deck_tool(args: dict[str, Any]) -> dict[str, Any]:
+        if deck_ctx is None:
+            return _text("STOP: deck export is not configured for this run.", is_error=True)
+        if deps.deck is not None:
+            return _text("The deck is already open — go straight to add_slide.")
+        title = str(args.get("title") or "").strip() or "Analysis"
+        pack = deck_ctx.pack
+        builder = DeckBuilder(
+            client=deck_ctx.client,
+            catalogue=deck_ctx.catalogue,
+            title=title,
+            run_id=deps.run_id,
+            question=deps.question,
+            pack_name=pack.name if pack else "",
+            pack_version=pack.version if pack else 0,
+            pack_sheet_id=pack.sheet_id if pack else "",
+            table_templates=dict(pack.table_templates) if pack else {},
+        )
+        try:
+            await builder.start(deck_ctx.template_id)
+        except Exception as exc:  # noqa: BLE001 — surfaced to the model to react to
+            return _text(f"Could not open the deck: {exc}", is_error=True)
+        deps.deck = builder
+        names = ", ".join(builder.layout_names())
+        return _text(
+            f"Deck opened. Layouts available: {names}. "
+            f"Add up to {settings.max_slides} slides with add_slide."
+        )
+
+    async def add_slide_tool(args: dict[str, Any]) -> dict[str, Any]:
+        if deck_ctx is None:
+            return _text("STOP: deck export is not configured for this run.", is_error=True)
+        builder = deps.deck
+        if builder is None:
+            return _text("Call start_deck first.", is_error=True)
+        if deps.slide_calls >= settings.max_slides:
+            # Mirrors the extract/run_analysis budget: the global turn ceiling
+            # can be loosened, but a per-tool counter still bounds the blast
+            # radius of a model that keeps adding slides.
+            deps.abort_reason = f"slide budget exhausted ({settings.max_slides})"
+            return _text(f"STOP: {deps.abort_reason}", is_error=True)
+
+        layout = builder.layout(str(args.get("layout") or ""))
+        if layout is None:
+            # A bad guess costs one turn and gets the real menu back, rather
+            # than producing a broken slide.
+            return _text(
+                f"Unknown layout {args.get('layout')!r}. Choose one of: "
+                f"{', '.join(builder.layout_names())}",
+                is_error=True,
+            )
+
+        columns: list[str] | None = None
+        rows: list[list[Any]] | None = None
+        frame_name = str(args.get("frame") or "").strip()
+        if frame_name:
+            frame = deps.frames.get(frame_name)
+            if frame is None:
+                available = ", ".join(sorted(deps.frames)) or "none yet"
+                return _text(
+                    f"No extracted frame named {frame_name!r}. Available: {available}",
+                    is_error=True,
+                )
+            wanted = [str(c) for c in (args.get("columns") or [])]
+            columns, rows = _frame_table(frame, wanted)
+            if not rows:
+                return _text(f"Frame {frame_name!r} is empty.", is_error=True)
+            # A chart needs a label column AND at least one measure. Selecting a
+            # single column silently produced a Sheets chart plotting labels
+            # against nothing — valid to the API, meaningless on the slide. Fail
+            # here with the frame's real columns rather than building it.
+            if layout.wants_chart and len(columns) < 2:
+                available = ", ".join(str(c) for c in frame.columns)
+                return _text(
+                    f"A chart needs at least two columns — the first is the x axis/label, "
+                    f"the rest are plotted. Got {columns!r}. Columns in {frame_name!r}: "
+                    f"{available}",
+                    is_error=True,
+                )
+
+        deps.slide_calls += 1
+        query_ref = deps.frame_refs.get(frame_name, "")
+        try:
+            record = await builder.add_slide(
+                layout=layout,
+                headline=str(args.get("headline") or "").strip(),
+                commentary=str(args.get("commentary") or "").strip(),
+                kpi=str(args.get("kpi") or "").strip(),
+                kpi_label=str(args.get("kpi_label") or "").strip(),
+                columns=columns,
+                rows=rows,
+                chart_type=str(args.get("chart_type") or "") or None,
+                tab_name=frame_name,
+                query_ref=query_ref,
+                mart=mart_of(deps.queries.get(query_ref, {}).get("sql", "")),
+            )
+        except Exception as exc:  # noqa: BLE001 — the model can retry a slide
+            return _text(f"Slide not added: {exc}", is_error=True)
+        what = "chart" if record.has_chart else ("table" if record.has_table else "text")
+        message = (
+            f"Slide {record.index + 1} added ({layout.name}, {what}"
+            f"{f', {record.rows} rows' if record.rows else ''})."
+        )
+        if record.dropped:
+            # Not an error — the slide is real and correct. But the layout had no
+            # region for some of what was passed, and saying so is the difference
+            # between the model fixing it and the words vanishing unnoticed.
+            fits = ", ".join(
+                entry.name
+                for entry in builder.catalogue
+                if entry.enabled and entry.commentary is not None
+            )
+            message += (
+                f" Note: {' and '.join(record.dropped)} was NOT placed — "
+                f"{layout.name} has no region for it. Layouts that take commentary: "
+                f"{fits or 'none'}. Re-add this slide with one of those if the text matters."
+            )
+        if record.has_table and record.rows > READABLE_TABLE_ROWS:
+            message += (
+                f" Note: {record.rows} rows is far more than a slide can show —"
+                f" about {READABLE_TABLE_ROWS} is readable. Pass a `columns` subset"
+                " of an already-ranked frame rather than re-extracting."
+            )
+        return _text(message)
+
+    handlers: dict[str, Any] = {
         "extract": extract_tool,
         "run_analysis": run_analysis_tool,
         "lookup_values": lookup_values_tool,
         "no_answer": no_answer_tool,
         "remember": remember_tool,
     }
+    names = list(GOVERNED_TOOLS)
+    if deck_ctx is not None:
+        handlers["start_deck"] = start_deck_tool
+        handlers["add_slide"] = add_slide_tool
+        names += DECK_TOOLS
     tools = [
         sdk.tool(name, TOOL_DESCRIPTIONS[name], TOOL_SCHEMAS[name])(handlers[name])
-        for name in GOVERNED_TOOLS
+        for name in names
     ]
     return sdk.create_sdk_mcp_server(name=MCP_SERVER, tools=tools)
 
@@ -530,7 +837,7 @@ async def answer_with_sdk(
     """
     sdk = _load_sdk()
     rid = run_id or uuid.uuid4().hex
-    deps = _SdkDeps(user_id=user_id, progress=progress, user_plan=plan)
+    deps = _SdkDeps(user_id=user_id, progress=progress, user_plan=plan, question=question)
     trace: SdkTrace | None = None
     # The sync fingerprint (no DB read) so the span's identity always matches
     # exactly what /agent/version returns and what backend-api resolves to an
@@ -555,6 +862,7 @@ async def answer_with_sdk(
             # emitted BEFORE any model work, so the frontend draws its ghost slots
             # while the CLI is still spawning.
             plan_slots = page_plan(plan=plan)
+            deps.run_id = rid
             deps.page_indexes = {
                 s["kind"]: s["index"] for s in plan_slots if s["status"] != "locked"
             }
@@ -563,11 +871,14 @@ async def answer_with_sdk(
             recalled = await recall_memories(user_id, question)
             include_insights = "insights" in deps.page_indexes
             base_dir = Path(settings.sdk_workspace_dir) if settings.sdk_workspace_dir else None
+            deck_ctx = await _build_deck_context()
+            layouts_md = render_layouts_md(deck_ctx.catalogue) if deck_ctx else ""
             async with workspace(
                 rid,
                 question,
                 include_insights=include_insights,
                 memories_block=_memories_block(recalled),
+                layouts_md=layouts_md,
                 base_dir=base_dir,
             ) as ws:
                 deps.ws = ws
@@ -583,22 +894,46 @@ async def answer_with_sdk(
                     deps,
                     max_extracts=settings.max_sql_attempts,
                     max_runs=settings.sandbox_run_attempts,
+                    deck_ctx=deck_ctx,
                 )
+                tool_names = allowed_tools()
                 options = sdk.ClaudeAgentOptions(
                     model=settings.sdk_model,
                     cwd=str(ws),
                     system_prompt=system_prompt,
-                    max_turns=settings.agent_request_limit,
+                    # The deck is a whole extra phase after the report is done —
+                    # read layouts.md, start_deck, then one add_slide per slide.
+                    # On the default ceiling both proof questions ended at an
+                    # identical turn count with the report built and the deck
+                    # never started: they ran out mid-PRESENT. The allowance is
+                    # additive and only applies when the tools are registered, so
+                    # a run without deck export keeps the old ceiling exactly.
+                    max_turns=settings.agent_request_limit
+                    + (2 * settings.max_slides + 4 if deck_ctx is not None else 0),
                     mcp_servers={MCP_SERVER: server},
                     # `tools` restricts the built-in toolset (no Bash/Write/Edit in
                     # the workspace); `allowed_tools` auto-approves what is left, so
                     # a headless run never blocks on a permission prompt.
-                    tools=list(ALLOWED_TOOLS),
-                    allowed_tools=list(ALLOWED_TOOLS),
+                    tools=list(tool_names),
+                    allowed_tools=list(tool_names),
                     hooks={"PreToolUse": [sdk.HookMatcher(hooks=[make_knowledge_hook(deps)])]},
                     env=cli_env(),
                 )
-                await _drive(sdk, options, question, deps, trace)
+                try:
+                    await asyncio.wait_for(
+                        _drive(sdk, options, question, deps, trace),
+                        timeout=settings.agent_wall_clock_timeout_s,
+                    )
+                except TimeoutError:
+                    if deps.abort_reason is None:
+                        deps.abort_reason = (
+                            f"wall-clock timeout ({settings.agent_wall_clock_timeout_s}s)"
+                        )
+                    trace.entries.append(
+                        {"kind": "budget", "status": "error", "error": deps.abort_reason}
+                    )
+                await _finish_deck(deps)
+                await _publish_deck(deps)
 
             result = _assemble(deps, trace, question, plan)
             _finish_span(span, deps=deps, trace=trace)
@@ -624,6 +959,104 @@ async def answer_with_sdk(
             out = _salvage(deps, trace, str(exc))
             _finish_span(span, deps=deps, trace=trace)
             return out
+
+
+# ---------------------------------------------------------------------------
+# Deck export (s46)
+# ---------------------------------------------------------------------------
+
+# One client and one catalogue per process. The catalogue is a property of the
+# pack, not of a run, and reading it costs a Slides round trip — so a deck build
+# stays one batch per slide rather than paying a discovery call every question.
+_deck_client: GoogleClient | None = None
+_catalogue_cache: dict[str, tuple[Layout, ...]] = {}
+_pack_catalogue_cache: dict[str, tuple[Layout, ...]] = {}
+
+
+async def _build_deck_context() -> DeckContext | None:
+    """The run's deck context, or None when export is off or unconfigured.
+
+    Returning None is what withholds the tools: ``build_tool_server`` registers
+    ``start_deck``/``add_slide`` only when this is non-None, so a run that cannot
+    build a deck never sees them in its tool list.
+    """
+    global _deck_client
+    if not deck_enabled():
+        return None
+    if _deck_client is None:
+        _deck_client = GoogleClient()
+    template_id = settings.google_slides_template_id
+    # s48: a synced template pack wins. It is a repo file, so this costs no
+    # round trip — and it is the ONLY way a curator's `use_when` sentences and
+    # slot geometry reach the agent.
+    pack = load_pack(pack_path(settings.pack_dir, settings.pack_name))
+    if pack is not None and pack.slides_id:
+        catalogue = _pack_catalogue_cache.get(pack.slides_id)
+        if catalogue is None:
+            catalogue = pack_to_catalogue(pack)
+            _pack_catalogue_cache[pack.slides_id] = catalogue
+        return DeckContext(
+            client=_deck_client,
+            catalogue=catalogue,
+            template_id=pack.slides_id,
+            pack=pack,
+        )
+    catalogue = _catalogue_cache.get(template_id)
+    if catalogue is None:
+        try:
+            catalogue = await load_catalogue(_deck_client, template_id)
+        except Exception as exc:  # noqa: BLE001 — a bad pack must not fail the answer
+            print(f"[data-agent] slide pack unreadable ({exc}); using the built-in catalogue")
+            catalogue = DEFAULT_CATALOGUE
+        _catalogue_cache[template_id] = catalogue
+    return DeckContext(client=_deck_client, catalogue=catalogue, template_id=template_id)
+
+
+def _deck_sources(deps: _SdkDeps) -> list[dict[str, Any]]:
+    """Every extract this run made, for the auto-appended Sources & SQL slide."""
+    return [
+        {
+            "ref": ref,
+            "mart": mart_of(str(q.get("sql") or "")),
+            "rows": int(q.get("row_count") or 0),
+            "sql": str(q.get("sql") or ""),
+        }
+        for ref, q in deps.queries.items()
+    ]
+
+
+async def _finish_deck(deps: _SdkDeps) -> None:
+    """Close the deck: Sources & SQL, clear the library slides, write the Sheet.
+
+    The version-1 baseline snapshot comes back from here and rides on the
+    artifact, so the change-log workstream stores what the builder saw rather
+    than re-reading a deck that may already have been edited.
+    """
+    builder = deps.deck
+    if builder is None:
+        return
+    try:
+        deps.deck_baseline = await builder.finish(_deck_sources(deps))
+    except Exception as exc:  # noqa: BLE001 — an unfinished deck is still a deck
+        print(f"[data-agent] deck finish failed ({exc}); the slides are still there")
+
+
+async def _publish_deck(deps: _SdkDeps) -> None:
+    """Share the run's artifacts, if this deployment is allowed to.
+
+    ``deck_public`` is a separate flag from ``deck_export`` on purpose. Sharing
+    anyone-with-link puts a file outside RLS permanently and a leaked link cannot
+    be un-published, so the capability is gated here rather than inferred from
+    having credentials.
+    """
+    builder = deps.deck
+    if builder is None or not settings.deck_public:
+        return
+    try:
+        deps.publish_status = await builder.publish()
+    except Exception as exc:  # noqa: BLE001 — an unshared deck is still a deck
+        print(f"[data-agent] deck sharing failed ({exc}); artifacts stay private")
+        deps.publish_status = {"deck": False, "sheet": False}
 
 
 async def _drive(
@@ -705,7 +1138,7 @@ def _assemble(deps: _SdkDeps, trace: SdkTrace, question: str, plan: str) -> dict
     usage = trace.usage_totals(settings.sdk_model)
 
     primary = select_primary_query(deps.queries)
-    return {
+    result: dict[str, Any] = {
         "answer": report.get("summary", ""),
         "report": report,
         "pages": pages or None,
@@ -717,8 +1150,47 @@ def _assemble(deps: _SdkDeps, trace: SdkTrace, question: str, plan: str) -> dict
         "engine": ENGINE,
         "steps": steps,
         "attempts": deps.attempts,
+        # s46: the Sheets/Slides artifact this run produced, or None when deck
+        # export is off. Carried alongside the report rather than inside it, so
+        # backend-api can persist the URLs without reshaping the report.
+        "artifact": _artifact(deps),
         **usage,
     }
+    if deps.abort_reason:
+        # A hard stop (budget/turns/timeout) hit mid-run but a report still
+        # made it through — the run is not a clean success, and returning
+        # plain success here would lie to every caller and to analytics. The
+        # answer and artifact are kept: a truncated result is still worth
+        # having, just flagged as such (the abort itself is already in
+        # ``steps`` via the "budget" trace entry appended in ``_drive``).
+        result["degraded"] = True
+    return result
+
+
+def _artifact(deps: _SdkDeps) -> dict[str, Any] | None:
+    """The run's Sheets/Slides artifact, or None when deck export is off.
+
+    ``baseline`` is the §7 version-1 snapshot: carried on the artifact rather
+    than written from here, so this module never grows a database dependency and
+    the change-log workstream owns the storage.
+    """
+    if deps.deck is None:
+        return None
+    manifest = dict(deps.deck.manifest())
+    if deps.deck_baseline:
+        manifest["baseline"] = deps.deck_baseline
+    status = deps.publish_status
+    if status is not None:
+        # publish() was attempted: a link only belongs in the result if it was
+        # actually made public — a recipient without prior access must never
+        # be handed a link Google will 403/404 on. Omitting is safer than a
+        # broken promise.
+        if not status.get("deck"):
+            manifest.pop("deck_url", None)
+            manifest.pop("embed_url", None)
+        if not status.get("sheet"):
+            manifest.pop("sheet_url", None)
+    return manifest
 
 
 def _knowledge_used(deps: _SdkDeps, trace: SdkTrace) -> list[str]:

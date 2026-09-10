@@ -16,9 +16,9 @@ import {
 import { Annunciator } from "../../ui/flightdeck";
 import { formatTime } from "../../lib/format";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
-import { AgentConfigView } from "./AgentConfigView";
 import { ConfigView } from "./ConfigView";
 import { FeedbackAdmin } from "./FeedbackAdmin";
+import { PackView } from "./PackView";
 
 /** Bucket ISO timestamps into per-day counts over the last `days` (oldest→newest)
  *  — a real 7-day series for the metric sparklines, no fabricated data. */
@@ -63,12 +63,12 @@ function Metric({ label, value, series }: { label: string; value: number; series
   );
 }
 
-type AdminTab = "observability" | "quality" | "template-studio";
+type AdminTab = "observability" | "quality" | "pack";
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "observability", label: "Observability" },
   { id: "quality", label: "Quality" },
-  { id: "template-studio", label: "Template Studio" },
+  { id: "pack", label: "Pack" },
 ];
 
 export function AdminPage() {
@@ -165,13 +165,13 @@ export function AdminPage() {
           </div>
         )}
       </section>
-      {tab === "template-studio" && <AgentConfigView />}
       {tab === "quality" &&
         (loading ? (
           <p className="muted">Loading admin data...</p>
         ) : (
           <FeedbackAdmin feedback={feedback} evalCases={evalCases} onRefresh={refreshLoop} />
         ))}
+      {tab === "pack" && <PackView />}
       {tab === "observability" && loading && <p className="muted">Loading admin data...</p>}
       {tab === "observability" && error && <p className="error">{error.message}</p>}
       {tab === "observability" && !loading && (

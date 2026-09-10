@@ -3,16 +3,16 @@
 //
 // Everything here renders through primitives the app already owns: the Flight
 // Deck kit (HudBox / Annunciator / InstrumentLabel) for the readouts and lamps,
-// and report-engine/PageLayout + ui/charts/* for the panels — the same path the
-// Explore and Evaluations tabs take, so this tab inherits theming, the chart
-// error boundaries and the SQL-link affordance for free. Nothing bespoke.
+// and plain HTML tables (ui/SimpleTable) for the panels — production monitoring
+// is moving to external observability (s46), so the panels are definition-lists
+// of the same numbers rather than charts. Nothing bespoke.
 //
 // One read (`/admin/ops/summary`) serves the whole page from a pre-aggregated
 // rollup (decision Q3), polled on an interval — the first polling surface in
 // the app. Panels with no rows yet say "no data yet"; a cold rollup renders the
 // frame and fills in on the next poll rather than blocking on a 3M-row scan.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getOpsRuns,
   getOpsSummary,
@@ -21,12 +21,10 @@ import {
   OpsRun,
   OpsSummary,
   OpsWindow,
-  Page,
-  PageObject,
   refreshOps,
 } from "../../lib/api";
-import { PageLayout } from "../../report-engine/PageLayout";
 import { Annunciator, Annunciators, HudBox, InstrumentLabel } from "../../ui/flightdeck";
+import { SimpleColumn, SimpleTable } from "../../ui/SimpleTable";
 
 const POLL_MS = 30_000;
 
@@ -69,21 +67,20 @@ function rateLamp(rate: number | null | undefined, warn: number, bad: number): L
 }
 
 // ---------------------------------------------------------------------------
-// Page-object builders — the deck's charts are page objects, so PageLayout and
-// the existing renderers do the drawing. Each returns null when its data hasn't
-// arrived, and a column of nulls simply renders nothing.
+// Plain-table builders — production monitoring is moving to external
+// observability (s46); every panel here is a title + a SimpleTable of the
+// same numbers the old chart drew. Each returns null when its data hasn't
+// arrived, and a null panel simply renders nothing.
 // ---------------------------------------------------------------------------
 
-function obj(
-  type: PageObject["type"],
-  element_id: string,
-  data: Record<string, unknown>,
-): PageObject {
-  return { type, element_id, data };
+interface TablePanel {
+  title: string;
+  columns: SimpleColumn[];
+  rows: Record<string, unknown>[];
 }
 
 /** Red-team pass rate per attack class (W3). */
-function redteamBars(m: OpsMetrics): PageObject | null {
+function redteamTable(m: OpsMetrics): TablePanel | null {
   const categories = m.security?.latest_run?.by_category;
   if (!categories || Object.keys(categories).length === 0) return null;
   const rows = Object.entries(categories).map(([category, value]) => {
@@ -96,60 +93,56 @@ function redteamBars(m: OpsMetrics): PageObject | null {
       pass_pct: rate == null ? null : Math.round(rate * 1000) / 10,
     };
   });
-  return obj("breakdown", "ops:redteam", {
+  return {
     title: "Red-team pass by attack class",
-    dimension: "category",
-    measure: "pass_pct",
-    unit: "percent",
-    height: "sm",
+    columns: [
+      { key: "category", label: "category" },
+      { key: "pass_pct", label: "pass %", align: "right" },
+    ],
     rows,
-  });
+  };
 }
 
 /** Errors and degradations by service/surface (W1). */
-function errorBars(m: OpsMetrics): PageObject | null {
+function errorTable(m: OpsMetrics): TablePanel | null {
   const bySource = m.errors?.by_source;
   if (!bySource || Object.keys(bySource).length === 0) return null;
-  return obj("breakdown", "ops:errors", {
+  return {
     title: "Errors & degradations by surface",
-    dimension: "surface",
-    measure: "count",
-    unit: "number",
-    height: "sm",
-    rows: Object.entries(bySource).map(([surface, count]) => ({
-      surface,
-      count,
-    })),
-  });
+    columns: [
+      { key: "surface", label: "surface" },
+      { key: "count", label: "count", align: "right" },
+    ],
+    rows: Object.entries(bySource).map(([surface, count]) => ({ surface, count })),
+  };
 }
 
 /** Traffic mix across chat / Explore / SQL editor. */
-function trafficBars(m: OpsMetrics): PageObject | null {
+function trafficTable(m: OpsMetrics): TablePanel | null {
   const mix = m.traffic?.by_source;
   if (!mix || Object.keys(mix).length === 0) return null;
-  return obj("breakdown", "ops:traffic", {
+  return {
     title: "Runs by surface",
-    dimension: "surface",
-    measure: "runs",
-    unit: "number",
-    height: "sm",
+    columns: [
+      { key: "surface", label: "surface" },
+      { key: "runs", label: "runs", align: "right" },
+    ],
     rows: Object.entries(mix).map(([surface, runs]) => ({ surface, runs })),
-  });
+  };
 }
 
 /** The deploy timeline (W4). */
-function deployTable(m: OpsMetrics): PageObject | null {
+function deployTable(m: OpsMetrics): TablePanel | null {
   const deploys = m.deploys ?? [];
   if (deploys.length === 0) return null;
-  return obj("table", "ops:deploys", {
+  return {
     title: "Deploy timeline",
-    variant: "plain",
     columns: [
-      { key: "sha", label: "sha", align: "left", format: "text" },
-      { key: "status", label: "status", align: "left", format: "text" },
-      { key: "when", label: "started", align: "left", format: "text" },
-      { key: "duration", label: "duration", align: "right", format: "text" },
-      { key: "smoke", label: "smoke", align: "left", format: "text" },
+      { key: "sha", label: "sha" },
+      { key: "status", label: "status" },
+      { key: "when", label: "started" },
+      { key: "duration", label: "duration", align: "right" },
+      { key: "smoke", label: "smoke" },
     ],
     rows: deploys.map((d) => ({
       sha: d.git_sha || "—",
@@ -161,23 +154,22 @@ function deployTable(m: OpsMetrics): PageObject | null {
           ? `${d.smoke["passed"]}/${d.smoke["total"]}`
           : "—",
     })),
-  });
+  };
 }
 
 /** Data freshness — the metric whose absence took Explore down in prod (W2). */
-function freshnessTable(m: OpsMetrics): PageObject | null {
+function freshnessTable(m: OpsMetrics): TablePanel | null {
   const f = m.freshness;
   if (!f?.available) return null;
   const counts = Object.entries(f.row_counts ?? {})
     .map(([k, v]) => `${k} ${num(Number(v))}`)
     .join(" · ");
-  return obj("table", "ops:freshness", {
+  return {
     title: "Data freshness · pipeline",
-    variant: "plain",
     columns: [
-      { key: "metric", label: "metric", align: "left", format: "text" },
-      { key: "value", label: "value", align: "left", format: "text" },
-      { key: "detail", label: "detail", align: "left", format: "text" },
+      { key: "metric", label: "metric" },
+      { key: "value", label: "value" },
+      { key: "detail", label: "detail" },
     ],
     rows: [
       {
@@ -192,23 +184,21 @@ function freshnessTable(m: OpsMetrics): PageObject | null {
       },
       { metric: "rows", value: counts || "—", detail: f.source ?? "—" },
     ],
-  });
+  };
 }
 
 /** The slowest recent asks, each linking out to its Logfire trace. */
-function runsTable(runs: OpsRun[]): PageObject | null {
+function runsTable(runs: OpsRun[]): TablePanel | null {
   if (runs.length === 0) return null;
-  return obj("table", "ops:runs", {
+  return {
     title: "Slowest asks · 7d",
-    variant: "ranked",
-    bar_key: "latency_ms",
     columns: [
-      { key: "question", label: "question", align: "left", format: "text" },
-      { key: "latency_ms", label: "answer", align: "right", format: "number" },
-      { key: "ttfp", label: "first page", align: "right", format: "text" },
-      { key: "status", label: "status", align: "left", format: "text" },
-      { key: "cost", label: "cost", align: "right", format: "text" },
-      { key: "trace", label: "trace", align: "left", format: "text" },
+      { key: "question", label: "question" },
+      { key: "latency_ms", label: "answer", align: "right" },
+      { key: "ttfp", label: "first page", align: "right" },
+      { key: "status", label: "status" },
+      { key: "cost", label: "cost", align: "right" },
+      { key: "trace", label: "trace" },
     ],
     rows: runs.map((r) => ({
       question: r.question,
@@ -216,18 +206,22 @@ function runsTable(runs: OpsRun[]): PageObject | null {
       ttfp: ms(r.ttfp_ms),
       status: r.degraded ? "degraded" : r.status,
       cost: r.cost_usd == null ? "—" : usd(r.cost_usd),
-      // The id itself, not a link: DataTable renders text. The trace column is
-      // the handle you paste into Logfire, and the deep-link buttons below the
-      // table open it directly.
+      // The id itself, not a link: the trace column is the handle you paste
+      // into Logfire, and the deep-link buttons below the table open it directly.
       trace: r.otel_trace_id ? r.otel_trace_id.slice(0, 12) : "—",
     })),
-  });
+  };
 }
 
-function pageOf(columns: (PageObject | null)[][], template: Page["template"]): Page | null {
-  const kept = columns.map((col) => col.filter((o): o is PageObject => o !== null));
-  if (kept.every((col) => col.length === 0)) return null;
-  return { template, columns: kept };
+/** One panel: a title + its table, or nothing when there's no data yet. */
+function Panel({ panel }: { panel: TablePanel | null }) {
+  if (!panel) return null;
+  return (
+    <div className="ex-card">
+      <h4>{panel.title}</h4>
+      <SimpleTable columns={panel.columns} rows={panel.rows} max={50} />
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -495,17 +489,14 @@ export function OpsPage() {
 
   const m = summary?.metrics ?? {};
 
-  const securityPage = useMemo(
-    () => pageOf([[redteamBars(m)], [errorBars(m)]], "two-col"),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [summary],
-  );
-  const deliveryPage = useMemo(
-    () => pageOf([[deployTable(m)], [freshnessTable(m), trafficBars(m)]], "two-col"),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [summary],
-  );
-  const runsPage = useMemo(() => pageOf([[runsTable(runs)]], "one-col"), [runs]);
+  const redteamPanel = redteamTable(m);
+  const errorPanel = errorTable(m);
+  const deployPanel = deployTable(m);
+  const freshnessPanel = freshnessTable(m);
+  const trafficPanel = trafficTable(m);
+  const runsPanel = runsTable(runs);
+  const hasSecurity = redteamPanel != null || errorPanel != null;
+  const hasDelivery = deployPanel != null || freshnessPanel != null || trafficPanel != null;
 
   async function doRefresh() {
     setRefreshing(true);
@@ -572,21 +563,30 @@ export function OpsPage() {
         <Product m={m} />
       </Section>
 
-      {securityPage && (
+      {hasSecurity && (
         <Section label="security & errors">
-          <PageLayout page={securityPage} />
+          <div className="ex-grid2">
+            <Panel panel={redteamPanel} />
+            <Panel panel={errorPanel} />
+          </div>
         </Section>
       )}
 
-      {deliveryPage && (
+      {hasDelivery && (
         <Section label="delivery & data">
-          <PageLayout page={deliveryPage} />
+          <div className="ex-grid2">
+            <Panel panel={deployPanel} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <Panel panel={freshnessPanel} />
+              <Panel panel={trafficPanel} />
+            </div>
+          </div>
         </Section>
       )}
 
-      {runsPage && (
+      {runsPanel && (
         <Section label="slowest asks">
-          <PageLayout page={runsPage} />
+          <Panel panel={runsPanel} />
           <TraceLinks runs={runs} />
         </Section>
       )}

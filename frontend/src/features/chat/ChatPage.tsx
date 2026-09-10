@@ -19,7 +19,6 @@ import {
   track,
 } from "../../lib/api";
 import { useStickToBottom } from "../../lib/useStickToBottom";
-import { PageLayout } from "../../report-engine/PageLayout";
 import { Composer } from "../../ui/Composer";
 import { Annunciator, FlightPath, InstrumentLabel } from "../../ui/flightdeck";
 import { BrandMark } from "../../ui/icons";
@@ -184,53 +183,6 @@ function pageKindLabel(kind: string): string {
   return PAGE_KIND_LABELS[kind] ?? kind;
 }
 
-/** Blacked-out object-shaped placeholders the agent will fill in — derived
- *  from the page kind (summary ⇒ kpi + note | chart; insights ⇒ notes | bars),
- *  mirroring the summary/insights template columns from the registry. */
-function GhostPage({ kind }: { kind: string }) {
-  const chart = (
-    <div className="ghost-obj ghost-chart-box">
-      <span className="ghost-cap">chart</span>
-      <div className="ghost-chart" />
-    </div>
-  );
-  const left =
-    kind === "summary" ? (
-      <>
-        <div className="ghost-obj">
-          <span className="ghost-cap">kpi</span>
-          <div className="ghost-bar w40" />
-          <div className="ghost-bar big" />
-          <div className="ghost-bar w60" />
-        </div>
-        <div className="ghost-obj">
-          <span className="ghost-cap">summary</span>
-          <div className="ghost-bar w80" />
-          <div className="ghost-bar w60" />
-        </div>
-      </>
-    ) : (
-      <>
-        <div className="ghost-obj">
-          <span className="ghost-cap">insight</span>
-          <div className="ghost-bar w60" />
-          <div className="ghost-bar w80" />
-        </div>
-        <div className="ghost-obj">
-          <span className="ghost-cap">insight</span>
-          <div className="ghost-bar w40" />
-          <div className="ghost-bar w80" />
-        </div>
-      </>
-    );
-  return (
-    <div className="ghost-grid">
-      <div className="ghost-col">{left}</div>
-      <div className="ghost-col">{chart}</div>
-    </div>
-  );
-}
-
 /** The user question immediately preceding assistant message `index`.
  *
  *  Used by the degraded-answer Retry: the failure is attached to the answer, but
@@ -288,8 +240,9 @@ function AnswerHead({ note }: { note?: string | null }) {
 }
 
 /** The streamed answer while the agent works: the running step list, then one
- *  section per planned page — same PageLayout as the final answer, ghosts
- *  until a frame lands, paywall teasers for locked plan entries. */
+ *  status line per planned page (building → ready), paywall teasers for locked
+ *  plan entries. The finished answer lands as a Slides/Sheets artifact — this
+ *  strip only narrates progress, it doesn't preview page content. */
 function WorkingAnswer({
   working,
   elapsedS,
@@ -358,20 +311,20 @@ function WorkingAnswer({
           );
         }
         const frame = streamedPages[slot.index];
-        if (frame?.status === "complete" && frame.page) {
+        if (frame?.status === "complete") {
           return (
             <div className="stream-page" key={slot.index}>
               <div className="stream-page-head">
                 Page {slot.index} · {label}
-                <span className="page-status done">✓ streamed</span>
-              </div>
-              <div className="report">
-                <PageLayout page={frame.page} />
+                <span className="page-status done">✓ ready</span>
               </div>
             </div>
           );
         }
         if (frame != null || !visibleUpTo(slot.index)) return null; // skipped / not yet disclosed
+        // A simple status line while the agent builds this page — no chart/kpi
+        // skeleton (the in-browser report renderer is gone; the answer lands as
+        // a Slides/Sheets artifact, not page objects drawn here).
         return (
           <div className="stream-page" key={slot.index}>
             <div className="stream-page-head">
@@ -380,7 +333,6 @@ function WorkingAnswer({
                 {slot.index === 1 ? "populating…" : "working…"}
               </span>
             </div>
-            <GhostPage kind={slot.kind} />
           </div>
         );
       })}
@@ -500,8 +452,8 @@ export function ChatPage({
                 </div>
               </div>
               <p className="onboard-hint">
-                Answers open with a <b>Summary</b> and an <b>Insights</b> page. Click any element
-                to leave feedback · <kbd>⌘K</kbd> opens the command palette.
+                Answers arrive as a <b>Google Slides deck</b> backed by a <b>Sheet</b> you can
+                copy and extend. <kbd>⌘K</kbd> opens the command palette.
               </p>
             </div>
           </div>
@@ -514,12 +466,7 @@ export function ChatPage({
                     <div className="bubble">{m.content}</div>
                   </div>
                 ) : (
-                  <div
-                    key={i}
-                    className={`answer${
-                      m.result?.report || (m.result?.pages?.length ?? 0) > 0 ? " wide" : ""
-                    }`}
-                  >
+                  <div key={i} className={`answer${m.result?.artifact ? " wide" : ""}`}>
                     <AnswerHead />
                     {m.result?.demo_matched_question && (
                       <div className="demo-match-note">

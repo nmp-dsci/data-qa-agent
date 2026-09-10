@@ -15,6 +15,7 @@ answer stages:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -44,11 +45,230 @@ def _scalar_of(row: Any) -> Any:
     return row
 
 
+def _scalar_value_col(golden_row: Any, value: str) -> str:
+    """The column naming a scalar golden's value: explicit ``value`` wins,
+    otherwise a single-column golden row names its own value column."""
+    return value or (
+        next(iter(golden_row)) if isinstance(golden_row, dict) and len(golden_row) == 1 else ""
+    )
+
+
+def _read_scalar(row: Any, value_col: str) -> Any:
+    if value_col and isinstance(row, dict) and value_col in row:
+        return row[value_col]
+    return _scalar_of(row)
+
+
 def grade_scalar(golden: Any, actual: Any, *, tolerance_pct: float = 1.0) -> float:
     g, a = _num(golden), _num(actual)
     if g is None or a is None:
         return 1.0 if str(golden).strip() == str(actual).strip() else 0.0
     return 1.0 if within_tolerance(g, a, tolerance_pct) else 0.0
+
+
+_KPI_STRIP_RE = re.compile(r"[,$%]")
+_KPI_NUM_RE = re.compile(r"[-+]?\d+(?:\.\d+)?")
+
+
+def parse_scalar_number(text: Any) -> float | None:
+    """Pull the number out of a KPI string (s48 harness fix).
+
+    Strips ``$``, ``,`` and ``%``, then takes the first numeric token and
+    applies a trailing k/m/b magnitude suffix if present (``"$718/wk"`` -> 718,
+    ``"$1.25m"`` -> 1_250_000, ``"650k"`` -> 650_000). Returns ``None`` for
+    anything with no numeric token, rather than guessing.
+    """
+    if text is None or isinstance(text, bool):
+        return None
+    if isinstance(text, (int, float)):
+        return float(text)
+    cleaned = _KPI_STRIP_RE.sub("", str(text))
+    match = _KPI_NUM_RE.search(cleaned)
+    if not match:
+        return None
+    value = float(match.group(0))
+    tail = cleaned[match.end() : match.end() + 1].lower()
+    if tail == "k":
+        value *= 1_000
+    elif tail == "m":
+        value *= 1_000_000
+    elif tail == "b":
+        value *= 1_000_000_000
+    return value
+
+
+def _normalise_field_name(text: str) -> str:
+    """``"Median Weekly Rent"`` and ``"median_weekly_rent"`` -> the same key,
+    so a golden's column name can be matched against a KPI slide's human label."""
+    return re.sub(r"[^a-z0-9]+", "_", text.strip().casefold()).strip("_")
+
+
+def _kpi_fields(slide: dict[str, Any]) -> tuple[str, str]:
+    """A KPI slide's ``(kpi, kpi_label)`` text, from either the flat manifest
+    view or ``spec()`` — whichever the caller happened to pass in."""
+    raw_kpi = slide.get("kpi") or ""
+    raw_label = slide.get("kpi_label") or ""
+    spec = slide.get("spec")
+    if isinstance(spec, dict):
+        raw_kpi = raw_kpi or spec.get("kpi") or ""
+        raw_label = raw_label or spec.get("kpi_label") or ""
+    return str(raw_kpi), str(raw_label)
+
+
+def _manifest_kpi_value(artifact: dict[str, Any] | None, value_col: str = "") -> float | None:
+    """The deck's headline KPI number, when the run produced one (s48).
+
+    A deck can carry more than one KPI slide — the agent sometimes appends a
+    "Correction: ..." slide after re-verifying a stale figure, or a deck
+    answers a multi-metric question with one KPI slide per metric. With a
+    golden ``value_col`` to match against, this prefers the slide whose
+    ``kpi_label`` names that field (s48 harness fix — grading against
+    whichever KPI slide happened to come last silently graded the wrong
+    number whenever more than one was present). When a ``value_col`` is
+    given and at least one slide carries a ``kpi_label`` but none of them
+    names that field, this returns ``None`` rather than guessing — the
+    caller falls through to ``key_match``/``last_row`` instead of silently
+    grading against an unrelated metric. If no slide carries a label at all,
+    there is no basis to disambiguate and the last non-empty ``kpi`` is used,
+    as before. Without a ``value_col`` at all, a single unambiguous KPI slide
+    is used; more than one is ambiguous and also returns ``None``.
+    """
+    if not artifact:
+        return None
+    wanted = _normalise_field_name(value_col) if value_col else ""
+    kpi_texts: list[str] = []
+    matched_text: str | None = None
+    any_labelled = False
+    for slide in artifact.get("slides") or []:
+        if not isinstance(slide, dict):
+            continue
+        kpi, label = _kpi_fields(slide)
+        if not kpi:
+            continue
+        kpi_texts.append(kpi)
+        if label:
+            any_labelled = True
+            if wanted and _normalise_field_name(label) == wanted:
+                matched_text = kpi
+    if wanted and any_labelled:
+        chosen = matched_text
+    elif wanted:
+        chosen = kpi_texts[-1] if kpi_texts else None
+    else:
+        chosen = kpi_texts[0] if len(kpi_texts) == 1 else None
+    return parse_scalar_number(chosen) if chosen is not None else None
+
+
+def _key_match_row(
+    golden_rows: Sequence[Any], actual_rows: Sequence[Any], *, value: str = ""
+) -> Any | None:
+    """The actual row that shares the golden row's identifying columns (s48).
+
+    ``value`` (or, absent that, the golden row's own sole column) is excluded
+    from the join keys — otherwise a single-column golden would "key-match" on
+    its own value and short-circuit the comparison it exists to make.
+    """
+    golden_row = golden_rows[0] if golden_rows else None
+    if not isinstance(golden_row, dict) or not actual_rows:
+        return None
+    excluded = {value} if value else (set(golden_row) if len(golden_row) == 1 else set())
+    sample = next((r for r in actual_rows if isinstance(r, dict)), None)
+    if not sample:
+        return None
+    candidates = [c for c in golden_row if c not in excluded and c in sample]
+    priority = [c for c in candidates if c.lower() in ("month", "period", "date")]
+    keys = priority or candidates
+    if not keys:
+        return None
+    for row in actual_rows:
+        if isinstance(row, dict) and all(str(row.get(k)) == str(golden_row.get(k)) for k in keys):
+            return row
+    return None
+
+
+_SCALAR_REDUCE_MODES = ("manifest_kpi", "key_match", "last_row", "first_row", "max", "min")
+
+
+def reduce_scalar_actual(
+    *,
+    golden_rows: Sequence[Any],
+    actual_rows: Sequence[Any],
+    artifact: dict[str, Any] | None = None,
+    value: str = "",
+    reduce: str = "",
+) -> dict[str, Any]:
+    """Pick the one actual value a ``kind: scalar`` golden should be graded
+    against (s48 harness fix).
+
+    A scalar question is answered from a full extract (a chart needs the
+    series, not one row), so "the first row of the extract" — the previous
+    behaviour — is close to arbitrary. Precedence, recorded as
+    ``scalar_source``:
+
+    1. ``manifest_kpi`` — the deck's own headline KPI number, when the run
+       produced an artifact with one.
+    2. ``key_match`` — the actual row sharing the golden row's identifying
+       columns (month/period/date, or any other column the golden row carries
+       besides its value).
+    3. ``last_row`` — extracts are chronological, so the last of >1 rows is
+       "latest" (flagged with ``reduced_from``).
+    4. ``first_row`` — unchanged behaviour, only when actual has exactly one
+       row (or as a last resort when nothing else applies).
+
+    ``reduce`` overrides the precedence with one named mode.
+    """
+    rows = list(actual_rows)
+    golden_row = golden_rows[0] if golden_rows else None
+    # The column to read off an actual row. Explicit ``value`` wins; otherwise,
+    # a golden row with exactly one column names its own value column, and the
+    # same name is what the agent's extract uses for the same mart field. With
+    # neither, fall back to "whatever's first" (``_scalar_of``) — the pre-s48
+    # behaviour, kept only as a last resort.
+    value_col = _scalar_value_col(golden_row, value)
+
+    def _val(row: Any) -> Any:
+        return _read_scalar(row, value_col)
+
+    if reduce == "manifest_kpi":
+        return {
+            "value": _manifest_kpi_value(artifact, value_col),
+            "scalar_source": "manifest_kpi",
+        }
+    if reduce == "key_match":
+        row = _key_match_row(golden_rows, rows, value=value_col)
+        return {"value": _val(row) if row is not None else None, "scalar_source": "key_match"}
+    if reduce == "last_row":
+        return {
+            "value": _val(rows[-1]) if rows else None,
+            "scalar_source": "last_row",
+            "reduced_from": len(rows),
+        }
+    if reduce == "first_row":
+        return {"value": _val(rows[0]) if rows else None, "scalar_source": "first_row"}
+    if reduce in ("max", "min"):
+        pairs = [(n, r) for r in rows for n in (_num(_val(r)),) if n is not None]
+        if not pairs:
+            return {"value": None, "scalar_source": reduce}
+        picker = max if reduce == "max" else min
+        best = picker(pairs, key=lambda t: t[0])
+        return {"value": best[0], "scalar_source": reduce}
+
+    # Auto precedence.
+    manifest_val = _manifest_kpi_value(artifact, value_col)
+    if manifest_val is not None:
+        return {"value": manifest_val, "scalar_source": "manifest_kpi"}
+
+    matched = _key_match_row(golden_rows, rows, value=value_col)
+    if matched is not None:
+        return {"value": _val(matched), "scalar_source": "key_match"}
+
+    if len(rows) > 1:
+        return {
+            "value": _val(rows[-1]),
+            "scalar_source": "last_row",
+            "reduced_from": len(rows),
+        }
+    return {"value": _val(rows[0]) if rows else None, "scalar_source": "first_row"}
 
 
 def _key_values(rows: Sequence[Any], key: str) -> list[Any]:
@@ -111,14 +331,34 @@ def grade_extraction(
     value: str = "",
     k: int = 5,
     tolerance_pct: float = 1.0,
+    artifact: dict[str, Any] | None = None,
+    reduce: str = "",
 ) -> dict[str, Any]:
-    """G1 — dispatch on the golden's ``kind``. Grades values, not SQL text."""
+    """G1 — dispatch on the golden's ``kind``. Grades values, not SQL text.
+
+    ``artifact`` and ``reduce`` only matter for ``kind: scalar`` (s48 harness
+    fix) — see ``reduce_scalar_actual`` for what each does.
+    """
     if kind == "scalar":
+        reduction = reduce_scalar_actual(
+            golden_rows=golden_rows,
+            actual_rows=actual_rows,
+            artifact=artifact,
+            value=value,
+            reduce=reduce,
+        )
+        golden_row = golden_rows[0] if golden_rows else None
+        golden_value_col = _scalar_value_col(golden_row, value)
         score = grade_scalar(
-            _scalar_of(golden_rows[0] if golden_rows else None),
-            _scalar_of(actual_rows[0] if actual_rows else None),
+            _read_scalar(golden_row, golden_value_col),
+            reduction["value"],
             tolerance_pct=tolerance_pct,
         )
+        result: dict[str, Any] = {"kind": kind, "score": round(score, 4)}
+        result["scalar_source"] = reduction["scalar_source"]
+        if "reduced_from" in reduction:
+            result["reduced_from"] = reduction["reduced_from"]
+        return result
     elif kind == "row_set":
         score = grade_row_set(golden_rows, actual_rows, key=key)
     elif kind == "ranked_set":
@@ -160,3 +400,46 @@ def grade_presentation_format(
         f"missing expected object: {want}" for want in expected_objects if want not in present
     )
     return {"issues": issues, "passed": not issues, "object_types": sorted(present)}
+
+
+def grade_artifact(
+    artifact: dict[str, Any] | None, *, expect_chart: bool = True, min_slides: int = 1
+) -> dict[str, Any]:
+    """Grade the deck the user actually received (s46).
+
+    Deliberately asserts **content presence and shape, never layout identity**.
+    The agent chooses layouts from the curated catalogue, so a grader that
+    checked "slide 2 used Two Charts" would be grading a model decision that is
+    free to vary between equally-correct runs — it would flake, and worse, it
+    would punish the agent for exercising judgement we asked it to exercise.
+
+    What is genuinely gradeable: the deck exists, it has slides, every slide
+    says something in its headline, and a question that needs a chart got one.
+    Whether that chart was the prettiest available arrangement is a job for the
+    judge or a human, not a deterministic gate.
+    """
+    issues: list[str] = []
+    if not artifact:
+        return {"issues": ["no artifact produced"], "passed": False, "slides": 0}
+
+    for key in ("deck_url", "sheet_url"):
+        if not artifact.get(key):
+            issues.append(f"missing {key}")
+
+    slides = list(artifact.get("slides") or [])
+    if len(slides) < min_slides:
+        issues.append(f"expected at least {min_slides} slide(s), got {len(slides)}")
+    for slide in slides:
+        if not str(slide.get("headline") or "").strip():
+            issues.append(f"slide {slide.get('index')} has no headline")
+    if expect_chart and not any(s.get("has_chart") or s.get("has_table") for s in slides):
+        issues.append("no slide carries a chart or a table")
+
+    return {
+        "issues": issues,
+        "passed": not issues,
+        "slides": len(slides),
+        # Recorded, not asserted on — useful when reviewing why a deck reads
+        # oddly, without turning layout choice into a pass/fail condition.
+        "layouts": [str(s.get("layout") or "") for s in slides],
+    }

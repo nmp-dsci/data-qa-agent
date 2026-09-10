@@ -18,12 +18,18 @@ import {
   type User,
 } from "../../lib/api";
 import { Sparkles } from "lucide-react";
-import { KitSelect } from "@/components/kit/KitSelect";
-import { SpecChart } from "../../ui/SpecChart";
 import { DemoGate } from "../../ui/DemoGate";
 import { Annunciator, Annunciators } from "../../ui/flightdeck";
 import { useTheme, type Theme } from "../../lib/theme";
-import { cssVar } from "../../ui/charts/tokens";
+
+/** Read a live design token from styles.css, falling back when unavailable
+ *  (SSR, or the token isn't set) — was ui/charts/tokens.ts, inlined here since
+ *  the chart stack (its only other user) is gone. */
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
 
 // Theme-aware CodeMirror (C2): the editor chrome + syntax highlight are built
 // from the live design tokens and swapped via a Compartment on theme change —
@@ -184,26 +190,6 @@ function isNumeric(v: unknown): boolean {
   return typeof v === "number" || (typeof v === "string" && v !== "" && !Number.isNaN(Number(v)));
 }
 
-/** Column index that looks numeric across the sampled rows (for chart y / sort). */
-function numericColumns(rows: unknown[][], colCount: number): boolean[] {
-  const flags = new Array(colCount).fill(true);
-  const sample = rows.slice(0, 50);
-  for (let c = 0; c < colCount; c++) {
-    let seen = false;
-    for (const row of sample) {
-      const cell = row[c];
-      if (cell === null || cell === undefined) continue;
-      seen = true;
-      if (!isNumeric(cell)) {
-        flags[c] = false;
-        break;
-      }
-    }
-    if (!seen) flags[c] = false;
-  }
-  return flags;
-}
-
 function toCsv(columns: string[], rows: unknown[][]): string {
   const esc = (v: unknown) => {
     const s = v === null || v === undefined ? "" : String(v);
@@ -222,150 +208,6 @@ function download(filename: string, content: string, type = "text/csv") {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-const CHART_MARKS = ["line", "bar", "point", "area"] as const;
-
-type ChartMark = (typeof CHART_MARKS)[number];
-
-interface ChartConfig {
-  mark: ChartMark;
-  x: string;
-  y: string;
-  series: string | null;
-}
-
-function isDateLike(v: unknown): boolean {
-  if (v instanceof Date) return true;
-  if (typeof v !== "string") return false;
-  if (!/^\d{4}-\d{2}-\d{2}/.test(v)) return false;
-  return !Number.isNaN(Date.parse(v));
-}
-
-function dateColumns(rows: unknown[][], colCount: number): boolean[] {
-  const flags = new Array(colCount).fill(true);
-  const sample = rows.slice(0, 50);
-  for (let c = 0; c < colCount; c++) {
-    let seen = false;
-    for (const row of sample) {
-      const cell = row[c];
-      if (cell === null || cell === undefined || cell === "") continue;
-      seen = true;
-      if (!isDateLike(cell)) {
-        flags[c] = false;
-        break;
-      }
-    }
-    if (!seen) flags[c] = false;
-  }
-  return flags;
-}
-
-function columnType(
-  idx: number,
-  numeric: boolean[],
-  dates: boolean[],
-): "quantitative" | "temporal" | "nominal" {
-  if (dates[idx]) return "temporal";
-  if (numeric[idx]) return "quantitative";
-  return "nominal";
-}
-
-function metricScore(name: string): number {
-  const n = name.toLowerCase();
-  if (n === "median_price" || n === "sale_price") return 100;
-  if (n.includes("median") && (n.includes("price") || n.includes("rent"))) return 95;
-  if (n.includes("avg") && (n.includes("price") || n.includes("rent"))) return 90;
-  if (n.includes("price") || n.includes("rent")) return 85;
-  if (n.includes("growth") || n.includes("yield")) return 80;
-  if (n.includes("total_sale_value")) return 75;
-  if (n.includes("value")) return 70;
-  return 10;
-}
-
-function isCurrencyField(name: string): boolean {
-  const n = name.toLowerCase();
-  return n.includes("price") || n.includes("rent") || n.includes("value");
-}
-
-function defaultChartConfig(result: SqlRunResult): ChartConfig | null {
-  const { columns, rows } = result;
-  if (columns.length < 2 || rows.length === 0) return null;
-  const numeric = numericColumns(rows, columns.length);
-  const dates = dateColumns(rows, columns.length);
-  const numericIndexes = columns.map((_, idx) => idx).filter((idx) => numeric[idx]);
-  if (numericIndexes.length === 0) return null;
-
-  const yIdx = numericIndexes.reduce((best, idx) =>
-    metricScore(columns[idx]) > metricScore(columns[best]) ? idx : best,
-  );
-  let xIdx = dates.findIndex((isDate, idx) => isDate && idx !== yIdx);
-  if (xIdx === -1) xIdx = columns.findIndex((_, idx) => idx !== yIdx && !numeric[idx]);
-  const resolvedXIdx = xIdx >= 0 ? xIdx : columns.findIndex((_, idx) => idx !== yIdx);
-  if (resolvedXIdx === -1) return null;
-
-  const seriesIdx = columns.findIndex((_, idx) => idx !== resolvedXIdx && idx !== yIdx && !numeric[idx]);
-  return {
-    mark: dates[resolvedXIdx] ? "line" : "bar",
-    x: columns[resolvedXIdx],
-    y: columns[yIdx],
-    series: seriesIdx >= 0 ? columns[seriesIdx] : null,
-  };
-}
-
-function chartValues(result: SqlRunResult): Record<string, unknown>[] {
-  return result.rows.slice(0, 2000).map((row) => {
-    const out: Record<string, unknown> = {};
-    result.columns.forEach((col, idx) => {
-      out[col] = isNumeric(row[idx]) ? Number(row[idx]) : row[idx];
-    });
-    return out;
-  });
-}
-
-function buildChartSpec(result: SqlRunResult, config: ChartConfig): Record<string, unknown> | null {
-  const { columns, rows } = result;
-  if (columns.length < 2 || rows.length === 0) return null;
-  const numeric = numericColumns(rows, columns.length);
-  const dates = dateColumns(rows, columns.length);
-  const xIdx = columns.indexOf(config.x);
-  const yIdx = columns.indexOf(config.y);
-  if (xIdx === -1 || yIdx === -1 || !numeric[yIdx]) return null;
-  const xType = columnType(xIdx, numeric, dates);
-  const hasSeries = !!config.series && columns.includes(config.series);
-  const yAxis = isCurrencyField(config.y) ? { title: config.y, format: "$,.0f" } : { title: config.y };
-  const mark: Record<string, unknown> = { type: config.mark };
-  if (config.mark === "line") mark.point = { filled: true, size: 28 };
-  if (!hasSeries) mark.color = cssVar("--chart-1", "#d9a84e");
-  const encoding: Record<string, unknown> = {
-    x: {
-      field: config.x,
-      type: xType,
-      axis: { title: config.x, labelAngle: xType === "nominal" ? -35 : 0 },
-      ...(config.mark === "bar" && xType === "nominal" ? { sort: "-y" } : {}),
-    },
-    y: { field: config.y, type: "quantitative", axis: yAxis },
-    tooltip: columns.map((field) => ({
-      field,
-      type: columnType(columns.indexOf(field), numeric, dates),
-      ...(isCurrencyField(field) ? { format: "$,.0f" } : {}),
-    })),
-  };
-  if (hasSeries) {
-    encoding.color = { field: config.series, type: "nominal", title: config.series };
-  }
-  if (config.mark === "line" || config.mark === "area") {
-    encoding.order = { field: config.x, type: xType };
-  }
-  return {
-    $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-    width: "container",
-    height: 320,
-    mark,
-    encoding,
-    data: { values: chartValues(result) },
-    background: "transparent",
-  };
 }
 
 export function SqlEditor({
@@ -397,7 +239,6 @@ export function SqlEditor({
   const [results, setResults] = useState<Record<string, TabResult>>({});
   const [running, setRunning] = useState(false);
 
-  const [viewMode, setViewMode] = useState<"grid" | "chart">("grid");
   const [sort, setSort] = useState<{ col: number; dir: "asc" | "desc" } | null>(null);
   const [filter, setFilter] = useState("");
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -873,8 +714,6 @@ export function SqlEditor({
         {active.result && !active.result.error && (
           <SqlResults
             result={active.result}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
             sort={sort}
             setSort={setSort}
             filter={filter}
@@ -904,31 +743,13 @@ function insertAtCursor(view: EditorView | null, text: string) {
 
 interface ResultsProps {
   result: SqlRunResult;
-  viewMode: "grid" | "chart";
-  setViewMode: (m: "grid" | "chart") => void;
   sort: { col: number; dir: "asc" | "desc" } | null;
   setSort: (s: { col: number; dir: "asc" | "desc" } | null) => void;
   filter: string;
   setFilter: (f: string) => void;
 }
 
-function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setFilter }: ResultsProps) {
-  const defaultConfig = useMemo(() => defaultChartConfig(result), [result]);
-  const [chartConfig, setChartConfig] = useState<ChartConfig | null>(defaultConfig);
-
-  useEffect(() => {
-    setChartConfig(defaultConfig);
-  }, [defaultConfig]);
-
-  const numeric = useMemo(
-    () => numericColumns(result.rows, result.columns.length),
-    [result.columns.length, result.rows],
-  );
-  const chartSpec = useMemo(
-    () => (chartConfig ? buildChartSpec(result, chartConfig) : null),
-    [chartConfig, result],
-  );
-
+function SqlResults({ result, sort, setSort, filter, setFilter }: ResultsProps) {
   const rows = useMemo(() => {
     let out = result.rows;
     if (filter.trim()) {
@@ -958,10 +779,6 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
     else setSort(null);
   }
 
-  function updateChartConfig(patch: Partial<ChartConfig>) {
-    setChartConfig((cfg) => (cfg ? { ...cfg, ...patch } : cfg));
-  }
-
   return (
     <div className="result sqled-result">
       <div className="meta">
@@ -973,20 +790,6 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
         )}
         <div className="results-actions">
           <button
-            className={viewMode === "grid" ? "chip active" : "chip"}
-            onClick={() => setViewMode("grid")}
-          >
-            Grid
-          </button>
-          <button
-            className={viewMode === "chart" ? "chip active" : "chip"}
-            onClick={() => setViewMode("chart")}
-            disabled={!defaultConfig}
-            title={defaultConfig ? "" : "Need at least one numeric column to chart"}
-          >
-            Chart
-          </button>
-          <button
             className="chip"
             onClick={() =>
               download("query_result.csv", toCsv(result.columns, result.rows))
@@ -997,7 +800,7 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
         </div>
       </div>
 
-      {viewMode === "grid" && result.columns.length > 0 && (
+      {result.columns.length > 0 && (
         <>
           <input
             className="result-filter"
@@ -1029,63 +832,6 @@ function SqlResults({ result, viewMode, setViewMode, sort, setSort, filter, setF
             </table>
           </div>
         </>
-      )}
-
-      {viewMode === "chart" && chartConfig && (
-        <div className="chart-builder">
-          <div className="chart-controls">
-            <label>
-              <span>Mark</span>
-              <KitSelect
-                value={chartConfig.mark}
-                ariaLabel="Chart mark"
-                onValueChange={(v) => updateChartConfig({ mark: v as ChartMark })}
-                options={CHART_MARKS.map((mark) => ({ value: mark, label: mark }))}
-              />
-            </label>
-            <label>
-              <span>X</span>
-              <KitSelect
-                value={chartConfig.x}
-                ariaLabel="X column"
-                onValueChange={(v) => updateChartConfig({ x: v })}
-                options={result.columns.map((col) => ({ value: col, label: col }))}
-              />
-            </label>
-            <label>
-              <span>Y</span>
-              <KitSelect
-                value={chartConfig.y}
-                ariaLabel="Y column"
-                onValueChange={(v) => updateChartConfig({ y: v })}
-                options={result.columns.map((col, idx) => ({
-                  value: col,
-                  label: col,
-                  disabled: !numeric[idx],
-                }))}
-              />
-            </label>
-            <label>
-              <span>Series</span>
-              <KitSelect
-                value={chartConfig.series ?? ""}
-                ariaLabel="Series column"
-                onValueChange={(v) => updateChartConfig({ series: v || null })}
-                options={[
-                  { value: "", label: "None" },
-                  ...result.columns
-                    .filter((col) => col !== chartConfig.x && col !== chartConfig.y)
-                    .map((col) => ({ value: col, label: col })),
-                ]}
-              />
-            </label>
-          </div>
-          {chartSpec ? (
-            <SpecChart spec={chartSpec} />
-          ) : (
-            <p className="muted sqled-hint">Select a numeric Y column to chart.</p>
-          )}
-        </div>
       )}
 
       {result.columns.length === 0 && (

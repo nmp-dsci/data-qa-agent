@@ -1,4 +1,4 @@
-.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version mlflow-init register promote loadtest redteam injection-suite ops-rollup rollback
+.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote loadtest redteam injection-suite ops-rollup rollback handover-poll
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
@@ -18,6 +18,7 @@ help:
 	@echo "make eval-compare  - base vs experiment, with the regression gate"
 	@echo "make eval-diagnose - failure clusters + one-lever hypotheses (read-only)"
 	@echo "make eval-pack-version - print the content hash of the golden pack"
+	@echo "make eval-lint     - zero-LLM-cost pack-lint (case shape, grader columns vs golden_sql)"
 	@echo ""
 	@echo "make mlflow-init   - s43: create the MLflow experiments (traces/evals), print ids"
 	@echo "make register      - s43: mirror app.agent_versions into the MLflow model registry"
@@ -31,6 +32,7 @@ help:
 	@echo "make injection-suite - the deterministic, zero-LLM guard tests (also runs in CI)"
 	@echo "make ops-rollup    - recompute the /ops deck's windows now"
 	@echo "make rollback      - revert App Runner to the previous image digest (prod)"
+	@echo "make handover-poll - one deck/sheet handover-poll pass (ARGS=--once etc.)"
 	@echo ""
 	@echo "make queue-up      - QUEUE_MODE=on: redis + agent-worker(s) + Grafana/Prometheus (WORKERS=N)"
 	@echo "make c-run         - one queue load cell end-to-end (QUEUE=on|off WORKERS=N USERS=N STUB=N)"
@@ -105,6 +107,14 @@ eval-import:
 eval-pack-version:
 	@uv run python scripts/eval_pack.py version
 
+# Zero-LLM-cost pack-lint (s24 M3 / s48): well-formed cases, dispatchable
+# graders, and — the s47 "empty golden scores 1.0" class of bug — every
+# grader key/key_fields/value/numerator/denominator names a column the
+# golden_sql actually produces. Needs the stack up for the SQL-probing
+# checks (self-skip otherwise, same as the journey evals).
+eval-lint:
+	uv run pytest tests/test_eval_pack.py -q
+
 # Score the pack against the running agent. Narrow with DATASET/TIER/CASE — the
 # runner works down to a single golden, which is the inner diagnose->fix loop.
 #   make eval                          make eval DATASET=nsw_rent
@@ -128,9 +138,10 @@ eval-diagnose:
 eval-compare:
 	uv run python scripts/eval_compare.py --base $(A) --candidate $(B)
 
-# Playwright E2E against a running stack: Template Studio + playground matrix.
+# Playwright E2E against a running stack (full suite — Template Studio +
+# playground were retired with the report-engine, s46 presentation-handover).
 e2e:
-	cd frontend && npm run e2e:studio
+	cd frontend && npm run e2e
 
 # The slow live-LLM chat answer E2E (agent answers a real question).
 e2e-chat:
@@ -248,3 +259,35 @@ ops-rollup:
 #   make rollback SERVICE=backend-api
 rollback:
 	./scripts/rollback_apprunner.sh $${SERVICE:-all}
+
+# s48 §7: one handover-poll pass against whatever's running locally (ARGS to
+# pass extra flags through, e.g. `make handover-poll ARGS=--once`). The
+# compose service (profiles: [handover]) runs this in a loop instead.
+handover-poll:
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	export ADMIN_RO_DATABASE_URL="$${ADMIN_RO_DATABASE_URL:-postgresql+asyncpg://admin_ro:admin_pw@localhost:5434/dataqa}"; \
+	cd services/data-agent && uv run python ../../scripts/handover_poll.py $(ARGS)
+
+# s48 template packs. The pack lives in Google Drive (Data Pilot/packs/<name>-v<n>)
+# and is snapshotted into packs/<name>/pack.json, which is what the runtime reads.
+#   make pack-scaffold   # create both Google files + write the ids into .env + sync
+#   make pack-sync       # re-read the curator's edits into pack.json
+#   make pack-sync ARGS=--check   # CI: fail if pack.json is stale
+pack-scaffold:
+	uv run --project services/data-agent python scripts/pack_scaffold.py \
+	  --name $${PACK_NAME:-nsw-property} $(ARGS)
+
+pack-sync:
+	uv run --project services/data-agent python scripts/pack_sync.py \
+	  --name $${PACK_NAME:-nsw-property} $(ARGS)
+
+# s48 §P2: curl GET /admin/pack through the backend with a dev admin token
+# (mirrors how scripts/deck_smoke.py mints one via /auth/dev-login) — a quick
+# check that the Pack Inspector's proxy + data-agent read path are both up
+# without opening the browser.
+pack-inspect:
+	@TOKEN=$$(curl -s -X POST http://localhost:$${API_HOST_PORT:-8000}/auth/dev-login \
+	  -H 'Content-Type: application/json' -d '{"username":"admin"}' | \
+	  python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])'); \
+	curl -s http://localhost:$${API_HOST_PORT:-8000}/admin/pack \
+	  -H "Authorization: Bearer $$TOKEN" | python3 -m json.tool

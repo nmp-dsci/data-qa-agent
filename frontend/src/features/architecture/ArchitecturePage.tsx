@@ -32,17 +32,18 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 
 /* ---------------------------------------------------------------------------
  * System map — the pipeline as a flight route: frontend → backend-api →
- * agent runtime → MCP tools → SQL guard/RLS → Postgres. Static (flying=false,
+ * agent runtime → MCP tools → SQL guard/RLS → Postgres → Sheets/Slides. Static (flying=false,
  * every stop lit) because this is the always-on pipeline, not a progress bar.
  * ------------------------------------------------------------------------- */
 
 const MAP_STOPS: FlightStop[] = [
-  { key: "frontend", label: "Frontend", note: "React · report-engine" },
+  { key: "frontend", label: "Frontend", note: "React · Slides/Sheets artifact viewer" },
   { key: "backend", label: "Backend API", note: "auth · RLS session · agent proxy" },
   { key: "runtime", label: "Agent runtime", note: "champion / challenger — see badge below" },
-  { key: "tools", label: "MCP tools", note: "extract · run_analysis · lookup_values" },
+  { key: "tools", label: "MCP tools", note: "extract · run_analysis · lookup_values · add_slide" },
   { key: "guard", label: "SQL guard + RLS", note: "sql_guardrails · agent_ro role" },
   { key: "db", label: "Postgres", note: "marts · staging · app" },
+  { key: "deck", label: "Sheets + Slides", note: "start_deck · add_slide — the only egress" },
 ];
 
 function runtimeBadgeClass(runtime: ArchitectureRuntime): string {
@@ -76,12 +77,15 @@ function SystemMap({ runtime }: { runtime?: ArchitectureRuntime }) {
         <div className="arch-map-note">
           <strong>Workspace</strong>{" "}
           <span className="muted">
-            CLAUDE.md · marts.md · schema/*.md · knowledge/* — explored with Read/Grep/Glob only
+            CLAUDE.md · marts.md · layouts.md · schema/*.md · knowledge/* — explored with Read/Grep/Glob only
           </span>
         </div>
         <div className="arch-map-note">
           <strong>Sandbox</strong>{" "}
-          <span className="muted">run_analysis → skills.* → pages (visx report objects)</span>
+          <span className="muted">
+            run_analysis → skills.* → frames; add_slide writes each frame to the run's Sheet
+            and a LINKED chart into the deck (no browser rendering)
+          </span>
         </div>
         {runtime && (
           <div className="arch-map-note">
@@ -89,7 +93,11 @@ function SystemMap({ runtime }: { runtime?: ArchitectureRuntime }) {
             <span className="muted">
               {runtime.quotas.max_sql_attempts} SQL attempts · {runtime.quotas.sandbox_run_attempts}{" "}
               sandbox runs · {runtime.quotas.agent_request_limit} model turns ·{" "}
-              {runtime.quotas.max_knowledge_reads} knowledge reads · sandbox={runtime.sandbox_runtime}
+              {runtime.quotas.max_knowledge_reads} knowledge reads ·{" "}
+              {runtime.quotas.max_slides > 0
+                ? `${runtime.quotas.max_slides} slides`
+                : "deck export off"}{" "}
+              · sandbox={runtime.sandbox_runtime}
             </span>
           </div>
         )}
@@ -107,6 +115,7 @@ function SystemMap({ runtime }: { runtime?: ArchitectureRuntime }) {
 const KIND_LABEL: Record<string, string> = {
   claude_md: "workflow template",
   marts: "mart index",
+  layouts: "slide layout catalogue",
   schema: "schema docs",
   knowledge: "knowledge pages",
 };

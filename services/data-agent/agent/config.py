@@ -131,12 +131,65 @@ class Settings(BaseSettings):
     # being cut off. The sandbox+skills restructure makes the ceiling moot later.
     agent_request_limit: int = 22
     agent_total_tokens_limit: int = 600_000
+    # Wall-clock backstop on the whole SDK subprocess run, independent of the
+    # turn/token counters above: those only fire on a message the subprocess
+    # actually emits, so a stalled/hung subprocess (no message at all) would
+    # otherwise block a run forever. 20 minutes comfortably covers a full
+    # report-plus-deck run without being so long a genuinely stuck run ties up
+    # a worker slot all day.
+    agent_wall_clock_timeout_s: int = 1200
 
     # Cap how many knowledge pages one run may load. The playbook says "2-4
     # pages"; a run that read 9 pinned ~8k tokens of markdown into every
     # subsequent turn's context for no benefit. Past this, read_knowledge asks
     # the model to proceed with what it has.
     max_knowledge_reads: int = 6
+
+    # --- s46: Google Sheets/Slides answers -------------------------------
+    # One generating account, dev only. There is no interactive flow and no
+    # fallback: without all three the deck tools are never registered, so a
+    # deployment that lacks them (prod/demo, which runs no data-agent at all)
+    # cannot reach Google even by accident. Mint a token with
+    # `uv run python scripts/google_auth.py`.
+    #
+    # Deliberately GOOGLE_DECK_* and not GOOGLE_CLIENT_ID: that name is already
+    # the backend's Google *Sign-in* Web client (the ID-token audience). These
+    # are a different OAuth client of a different type — a Desktop app, which is
+    # what the loopback flow in scripts/google_auth.py requires — so sharing one
+    # variable would silently break sign-in the moment AUTH_MODE=google.
+    google_deck_client_id: str = ""
+    google_deck_client_secret: str = ""
+    google_deck_refresh_token: str = ""
+    # A hand-built pack whose master carries named layouts. Empty = the built-in
+    # catalogue over predefined Slides layouts, so the feature works before a
+    # pack exists.
+    google_slides_template_id: str = ""
+
+    # --- s48: template packs ---------------------------------------------
+    # The pack's second half: the Sheet holding the `_pack` catalogue tab and the
+    # hand-styled template charts the builder clones. Both ids are written by
+    # scripts/pack_scaffold.py; empty = no pack, and the built-in catalogue runs.
+    google_sheet_template_id: str = ""
+    # Which pack under PACK_DIR the runtime loads. `packs/<PACK_NAME>/pack.json`
+    # is a repo file (synced from Google by scripts/pack_sync.py), so a container
+    # only needs it mounted or baked — never a Google round trip at boot.
+    pack_name: str = "nsw-property"
+    pack_dir: str = "packs"
+
+    # Master switch, independent of whether credentials happen to be present —
+    # so a machine that has a token can still run the agent without exporting.
+    deck_export: bool = True
+
+    # Public read-only sharing (anyone-with-link). This is the one call that
+    # steps outside RLS, and a public link cannot be un-published, so it is
+    # gated by its own flag rather than riding on deck_export. Only turn it on
+    # where the data is genuinely public (the NSW property marts are).
+    deck_public: bool = False
+
+    # Per-run slide budget, mirroring max_sql_attempts/sandbox_run_attempts.
+    # The global turn ceiling can be loosened for a dev-only runtime; this
+    # counter is what still stops a confused model building 200 slides.
+    max_slides: int = 8
 
     # Local embeddings for agent memory (recall/remember) — no API key needed.
     embedding_model: str = "BAAI/bge-small-en-v1.5"

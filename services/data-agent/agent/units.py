@@ -15,11 +15,9 @@ stamps it on the object it emits (``data.unit`` on a chart, ``format`` on a
 table column). The renderer formats what it was told and never re-guesses.
 
 ``COLUMN_UNITS`` mirrors the Explore manifest's per-metric ``fmt``
-(backend-api, ``app/explore/manifest.py``), which is the source of truth;
-``tests/test_explore_agent_sync.py`` asserts the two agree. The frontend keeps
-a fallback copy for objects saved before units existed
-(``frontend/src/ui/charts/units.ts``), checked against this module by
-``services/data-agent/tests/test_registry_sync.py``.
+(backend-api, ``app/explore/manifest.py``), which is the source of truth. The
+frontend keeps a fallback copy for objects saved before units existed
+(``frontend/src/ui/charts/units.ts``).
 """
 
 from __future__ import annotations

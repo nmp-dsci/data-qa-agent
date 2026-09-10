@@ -11,6 +11,9 @@ Read/Grep/Glob:
         marts.md        — tier 0: the mart index (agent.schema.list_marts())
         schema/*.md     — tier 1: one file per queryable table (describe_table)
         knowledge/      — tier 2: a copy of the Insight Playbook markdown tree
+        layouts.md      — s46: the curated slide-layout catalogue, when deck
+                          export is on. The agent Greps it before naming a
+                          layout, the same motion it uses for knowledge pages.
         frames/         — extract() drops head-sample CSVs here at runtime
 
 This module only *builds* that directory — no Claude Agent SDK import here by
@@ -118,6 +121,7 @@ def build_workspace(
     *,
     include_insights: bool,
     memories_block: str = "",
+    layouts_md: str = "",
     base_dir: Path | None = None,
 ) -> Path:
     """Build ``<base>/runs/<run_id>/`` and return its path.
@@ -147,6 +151,10 @@ def build_workspace(
         encoding="utf-8",
     )
     (ws / "marts.md").write_text(list_marts(), encoding="utf-8")
+    # Only written when deck export is on, so a run without it keeps the exact
+    # workspace — and therefore the exact av-* fingerprint — it had before s46.
+    if layouts_md.strip():
+        (ws / "layouts.md").write_text(layouts_md, encoding="utf-8")
 
     schema_dir = ws / "schema"
     schema_dir.mkdir()
@@ -205,14 +213,21 @@ def workspace_manifest(ws: Path) -> dict[str, str]:
     marts = _sha256_bytes((ws / "marts.md").read_bytes())
     schema = _sha256_tree(ws / "schema")
     knowledge = knowledge_mod.knowledge_version()
-    combined = hashlib.sha256(
-        "|".join([claude_md, marts, schema, knowledge]).encode("utf-8")
-    ).hexdigest()
+    # The curated layout catalogue is prompt surface — the agent reads it to
+    # choose a layout — so curating it must move the agent version. Absent
+    # (deck export off) it contributes nothing, keeping pre-s46 runs identical.
+    layouts_path = ws / "layouts.md"
+    layouts = _sha256_bytes(layouts_path.read_bytes()) if layouts_path.exists() else ""
+    parts = [claude_md, marts, schema, knowledge]
+    if layouts:
+        parts.append(layouts)
+    combined = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
     return {
         "claude_md": claude_md,
         "marts": marts,
         "schema": schema,
         "knowledge": knowledge,
+        "layouts": layouts,
         "combined": combined,
     }
 
@@ -229,6 +244,7 @@ async def workspace(
     *,
     include_insights: bool,
     memories_block: str = "",
+    layouts_md: str = "",
     base_dir: Path | None = None,
 ) -> AsyncIterator[Path]:
     """Async context manager: build a workspace, yield its path, always clean up.
@@ -242,6 +258,7 @@ async def workspace(
         question,
         include_insights=include_insights,
         memories_block=memories_block,
+        layouts_md=layouts_md,
         base_dir=base_dir,
     )
     try:

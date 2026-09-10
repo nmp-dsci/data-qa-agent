@@ -29,9 +29,10 @@ and run:
     uv run python scripts/google_auth.py --write-env
 
 `--write-env` reads those two from `.env` and writes the refresh token back into
-it, so no secret is ever typed on a command line (where it lands in shell
-history) or pasted into a chat window. Without the flag the three lines are
-printed instead, and the client id/secret must come from the environment.
+it (file permissions 0600), so no secret is ever typed on a command line (where
+it lands in shell history) or pasted into a chat window. Without the flag the
+three lines are written to a private 0600 temp file instead of stdout, and the
+client id/secret must come from the environment.
 
 Scopes requested are deliberately narrow:
   * drive.file    — per-file access to files this app creates. NOT `drive`,
@@ -51,6 +52,7 @@ import os
 import secrets
 import socketserver
 import sys
+import tempfile
 import threading
 import urllib.parse
 import urllib.request
@@ -129,6 +131,7 @@ def _write_env(path: Path, values: dict[str, str]) -> None:
         out.append("# s46 Google Slides/Sheets export (scripts/google_auth.py)")
         out.extend(f"{k}={v}" for k, v in remaining.items())
     path.write_text("\n".join(out) + "\n")
+    path.chmod(0o600)
 
 
 def _post_form(url: str, data: dict[str, str]) -> dict[str, object]:
@@ -240,9 +243,15 @@ def main() -> int:
         print(f"\nWrote GOOGLE_DECK_CLIENT_ID/_SECRET/_REFRESH_TOKEN to {path}.")
         print("The token itself was not printed — it is only in that file.")
     else:
-        print("\nAdd these three lines to .env:\n")
-        for key, value in values.items():
-            print(f"{key}={value}")
+        fd, tmp_path = tempfile.mkstemp(prefix="google-deck-env-", suffix=".txt")
+        os.chmod(tmp_path, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            for key, value in values.items():
+                fh.write(f"{key}={value}\n")
+        print(
+            f"\nWrote GOOGLE_DECK_CLIENT_ID/_SECRET/_REFRESH_TOKEN to {tmp_path} (mode 0600)."
+        )
+        print("Copy those three lines into .env, then delete the file.")
     print("\nThen set DECK_EXPORT=1 (and DECK_PUBLIC=1 to share artifacts read-only),")
     print("and restart the data-agent: docker compose up -d --no-deps data-agent")
     return 0

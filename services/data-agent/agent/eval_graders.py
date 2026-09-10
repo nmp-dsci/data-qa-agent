@@ -45,6 +45,20 @@ def _scalar_of(row: Any) -> Any:
     return row
 
 
+def _scalar_value_col(golden_row: Any, value: str) -> str:
+    """The column naming a scalar golden's value: explicit ``value`` wins,
+    otherwise a single-column golden row names its own value column."""
+    return value or (
+        next(iter(golden_row)) if isinstance(golden_row, dict) and len(golden_row) == 1 else ""
+    )
+
+
+def _read_scalar(row: Any, value_col: str) -> Any:
+    if value_col and isinstance(row, dict) and value_col in row:
+        return row[value_col]
+    return _scalar_of(row)
+
+
 def grade_scalar(golden: Any, actual: Any, *, tolerance_pct: float = 1.0) -> float:
     g, a = _num(golden), _num(actual)
     if g is None or a is None:
@@ -172,14 +186,10 @@ def reduce_scalar_actual(
     # same name is what the agent's extract uses for the same mart field. With
     # neither, fall back to "whatever's first" (``_scalar_of``) — the pre-s48
     # behaviour, kept only as a last resort.
-    value_col = value or (
-        next(iter(golden_row)) if isinstance(golden_row, dict) and len(golden_row) == 1 else ""
-    )
+    value_col = _scalar_value_col(golden_row, value)
 
     def _val(row: Any) -> Any:
-        if value_col and isinstance(row, dict) and value_col in row:
-            return row[value_col]
-        return _scalar_of(row)
+        return _read_scalar(row, value_col)
 
     if reduce == "manifest_kpi":
         return {"value": _manifest_kpi_value(artifact), "scalar_source": "manifest_kpi"}
@@ -296,8 +306,10 @@ def grade_extraction(
             value=value,
             reduce=reduce,
         )
+        golden_row = golden_rows[0] if golden_rows else None
+        golden_value_col = _scalar_value_col(golden_row, value)
         score = grade_scalar(
-            _scalar_of(golden_rows[0] if golden_rows else None),
+            _read_scalar(golden_row, golden_value_col),
             reduction["value"],
             tolerance_pct=tolerance_pct,
         )

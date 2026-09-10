@@ -340,6 +340,34 @@ def test_chart_slide_is_one_atomic_batch_with_a_native_chart() -> None:
     assert chart_req["chartId"] == 77
 
 
+def test_unrecognized_chart_type_is_rejected_not_silently_columned() -> None:
+    """Only 'scatter' legitimately opts out of the duplicate-x guard; any other
+    unrecognized chart_type string must not sail through and become a COLUMN
+    chart — that silent fallback is exactly the spike-train artifact the guard
+    exists to prevent."""
+    builder, client = _builder()
+    layout = builder.layout("Title + Chart")
+    assert layout is not None
+    rows = [
+        ["2026-01", "house", 700],
+        ["2026-01", "unit", 650],
+        ["2026-02", "house", 705],
+    ]
+    with pytest.raises(ValueError):
+        asyncio.run(
+            builder.add_slide(
+                layout=layout,
+                headline="H",
+                columns=["month", "property_type", "rent"],
+                rows=rows,
+                chart_type="not-a-real-chart-type",
+            )
+        )
+    assert not client.slides_batches or "createSheetsChart" not in [
+        next(iter(r)) for r in client.slides_batches[-1]
+    ]
+
+
 def test_slide_title_is_filled_via_a_placeholder_mapping() -> None:
     """createSlide + insertText in the SAME batch is what makes a slide atomic."""
     builder, client = _builder()

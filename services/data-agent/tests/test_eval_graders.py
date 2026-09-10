@@ -185,6 +185,21 @@ def test_grade_extraction_scalar_uses_reduction_and_reports_source() -> None:
     }
 
 
+def test_grade_extraction_scalar_reads_golden_value_column_not_first_column() -> None:
+    """A golden row with {month, median_weekly_rent} names its value via
+    ``value``/``value_col`` on both sides; grading must not fall back to
+    "whichever column is first" for the golden the way it does for the actual.
+    """
+    graded = grade_extraction(
+        kind="scalar",
+        golden_rows=[{"month": "2026-05", "median_weekly_rent": 718.0}],
+        actual_rows=[{"month": "2026-05", "median_weekly_rent": 718.0}],
+        value="median_weekly_rent",
+        tolerance_pct=1.0,
+    )
+    assert graded["score"] == 1.0
+
+
 def test_grade_presentation_format() -> None:
     good = {
         "summary": "Gosford leads on yield.",

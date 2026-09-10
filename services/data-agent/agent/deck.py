@@ -336,7 +336,11 @@ def _chart_kind(layout: Layout, chart_type: str | None) -> str | None:
         return "bar"
     if kind in LINE_LIKE_CHART_TYPES or not kind:
         return "line"
-    return None  # e.g. scatter — duplicate x is a normal shape there
+    if kind == "scatter":
+        return None  # duplicate x is a normal shape there
+    raise ValueError(
+        f"unknown chart_type {chart_type!r}: choose one of {sorted(CHART_TYPES)}"
+    )
 
 
 def _looks_numeric(value: Any) -> bool:

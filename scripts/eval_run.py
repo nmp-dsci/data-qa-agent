@@ -161,6 +161,7 @@ def load_cases(
     tier: str | None,
     case_key: str | None,
     include_drafts: bool = False,
+    tag: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Read the pack from disk — the repo is the source of truth, not the DB.
 
@@ -185,6 +186,8 @@ def load_cases(
             if tier and case.get("tier") != tier:
                 continue
             if case_key and case.get("case_key") != case_key:
+                continue
+            if tag and tag not in (case.get("tags") or []):
                 continue
             if not include_drafts and not case_key and case.get("authoring_status") == "draft":
                 drafts_skipped += 1
@@ -984,6 +987,9 @@ def main() -> None:
     parser.add_argument("--tier", help="only this tier (T1..T7)")
     parser.add_argument("--case", dest="case_key", help="only this case_key")
     parser.add_argument(
+        "--tag", help="only cases carrying this tag (s49: a named slice of the pack)"
+    )
+    parser.add_argument(
         "--experiment", default=None, help="label this run as an improvement attempt"
     )
     parser.add_argument("--hypothesis", default=None, help="what this attempt expects to fix")
@@ -1006,7 +1012,11 @@ def main() -> None:
     args = parser.parse_args()
 
     cases, drafts_skipped = load_cases(
-        args.dataset, args.tier, args.case_key, include_drafts=args.include_drafts
+        args.dataset,
+        args.tier,
+        args.case_key,
+        include_drafts=args.include_drafts,
+        tag=args.tag,
     )
     if not cases:
         msg = "no cases matched the filters"

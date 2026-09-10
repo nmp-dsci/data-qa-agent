@@ -35,7 +35,7 @@ def test_latest_value_is_six_month_smoothed():
     df = _linear_monthly()
     latest = skills.latest_value(df, month_col="month", value_col="avg_price")
     # 6-mo rolling mean of the last six values (640..690) = 665, at the last month.
-    assert latest == {"value": 665.0, "month": "2025-12"}
+    assert latest == {"value": 665.0, "month": "2025-12", "raw_value": 690.0, "count": 0.0}
 
 
 def test_growth_rate_positive_on_increasing_series():

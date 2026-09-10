@@ -123,7 +123,7 @@ eval-lint:
 eval:
 	uv run python scripts/eval_run.py \
 	  $(if $(DATASET),--dataset $(DATASET)) $(if $(TIER),--tier $(TIER)) \
-	  $(if $(CASE),--case $(CASE)) $(if $(EXPERIMENT),--experiment $(EXPERIMENT)) \
+	  $(if $(CASE),--case $(CASE)) $(if $(TAG),--tag $(TAG)) $(if $(EXPERIMENT),--experiment $(EXPERIMENT)) \
 	  $(if $(HYPOTHESIS),--hypothesis "$(HYPOTHESIS)") $(if $(NO_JUDGE),--no-judge) \
 	  $(if $(INCLUDE_DRAFTS),--include-drafts)
 

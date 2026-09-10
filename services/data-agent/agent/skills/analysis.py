@@ -266,9 +266,11 @@ def latest_value(
 ) -> Any:
     """The latest value as a 6-month-smoothed figure, with its month.
 
-    Returns ``{"value": float, "month": "YYYY-MM"}`` (ungrouped) or
-    ``{group: {...}}``. "Latest" is the smoothed value at the newest month, not
-    a raw single month.
+    Returns ``{"value": float, "month": "YYYY-MM", "raw_value": float, "count": n}``
+    (ungrouped) or ``{group: {...}}``. ``value`` is the smoothed figure at the
+    newest month — the number to headline; ``raw_value`` is that month's actual
+    unsmoothed figure and ``count`` its observation count, so a report can quote
+    "the latest month itself" without re-deriving it (s49).
     """
     grouped = _grouped(
         df,
@@ -281,11 +283,17 @@ def latest_value(
     out: dict[str, Any] = {}
     for group, series in grouped.items():
         latest = analytics.latest_reliable(series, smooth_window=smooth_window)
-        out[group] = (
-            None
-            if latest is None or latest["value"] is None
-            else {"value": round(latest["value"], 2), "month": latest["month"]}
-        )
+        if latest is None or latest["value"] is None:
+            out[group] = None
+            continue
+        point = series[latest["index"]]
+        raw = point.get("value")
+        out[group] = {
+            "value": round(latest["value"], 2),
+            "month": latest["month"],
+            "raw_value": None if raw is None else round(float(raw), 2),
+            "count": point.get("count"),
+        }
     return _maybe_single(out, group_col)
 
 

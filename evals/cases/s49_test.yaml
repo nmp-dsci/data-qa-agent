@@ -1,0 +1,149 @@
+# s49 M5 acceptance goldens — two made-up questions authored to exercise the
+# whole loop (trace → grade → judge → register → promote → rewind → optimise),
+# not to grow the curated pack. Reference values were computed against the live
+# marts on 2026-09-10 (rent latest month 2026-05-01, sales latest 2026-06-01).
+pack: nsw_property
+cases:
+- case_key: nsw_rent-avg-weekly-rent-3br-houses-postcode-2250-latest-month-s49a
+  question: What is the average weekly rent for 3-bedroom houses in postcode 2250 in the latest month?
+  dataset: nsw_rent
+  tier: T1
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: ready
+  expectation: One number with its month — the bond-weighted average weekly rent
+    (total_weekly_rent / n_rented) for 3-bedroom houses in postcode 2250 for the
+    most recent month on record ($697.08 as at 2026-05-01).
+  tags:
+  - s49-m5
+  - shape:scalar
+  grader:
+    kind: scalar
+    value: avg_weekly_rent
+    tolerance_pct: 1.0
+    expect_chart: true
+    min_slides: 2
+  golden_sql: |
+    SELECT month,
+           round(sum(total_weekly_rent) / NULLIF(sum(n_rented), 0), 2) AS avg_weekly_rent,
+           sum(n_rented) AS n_rented
+    FROM marts.property_rent
+    WHERE postcode = '2250' AND property_type = 'house' AND bedroom_band = '3'
+      AND month = (
+        SELECT max(month) FROM marts.property_rent
+        WHERE postcode = '2250' AND property_type = 'house' AND bedroom_band = '3'
+      )
+    GROUP BY month
+  golden_sandbox: |
+    latest = skills.latest_value(df, month_col="month", value_col="avg_weekly_rent")
+    result = skills.build_report(
+        summary=(
+            f"3-bedroom houses in postcode 2250 rented for an average of "
+            f"**${latest['value']:,.0f}** a week as at {latest['month']}."
+        ),
+        headlines=[
+            {"label": "Average Weekly Rent", "value": f"${latest['value']:,.0f}", "basis": latest["month"]},
+        ],
+    )
+  golden_answer: |
+    The average weekly rent for 3-bedroom houses in postcode 2250 was $697 in the
+    latest month on record, May 2026, across 51 new bonds — a touch above April's
+    $692 and below March's $709. The figure is bond-weighted (total weekly rent
+    divided by the number of bonds), so it is one number for one month, not an
+    average of medians across bedroom bands.
+  label: high
+  calibration_examples:
+  - label: medium
+    answer: |
+      Three-bedroom houses in 2250 have been renting for around $700 a week in the
+      most recent months of bond data.
+  - label: low
+    answer: |
+      Rents in postcode 2250 have been rising steadily and houses are now well
+      above $800 a week for most property types.
+  checkpoints:
+    sql:
+      key_cols:
+      - month
+    analysis:
+      expected_skills:
+      - latest_value
+      - build_report
+      derived_cols:
+      - avg_weekly_rent
+    deck:
+      layouts_any_of:
+      - KPI + Trend
+      - Headline + Trend
+      kpi_label_contains: rent
+
+- case_key: nsw_sales-top-5-suburbs-by-house-sales-last-12-months-s49b
+  question: Which 5 suburbs had the most house sales in the last 12 months?
+  dataset: nsw_sales
+  tier: T2
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: ready
+  expectation: The five suburbs with the highest count of house sales (sum of n_sold,
+    property_type = house) over the 12 months ending at the latest month in the
+    sales mart (2025-07-01 to 2026-06-01), ranked. Dubbo, Orange, Port Macquarie,
+    Austral, Armidale as at 2026-06-01.
+  tags:
+  - s49-m5
+  - shape:ranked_set
+  grader:
+    kind: ranked_set
+    key: suburb
+    value: n_sold
+    k: 5
+    expect_chart: true
+    min_slides: 2
+  golden_sql: |
+    SELECT suburb, sum(n_sold) AS n_sold
+    FROM marts.property_sales
+    WHERE property_type = 'house'
+      AND month >= (SELECT max(month) FROM marts.property_sales) - interval '11 months'
+    GROUP BY suburb
+    ORDER BY n_sold DESC
+    LIMIT 5
+  golden_sandbox: |
+    ranked = df.sort_values("n_sold", ascending=False).head(5)
+    result = skills.build_report(
+        summary="Dubbo led NSW house sales over the last 12 months, followed by Orange and Port Macquarie.",
+        headlines=[
+            {"label": "Top suburb", "value": str(ranked.iloc[0]["suburb"]), "basis": f"{int(ranked.iloc[0]['n_sold'])} houses sold"},
+        ],
+        main_chart=skills.comparison_chart(ranked, label_col="suburb", value_col="n_sold", title="House sales, last 12 months"),
+    )
+  golden_answer: |
+    Over the 12 months to June 2026 the suburbs with the most house sales were Dubbo
+    (999), Orange (874), Port Macquarie (691), Austral (593) and Armidale (586). The
+    top of the list is regional: Dubbo and Orange alone account for more house
+    sales than any Sydney suburb, with Austral the only metropolitan entry, driven
+    by new-estate completions.
+  label: high
+  calibration_examples:
+  - label: medium
+    answer: |
+      The busiest suburbs for house sales in the past year were Dubbo, Orange and
+      Port Macquarie, with a few hundred to about a thousand sales each.
+  - label: low
+    answer: |
+      House sales were strongest in Sydney's inner suburbs last year, led by
+      Mosman and Bondi.
+  checkpoints:
+    sql:
+      key_cols:
+      - suburb
+    analysis:
+      expected_skills:
+      - build_report
+      derived_cols:
+      - n_sold
+    deck:
+      layouts_any_of:
+      - Ranked Bars
+      - Table
+      kpi_label_contains: sales

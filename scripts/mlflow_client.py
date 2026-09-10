@@ -250,11 +250,12 @@ def set_alias(name: str, alias: str, version: str) -> None:
 
 
 def delete_alias(name: str, alias: str) -> None:
-    q = f"registered-models/alias?name={urllib.parse.quote(name)}&alias={urllib.parse.quote(alias)}"
-    try:
-        api("DELETE", q)
-    except MlflowError:
-        pass  # alias absent — deleting it is a no-op
+    # MLflow 3.x reads the DELETE parameters from the JSON body, not the query
+    # string — the query form 400s, and swallowing that left @challenger in
+    # place after every promote (found in s49 M5).
+    if get_alias_version(name, alias) is None:
+        return  # alias absent — deleting it is a no-op
+    api("DELETE", "registered-models/alias", {"name": name, "alias": alias})
 
 
 def get_alias_version(name: str, alias: str) -> str | None:

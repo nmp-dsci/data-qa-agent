@@ -208,6 +208,30 @@ register:
 promote:
 	uv run python scripts/mlflow_registry.py promote
 
+# s49: the eval loop as a versioned, traced, optimisable system
+# (docs/eval-loop-s49.md). agent-checkout rewinds prompts/skills/knowledge to a
+# registered fingerprint; knowledge-export/import move curator edits between the
+# DB and services/data-agent/knowledge/ (repo is the source of truth, same as
+# goldens); skill-mine / reflect are the offline optimiser — draft PRs only (D4);
+# eval-calibrate runs the judge against the golden set without scoring a run.
+agent-checkout:
+	uv run python scripts/agent_checkout.py $(FP)
+
+knowledge-export:
+	uv run python scripts/knowledge_pack.py export
+
+knowledge-import:
+	uv run python scripts/knowledge_pack.py import
+
+skill-mine:
+	uv run python scripts/skill_miner.py $(if $(RUN),--run $(RUN))
+
+reflect:
+	uv run python scripts/reflect.py --run $(RUN)
+
+eval-calibrate:
+	uv run python scripts/eval_run.py --calibrate-only $(if $(INCLUDE_DRAFTS),--include-drafts)
+
 loadtest:
 	@command -v k6 >/dev/null || { echo "k6 not installed (brew install k6)"; exit 1; }
 	mkdir -p load/out

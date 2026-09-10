@@ -11,6 +11,7 @@ from __future__ import annotations
 import pandas as pd
 
 from agent.sandbox import run_code
+from agent.sandbox.contract import STDOUT_CAP
 from agent.sandbox_agent import _decision_log
 
 _TREND_CODE = """
@@ -146,3 +147,41 @@ def test_decision_log_expands_tool_steps_for_eval_assertions() -> None:
     } in decisions
     assert any(d["type"] == "skill" and d["choice"] == "trend_chart" for d in decisions)
     assert any(d["type"] == "chart" and d["choice"] == "trend_chart" for d in decisions)
+
+
+# --- s49 M0: stdout capture ------------------------------------------------
+
+
+def test_prints_are_captured_and_returned_with_the_result() -> None:
+    """The model prints to debug its own pandas; that output is the most useful
+    thing in a trace when an analysis silently produces a wrong number."""
+    code = """
+print("rows:", len(df))
+print("cols:", list(df.columns))
+result = skills.build_report(summary="ok", headlines=[{"label": "n", "value": len(df)}])
+"""
+    out = run_code(code, _df())
+
+    assert out.ok, out.error
+    assert "rows: 60" in out.stdout
+    assert "cols: ['month', 'avg_price']" in out.stdout
+
+
+def test_prints_before_a_failure_are_still_returned() -> None:
+    """A traceback without the output that led up to it is half a diagnosis."""
+    out = run_code('print("got this far")\nraise ValueError("boom")', _df())
+
+    assert out.error is not None
+    assert "got this far" in out.stdout
+
+
+def test_stdout_is_capped() -> None:
+    code = (
+        'print("x" * 200000)\n'
+        "result = skills.build_report(summary='ok', headlines=[{'label': 'n', 'value': 1}])"
+    )
+    out = run_code(code, _df())
+
+    assert out.ok, out.error
+    assert len(out.stdout) < STDOUT_CAP + 200
+    assert "stdout truncated" in out.stdout

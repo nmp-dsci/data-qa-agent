@@ -34,10 +34,24 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from . import knowledge as knowledge_mod
+from . import skills as skills_mod
 from .config import settings
 from .schema import USER_VISIBLE_SCHEMAS, describe_table, get_catalog, list_marts
 
 _TEMPLATE_PATH = Path(__file__).resolve().parent / "prompts" / "workspace_claude.md"
+
+# One catalogue heading per skills submodule, in the order the hand-written
+# list used to present them (analysis maths, then charts, then report shape).
+# A module with no mapping falls back to its bare name so a new skills file
+# still renders something sane without a template edit.
+_SKILL_CATEGORY_LABELS = {
+    "analysis": (
+        "data analysis (over the extracted DataFrame `df`; a rate = "
+        "value_col/den_col, e.g. an additive total over its count)"
+    ),
+    "charts": "visualisation (consistent house style, validated)",
+    "reporting": "insight structure",
+}
 _FRAMES_README = "extract() drops a head-sample CSV of each frame it pulls here at runtime.\n"
 
 # run_id becomes a directory name under <base>/runs/ — keep it to a safe,
@@ -99,15 +113,33 @@ def _pass_plan(*, include_insights: bool, max_runs: int) -> str:
    the code and retry."""
 
 
-def _render_claude_md(*, include_insights: bool, memories_block: str) -> str:
+def _render_skills_block() -> str:
+    """The ``{{SKILLS}}`` slot: one line per ``@skill``-decorated function,
+    ``signature — first docstring line``, grouped under the same category
+    headings the old hand-written list used (s49 M1). Generated from
+    ``skills.registered()`` so this can never drift out of sync with the
+    library — editing a skill's signature or docstring moves what the model
+    reads here without a second edit.
+    """
+    lines: list[str] = []
+    current_module: str | None = None
+    for module, _name, signature, doc in skills_mod.registered():
+        if module != current_module:
+            label = _SKILL_CATEGORY_LABELS.get(module, module)
+            lines.append(f"  # {label}")
+            current_module = module
+        suffix = f" — {doc}" if doc else ""
+        lines.append(f"  {signature}{suffix}")
+    return "\n".join(lines)
+
+
+def _render_claude_md(*, include_insights: bool) -> str:
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
     pass_plan = _pass_plan(
         include_insights=include_insights, max_runs=settings.sandbox_run_attempts
     )
-    memories_section = (
-        f"\nKnown preferences for this user:\n{memories_block}\n" if memories_block.strip() else ""
-    )
-    return template.replace("{{PASS_PLAN}}", pass_plan).replace("{{MEMORIES}}", memories_section)
+    skills_block = _render_skills_block()
+    return template.replace("{{PASS_PLAN}}", pass_plan).replace("{{SKILLS}}", skills_block)
 
 
 def _schema_filename(schema: str, table: str) -> str:
@@ -120,7 +152,6 @@ def build_workspace(
     question: str,
     *,
     include_insights: bool,
-    memories_block: str = "",
     layouts_md: str = "",
     base_dir: Path | None = None,
 ) -> Path:
@@ -147,7 +178,7 @@ def build_workspace(
     ws.mkdir(parents=True)
 
     (ws / "CLAUDE.md").write_text(
-        _render_claude_md(include_insights=include_insights, memories_block=memories_block),
+        _render_claude_md(include_insights=include_insights),
         encoding="utf-8",
     )
     (ws / "marts.md").write_text(list_marts(), encoding="utf-8")
@@ -175,6 +206,17 @@ def build_workspace(
         )
     else:
         knowledge_dst.mkdir()
+    # s49 (D3): a curator's DB override (app.knowledge_pages) wins over the
+    # file body in the copied tree. Pure filesystem writes against whatever is
+    # already in knowledge_mod's module-global override cache — this function
+    # stays DB-free either way; a caller with an event loop refreshes that
+    # cache first (see the async `workspace()` wrapper below).
+    for page in knowledge_mod.load_pages():
+        if page.source != "db":
+            continue
+        dest = knowledge_dst / page.rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text((page.frontmatter_raw or "") + page.body, encoding="utf-8")
 
     frames_dir = ws / "frames"
     frames_dir.mkdir()
@@ -243,21 +285,23 @@ async def workspace(
     question: str,
     *,
     include_insights: bool,
-    memories_block: str = "",
     layouts_md: str = "",
     base_dir: Path | None = None,
 ) -> AsyncIterator[Path]:
     """Async context manager: build a workspace, yield its path, always clean up.
 
     The build/cleanup themselves are plain filesystem calls (fast; no
-    await-worthy I/O), so this wraps them for API symmetry with the async
-    runtime that will drive a run, not because they need the event loop.
+    await-worthy I/O) — except for one await up front: refreshing
+    ``knowledge_mod``'s curator-override cache (s49, D3) so a page a curator
+    just edited in the Architecture tab wins in THIS run's copied knowledge/
+    tree, the same "await before a sync helper reads the cache" shape
+    ``agent_analysis`` uses for ``ordinals.load_overrides`` (main.py).
     """
+    await knowledge_mod.load_overrides()
     ws = build_workspace(
         run_id,
         question,
         include_insights=include_insights,
-        memories_block=memories_block,
         layouts_md=layouts_md,
         base_dir=base_dir,
     )

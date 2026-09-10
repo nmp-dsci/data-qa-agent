@@ -63,3 +63,21 @@ cases:
   tags:
   - s46-proof
   - shape:chart
+  golden_answer: |
+    Hornsby and Normanhurst house prices have both roughly doubled since 2011 and are
+    near their highs: Hornsby averaged about $1.85M in its latest month (May 2026) and
+    Normanhurst about $2.11M (April 2026). Over the five years from mid-2021 that is
+    growth of roughly 13% for Hornsby (from about $1.64M) and about 22% for Normanhurst
+    (from about $1.73M) — Normanhurst is consistently the more expensive of the two, and
+    its thinner monthly sale counts make its series the noisier one. Average price is
+    total_sale_value / n_sold per month, not a mean of monthly averages.
+  label: high
+  checkpoints:
+    sql:
+      key_cols:
+      - month
+      - suburb
+    analysis:
+      expected_skills:
+      - trend_series
+      - growth_rate

@@ -258,9 +258,13 @@ async def _persist_answer(
     # before folding and persisted separately below once run_id exists.
     artifact = result.get("artifact")
     baseline = artifact.get("baseline") if isinstance(artifact, dict) else None
-    if artifact and isinstance(report, dict):
-        artifact_for_report = {k: v for k, v in artifact.items() if k != "baseline"}
-        report = {**report, "artifact": artifact_for_report}
+    artifact_for_manifest = (
+        {k: v for k, v in artifact.items() if k != "baseline"}
+        if isinstance(artifact, dict)
+        else None
+    )
+    if artifact_for_manifest and isinstance(report, dict):
+        report = {**report, "artifact": artifact_for_manifest}
     async with rls_connection(user.id) as conn:
         message_id = str(
             (
@@ -293,13 +297,14 @@ async def _persist_answer(
                         "output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, "
                         "degraded, attempts, ttfp_ms, otel_trace_id, trace, channel, "
                         "agent_version_id, queue_wait_ms, worker_id, deliveries, "
-                        "artifact_deck_url, artifact_sheet_url) "
+                        "artifact_deck_url, artifact_sheet_url, artifact_manifest) "
                         "VALUES (:cid, :mid, :uid, "
                         "(SELECT id FROM app.datasets WHERE slug = :slug), :question, :sql, "
                         ":engine, :row_count, :lat, :status, :err, :in_tok, :out_tok, "
                         ":cache_read, :cache_write, :cost_usd, :degraded, :attempts, :ttfp, "
                         ":trace_id, CAST(:trace AS jsonb), :channel, :agent_version_id, "
-                        ":queue_wait_ms, :worker_id, :deliveries, :deck_url, :sheet_url) "
+                        ":queue_wait_ms, :worker_id, :deliveries, :deck_url, :sheet_url, "
+                        "CAST(:manifest AS jsonb)) "
                         "RETURNING id"
                     ),
                     {
@@ -347,6 +352,17 @@ async def _persist_answer(
                         # that predates it or a deployment without credentials.
                         "deck_url": (result.get("artifact") or {}).get("deck_url"),
                         "sheet_url": (result.get("artifact") or {}).get("sheet_url"),
+                        # s49 M0: the deck exactly as the agent specified it —
+                        # every add_slide call's layout, headline, kpi, frame,
+                        # columns and chart type. The flat URL columns above say
+                        # WHERE the answer went; this says WHAT was asked for, so
+                        # the judge and the Evaluations tab can grade the
+                        # presentation without re-deriving it from the trace.
+                        # ``baseline`` is stripped (it is the artifact_snapshots
+                        # row written below, not manifest content).
+                        "manifest": (
+                            _json(artifact_for_manifest) if artifact_for_manifest else None
+                        ),
                     },
                 )
             ).scalar_one()

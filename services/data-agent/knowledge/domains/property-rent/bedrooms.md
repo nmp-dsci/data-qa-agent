@@ -3,7 +3,6 @@ name: rent-bedrooms
 description: Rent broken out by bedroom band; the right segmenter for units.
 applies_to: [bedroom, "bedroom band", "by bedroom", studio, "1 bedroom", units profile]
 ---
-
 # Rent by bedroom
 
 `marts.property_rent` breaks rent down by **`bedroom_band`** ('0'..'4', '5+',
@@ -19,3 +18,5 @@ or 'unknown'). Grain: postcode + property_type + bedroom_band + month.
   and divide by the postcode total.
 - Bedroom bands come from the bond record; 'unknown' is a real bucket — mention it
   if it is a large share rather than dropping it silently.
+
+> Curator note (s49 M5): a bedroom band is a whole-dwelling count, never a per-tenant figure.

@@ -130,6 +130,10 @@ class Settings(BaseSettings):
     # x-mlflow-experiment-id header. Empty = plain OTLP (no header), which any
     # generic collector accepts.
     mlflow_trace_experiment_id: str = ""
+    # s50: the eval loop's per-case MLflow runs live in their own experiment,
+    # whose id isn't guaranteed by a fresh MLflow store either — same reason
+    # as mlflow_trace_experiment_id above. Empty = don't link (no safe guess).
+    mlflow_evals_experiment_id: str = ""
 
     # ---- Ops deck (s32 W0/W2/W4) ------------------------------------------
     # Machine token for POST /ops/ingest/* — the k6, promptfoo and deploy

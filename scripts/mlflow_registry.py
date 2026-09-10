@@ -1,13 +1,18 @@
-"""Agent registry + promotion CLI over MLflow (s43 M0/M2/M3).
+"""Agent registry + promotion CLI over MLflow (s43 M0/M2/M3, bundle s49 M1).
 
 Subcommands:
   init      ensure the data-qa/traces + data-qa/evals experiments exist; print
             ids and warn when the traces id differs from what the services'
             MLFLOW_TRACE_EXPERIMENT_ID assumes (default 1 on a fresh store).
   ensure    mirror app.agent_versions -> model versions of `data-qa-agent`,
-            one per fingerprint, params = the composed build fingerprint.
-            Bootstrap aliases: @champion = the build the live agent reports
-            (fallback: newest), @challenger = the newest other build, if any.
+            one per fingerprint, params = the composed build fingerprint. Also
+            logs a `bundle.json` + `bundle.tar.gz` artifact pair to the
+            register run (s49 M1) — a portable snapshot of the prompts/skills/
+            knowledge that produced this fingerprint, so `agent_checkout.py`
+            can reproduce it even without the git sha (e.g. uncommitted local
+            work). Bootstrap aliases: @champion = the build the live agent
+            reports (fallback: newest), @challenger = the newest other build,
+            if any.
   status    print versions, aliases, and each version's latest eval pass-rate.
   promote   the comparator gate (ConvFinQA rule): the challenger's latest eval
             on the same pack must have pass_rate >= champion's AND no golden
@@ -23,9 +28,14 @@ re-runnable after any new build shows up in app.agent_versions.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
+import subprocess
 import sys
+import tarfile
 import urllib.request
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +43,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mlflow_client as mc  # noqa: E402
 
 AGENT = "http://localhost:8100"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_AGENT_DIR = REPO_ROOT / "services" / "data-agent"
+
+# The behaviour-surface directories a `bundle.tar.gz` snapshots (s49 M1) — the
+# same surfaces build_sdk_fingerprint()/build_fingerprint() hash, minus the
+# schema/marts (those come from the DB catalogue, not files a checkout could
+# usefully restore). agent_checkout.py extracts this tree relative to
+# services/data-agent/ so the paths below double as the tar's arcnames.
+BUNDLE_DIRS = (
+    Path("agent") / "prompts",
+    Path("agent") / "skills",
+    Path("knowledge"),
+)
 
 FINGERPRINT_COLS = (
     "id, fingerprint, label, provider, model_id, prompt_hash, skills_hash, "
@@ -62,6 +85,167 @@ def _live_fingerprint() -> str | None:
             return json.load(resp).get("fingerprint")
     except Exception:  # noqa: BLE001 — agent down is fine; fallback applies
         return None
+
+
+# ---- bundle (s49 M1) --------------------------------------------------------
+#
+# `agent_checkout.py FP` needs to reproduce the prompts/skills/knowledge that
+# produced a fingerprint. `git_sha` is the preferred route (a worktree at that
+# commit), but a fingerprint minted from uncommitted local work has no
+# reachable commit — the tarball is the fallback that always works, captured
+# from the working tree at the moment `ensure` registers the fingerprint.
+
+
+def _psql_soft(query: str) -> str | None:
+    """Like eval_run.py's `_psql`, but returns None on failure instead of
+    exiting the whole `ensure` run — the ordinals/knowledge_pages tables this
+    is used for are optional (a fresh dev DB, or migration 0039 not applied
+    yet), and a missing one must degrade the bundle, not the registry sync."""
+    proc = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "db",
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "dataqa",
+            "-tA",
+            "-c",
+            query,
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip()
+
+
+# Mirrors agent.ordinals.BAND_ORDERS — duplicated rather than imported so this
+# script stays independent of the data-agent package (same grain as
+# mlflow_client.py's stdlib-only REST client).
+_ORDINALS_SEED: dict[tuple[str, str], list[str]] = {
+    ("nsw_sales", "area_band"): ["<400", "400-700", "700-1000", "1000-5000", "5000+", "unknown"],
+    ("nsw_rent", "bedroom_band"): ["0", "1", "2", "3", "4", "5+", "unknown"],
+}
+
+
+def _ordinals_db_hash() -> str:
+    """Same canonicalisation as agent.ordinals.ordinals_snapshot_hash(): the
+    code seed merged with any app.dataset_ordinals curator overrides, hashed
+    as sorted tight-separator JSON. A DB miss (table absent, service down)
+    degrades to hashing the seed alone, never raises."""
+    merged = dict(_ORDINALS_SEED)
+    out = _psql_soft(
+        "SELECT row_to_json(t) FROM (SELECT d.slug, o.column_name, o.ordered_values "
+        "FROM app.dataset_ordinals o JOIN app.datasets d ON d.id = o.dataset_id) t"
+    )
+    for line in (out or "").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        vals = row.get("ordered_values")
+        if isinstance(vals, list) and vals:
+            merged[(str(row["slug"]), str(row["column_name"]))] = [str(v) for v in vals]
+    canonical = [{"dataset": d, "column": c, "order": o} for (d, c), o in sorted(merged.items())]
+    payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _knowledge_pages_db_hash() -> str | None:
+    """Content hash of app.knowledge_pages (curator overrides), or None when
+    the table has no rows or doesn't exist yet (migration 0039)."""
+    out = _psql_soft(
+        "SELECT row_to_json(t) FROM (SELECT path, version, body FROM app.knowledge_pages "
+        "ORDER BY path) t"
+    )
+    if not out:
+        return None
+    rows = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    if not rows:
+        return None
+    h = hashlib.sha256()
+    for row in rows:
+        h.update(str(row.get("path", "")).encode("utf-8"))
+        h.update(b"\0")
+        h.update(str(row.get("version", "")).encode("utf-8"))
+        h.update(b"\0")
+        h.update(str(row.get("body") or "").encode("utf-8"))
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def _bundle_files() -> list[Path]:
+    """Every file under the bundled directories, relative to services/data-agent/."""
+    files: list[Path] = []
+    for rel_dir in BUNDLE_DIRS:
+        abs_dir = DATA_AGENT_DIR / rel_dir
+        if not abs_dir.is_dir():
+            continue
+        for path in sorted(abs_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            if "__pycache__" in path.parts:
+                continue
+            files.append(path.relative_to(DATA_AGENT_DIR))
+    return files
+
+
+def _bundle_tarball(files: list[Path]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for rel in files:
+            tar.add(DATA_AGENT_DIR / rel, arcname=rel.as_posix())
+    return buf.getvalue()
+
+
+def _git_sha() -> str:
+    proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def _log_bundle_artifacts(run_id: str, row: dict[str, Any], fp: str) -> None:
+    """Log bundle.json + bundle.tar.gz to a register run and tag the model
+    version so agent_checkout.py can find them from the fingerprint alone."""
+    files = _bundle_files()
+    components = {
+        k: row.get(k)
+        for k in ("provider", "model_id", "prompt_hash", "skills_hash", "knowledge_version")
+        if row.get(k)
+    }
+    bundle = {
+        "fingerprint": fp,
+        "components": components,
+        "git_sha": row.get("git_sha") or _git_sha(),
+        "image_tag": row.get("image_tag") or "",
+        "files": [f.as_posix() for f in files],
+        "db_snapshots": {
+            "ordinals": _ordinals_db_hash(),
+            "knowledge_pages": _knowledge_pages_db_hash(),
+        },
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    mc.log_json_artifact(run_id, "bundle.json", bundle)
+    mc.log_artifact(
+        run_id, "bundle.tar.gz", _bundle_tarball(files), content_type="application/gzip"
+    )
 
 
 # ---- init ------------------------------------------------------------------
@@ -120,6 +304,7 @@ def cmd_ensure(_: argparse.Namespace) -> None:
                 "git_sha": row["git_sha"],
             },
         )
+        _log_bundle_artifacts(run_id, row, fp)
         mc.end_run(run_id)
         version = mc.create_model_version(
             mc.MODEL_NAME,
@@ -130,6 +315,7 @@ def cmd_ensure(_: argparse.Namespace) -> None:
                 "agent_version_id": row["id"],
                 "provider": row["provider"],
                 "model_id": row["model_id"],
+                "bundle_run_id": run_id,
             },
             description=row.get("label") or fp,
         )
@@ -240,13 +426,25 @@ def cmd_promote(args: argparse.Namespace) -> None:
         return
 
     mc.set_alias(mc.MODEL_NAME, mc.CHAMPION, chall_v)
-    mc.delete_alias(mc.MODEL_NAME, mc.CHALLENGER)
+    delete_error: str | None = None
+    try:
+        mc.delete_alias(mc.MODEL_NAME, mc.CHALLENGER)
+    except mc.MlflowError as exc:
+        # @champion has already moved — the promotion must still be recorded,
+        # a leftover @challenger alias is a clean-up nit, not a lost audit row.
+        delete_error = str(exc)
     _psql(
         "INSERT INTO app.promotions (model_name, from_version, to_version, agent_version_id, "
         f"verdict) VALUES ({_lit(mc.MODEL_NAME)}, {_lit(champ_v)}, {_lit(chall_v)}, "
         f"{_lit(chall_tags.get('agent_version_id'))}::uuid, {_lit(verdict)}::jsonb)"
     )
     print(f"\nPROMOTED — @champion moved v{champ_v} -> v{chall_v}; recorded in app.promotions.")
+    if delete_error:
+        print(
+            f"! could not clear @challenger from v{chall_v}: {delete_error}\n"
+            f"  @challenger still points at v{chall_v} — clear it by hand before the next promote.",
+            file=sys.stderr,
+        )
 
 
 def main() -> None:

@@ -363,6 +363,10 @@ package, matching `eval_run.py`'s no-third-party-deps grain. `MLFLOW_URL` (defau
   lower pass rate, or named pass→fail flips).
 - `scripts/mlflow_registry.py status` (no Makefile target) prints every registered version with its aliases
   and latest eval pass rate — the quickest way to see the registry without opening the UI.
+- **`make register`** also logs a `bundle.json` + `bundle.tar.gz` artifact pair per newly registered
+  fingerprint (prompts/skills/knowledge content hashes + a tree snapshot); **`make agent-checkout FP=av-…`**
+  (`scripts/agent_checkout.py`, s49 M1) rewinds a `.worktrees/<fp>/` checkout to that fingerprint's exact
+  bundle without touching the DB. Full contract in `docs/eval-loop-s49.md`.
 - **The eval → MLflow sink** (`eval_run.py`'s `log_mlflow`, s43 M3) logs one comparable MLflow run per
   `make eval` invocation — params carry the build fingerprint and run framing, metrics carry the pass rate
   and per-tier breakdown — tagged with the `app.eval_runs` id so the two stores reconcile. It is additive and
@@ -735,15 +739,22 @@ frontend renders those fields), so the pack can never become a back door around 
 tab's dataset picker now reads the dataset registry instead of a hardcoded `["nsw_sales", "nsw_rent"]`
 literal, which had silently locked `nsw_yield` out of golden authoring since migration 0025.
 
-**Scored runner + judge (s24 M2).** `make eval` (`scripts/eval_run.py`) drives the golden pack against the
-running agent, works down to a single case (`CASE=`), and calls the data-agent's `POST /agent/eval/grade`
-to score G1/G2/G3-structural plus the G3 insight judge. The judge (`agent/eval_judge.py`) grades a frozen,
-hashed rubric (`judge_prompt_hash`) and refuses to grade a model of its own family, keyed off which family
-actually answered (the agent_sdk runtime always answers as Claude, regardless of `llm_provider`) rather
-than `llm_provider` alone — with DeepSeek answering, only an Anthropic key can judge, and with Claude
-answering (agent_sdk), only a DeepSeek key can — recording a `skipped` verdict rather than fabricating a
-score when no cross-family judge key is configured. Insight is scored and reported but does not gate a
-case on its own; a case passes on G1 + G3-structural.
+**Scored runner + judge (s24 M2, superseded by s49 M2 — see below).** `make eval` (`scripts/eval_run.py`)
+drives the golden pack against the running agent, works down to a single case (`CASE=`), and calls the
+data-agent's `POST /agent/eval/grade` to score G1/G2/G4 plus the label judge and G5 checkpoints.
+
+**Label judge + calibration + G5 (s49 M2, D2).** The old G3 insight judge (`insight-v1`, DeepSeek) is
+removed. `agent/eval_judge.py`'s `judge_answer()` returns a `label ∈ {low, medium, high}` plus a
+`diagnosis ∈ {sql, analysis, presentation, knowledge, none}`, scored by `claude-sonnet-5` — the same model
+family as the agent, the cross-family restriction is deliberately dropped — via a frozen, hashed rubric
+(`judge_prompt_hash`, `rubric_version: label-v1`); when `ANTHROPIC_API_KEY` is unset it falls back to a
+single-turn Agent SDK call and records the transport/effort used. Every golden also carries a `label` and
+`calibration_examples`; `calibrate_judge()` runs once per `make eval` and requires the judge to reproduce
+the golden set's own labels before its verdicts are trusted — `eval_runs.totals.judge_calibration` and
+`eval_results.judge.calibrated` record the outcome. The judge is **advisory until the pack has 10 goldens**
+(`HOLDOUT_MIN_CASES`, `judge_gates(len(cases))` in `eval_run.py`): `passed = G1 + G5` only — `g3_format`
+(the vestigial in-process report lint) was dropped from the gate because it failed a correct deck on a
+report-shape check the deck itself no longer builds; it is still scored and displayed, just not gating.
 
 **Regression gate + pack lint (s24 M3).** `make eval-compare A=<run> B=<run>` (`scripts/eval_compare.py`,
 also served at `GET /admin/eval-runs/{id}`) is the base-vs-experiment gate: it blocks on **any** case

@@ -1124,6 +1124,11 @@ th.sortable:hover { color: var(--text); }
 .arch-kb-pane-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
 .arch-kb-content { margin: 10px 0 0; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 
+.arch-kb-edit { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.arch-kb-edit-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 11px; }
+.arch-kb-edit-textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px; color: var(--text); resize: vertical; }
+.arch-kb-edit-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+
 .arch-tools-table th:first-child, .arch-tools-table td:first-child { width: 22%; }
 .arch-tools-table th:nth-child(2) { width: 8%; }
 .arch-tools-table th:nth-child(4), .arch-tools-table th:nth-child(5) { width: 20%; }
@@ -1254,15 +1259,6 @@ a:focus-visible, [role="option"]:focus-visible {
 /* Says why the button is inert, so a disabled state is never a dead end. */
 .sa-hint { font-size: 12.5px; color: var(--faint); margin: 0; }
 .sa-hint.warn { color: var(--warn); }
-/* Remembered preferences as cards (issue #13): each memory gets its learned/used
-   context and a quiet "forget" — the login's memory promise, made visible. */
-.mem-list { display: grid; gap: 8px; }
-.mem-card { display: flex; align-items: flex-start; gap: 12px; background: var(--panel);
-  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 11px 13px; }
-.mem-body { flex: 1; min-width: 0; }
-.mem-text { font-size: 13.5px; line-height: 1.45; }
-.mem-meta { color: var(--faint); font-size: 11px; margin-top: 5px; }
-.mem-forget { flex: none; font-size: 11.5px; padding: 4px 11px; }
 
 /* Golden Examples authoring surface (C1): the page is built with inline styles +
    native form controls, so it used to render as white islands in dark mode.

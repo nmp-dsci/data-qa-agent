@@ -1,0 +1,343 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>s50 · Eval Loop Walkthrough</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>s48 · Template Packs</title><style>
+/* ---------------------------------------------------------------------------
+   Flight Deck / Night Flight tokens — lifted verbatim from
+   frontend/src/styles.css:9-147 so this plan renders in the product's own
+   design system rather than a generic one.
+--------------------------------------------------------------------------- */
+:root {
+  --gray-950:#0a0d15; --gray-900:#111522; --gray-850:#171c2b; --gray-800:#1e2434;
+  --gray-700:#242b3d; --gray-600:#333d55; --gray-100:#eaecf3; --gray-300:#9aa4bb;
+  --gray-400:#7a84a0; --ink-code:#0a0d13;
+  --gold-500:#d9a84e; --gold-ink:#1a1204; --gold-200:#f2ca79;
+  --blue-400:#7fb0ff; --green-400:#9ece6a; --amber-400:#e0af68;
+  --red-400:#f2777a; --purple-400:#c58fff; --cyan-400:#7dcfff;
+
+  --bg:var(--gray-950); --panel:var(--gray-900); --panel-2:var(--gray-850);
+  --panel-3:var(--gray-800); --border:var(--gray-700); --border-2:var(--gray-600);
+  --text:var(--gray-100); --muted:var(--gray-300); --faint:var(--gray-400);
+  --accent:var(--gold-500); --accent-ink:var(--gold-ink); --accent-soft:var(--gold-200);
+  --accent-2:var(--blue-400); --code-bg:var(--ink-code);
+  --good:var(--green-400); --good-border:#33502f;
+  --warn:var(--amber-400); --warn-border:#6b5a2a;
+  --bad:var(--red-400); --bad-border:#6b2a2a;
+  --purple:var(--purple-400); --purple-border:#5a3a6b;
+  --info:var(--cyan-400); --info-border:#2f5a7a;
+
+  --radius-sm:6px; --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+  --border:#ddd7c7; --border-2:#c9c1ac; --text:#23293a; --muted:#67604e;
+  --faint:#7d7663; --accent:#9a7328; --accent-ink:#fffaf0; --accent-soft:#7a5c22;
+  --accent-2:#2456c9; --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+  --warn:#8f6a12; --warn-border:#ddc48a; --bad:#c03535; --bad-border:#e3aaaa;
+  --purple:#7137c8; --purple-border:#cdb3ee; --info:#0d6e8c; --info-border:#a4cfdd;
+}
+
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 96px}
+
+h1{font-size:34px;line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;font-weight:650}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+  margin:0 0 6px;font-weight:600;font-family:var(--mono)}
+h3{font-size:21px;margin:0 0 12px;letter-spacing:-.01em;font-weight:620}
+h4{font-size:15px;margin:0 0 8px;font-weight:620}
+p{margin:0 0 14px;color:var(--muted)}
+p.lede{font-size:17px;color:var(--text);max-width:70ch}
+strong{color:var(--text);font-weight:620}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:1px 5px;
+  color:var(--accent-soft);overflow-wrap:anywhere}
+
+section{margin:0 0 64px}
+.sec-head{border-top:1px solid var(--border);padding-top:18px;margin-bottom:24px}
+
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tight{padding:14px 16px}
+
+.thesis{background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:1px solid var(--border-2);border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);padding:22px 24px;margin:28px 0 0}
+.thesis .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.thesis p{color:var(--text);font-size:16.5px;margin:0}
+
+.b{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid;
+  white-space:nowrap;font-weight:600}
+.b-good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,.08)}
+.b-warn{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,.08)}
+.b-bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,.08)}
+.b-info{color:var(--info);border-color:var(--info-border);background:rgba(125,207,255,.08)}
+.b-pur{color:var(--purple);border-color:var(--purple-border);background:rgba(197,143,255,.08)}
+.b-mut{color:var(--faint);border-color:var(--border-2)}
+
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;
+  padding:11px 14px;border-bottom:1px solid var(--border-2);white-space:nowrap;
+  background:var(--panel-2)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;
+  color:var(--muted)}
+tbody tr:last-child td{border-bottom:none}
+td.n{color:var(--text);font-weight:600}
+td.num{font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+tr.dead td{opacity:.62}
+tfoot td{border-top:1px solid var(--border-2);font-weight:700;color:var(--text);
+  background:var(--panel-2)}
+
+figure{margin:0 0 20px;background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{margin-top:14px;font-size:13px;color:var(--faint);
+  border-top:1px solid var(--border);padding-top:12px}
+.svg-l{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;fill:var(--faint)}
+.svg-t{font-family:var(--sans);font-size:12px;fill:var(--text);font-weight:600}
+.svg-s{font-family:var(--sans);font-size:10.5px;fill:var(--muted)}
+
+.note{border-left:3px solid;border-radius:0 var(--radius) var(--radius) 0;
+  padding:13px 16px;margin:0 0 16px;background:var(--panel-2);font-size:14px}
+.note p:last-child{margin-bottom:0}
+.n-bad{border-color:var(--bad)} .n-good{border-color:var(--good)}
+.n-warn{border-color:var(--warn)} .n-info{border-color:var(--info)}
+
+ul.clean{list-style:none;padding:0;margin:0 0 14px}
+ul.clean li{padding:5px 0 5px 20px;position:relative;color:var(--muted);font-size:14px}
+ul.clean li::before{content:"";position:absolute;left:4px;top:14px;width:5px;height:5px;
+  border-radius:50%;background:var(--accent);opacity:.65}
+
+/* done checklist */
+ul.dod{list-style:none;padding:0;margin:0}
+ul.dod li{display:flex;gap:12px;align-items:flex-start;padding:11px 0;
+  border-bottom:1px solid var(--border)}
+ul.dod li:last-child{border-bottom:none}
+ul.dod .box{flex-shrink:0;width:18px;height:18px;border:1.5px solid var(--accent);
+  border-radius:4px;margin-top:2px}
+ul.dod .t{font-size:14.5px;color:var(--text);font-weight:600}
+ul.dod .d{font-size:13px;color:var(--faint);display:block;margin-top:1px;font-weight:400}
+
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;overflow-x:auto;margin:0 0 16px}
+pre code{background:none;border:none;padding:0;color:var(--gray-100);font-size:12.5px;
+  line-height:1.6;display:block;white-space:pre}
+.cm{color:var(--faint)} .ck{color:var(--purple)} .cs{color:var(--good)}
+.cf{color:var(--accent-2)} .cd{color:var(--accent-soft)}
+
+.ms{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 20px}
+.ms-n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);
+  background:var(--accent);width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;grid-row:span 2}
+.ms-n.gate{background:var(--bad);color:#fff}
+.ms-rail{border-left:1px dashed var(--border-2);margin:8px 0 0 17px;grid-column:1}
+.ms-b{padding:0 0 26px}
+.ms-b h4{margin-bottom:4px}
+.ms-b p{font-size:13.5px;margin-bottom:8px}
+
+form.q{background:var(--panel);border:1px solid var(--border-2);
+  border-radius:var(--radius-lg);padding:20px;margin:0 0 16px}
+form.q h4{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+form.q .qid{font-family:var(--mono);font-size:11px;color:var(--accent);
+  border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:1px 6px}
+form.q .qsub{font-size:13px;color:var(--faint);margin:0 0 14px}
+label.opt{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;
+  border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;
+  cursor:pointer;background:var(--panel-2);transition:border-color .12s}
+label.opt:hover{border-color:var(--border-2)}
+label.opt:has(input:checked){border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 8%,var(--panel-2))}
+label.opt input{margin-top:3px;accent-color:var(--accent);flex-shrink:0}
+label.opt .ot{font-weight:620;color:var(--text);font-size:14px}
+label.opt .od{font-size:12.5px;color:var(--faint);display:block;margin-top:2px}
+button.send{font-family:var(--sans);font-weight:620;font-size:13.5px;
+  background:var(--accent);color:var(--accent-ink);border:none;
+  border-radius:var(--radius);padding:9px 18px;cursor:pointer}
+button.send:hover{background:var(--accent-soft)}
+
+.rec{border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--panel));
+  border-radius:var(--radius-lg);padding:20px 22px}
+.rec h4{color:var(--accent)}
+.foot{border-top:1px solid var(--border);padding-top:16px;color:var(--faint);font-size:12.5px}
+
+.k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+pre{margin:0;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+pre code{background:none;border:none;padding:0;color:var(--text)}
+.svg-m{font-family:var(--sans);font-size:11px;fill:var(--muted)}
+form.card label{display:block;padding:6px 0;color:var(--text);cursor:pointer}
+form.card input{margin-right:8px;accent-color:var(--accent)}
+form.card button{margin-top:10px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius-sm);padding:7px 14px;font-weight:600;font-family:var(--mono);font-size:12px;cursor:pointer}
+ul,ol{margin:0 0 10px;padding-left:20px;color:var(--muted)} li{margin-bottom:6px}
+header h2{margin-bottom:10px}
+</style></head><body>
+<style>
+.shot{margin:0 0 18px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:10px}
+.shot img{width:100%;height:auto;display:block;border-radius:var(--radius)}
+.shot .cap{font-size:13px;color:var(--faint);padding:10px 4px 2px}
+.shot .cap b{color:var(--text);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:12px;margin:22px 0 0}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px}
+.stat .v{font-size:26px;font-weight:650;letter-spacing:-.02em;color:var(--text);line-height:1.1}
+.stat .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-top:6px}
+.stat.good .v{color:var(--good)} .stat.warn .v{color:var(--warn)}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+.toc a{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:4px 10px;text-decoration:none}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}
+.walk{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 18px}
+.walk .n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);background:var(--accent);width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.walk .b{padding:0 0 22px;min-width:0}
+.walk .b h4{margin-bottom:4px}
+.walk .b p{font-size:14px;margin-bottom:8px}
+.walk .b code{font-size:.85em}
+.small{font-size:13px;color:var(--faint)}
+a.ext{color:var(--accent-2);text-decoration:none;border-bottom:1px dotted var(--accent-2)}
+</style>
+<div class="wrap">
+<header>
+<h2>s50 · Eval loop walkthrough · branch <code>eval-loop-review</code></h2>
+<h1>The s49 eval loop, built, run end to end, and ready to review</h1>
+<p class="lede">Everything the s49 plan asked for is on the branch: per-action tracing into MLflow, goldens with a reference answer and hidden checkpoints, a calibrated sonnet-5 label judge, skills in the fingerprint with a bundle per registered version and a one-command rewind, a curator write path for knowledge, and an offline optimiser that only ever opens draft PRs. This page walks you through the M5 acceptance run on two made-up goldens, with screenshots and the exact places to look in the app and in MLflow.</p>
+<div class="stats">
+  <div class="stat good"><div class="v">10/10</div><div class="l">judge calibration probes</div></div>
+  <div class="stat good"><div class="v">6/6</div><div class="l">baseline passes, 3× each golden</div></div>
+  <div class="stat good"><div class="v">71</div><div class="l">child spans on one run</div></div>
+  <div class="stat good"><div class="v">v18 → v19</div><div class="l">champion promoted</div></div>
+  <div class="stat good"><div class="v">PR #42</div><div class="l">optimiser draft PR, test-gated</div></div>
+</div>
+<nav class="toc">
+  <a href="#walk">1 · Walkthrough</a><a href="#trace">2 · Tracing</a><a href="#depth">2b · Depth</a><a href="#settings">2c · Settings</a><a href="#golden">3 · Goldens + judge</a><a href="#gate">4 · Champion vs challenger</a><a href="#version">5 · Version control</a><a href="#kb">6 · Knowledge curator</a><a href="#opt">7 · Optimiser</a><a href="#delivered">8 · What shipped</a><a href="#next">9 · What to review</a>
+</nav>
+<div class="thesis"><div class="k">Verdict</div><p>The loop is <strong>fully tracked, judged against goldens, versioned and rewindable</strong>, and champion vs challenger promotion works on two goldens. The optimiser first declined to open a PR because its candidate failed the golden checkpoint test, then, once the checkpoint was corrected, opened <a class="ext" href="https://github.com/nmp-dsci/data-qa-agent/pull/42">draft PR #42</a> with a tested <code>period_metric</code> helper. Both behaviours are the D4 guarantee working.</p></div>
+</header>
+
+<section id="walk">
+<div class="sec-head"><h2>1 · Walkthrough</h2><h3>Follow this order in the app and MLflow</h3></div>
+<div class="walk">
+<div class="n">1</div><div class="b"><h4>Golden Examples tab → nsw_rent / nsw_sales → the two <code>s49-m5</code> goldens</h4><p>Scroll to <strong>REFERENCE ANSWER</strong>: golden answer, label, calibration examples, and the five checkpoint fields. These are what the judge is calibrated on and what checkpoints diagnose against. The agent never sees any of it.</p></div>
+<div class="n">2</div><div class="b"><h4>Evaluations tab → <code>s49-challenger</code></h4><p>Header shows B vs A fingerprints, the hypothesis, and <strong>GATE PASS</strong>. Per case: PASS on G1 + G5, the judge label with its stage diagnosis, and the checkpoint scores (sql / analysis / deck). The yellow line reminds you the judge is advisory below 10 goldens.</p></div>
+<div class="n">3</div><div class="b"><h4>MLflow → data-qa/traces → search a trace id</h4><p>Trace ids are on every eval row now (<code>eval_results.otel_trace_id</code>). Open one: <code>POST /ask → agent_sdk.answer → model.turn, tool.Read, tool.extract, tool.run_analysis, tool.start_deck, tool.add_slide</code>. Click <code>tool.run_analysis</code> for code sha, runtime, ms, skills used, stdout length.</p></div>
+<div class="n">4</div><div class="b"><h4>MLflow → Models → data-qa-agent</h4><p>v19 carries <code>@champion</code> and a <code>bundle_run_id</code> tag; that run holds <code>bundle.json</code> and <code>bundle.tar.gz</code>. <code>make agent-checkout FP=av-c0b82300d1cd</code> rewinds to v18's prompts, skills and knowledge.</p></div>
+<div class="n">5</div><div class="b"><h4>Architecture tab → Knowledge pages → <code>domains/property-rent/bedrooms.md</code></h4><p>Shows the <strong>EDITED</strong> badge and the <strong>CURATOR OVERRIDE</strong> panel (version 1, by admin). The edit changed the live fingerprint and was exported back to git with <code>make knowledge-export</code>.</p></div>
+<div class="n">6</div><div class="b"><h4>Terminal → <code>make skill-mine RUN=…</code> / <code>make reflect RUN=…</code></h4><p>Section 7 has the output. The miner's candidate is the right idea and the gate did its job.</p></div>
+</div>
+</section>
+
+<section id="trace">
+<div class="sec-head"><h2>2 · Tracing</h2><h3>One trace per run, one span per action</h3></div>
+<div class="shot"><img src="s50_shot_mlflow_trace.jpg" alt="MLflow trace tree of a baseline run"><div class="cap"><b>MLflow trace of a baseline run.</b> The backend request, the data-agent request, then <code>agent_sdk.answer</code> with a child span for every model turn and tool call. Before s49 this was a single span.</div></div>
+<div class="shot"><img src="s50_shot_mlflow_run_analysis_span.jpg" alt="tool.run_analysis span attributes"><div class="cap"><b>The sandbox span.</b> <code>code_sha</code>, <code>runtime=pyodide</code>, <code>status=ok</code>, <code>ms=5210</code>, the skills the code called. The stored trace step also carries the captured stdout and the derived frame heads.</div></div>
+<div class="tw"><table><thead><tr><th>What</th><th>Where to see it</th><th>Verified</th></tr></thead><tbody>
+<tr><td class="n">Per-action spans</td><td>MLflow data-qa/traces, any run since the branch</td><td>71 child spans on one chat run: model.turn ×45, tool.Read ×11, tool.Glob ×4, tool.extract ×3, tool.Grep ×2, tool.run_analysis ×2, tool.add_slide ×2, tool.lookup_values, tool.start_deck</td></tr>
+<tr><td class="n">Sandbox stdout + frames</td><td><code>query_runs.trace</code> analysis step → <code>passes[]</code></td><td>captured on both executors (subprocess and pyodide), 8 KB cap</td></tr>
+<tr><td class="n">Deck as specified</td><td><code>query_runs.artifact_manifest</code>; Evaluations tab per case</td><td>every add_slide's layout, headline, kpi, chart type, rows</td></tr>
+<tr><td class="n">Eval → trace join</td><td><code>eval_results.otel_trace_id</code>, <code>mlflow_run_id</code></td><td>populated on all 10 M5 rows</td></tr>
+<tr><td class="n">Grading as a span</td><td><code>eval.grade</code> span with run_id, trace id, case key</td><td>seen in data-agent logs during every eval</td></tr>
+</tbody></table></div>
+</section>
+
+
+<section id="depth">
+<div class="sec-head"><h2>2b · Investigation depth</h2><h3>Added after your review: tokens per case and a case drill-down</h3></div>
+<div class="shot"><img src="s50_shot_evals_case_drilldown.jpg" alt="Evaluations tab case drill-down"><div class="cap"><b>Evaluations tab, rent case expanded.</b> Tokens, cost and latency per case and per run. The drill-down shows the verdict with the judge's reason, the agent's answer beside the golden answer, then checkpoints as expected vs actual, the agent's SQL beside the golden SQL, every sandbox pass with its code and stdout, the deck slide by slide, and links to the MLflow trace and case run.</div></div>
+<p class="small">Two layout bugs surfaced and were fixed while building it: the case column overflowed the panel because of a global no-wrap rule on table cells, and the Evaluations page never scrolled.</p>
+</section>
+<section id="settings">
+<div class="sec-head"><h2>2c · Settings tab</h2><h3>Preferences feature dropped, live agent shown</h3></div>
+<div class="shot"><img src="s50_shot_settings.jpg" alt="Settings tab"><div class="cap"><b>Settings.</b> Remembered preferences are gone from the tab, the API and the agent (the <code>remember</code> tool and prompt slot are removed, which moved the fingerprint to <code>av-35a3adc47556</code>). The stale Model provider block is replaced by the live runtime, champion status, model and fingerprint. The <code>app.user_memories</code> table is left in place for now.</div></div>
+</section>
+
+<section id="golden">
+<div class="sec-head"><h2>3 · Goldens and the judge</h2><h3>Outcome gates, checkpoints diagnose, labels calibrate</h3></div>
+<div class="shot"><img src="s50_shot_golden_reference_answer.jpg" alt="Golden tab reference answer panel"><div class="cap"><b>Golden tab, the sales golden.</b> Golden answer (label high), two calibration examples (medium, low), and the checkpoint fields. The judge must reproduce these labels before it scores anything.</div></div>
+<div class="grid g2">
+<div class="card"><h4>Calibration</h4><p>10 of 10 probes agreed: every golden's answer came back <code>high</code>, every calibration example came back with its stored label. Model claude-sonnet-5, rubric <code>label-v1</code> (hash <code>jr-227c9a32</code>). A judge that fails this does not score the run.</p></div>
+<div class="card"><h4>What the judge said, and why it is useful</h4><p>Rent golden: <strong>medium / analysis</strong> on 5 of 6 runs. G1 passes because the smoothed <code>latest_value</code> is within 1% of the raw month, but the judge notices the answer never quotes the actual May 2026 figure. That is a real, actionable diagnosis and it points at exactly the helper the challenger changed. Sales golden: <strong>high / none</strong> on the champion, medium / presentation on the challenger.</p></div>
+</div>
+<div class="tw" style="margin-top:14px"><table><thead><tr><th>Run</th><th>Rent golden</th><th>Sales golden</th><th>Checkpoints (rent · sales)</th></tr></thead><tbody>
+<tr><td class="n">Baseline ×3</td><td>PASS · medium/analysis, medium/analysis, medium/presentation</td><td>PASS · high/none ×3</td><td>analysis 1.0 deck 1.0 · analysis 1.0 deck 0.5</td></tr>
+<tr><td class="n">Champion (v18)</td><td>PASS · medium/analysis · 43 turns</td><td>PASS · high/none · 85 turns</td><td>sql 0.02 analysis 1.0 deck 1.0 · sql 0.50 analysis 1.0 deck 0.5</td></tr>
+<tr><td class="n">Challenger (v19)</td><td>PASS · medium/analysis · 48 turns</td><td>PASS · medium/presentation · 57 turns</td><td>same</td></tr>
+</tbody></table></div>
+<p class="small" style="margin-top:10px">The sql checkpoint on the rent golden is low because the agent extracts a multi-month series and the golden extracts one month; both are correct, the checkpoint is diagnostic only and says "the SQL shapes differ", which is true.</p>
+</section>
+
+<section id="gate">
+<div class="sec-head"><h2>4 · Champion vs challenger</h2><h3>Promotion on eval accuracy only</h3></div>
+<div class="shot"><img src="s50_shot_evals_challenger_gate.jpg" alt="Evaluations tab showing the challenger run with GATE PASS"><div class="cap"><b>Evaluations tab, s49-challenger.</b> B <code>av-6c427412dec2</code> vs A <code>av-c0b82300d1cd</code>, the hypothesis, GATE PASS, 2 of 2, judge 0/2 high (advisory), and per-case checkpoints.</div></div>
+<div class="grid g2">
+<div class="card"><h4>How the challenger was minted</h4><p>One edit to <code>skills/analysis.py</code>: <code>latest_value</code> now also returns <code>raw_value</code> and <code>count</code>. Rebuild → fingerprint <code>av-c0b8…</code> → <code>av-6c42…</code> with only <code>skills_hash</code> changed (<code>s-ba375b69</code> → <code>s-fb4bcebb</code>). Before s49 this edit would not have changed the version at all.</p></div>
+<div class="card"><h4>The gate</h4><pre><code>rule: pass_rate >= champion AND no pass->fail flips
+champion   v18  eval 5b20ddf0  pass_rate 1.0
+challenger v19  eval 360d1124  pass_rate 1.0
+flips: []            promoted: true
+PROMOTED — @champion moved v18 -> v19; recorded in app.promotions</code></pre></div>
+</div>
+<div class="note n-warn" style="margin-top:14px"><p><strong>Bug found and fixed on the way.</strong> <code>mlflow_client.delete_alias</code> sent the alias as query parameters; MLflow 3.x rejects that and the client swallowed the error, so <code>@challenger</code> survived every previous promote. It now sends a JSON body, and the alias is gone after this promotion.</p></div>
+</section>
+
+<section id="version">
+<div class="sec-head"><h2>5 · Version control</h2><h3>Every lever in the fingerprint, every version reconstructible</h3></div>
+<div class="shot"><img src="s50_shot_mlflow_registry_champion.jpg" alt="MLflow model registry showing v19 as champion"><div class="cap"><b>MLflow registry.</b> v19 holds <code>@champion</code>; its tags carry the fingerprint, agent_version id and <code>bundle_run_id</code>. The bundle run holds <code>bundle.json</code> (component hashes, git sha, DB snapshot hashes) and <code>bundle.tar.gz</code> (prompts, skills, knowledge).</div></div>
+<div class="grid g2">
+<div class="card"><h4>Rewind</h4><pre><code>make agent-checkout FP=av-c0b82300d1cd
+# worktree at the recorded git sha
+# skills/analysis.py == pre-challenger file (byte-identical)
+# prints compose override + DB drift-check SQL</code></pre></div>
+<div class="card"><h4>Fingerprint components now</h4><p><code>provider | model | claude_md | marts | schema | knowledge_version | ordinals | quota | skills</code>. The generated skills block in CLAUDE.md means a helper signature change also moves <code>claude_md</code>, so the prompt the agent saw is always the one recorded.</p></div>
+</div>
+</section>
+
+<section id="kb">
+<div class="sec-head"><h2>6 · Knowledge curator path</h2><h3>Edit in the app, versioned in the DB, exported to git</h3></div>
+<div class="shot"><img src="s50_shot_architecture_knowledge_override.jpg" alt="Architecture tab knowledge page with curator override"><div class="cap"><b>Architecture tab.</b> The rent bedrooms page after a curator edit: EDITED badge in the list, the note rendered in the page, and the CURATOR OVERRIDE panel (version 1, by admin). Fingerprint moved <code>av-6c42…</code> → <code>av-6578…</code>.</div></div>
+<p>Writes go through backend-api (the only service holding the app role), with an append-only log. <code>make knowledge-export</code> wrote the page back to <code>services/data-agent/knowledge/</code> and that file is committed on the branch, so git remains the source of truth. The markdown filesystem, its 3-tier index/search/read and the read quota are unchanged, per D3.</p>
+</section>
+
+<section id="opt">
+<div class="sec-head"><h2>7 · Offline optimiser</h2><h3>Draft PRs only, and only when the candidate passes its test</h3></div>
+<div class="grid g2">
+<div class="card"><h4><code>make skill-mine RUN=5b20ddf0</code></h4><p>Cluster found: the rent golden's <em>analysis</em> diagnosis. Opus proposed <code>period_metric(df, period_col, value_col, den_col, group_col, period=None, min_count)</code>: a ratio-of-sums for one period, the primitive that was missing. Hypothesis, in its words: <em>"every existing analysis skill answers a trend question … there was no skill that says give me sum(total_weekly_rent)/sum(n_rented) for one month"</em>.</p><p>The candidate ran clean in the real sandbox against the golden's rows but <strong>failed the gate</strong>: the golden's <code>derived_cols</code> named <code>avg_weekly_rent</code>, which is the extract column, so no derived frame could contain it. Status <code>candidate-failed</code>, no branch, no PR. With the golden checkpoint corrected (<code>derived_cols: [value]</code>) the rerun candidate passed (<code>ok: true</code>, frame <code>latest_rent</code> carries <code>value</code>) and the miner opened <a class="ext" href="https://github.com/nmp-dsci/data-qa-agent/pull/42">draft PR #42</a> on branch <code>optimise/skill-period-metric-skill</code>: the helper plus <code>tests/test_skill_period_metric.py</code>. Human merges, per D4.</p></div>
+<div class="card"><h4><code>make reflect RUN=5b20ddf0</code></h4><p>Returned <code>no-failures</code>: the run had no failed or low-labelled case, and a medium label is not enough to justify a prompt or knowledge edit. Correct by design; the reflector only proposes when there is evidence.</p></div>
+</div>
+<div class="note n-info" style="margin-top:14px"><p><strong>Reading the medium labels.</strong> The judge is telling you the same thing the miner found: the agent quotes the smoothed figure. The fix is a knowledge or CLAUDE.md line telling it to use <code>raw_value</code> for point-in-time questions, or the <code>period_metric</code> helper. Both are one optimiser cycle away once the pack has a failing case to anchor on.</p></div>
+</section>
+
+<section id="delivered">
+<div class="sec-head"><h2>8 · What shipped</h2><h3>Three commits on the branch</h3></div>
+<div class="tw"><table><thead><tr><th>Area</th><th>Change</th></tr></thead><tbody>
+<tr><td class="n">Tracing (M0)</td><td>child spans per model turn and tool call; sandbox stdout + frames in the trace on both executors; <code>artifact_manifest</code>; trace + MLflow ids on eval rows; <code>eval.grade</code> span</td></tr>
+<tr><td class="n">Versioning (M1)</td><td><code>skills_hash</code> in the fingerprint; bundle.json + tarball per registered version; <code>make agent-checkout</code>; generated skills block in CLAUDE.md</td></tr>
+<tr><td class="n">Goldens + judge (M2)</td><td>golden v2 in pack, DB and Golden tab; checkpoint scoring; sonnet-5 label judge with calibration; insight judge removed; pass = G1 + G5; G5 persisted</td></tr>
+<tr><td class="n">Optimiser (M3)</td><td><code>skill_miner.py</code>, <code>reflect.py</code>, shared harness; candidate tested in the real sandbox; draft PRs only</td></tr>
+<tr><td class="n">Knowledge (M4)</td><td><code>app.knowledge_pages</code> + log; admin PUT; Architecture tab editor; <code>make knowledge-export/import</code></td></tr>
+<tr><td class="n">Acceptance (M5)</td><td>two made-up goldens (tag <code>s49-m5</code>), <code>--tag</code> filter, challenger helper, alias fix, run log in <code>docs/eval-loop-s49.md</code></td></tr>
+<tr><td class="n">Migration</td><td>0039: query_runs.artifact_manifest; eval_results otel_trace_id, mlflow_run_id, judge, checkpoints, g5; eval_cases golden_answer, label, calibration_examples, checkpoints; knowledge_pages + log</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="next">
+<div class="sec-head"><h2>9 · What to review</h2><h3>Things you may want to change before merge</h3></div>
+<ul class="clean">
+<li><strong>The judge is same-model.</strong> sonnet-5 grades sonnet-5, per your call. Calibration on the golden set is the guard; it passed 10/10 here, but it is worth watching as the pack grows.</li>
+<li><strong>Pass rule dropped the in-process report format check.</strong> W-C found the old G3 format gate failing a correct three-slide deck on a vestigial "summary is empty" check and removed it from the gate (still scored and displayed). This matches D2 (pass = G1 + G5) but is a behaviour change.</li>
+<li><strong>The curator note on bedrooms.md is real and committed.</strong> Revert it if you do not want it in the knowledge base; it was the M5 demonstration edit.</li>
+<li><strong>Memory.</strong> Two eval lanes plus Chrome killed a run once on this machine. The run log recommends one lane at a time with grafana/prometheus stopped.</li>
+<li><strong>Draft PR #42 is the optimiser's, not mine.</strong> Review it as you would any contributor's: it adds <code>period_metric</code> to the skills library with a test. Merging it would mint another challenger.</li>
+<li><strong>Prod is untouched.</strong> Demo mode deploys no data-agent, so none of this runs there.</li>
+</ul>
+</section>
+
+<div class="foot">s50 · 2026-09-10 · Screenshots taken from the local stack and MLflow 3.12 during the M5 run · Plan: .lavish/s49_eval-loop-review-plan.html · Contract + run log: docs/eval-loop-s49.md · Design: Flight Deck tokens from frontend/src/styles.css.</div>
+</div>
+</body></html>

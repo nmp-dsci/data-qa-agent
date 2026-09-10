@@ -230,6 +230,47 @@ def test_sdk_fingerprint_moves_when_the_workspace_template_changes(
     assert after["schema_hash"] == before["schema_hash"]
 
 
+def test_sdk_fingerprint_moves_when_a_skill_file_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """skills_hash is a REAL, shared component on this runtime too (see the
+    module docstring) — both runtimes preload the same skills/*.py library
+    into the sandbox, so editing a skill must move the composed fingerprint,
+    same as it does for the champion."""
+    fake = tmp_path / "agent"
+    fake.mkdir()
+    skills_dir = fake / "skills"
+    skills_dir.mkdir()
+    (skills_dir / "analysis.py").write_text("def mean(): ...")
+    monkeypatch.setattr(version, "_AGENT_DIR", fake)
+
+    before = version.build_sdk_fingerprint()
+
+    (skills_dir / "analysis.py").write_text("def mean(): ...\ndef annualise(): ...")
+    version.skills_hash.cache_clear()
+    after = version.build_sdk_fingerprint()
+
+    assert after["skills_hash"] != before["skills_hash"]
+    assert after["skills_content_hash"] != before["skills_content_hash"]
+    assert after["fingerprint"] != before["fingerprint"]
+    # Nothing about the workspace/knowledge/quota surfaces moved.
+    assert after["claude_md_hash"] == before["claude_md_hash"]
+    assert after["marts_hash"] == before["marts_hash"]
+    assert after["schema_hash"] == before["schema_hash"]
+    assert after["quota_hash"] == before["quota_hash"]
+
+
+def test_sdk_fingerprint_skills_hash_is_real_not_a_placeholder() -> None:
+    """``skills_hash`` must be the actual content hash (``s-<8>``, s24-M1
+    style) rather than the old marts+schema placeholder — that placeholder now
+    has its own honestly-named ``marts_schema_hash`` key."""
+    fp = version.build_sdk_fingerprint()
+    assert fp["skills_hash"] == f"s-{version.skills_hash()[:8]}"
+    assert fp["marts_schema_hash"].startswith("ms-")
+    assert fp["skills_content_hash"] == version.skills_hash()
+    assert "sk-" in fp["label"]
+
+
 def test_build_sdk_fingerprint_async_uses_the_live_ordinals_value() -> None:
     """The async variant must actually call ordinals_snapshot_hash() rather
     than falling back to the seed — the whole point of the async path."""

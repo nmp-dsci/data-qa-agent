@@ -9,6 +9,7 @@ depend on whatever the host environment happens to have set.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -94,7 +95,14 @@ def test_knowledge_copy_matches_source_tree(tmp_path: Path) -> None:
     copy_hash = knowledge_mod._version_for(str(ws / "knowledge"))  # noqa: SLF001
     source_hash = knowledge_mod._version_for(str(source_dir))  # noqa: SLF001
     assert copy_hash == source_hash
-    assert copy_hash == knowledge_mod.knowledge_version()
+    # s49 (D3): knowledge_version() folds a curator DB-override snapshot into
+    # this file-tree hash (see test_knowledge.py for that composition on its
+    # own), so it no longer equals the plain tree hash even with no overrides
+    # in play — verify the exact composition instead of bare equality.
+    expected = hashlib.sha256(
+        f"{copy_hash}:{knowledge_mod._overrides_snapshot_hash()}".encode()  # noqa: SLF001
+    ).hexdigest()[:12]
+    assert knowledge_mod.knowledge_version() == expected
 
 
 @pytest.mark.parametrize("include_insights", [True, False])
@@ -103,21 +111,27 @@ def test_claude_md_has_no_leftover_template_slots(tmp_path: Path, include_insigh
         f"run-slots-{include_insights}",
         "any question",
         include_insights=include_insights,
-        memories_block="- prefers charts in AUD",
         base_dir=tmp_path,
     )
     content = (ws / "CLAUDE.md").read_text()
     assert "{{" not in content
     assert "}}" not in content
-    assert "prefers charts in AUD" in content
 
 
-def test_claude_md_omits_memories_section_when_empty(tmp_path: Path) -> None:
+def test_claude_md_generates_the_skills_block_from_the_registry(tmp_path: Path) -> None:
+    """The {{SKILLS}} slot must render every registered skill's signature and
+    first docstring line (s49 M1) — no hand-maintained list to drift."""
+    from agent import skills as skills_mod
+
     ws = build_workspace(
-        "run-no-memories", "any question", include_insights=True, base_dir=tmp_path
+        "run-skills-block", "any question", include_insights=True, base_dir=tmp_path
     )
     content = (ws / "CLAUDE.md").read_text()
-    assert "Known preferences" not in content
+    for _module, name, signature, _doc in skills_mod.registered():
+        assert signature in content, f"{name}'s signature missing from CLAUDE.md"
+    # The mechanics footer (hand-written, never generated) is still present.
+    assert "skill_gap(need, why=" in content
+    assert "note_inline_math()" in content
 
 
 def test_workspace_manifest_has_stable_components(tmp_path: Path) -> None:
@@ -166,3 +180,59 @@ def test_async_context_manager_builds_and_cleans_up(tmp_path: Path) -> None:
         return captured
 
     asyncio.run(_run())
+
+
+def test_knowledge_copy_prefers_a_db_override_body(tmp_path: Path) -> None:
+    """s49 (D3): a curator's ``app.knowledge_pages`` override wins over the
+    file body in the copied ``knowledge/`` tree — build_workspace() itself
+    stays DB-free (it only reads whatever is already in knowledge_mod's
+    module-global override cache)."""
+    pages = knowledge_mod.load_pages()
+    assert pages, "fixture knowledge tree should have at least one page"
+    target = pages[0]
+    original_overrides = knowledge_mod._OVERRIDES  # noqa: SLF001
+    original_loaded_at = knowledge_mod._overrides_loaded_at  # noqa: SLF001
+    try:
+        knowledge_mod._OVERRIDES = {  # noqa: SLF001
+            target.rel_path: {
+                "body": "CURATOR OVERRIDE BODY — should win in the copy.",
+                "version": 7,
+                "author": "curator1",
+                "updated_at": "",
+            }
+        }
+        knowledge_mod._overrides_loaded_at = 0.0  # noqa: SLF001
+        knowledge_mod._load_pages_cached.cache_clear()  # noqa: SLF001
+
+        ws = build_workspace(
+            "run-knowledge-override", "any question", include_insights=True, base_dir=tmp_path
+        )
+        copied = (ws / "knowledge" / target.rel_path).read_text(encoding="utf-8")
+        assert "CURATOR OVERRIDE BODY — should win in the copy." in copied
+    finally:
+        knowledge_mod._OVERRIDES = original_overrides  # noqa: SLF001
+        knowledge_mod._overrides_loaded_at = original_loaded_at  # noqa: SLF001
+        knowledge_mod._load_pages_cached.cache_clear()  # noqa: SLF001
+
+
+def test_workspace_context_manager_refreshes_knowledge_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The async ``workspace()`` wrapper awaits ``load_overrides()`` before
+    the sync build, so a live curator edit is picked up without the caller
+    having to remember to refresh it itself."""
+    calls = {"n": 0}
+
+    async def _fake_load_overrides(*, ttl: float = 0.0) -> None:
+        calls["n"] += 1
+
+    monkeypatch.setattr(knowledge_mod, "load_overrides", _fake_load_overrides)
+
+    async def _run() -> None:
+        async with workspace(
+            "run-ctx-overrides", "any question", include_insights=False, base_dir=tmp_path
+        ):
+            pass
+
+    asyncio.run(_run())
+    assert calls["n"] == 1

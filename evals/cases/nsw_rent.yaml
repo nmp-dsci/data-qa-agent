@@ -69,6 +69,21 @@ cases:
         ),
         main_table=ranked[["postcode", "avg_rent_then", "avg_rent_now", "rent_growth_pct"]],
     )
+  golden_answer: |
+    Over the two years to mid-2025, postcode 2820 led NSW weekly rent growth at about
+    +25%, with average weekly rent rising from roughly $426 to $534. 2519 (+22%, $605 →
+    $740) and 2113 (+22%, $709 → $863) followed, then 2281 (+22%) and 2299 (+20%). Rent
+    is weighted by bond count (total_weekly_rent / n_rented), never a mean of medians,
+    and postcodes with fewer than 200 bonds in either window are excluded so a handful
+    of high-value leases cannot top the ranking on noise.
+  label: high
+  checkpoints:
+    sql:
+      key_cols:
+      - postcode
+    analysis:
+      derived_cols:
+      - rent_growth_pct
 - case_key: nsw_rent-median-weekly-rent-2br-units-postcode-2077-latest-month-s48a1
   question: What was the median weekly rent for 2-bedroom units in postcode 2077 in the latest month?
   dataset: nsw_rent
@@ -110,3 +125,25 @@ cases:
             title="2BR Unit Median Weekly Rent — Postcode 2077",
         ),
     )
+  golden_answer: |
+    The median weekly rent for 2-bedroom units in postcode 2077 was $718 in the latest
+    month on record, May 2026 — up from $680 in March and roughly flat against April's
+    $720. It is a single postcode/property-type/bedroom-band series, so the answer is
+    one number with its month, not an average across bands.
+  label: high
+  calibration_examples:
+  - label: medium
+    answer: |
+      2-bedroom units in postcode 2077 rented for a median of about $720 a week
+      recently, based on the most recent months of bond lodgements.
+  - label: low
+    answer: |
+      Median weekly rent in postcode 2077 was $606.92, averaged across all property
+      types and bedroom bands over the last twelve months.
+  checkpoints:
+    analysis:
+      expected_skills:
+      - latest_value
+      - build_report
+    deck:
+      kpi_label_contains: rent

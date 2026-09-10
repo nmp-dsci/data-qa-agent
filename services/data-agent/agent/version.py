@@ -77,14 +77,18 @@ def _active_model() -> str:
 # The Agent SDK runtime's fingerprint (s44 M3b)
 # ---------------------------------------------------------------------------
 #
-# The champion's two behaviour-surface components (prompt_hash, skills_hash)
-# have no equivalent on this runtime — there is no baked system prompt or
-# skills/ dir the model reads; instead it explores a per-run *workspace*
-# (workspace.py) and calls governed tools shaped by a handful of quota
-# settings. So the composition swaps in this runtime's own surfaces:
-# CLAUDE.md template + marts + schema content hashes, the ordinal-ordering
-# state, and the quota knobs — same discipline (a component per lever), a
-# different lever list.
+# The champion's prompt_hash has no equivalent on this runtime — there is no
+# baked system prompt; instead it explores a per-run *workspace* (workspace.py)
+# and calls governed tools shaped by a handful of quota settings. skills_hash,
+# however, DOES apply here unchanged: the sandbox preloads the same
+# ``skills/*.py`` library on both runtimes (``sandbox/runner.py`` for the
+# subprocess executor, ``sandbox/pyodide_host.mjs`` for the Pyodide one), so a
+# skill edit changes what a run_analysis call can do exactly as it does for the
+# champion. So the composition keeps skills_hash (real, s24-M1 style) and swaps
+# the champion's prompt_hash for this runtime's own surfaces: CLAUDE.md
+# template + marts + schema content hashes, the ordinal-ordering state, and the
+# quota knobs — same discipline (a component per lever), a different lever
+# list plus the one that carries over.
 
 SDK_PROVIDER = "claude-agent-sdk"
 
@@ -93,16 +97,14 @@ SDK_PROVIDER = "claude-agent-sdk"
 def _sdk_workspace_hashes() -> dict[str, str]:
     """claude_md/marts/schema/combined content hashes for the SDK fingerprint.
 
-    Built from a throwaway REFERENCE workspace, not a model's real per-run one:
-    a real workspace's CLAUDE.md also bakes in that user's recalled memories,
-    which must never move a *build* identity. ``include_insights=True`` picks
-    the richer of the two pass-plan templates deterministically and
-    ``memories_block=""`` keeps the render user-independent, so this is a pure
-    function of the code (workspace.py, its template, schema.py, the knowledge
-    tree) — cached for the process lifetime like ``prompt_hash``/``skills_hash``
-    above. ``build_workspace`` touches only the filesystem (a temp dir) and
-    ``schema.list_marts``/``describe_table`` (dbt-manifest or curated-catalog,
-    no DB), so this is safe to compute at import-adjacent time.
+    Built from a throwaway REFERENCE workspace, not a model's real per-run one.
+    ``include_insights=True`` picks the richer of the two pass-plan templates
+    deterministically, so this is a pure function of the code (workspace.py,
+    its template, schema.py, the knowledge tree) — cached for the process
+    lifetime like ``prompt_hash``/``skills_hash`` above. ``build_workspace``
+    touches only the filesystem (a temp dir) and ``schema.list_marts``/
+    ``describe_table`` (dbt-manifest or curated-catalog, no DB), so this is
+    safe to compute at import-adjacent time.
     """
     import tempfile
 
@@ -113,7 +115,6 @@ def _sdk_workspace_hashes() -> dict[str, str]:
             "fingerprint-reference",
             "reference question for build fingerprinting",
             include_insights=True,
-            memories_block="",
             base_dir=Path(tmp),
         )
         try:
@@ -183,6 +184,7 @@ def build_sdk_fingerprint(*, ordinals_hash: str | None = None) -> dict[str, str]
     quota = _quota_components()
     q_hash = _quota_hash(quota)
     o_hash = ordinals_hash if ordinals_hash is not None else _seed_ordinals_hash()
+    s_hash = skills_hash()
 
     composed = hashlib.sha256(
         "|".join(
@@ -195,6 +197,7 @@ def build_sdk_fingerprint(*, ordinals_hash: str | None = None) -> dict[str, str]
                 k_version,
                 o_hash,
                 q_hash,
+                s_hash,
             ]
         ).encode("utf-8")
     ).hexdigest()[:12]
@@ -202,18 +205,25 @@ def build_sdk_fingerprint(*, ordinals_hash: str | None = None) -> dict[str, str]
     label = (
         f"{SDK_PROVIDER}/{model_id} · cmd-{ws_hashes['claude_md'][:6]} "
         f"marts-{ws_hashes['marts'][:6]} schema-{ws_hashes['schema'][:6]} "
-        f"kv-{k_version[:6]} ord-{o_hash[:6]} quota-{q_hash[:6]}"
+        f"kv-{k_version[:6]} ord-{o_hash[:6]} quota-{q_hash[:6]} sk-{s_hash[:6]}"
     )
 
     return {
         "fingerprint": f"av-{composed}",
         "provider": SDK_PROVIDER,
         "model_id": model_id,
-        # The champion's two prompt/skills slots, repurposed for this
-        # runtime's nearest equivalents so a table joining both runtimes'
-        # agent_versions rows still has something meaningful in every column.
+        # The champion's prompt_hash slot, repurposed for this runtime's
+        # nearest equivalent (the CLAUDE.md workspace template) so a table
+        # joining both runtimes' agent_versions rows still has something
+        # meaningful in every column. skills_hash is the REAL, shared
+        # component (see the module docstring above) — both runtimes preload
+        # the same skills/*.py library into the sandbox.
         "prompt_hash": f"cmd-{ws_hashes['claude_md'][:8]}",
-        "skills_hash": f"ms-{ws_hashes['marts'][:4]}{ws_hashes['schema'][:4]}",
+        "skills_hash": f"s-{s_hash[:8]}",
+        # The old placeholder that used to ride the "skills_hash" key — a
+        # digest of marts+schema, kept under its own honestly-named key now
+        # that skills_hash means what it says.
+        "marts_schema_hash": f"ms-{ws_hashes['marts'][:4]}{ws_hashes['schema'][:4]}",
         "knowledge_version": f"kv-{k_version[:8]}",
         "image_tag": os.environ.get("IMAGE_TAG", ""),
         "git_sha": os.environ.get("GIT_SHA", ""),
@@ -225,6 +235,7 @@ def build_sdk_fingerprint(*, ordinals_hash: str | None = None) -> dict[str, str]
         "claude_md_hash": ws_hashes["claude_md"],
         "marts_hash": ws_hashes["marts"],
         "schema_hash": ws_hashes["schema"],
+        "skills_content_hash": s_hash,
         "workspace_combined_hash": ws_hashes["combined"],
         "ordinals_hash": o_hash,
         "quota_hash": q_hash,

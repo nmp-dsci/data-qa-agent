@@ -230,6 +230,18 @@ async def _poll_kind(
     else:
         spreadsheet_id = manifest.get("spreadsheet_id") or file_id
         values_by_tab, failed_tabs = await _sheet_values(client, spreadsheet_id, manifest)
+        if failed_tabs and prior is None:
+            # No stored baseline yet, and at least one tab failed to read: an
+            # empty table here is not "the deck shipped with zero rows", it's
+            # a transient read failure. Writing it as the permanent version-1
+            # baseline would poison every future diff with a fabricated
+            # table_rows_added once the real rows show up — so write nothing
+            # and let the next poll retry the baseline from scratch.
+            print(
+                f"  run {run_id}: {kind} first-observation read failed for "
+                f"{sorted(failed_tabs)}, skipping baseline this pass"
+            )
+            return 0, None
         after = normalise_sheet(values_by_tab, manifest)
         if failed_tabs and prior is not None:
             # A failed read is not a deletion — carry that table's prior

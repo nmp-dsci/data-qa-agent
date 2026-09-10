@@ -124,6 +124,25 @@ def test_reduce_scalar_manifest_kpi_matches_the_golden_field_not_the_last_slide(
     assert out == {"value": 718.0, "scalar_source": "manifest_kpi"}
 
 
+def test_reduce_scalar_manifest_kpi_no_label_match_falls_through_instead_of_guessing() -> None:
+    # Both KPI slides are labelled, but neither names the golden's field
+    # (vacancy_rate) — grading against "Days on Market" because it came last
+    # would silently produce the wrong number. manifest_kpi must decline so
+    # the caller falls through to key_match instead.
+    artifact = {
+        "slides": [
+            {"index": 0, "spec": {"kpi": "$718/wk", "kpi_label": "Median Weekly Rent"}},
+            {"index": 1, "spec": {"kpi": "42 days", "kpi_label": "Days on Market"}},
+        ]
+    }
+    golden_rows = [{"month": "2026-05", "vacancy_rate": 2.1}]
+    actual_rows = [{"month": "2026-05", "vacancy_rate": 2.1}]
+    out = reduce_scalar_actual(
+        golden_rows=golden_rows, actual_rows=actual_rows, artifact=artifact, value="vacancy_rate"
+    )
+    assert out == {"value": 2.1, "scalar_source": "key_match"}
+
+
 def test_reduce_scalar_key_match_joins_on_shared_columns() -> None:
     golden_rows = [{"month": "2026-05", "median_weekly_rent": 718.0}]
     actual_rows = [

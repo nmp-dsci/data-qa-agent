@@ -124,26 +124,38 @@ def _manifest_kpi_value(artifact: dict[str, Any] | None, value_col: str = "") ->
     golden ``value_col`` to match against, this prefers the slide whose
     ``kpi_label`` names that field (s48 harness fix — grading against
     whichever KPI slide happened to come last silently graded the wrong
-    number whenever more than one was present). Without a match (or without
-    a ``value_col`` at all) it falls back to the *last* non-empty ``kpi``
-    across the manifest's slides in slide order, i.e. whatever the deck says
-    now, not what it said first.
+    number whenever more than one was present). When a ``value_col`` is
+    given and at least one slide carries a ``kpi_label`` but none of them
+    names that field, this returns ``None`` rather than guessing — the
+    caller falls through to ``key_match``/``last_row`` instead of silently
+    grading against an unrelated metric. If no slide carries a label at all,
+    there is no basis to disambiguate and the last non-empty ``kpi`` is used,
+    as before. Without a ``value_col`` at all, a single unambiguous KPI slide
+    is used; more than one is ambiguous and also returns ``None``.
     """
     if not artifact:
         return None
     wanted = _normalise_field_name(value_col) if value_col else ""
-    kpi_text: str | None = None
+    kpi_texts: list[str] = []
     matched_text: str | None = None
+    any_labelled = False
     for slide in artifact.get("slides") or []:
         if not isinstance(slide, dict):
             continue
         kpi, label = _kpi_fields(slide)
         if not kpi:
             continue
-        kpi_text = kpi
-        if wanted and label and _normalise_field_name(label) == wanted:
-            matched_text = kpi
-    chosen = matched_text if matched_text is not None else kpi_text
+        kpi_texts.append(kpi)
+        if label:
+            any_labelled = True
+            if wanted and _normalise_field_name(label) == wanted:
+                matched_text = kpi
+    if wanted and any_labelled:
+        chosen = matched_text
+    elif wanted:
+        chosen = kpi_texts[-1] if kpi_texts else None
+    else:
+        chosen = kpi_texts[0] if len(kpi_texts) == 1 else None
     return parse_scalar_number(chosen) if chosen is not None else None
 
 

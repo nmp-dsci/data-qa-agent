@@ -45,7 +45,7 @@ from agent.deck import (
     table_row_height_in,
     update_table_columns_request,
 )
-from agent.gsuite import EMU_PER_INCH
+from agent.gsuite import EMU_PER_INCH, GoogleApiError
 from agent.sdk_agent import _cell, _frame_table
 
 # --------------------------------------------------------------------------
@@ -812,6 +812,7 @@ class FakePackClient(FakeClient):
         super().__init__()
         self.table_requests: list[dict[str, Any]] = []
         self.refuse_add_table = False
+        self.transient_add_table_failures = 0
         self.written: list[tuple[str, list[list[Any]]]] = []
         self.app_properties: dict[str, dict[str, str]] = {}
 
@@ -851,8 +852,11 @@ class FakePackClient(FakeClient):
         self.sheets_batches.append(requests)
         if any("addTable" in r for r in requests):
             self.table_requests.extend(requests)
+            if self.transient_add_table_failures > 0:
+                self.transient_add_table_failures -= 1
+                raise GoogleApiError("addTable -> 503: backend error", status_code=503)
             if self.refuse_add_table:
-                raise RuntimeError("addTable refused")
+                raise GoogleApiError("addTable -> 400: Tables not supported", status_code=400)
             return {"replies": [{"addTable": {"table": {"tableId": "tbl-1"}}}]}
         if any("addChart" in r for r in requests):
             return {"replies": [{"addChart": {"chart": {"chartId": 77}}}]}
@@ -1076,6 +1080,43 @@ def test_duplicate_x_with_a_categorical_second_column_auto_pivots_into_series() 
     assert header == ["month", "house", "unit"]
 
 
+def test_pivoted_series_keeps_the_measure_columns_unit_not_text() -> None:
+    """Pivoting replaces the measure column's header with category values
+    (``rent`` -> ``house``/``unit``) — the currency formatting and axis title
+    must still follow the ORIGINAL measure, and a sparse cell must not force
+    the whole column to TEXT (s48 §7 review fix)."""
+    builder, client = _pack_builder()
+    rows = [
+        ["2026-01", "house", 700],
+        ["2026-01", "unit", 650],
+        ["2026-02", "house", 705],
+        # no "unit" row for 2026-02 — a sparse cell in the pivoted grid
+    ]
+    record = asyncio.run(
+        builder.add_slide(
+            layout=PACK_L2,
+            headline="H",
+            columns=["month", "property_type", "rent"],
+            rows=rows,
+            tab_name="rent_by_type",
+            chart_type="line",
+        )
+    )
+    assert record.columns == ("month", "house", "unit")
+
+    typed = next(r for b in client.sheets_batches for r in b if "updateTable" in r)
+    props = {
+        p["columnName"]: p["columnType"] for p in typed["updateTable"]["table"]["columnProperties"]
+    }
+    assert props["house"] == "CURRENCY", "must not fall back to DOUBLE/TEXT"
+    assert props["unit"] == "CURRENCY", "the sparse cell must not force this column to TEXT"
+
+    chart_request = next(r for b in client.sheets_batches for r in b if "addChart" in r)
+    axes = chart_request["addChart"]["chart"]["spec"]["basicChart"]["axis"]
+    value_axis = next(a for a in axes if a["position"] == "LEFT_AXIS")
+    assert value_axis["title"] == "house ($)"
+
+
 def test_unique_x_values_pass_through_unchanged() -> None:
     builder, client = _pack_builder()
     rows = [["2026-01", 700], ["2026-02", 705]]
@@ -1181,8 +1222,45 @@ def test_a_refused_add_table_falls_back_to_a_named_range_once() -> None:
     )
     assert record.table_kind == "range"
     assert any("addNamedRange" in r for batch in client.sheets_batches for r in batch)
-    before = sum("addTable" in r for batch in client.sheets_batches for r in batch)
-    asyncio.run(
+
+
+def test_a_transient_add_table_error_retries_and_recovers_without_downgrading() -> None:
+    """A 503 is not "Tables unsupported" — it must not permanently downgrade
+    every later block just because one addTable blipped (s48 §7 review fix)."""
+    builder, client = _pack_builder()
+    client.transient_add_table_failures = 1
+    record = asyncio.run(
+        builder.add_slide(
+            layout=PACK_L2,
+            headline="H",
+            columns=["month", "rent"],
+            rows=[["2026-01", 700]],
+            tab_name="rent",
+        )
+    )
+    assert record.table_kind == "table"
+    assert builder._table_kind == "table"
+
+
+def test_a_transient_add_table_error_falls_back_for_one_block_only() -> None:
+    """Two failures in a row exhaust the retry for THIS block — it still gets a
+    named range rather than failing the slide — but must not poison the next
+    block's chance to use a real Table."""
+    builder, client = _pack_builder()
+    client.transient_add_table_failures = 2
+    record = asyncio.run(
+        builder.add_slide(
+            layout=PACK_L2,
+            headline="H",
+            columns=["month", "rent"],
+            rows=[["2026-01", 700]],
+            tab_name="rent",
+        )
+    )
+    assert record.table_kind == "range"
+    assert builder._table_kind == "table", "the next block still gets to try addTable"
+
+    record2 = asyncio.run(
         builder.add_slide(
             layout=PACK_L2,
             headline="H2",
@@ -1191,8 +1269,7 @@ def test_a_refused_add_table_falls_back_to_a_named_range_once() -> None:
             tab_name="rent2",
         )
     )
-    after = sum("addTable" in r for batch in client.sheets_batches for r in batch)
-    assert after == before, "the second slide does not retry addTable"
+    assert record2.table_kind == "table"
 
 
 def test_an_oversized_frame_gets_its_own_tab_and_the_data_block_points_at_it() -> None:

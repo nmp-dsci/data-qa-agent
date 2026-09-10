@@ -131,11 +131,19 @@ def test_sheet_snapshot_only_reads_ranges_the_manifest_names() -> None:
     assert client.ranges == ["'Data'!A2:B4"]
 
 
-def test_a_deleted_range_snapshots_empty_rather_than_raising() -> None:
-    """Deleting the block IS an edit; it must reach the differ, not blow up."""
+def test_a_failed_baseline_read_raises_rather_than_faking_an_empty_table() -> None:
+    """A failed read is not distinguishable from a genuine deletion, and this is
+    the version-1 baseline — there is no prior snapshot to fall back to, so
+    faking an empty table would bake a false deletion into the trackable
+    history forever (s48 §7 review fix). The caller treats a raised baseline
+    as "no baseline yet", never as a fabricated one."""
     client = FakeSnapshotClient({})
-    snap = asyncio.run(snapshot_sheet(client, "s1", _manifest()))  # type: ignore[arg-type]
-    assert snap["tables"] == [{"name": "s02_rent", "header": [], "rows": []}]
+    try:
+        asyncio.run(snapshot_sheet(client, "s1", _manifest()))  # type: ignore[arg-type]
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("expected the read failure to propagate")
 
 
 def test_a_slide_with_no_block_contributes_no_table() -> None:

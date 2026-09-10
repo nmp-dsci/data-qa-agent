@@ -56,8 +56,7 @@ HEIGHT_NAMES = ("sm", "md", "lg", "fill")
 
 # The agent-emittable object types. The frontend renders one more — "choropleth"
 # — which is deliberately NOT here: the map is an Explore-tool-only object (s20
-# decision), so the agent may never emit one. test_registry_sync.py asserts this
-# exact relationship against the frontend sources.
+# decision), so the agent may never emit one.
 ObjectType = Literal["kpi", "trend", "breakdown", "compare", "insight", "text", "table"]
 TemplateId = Literal["one-col", "two-col", "three-col"]
 

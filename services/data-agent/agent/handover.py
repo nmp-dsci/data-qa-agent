@@ -32,6 +32,7 @@ _EVENTS = (
     "headline_changed",
     "commentary_changed",
     "notes_changed",
+    "kpi_changed",
     "chart_type_changed",
     "chart_deleted",
     "chart_added",
@@ -39,10 +40,16 @@ _EVENTS = (
     "slide_deleted",
     "slide_reordered",
     "table_values_changed",
+    "table_cell_changed",
     "table_rows_added",
     "table_rows_deleted",
     "file_renamed",
 )
+
+# Text slots whose content is a fact a human might correct in place (a KPI
+# figure retyped, its label reworded) — worth a distinct event from the
+# catch-all slide text, unlike subtitle/footer/source which are builder chrome.
+_KPI_TEXT_KEYS = ("kpi", "kpi_label")
 
 _A1_RANGE = re.compile(
     r"^(?:'?(?P<tab>[^'!]+)'?!)?(?P<c1>[A-Z]+)(?P<r1>\d+)(?::(?P<c2>[A-Z]+)(?P<r2>\d+))?$"
@@ -227,6 +234,21 @@ def _diff_deck(
                 )
             )
 
+        prior_texts = prior.get("texts") or {}
+        after_texts = slide.get("texts") or {}
+        for key in _KPI_TEXT_KEYS:
+            if prior_texts.get(key, "") != after_texts.get(key, ""):
+                events.append(
+                    _event(
+                        "kpi_changed",
+                        layout_id=layout_id,
+                        slide_index=slide.get("index"),
+                        slide_object_id=object_id,
+                        before={key: prior_texts.get(key, "")},
+                        after={key: after_texts.get(key, "")},
+                    )
+                )
+
         events.extend(
             _diff_charts(
                 prior.get("charts") or [],
@@ -267,6 +289,18 @@ def _diff_deck(
                         table_name=table_name,
                         before=was.get("rows"),
                         after=table.get("rows"),
+                    )
+                )
+            elif (was.get("cells") or []) != (table.get("cells") or []):
+                events.append(
+                    _event(
+                        "table_cell_changed",
+                        layout_id=layout_id,
+                        slide_index=slide.get("index"),
+                        slide_object_id=object_id,
+                        table_name=table_name,
+                        before=was.get("cells"),
+                        after=table.get("cells"),
                     )
                 )
 

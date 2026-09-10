@@ -410,6 +410,75 @@ def test_diff_deck_without_chart_specs_does_not_emit_type_changed() -> None:
     assert events == []
 
 
+def test_diff_deck_detects_kpi_text_and_label_changed_in_place() -> None:
+    """A human retyping a KPI figure changes no row count and no headline —
+    the differ must still catch it, since this is exactly what the change log
+    exists to measure (s48 §7 review fix)."""
+
+    def slide(kpi: str, kpi_label: str) -> dict:
+        return {
+            "slide_object_id": "s1",
+            "index": 0,
+            "headline": "H",
+            "commentary": "",
+            "notes": "",
+            "charts": [],
+            "tables": [],
+            "texts": {"kpi": kpi, "kpi_label": kpi_label},
+        }
+
+    before = {"slides": [slide("$718/wk", "Median Weekly Rent")]}
+    after = {"slides": [slide("$725/wk", "Median Weekly Rent")]}
+    events = diff_snapshots(before, after, _deck_manifest())
+    kpi_events = [e for e in events if e["event"] == "kpi_changed"]
+    assert len(kpi_events) == 1
+    assert kpi_events[0]["before"] == {"kpi": "$718/wk"}
+    assert kpi_events[0]["after"] == {"kpi": "$725/wk"}
+
+    after_label = {"slides": [slide("$718/wk", "Median Rent (Weekly)")]}
+    events2 = diff_snapshots(before, after_label, _deck_manifest())
+    kpi_events2 = [e for e in events2 if e["event"] == "kpi_changed"]
+    assert len(kpi_events2) == 1
+    assert kpi_events2[0]["before"] == {"kpi_label": "Median Weekly Rent"}
+    assert kpi_events2[0]["after"] == {"kpi_label": "Median Rent (Weekly)"}
+
+
+def test_diff_deck_detects_table_cell_changed_with_same_row_count() -> None:
+    """A cell edited in place (same rows/cols) must not be invisible just
+    because only the row COUNT was ever compared before (s48 §7 review fix)."""
+
+    def slide(cell_value: str) -> dict:
+        return {
+            "slide_object_id": "s1",
+            "index": 0,
+            "headline": "H",
+            "commentary": "",
+            "notes": "",
+            "charts": [],
+            "tables": [
+                {
+                    "object_id": "t1",
+                    "rows": 2,
+                    "cols": 2,
+                    "cells": [["suburb", "rent"], ["Hornsby", cell_value]],
+                }
+            ],
+            "texts": {},
+        }
+
+    before = {"slides": [slide("500")]}
+    after = {"slides": [slide("505")]}
+    events = diff_snapshots(before, after, _deck_manifest())
+    cell_events = [e for e in events if e["event"] == "table_cell_changed"]
+    assert len(cell_events) == 1
+    assert cell_events[0]["table_name"] == "s01_trend"
+    assert cell_events[0]["before"] == [["suburb", "rent"], ["Hornsby", "500"]]
+    assert cell_events[0]["after"] == [["suburb", "rent"], ["Hornsby", "505"]]
+
+    no_change = diff_snapshots(before, before, _deck_manifest())
+    assert [e for e in no_change if e["event"] == "table_cell_changed"] == []
+
+
 # ---------------------------------------------------------------------------
 # diff_snapshots — sheet
 # ---------------------------------------------------------------------------

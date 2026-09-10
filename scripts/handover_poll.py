@@ -35,7 +35,13 @@ if str(DATA_AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(DATA_AGENT_DIR))
 
 from agent.db import admin_engine  # noqa: E402
-from agent.gsuite import DRIVE_API, GoogleApiError, GoogleClient, credentials_present  # noqa: E402
+from agent.gsuite import (  # noqa: E402
+    DRIVE_API,
+    GoogleApiError,
+    GoogleClient,
+    credentials_present,
+    quote_a1_tab,
+)
 from agent.handover import diff_snapshots, normalise_deck, normalise_sheet  # noqa: E402
 from agent.handover_snapshot import snapshot_chart_types  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -157,30 +163,34 @@ async def _actor_since(client: GoogleClient, file_id: str, since: datetime | Non
     return None
 
 
+def _tab_of_range(table_range: str) -> str:
+    if "!" not in table_range:
+        return ""
+    return table_range.split("!", 1)[0].strip("'")
+
+
 async def _sheet_values(
     client: GoogleClient, spreadsheet_id: str, manifest: dict[str, Any]
-) -> dict[str, list[list[Any]]]:
+) -> tuple[dict[str, list[list[Any]]], set[str]]:
+    """Returns ``(values_by_tab, failed_tabs)`` — ``failed_tabs`` is every tab
+    a read raised on, so the caller can carry the prior snapshot's values
+    forward for it instead of treating a transient error as an empty table."""
     tabs: set[str] = set()
     for slide in manifest.get("slides") or []:
-        table_range = slide.get("table_range")
-        if table_range and "!" in table_range:
-            tabs.add(table_range.split("!", 1)[0].strip("'"))
+        tab = _tab_of_range(str(slide.get("table_range") or ""))
+        if tab:
+            tabs.add(tab)
     if not tabs:
         tabs = {"Data"}
     values: dict[str, list[list[Any]]] = {}
+    failed: set[str] = set()
     for tab in tabs:
-        # GoogleClient.read_values builds the URL by plain string concatenation
-        # (no percent-encoding of the range), so a single-quoted tab name —
-        # normally how A1 notation escapes a name with spaces — ends up as a
-        # literal `'` in the URL path, which Sheets rejects as unparseable.
-        # Tab names here are always builder-generated (``Data``, ``s01_...``),
-        # so the quoting A1 needs for a hand-typed name with spaces never
-        # applies; skip it.
         try:
-            values[tab] = await client.read_values(spreadsheet_id, f"{tab}!A1:ZZ5000")
+            values[tab] = await client.read_values(spreadsheet_id, f"{quote_a1_tab(tab)}!A1:ZZ5000")
         except GoogleApiError as exc:
             print(f"    could not read tab {tab!r}: {exc}", file=sys.stderr)
-    return values
+            failed.add(tab)
+    return values, failed
 
 
 async def _poll_kind(
@@ -219,7 +229,26 @@ async def _poll_kind(
         after = normalise_deck(await client.get_presentation(presentation_id))
     else:
         spreadsheet_id = manifest.get("spreadsheet_id") or file_id
-        after = normalise_sheet(await _sheet_values(client, spreadsheet_id, manifest), manifest)
+        values_by_tab, failed_tabs = await _sheet_values(client, spreadsheet_id, manifest)
+        after = normalise_sheet(values_by_tab, manifest)
+        if failed_tabs and prior is not None:
+            # A failed read is not a deletion — carry that table's prior
+            # value forward unchanged so it neither fabricates a diff nor
+            # loses what we last knew; the next poll retries the real read.
+            prior_tables_by_name = {
+                t.get("name"): t for t in (prior["snapshot"].get("tables") or [])
+            }
+            for slide in manifest.get("slides") or []:
+                name = slide.get("table_name")
+                tab = _tab_of_range(str(slide.get("table_range") or ""))
+                fallback = prior_tables_by_name.get(name) if name and tab in failed_tabs else None
+                if fallback is None:
+                    continue
+                for table in after["tables"]:
+                    if table.get("name") == name:
+                        table["header"] = fallback.get("header", [])
+                        table["rows"] = fallback.get("rows", [])
+                        break
         # The sheet snapshot also carries the current chart-type map (§7 item
         # 3), so next poll's "before" is available without a second fetch.
         after["charts"] = charts_after or {}
@@ -344,13 +373,6 @@ async def poll_once(*, days: int, interval_s: int) -> dict[str, int]:
                 # for next time); charts_before is whatever the last sheet
                 # snapshot stashed there. Actor attribution is similarly a
                 # single Activity API call per run, not per kind.
-                spreadsheet_id = manifest.get("spreadsheet_id")
-                charts_after: dict[int, dict[str, str]] = {}
-                if spreadsheet_id:
-                    try:
-                        charts_after = await snapshot_chart_types(client, spreadsheet_id)
-                    except GoogleApiError as exc:
-                        print(f"  run {run_id}: chart-type fetch skipped: {exc}")
                 prior_sheet = await _last_snapshot(conn, run_id, "sheet")
                 # jsonb round-trips dict keys as strings, so a chart_id stored
                 # last poll comes back as "9" — restore int keys to match the
@@ -363,6 +385,17 @@ async def poll_once(*, days: int, interval_s: int) -> dict[str, int]:
                             charts_before[int(key)] = spec
                         except (TypeError, ValueError):
                             continue
+
+                spreadsheet_id = manifest.get("spreadsheet_id")
+                # Defaults to the prior chart map, not empty: a transient
+                # fetch failure must not zero out every tracked chart's type
+                # on the next diff — only a successful fetch replaces it.
+                charts_after: dict[int, dict[str, str]] = dict(charts_before)
+                if spreadsheet_id:
+                    try:
+                        charts_after = await snapshot_chart_types(client, spreadsheet_id)
+                    except GoogleApiError as exc:
+                        print(f"  run {run_id}: chart-type fetch skipped, keeping prior map: {exc}")
 
                 activity_file_id = _file_id_from_url(
                     run.get("artifact_deck_url") or run.get("artifact_sheet_url") or ""

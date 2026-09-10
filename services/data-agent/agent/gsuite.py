@@ -28,6 +28,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -38,6 +39,29 @@ SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 SLIDES_API = "https://slides.googleapis.com/v1/presentations"
 DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 FOLDER_MIME = "application/vnd.google-apps.folder"
+
+
+def quote_a1_tab(name: str) -> str:
+    """Single-quote a sheet/tab name for A1 notation, escaping embedded quotes.
+
+    A1 notation requires a tab name to be single-quoted whenever it isn't a
+    bare identifier (spaces, punctuation, ...); a literal ``'`` inside the name
+    is escaped by doubling it, same as Sheets' own UI does. The one place this
+    is done, so the deck's range builder, the snapshot reader and the poller's
+    sheet reader can never disagree on the convention.
+    """
+    return "'" + name.replace("'", "''") + "'"
+
+
+def escape_drive_q_literal(value: str) -> str:
+    """Escape a literal for Drive's ``q=`` query string (single quotes, backslashes).
+
+    Drive's query grammar takes a single-quoted string literal; per the API
+    docs a literal backslash or single quote inside it must be backslash-escaped,
+    or a value containing one breaks or manipulates the query.
+    """
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
 
 # Slides works in EMU (English Metric Units): 914400 per inch. A default Google
 # Slides page is 10in x 5.625in (16:9).
@@ -57,7 +81,17 @@ class GoogleAuthUnavailable(RuntimeError):
 
 class GoogleApiError(RuntimeError):
     """A Google API call failed. Carries the response body, which is where the
-    actual cause lives (a bad range, an unknown layout, a blocked share)."""
+    actual cause lives (a bad range, an unknown layout, a blocked share).
+
+    ``status_code`` lets a caller tell a genuine rejection (400 INVALID_ARGUMENT
+    — a feature the account/edition doesn't support) apart from a transient one
+    (429/5xx, or ``None`` for a network-level failure that never got a response)
+    without parsing the message string.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def credentials_present() -> bool:
@@ -134,7 +168,10 @@ class GoogleClient:
                 headers={"Authorization": f"Bearer {token}"},
             )
         if resp.status_code >= 400:
-            raise GoogleApiError(f"{method} {url} -> {resp.status_code}: {resp.text[:600]}")
+            raise GoogleApiError(
+                f"{method} {url} -> {resp.status_code}: {resp.text[:600]}",
+                status_code=resp.status_code,
+            )
         return dict(resp.json()) if resp.content else {}
 
     # -- drive --------------------------------------------------------------
@@ -192,13 +229,16 @@ class GoogleClient:
         """
         clauses = ["trashed = false"]
         for key, value in (app_properties or {}).items():
-            clauses.append(f"appProperties has {{ key='{key}' and value='{value}' }}")
+            clauses.append(
+                "appProperties has { key="
+                f"'{escape_drive_q_literal(key)}' and value='{escape_drive_q_literal(value)}' }}"
+            )
         if name:
-            clauses.append(f"name = '{name}'")
+            clauses.append(f"name = '{escape_drive_q_literal(name)}'")
         if mime_type:
-            clauses.append(f"mimeType = '{mime_type}'")
+            clauses.append(f"mimeType = '{escape_drive_q_literal(mime_type)}'")
         if parent:
-            clauses.append(f"'{parent}' in parents")
+            clauses.append(f"'{escape_drive_q_literal(parent)}' in parents")
         out = await self._call(
             "GET", DRIVE_API, params={"q": " and ".join(clauses), "fields": fields}
         )
@@ -295,7 +335,7 @@ class GoogleClient:
         ``=HYPERLINK(...)`` a link rather than the literal text of a formula."""
         await self._call(
             "PUT",
-            f"{SHEETS_API}/{spreadsheet_id}/values/{a1_range}",
+            f"{SHEETS_API}/{spreadsheet_id}/values/{quote(a1_range, safe='')}",
             params={"valueInputOption": "RAW" if raw else "USER_ENTERED"},
             json={"values": values},
         )
@@ -303,7 +343,9 @@ class GoogleClient:
     async def read_values(self, spreadsheet_id: str, a1_range: str) -> list[list[Any]]:
         """Read a range back. Used by the eval graders, which assert on what the
         user actually receives rather than on an in-process object."""
-        out = await self._call("GET", f"{SHEETS_API}/{spreadsheet_id}/values/{a1_range}")
+        out = await self._call(
+            "GET", f"{SHEETS_API}/{spreadsheet_id}/values/{quote(a1_range, safe='')}"
+        )
         rows = out.get("values") or []
         return [list(r) for r in rows]
 

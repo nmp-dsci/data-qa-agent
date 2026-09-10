@@ -155,6 +155,11 @@ class _SdkDeps(_SbDeps):
     # s48 §7: the deck's version-1 snapshot, taken by the builder at finish().
     deck_baseline: dict[str, Any] = field(default_factory=dict)
     hook_events: list[dict[str, Any]] = field(default_factory=list)
+    # Which artifact files publish() actually shared — None when publish was
+    # never attempted (deck export off, no deck, or deck_public off), so
+    # _artifact() knows to leave the (private-but-valid) URLs alone rather
+    # than a partial-failure dict meaning "omit the ones that are False".
+    publish_status: dict[str, bool] | None = None
 
     def after_frame(self, name: str, frame: Any) -> None:
         """Mirror a head sample of the extracted frame into ``frames/``.
@@ -914,7 +919,19 @@ async def answer_with_sdk(
                     hooks={"PreToolUse": [sdk.HookMatcher(hooks=[make_knowledge_hook(deps)])]},
                     env=cli_env(),
                 )
-                await _drive(sdk, options, question, deps, trace)
+                try:
+                    await asyncio.wait_for(
+                        _drive(sdk, options, question, deps, trace),
+                        timeout=settings.agent_wall_clock_timeout_s,
+                    )
+                except TimeoutError:
+                    if deps.abort_reason is None:
+                        deps.abort_reason = (
+                            f"wall-clock timeout ({settings.agent_wall_clock_timeout_s}s)"
+                        )
+                    trace.entries.append(
+                        {"kind": "budget", "status": "error", "error": deps.abort_reason}
+                    )
                 await _finish_deck(deps)
                 await _publish_deck(deps)
 
@@ -1036,9 +1053,10 @@ async def _publish_deck(deps: _SdkDeps) -> None:
     if builder is None or not settings.deck_public:
         return
     try:
-        await builder.publish()
+        deps.publish_status = await builder.publish()
     except Exception as exc:  # noqa: BLE001 — an unshared deck is still a deck
         print(f"[data-agent] deck sharing failed ({exc}); artifacts stay private")
+        deps.publish_status = {"deck": False, "sheet": False}
 
 
 async def _drive(
@@ -1120,7 +1138,7 @@ def _assemble(deps: _SdkDeps, trace: SdkTrace, question: str, plan: str) -> dict
     usage = trace.usage_totals(settings.sdk_model)
 
     primary = select_primary_query(deps.queries)
-    return {
+    result: dict[str, Any] = {
         "answer": report.get("summary", ""),
         "report": report,
         "pages": pages or None,
@@ -1138,6 +1156,15 @@ def _assemble(deps: _SdkDeps, trace: SdkTrace, question: str, plan: str) -> dict
         "artifact": _artifact(deps),
         **usage,
     }
+    if deps.abort_reason:
+        # A hard stop (budget/turns/timeout) hit mid-run but a report still
+        # made it through — the run is not a clean success, and returning
+        # plain success here would lie to every caller and to analytics. The
+        # answer and artifact are kept: a truncated result is still worth
+        # having, just flagged as such (the abort itself is already in
+        # ``steps`` via the "budget" trace entry appended in ``_drive``).
+        result["degraded"] = True
+    return result
 
 
 def _artifact(deps: _SdkDeps) -> dict[str, Any] | None:
@@ -1152,6 +1179,17 @@ def _artifact(deps: _SdkDeps) -> dict[str, Any] | None:
     manifest = dict(deps.deck.manifest())
     if deps.deck_baseline:
         manifest["baseline"] = deps.deck_baseline
+    status = deps.publish_status
+    if status is not None:
+        # publish() was attempted: a link only belongs in the result if it was
+        # actually made public — a recipient without prior access must never
+        # be handed a link Google will 403/404 on. Omitting is safer than a
+        # broken promise.
+        if not status.get("deck"):
+            manifest.pop("deck_url", None)
+            manifest.pop("embed_url", None)
+        if not status.get("sheet"):
+            manifest.pop("sheet_url", None)
     return manifest
 
 

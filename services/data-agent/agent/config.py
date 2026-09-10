@@ -131,6 +131,13 @@ class Settings(BaseSettings):
     # being cut off. The sandbox+skills restructure makes the ceiling moot later.
     agent_request_limit: int = 22
     agent_total_tokens_limit: int = 600_000
+    # Wall-clock backstop on the whole SDK subprocess run, independent of the
+    # turn/token counters above: those only fire on a message the subprocess
+    # actually emits, so a stalled/hung subprocess (no message at all) would
+    # otherwise block a run forever. 20 minutes comfortably covers a full
+    # report-plus-deck run without being so long a genuinely stuck run ties up
+    # a worker slot all day.
+    agent_wall_clock_timeout_s: int = 1200
 
     # Cap how many knowledge pages one run may load. The playbook says "2-4
     # pages"; a run that read 9 pinned ~8k tokens of markdown into every

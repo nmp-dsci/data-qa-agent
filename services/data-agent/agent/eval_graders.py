@@ -97,28 +97,54 @@ def parse_scalar_number(text: Any) -> float | None:
     return value
 
 
-def _manifest_kpi_value(artifact: dict[str, Any] | None) -> float | None:
+def _normalise_field_name(text: str) -> str:
+    """``"Median Weekly Rent"`` and ``"median_weekly_rent"`` -> the same key,
+    so a golden's column name can be matched against a KPI slide's human label."""
+    return re.sub(r"[^a-z0-9]+", "_", text.strip().casefold()).strip("_")
+
+
+def _kpi_fields(slide: dict[str, Any]) -> tuple[str, str]:
+    """A KPI slide's ``(kpi, kpi_label)`` text, from either the flat manifest
+    view or ``spec()`` — whichever the caller happened to pass in."""
+    raw_kpi = slide.get("kpi") or ""
+    raw_label = slide.get("kpi_label") or ""
+    spec = slide.get("spec")
+    if isinstance(spec, dict):
+        raw_kpi = raw_kpi or spec.get("kpi") or ""
+        raw_label = raw_label or spec.get("kpi_label") or ""
+    return str(raw_kpi), str(raw_label)
+
+
+def _manifest_kpi_value(artifact: dict[str, Any] | None, value_col: str = "") -> float | None:
     """The deck's headline KPI number, when the run produced one (s48).
 
     A deck can carry more than one KPI slide — the agent sometimes appends a
-    "Correction: ..." slide after re-verifying a stale figure (s48 finding) —
-    so this takes the *last* non-empty ``kpi`` across the manifest's slides in
-    slide order, i.e. whatever the deck says now, not what it said first.
+    "Correction: ..." slide after re-verifying a stale figure, or a deck
+    answers a multi-metric question with one KPI slide per metric. With a
+    golden ``value_col`` to match against, this prefers the slide whose
+    ``kpi_label`` names that field (s48 harness fix — grading against
+    whichever KPI slide happened to come last silently graded the wrong
+    number whenever more than one was present). Without a match (or without
+    a ``value_col`` at all) it falls back to the *last* non-empty ``kpi``
+    across the manifest's slides in slide order, i.e. whatever the deck says
+    now, not what it said first.
     """
     if not artifact:
         return None
+    wanted = _normalise_field_name(value_col) if value_col else ""
     kpi_text: str | None = None
+    matched_text: str | None = None
     for slide in artifact.get("slides") or []:
         if not isinstance(slide, dict):
             continue
-        raw = slide.get("kpi")
-        if not raw:
-            spec = slide.get("spec")
-            if isinstance(spec, dict):
-                raw = spec.get("kpi")
-        if raw:
-            kpi_text = str(raw)
-    return parse_scalar_number(kpi_text) if kpi_text is not None else None
+        kpi, label = _kpi_fields(slide)
+        if not kpi:
+            continue
+        kpi_text = kpi
+        if wanted and label and _normalise_field_name(label) == wanted:
+            matched_text = kpi
+    chosen = matched_text if matched_text is not None else kpi_text
+    return parse_scalar_number(chosen) if chosen is not None else None
 
 
 def _key_match_row(
@@ -192,7 +218,10 @@ def reduce_scalar_actual(
         return _read_scalar(row, value_col)
 
     if reduce == "manifest_kpi":
-        return {"value": _manifest_kpi_value(artifact), "scalar_source": "manifest_kpi"}
+        return {
+            "value": _manifest_kpi_value(artifact, value_col),
+            "scalar_source": "manifest_kpi",
+        }
     if reduce == "key_match":
         row = _key_match_row(golden_rows, rows, value=value_col)
         return {"value": _val(row) if row is not None else None, "scalar_source": "key_match"}
@@ -213,7 +242,7 @@ def reduce_scalar_actual(
         return {"value": best[0], "scalar_source": reduce}
 
     # Auto precedence.
-    manifest_val = _manifest_kpi_value(artifact)
+    manifest_val = _manifest_kpi_value(artifact, value_col)
     if manifest_val is not None:
         return {"value": manifest_val, "scalar_source": "manifest_kpi"}
 

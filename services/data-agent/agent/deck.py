@@ -32,7 +32,16 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from .gsuite import EMU_PER_INCH, FOLDER_MIME, GoogleClient, deck_embed_url, deck_url, sheet_url
+from .gsuite import (
+    EMU_PER_INCH,
+    FOLDER_MIME,
+    GoogleApiError,
+    GoogleClient,
+    deck_embed_url,
+    deck_url,
+    quote_a1_tab,
+    sheet_url,
+)
 from .handover_snapshot import snapshot_artifacts
 from .units import CURRENCY, NUMBER, PERCENT, unit_for_column
 
@@ -338,9 +347,7 @@ def _chart_kind(layout: Layout, chart_type: str | None) -> str | None:
         return "line"
     if kind == "scatter":
         return None  # duplicate x is a normal shape there
-    raise ValueError(
-        f"unknown chart_type {chart_type!r}: choose one of {sorted(CHART_TYPES)}"
-    )
+    raise ValueError(f"unknown chart_type {chart_type!r}: choose one of {sorted(CHART_TYPES)}")
 
 
 def _looks_numeric(value: Any) -> bool:
@@ -379,7 +386,7 @@ def _shape_error(tab_name: str, x_col: str, counts: dict[Any, int], *, kind: str
 
 def _maybe_pivot_series(
     columns: list[str], rows: list[list[Any]], *, series_max: int
-) -> tuple[list[str], list[list[Any]], str] | None:
+) -> tuple[list[str], list[list[Any]], str, str] | None:
     """Pivot ``x, category, value`` rows into one column per category.
 
     Only attempted for the common 3-column shape (x, a categorical second
@@ -409,7 +416,7 @@ def _maybe_pivot_series(
             x_values.append(x)
     new_columns = [columns[0], *categories]
     new_rows = [[x, *[grid.get((x, cat), "") for cat in categories]] for x in x_values]
-    return new_columns, new_rows, columns[1]
+    return new_columns, new_rows, columns[1], columns[2]
 
 
 def _enforce_chart_shape(
@@ -419,38 +426,46 @@ def _enforce_chart_shape(
     columns: list[str] | None,
     rows: list[list[Any]] | None,
     tab_name: str,
-) -> tuple[list[str] | None, list[list[Any]] | None, str]:
+) -> tuple[list[str] | None, list[list[Any]] | None, str, str]:
     """Reject (or auto-pivot) a frame whose x/label column has duplicates.
 
-    Returns the (possibly pivoted) ``columns``/``rows`` and ``pivoted_on`` (the
-    category column name, or "" when nothing was pivoted). Raises ``ValueError``
-    — caught by the tool handler and returned to the model as a structured
-    error — when the shape cannot be built as-is or safely pivoted.
+    Returns the (possibly pivoted) ``columns``/``rows``, ``pivoted_on`` (the
+    category column name, or "" when nothing was pivoted), and ``unit_column``
+    (the original measure column's name, or "" when nothing was pivoted) — a
+    pivot replaces the measure column's header with category values, so its
+    unit (currency/percent formatting, axis title) has to be looked up by the
+    ORIGINAL column name from here on, not by whatever header ended up in that
+    slot. Raises ``ValueError`` — caught by the tool handler and returned to
+    the model as a structured error — when the shape cannot be built as-is or
+    safely pivoted.
     """
     if not columns or not rows:
-        return columns, rows, ""
+        return columns, rows, "", ""
     kind = _chart_kind(layout, chart_type)
     if kind is None:
-        return columns, rows, ""
+        return columns, rows, "", ""
     counts = _dup_counts(rows, 0)
     if not counts or max(counts.values()) <= 1:
-        return columns, rows, ""
+        return columns, rows, "", ""
     if kind == "line":
         pivot = _maybe_pivot_series(columns, rows, series_max=layout.series_max or 3)
         if pivot is not None:
-            new_columns, new_rows, pivoted_on = pivot
-            return new_columns, new_rows, pivoted_on
+            new_columns, new_rows, pivoted_on, unit_column = pivot
+            return new_columns, new_rows, pivoted_on, unit_column
     raise ValueError(_shape_error(tab_name, columns[0], counts, kind=kind))
 
 
-def _number_format(column: str) -> dict[str, Any] | None:
+def _number_format(column: str, *, unit_column: str = "") -> dict[str, Any] | None:
     """Sheets number format for a column, from the app's own unit vocabulary.
 
     Percent deliberately uses a NUMBER pattern with a literal '%' rather than
     Sheets' PERCENT type: the app's percent values are already in percentage
     points (4.5 means 4.5%), and PERCENT would multiply them by 100.
+
+    ``unit_column`` overrides which name resolves the unit — a pivoted
+    series's columns are category values, not the measure name.
     """
-    unit = unit_for_column(column)
+    unit = unit_for_column(unit_column or column)
     if unit == CURRENCY:
         return {"type": "CURRENCY", "pattern": '"$"#,##0'}
     if unit == PERCENT:
@@ -558,15 +573,22 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def column_type(column: str, values: list[Any]) -> str:
+def column_type(column: str, values: list[Any], *, unit_column: str = "") -> str:
     """The Sheets Table column type for a column of already-written values.
 
-    A numeric type is only claimed when *every* value is a number: a column of
-    "1,234 (est.)" strings typed as DOUBLE is rejected by the API, and a column
-    of numbers typed TEXT loses the formatting the whole exercise is for.
+    A numeric type is only claimed when every value that IS present is a
+    number: a column of "1,234 (est.)" strings typed as DOUBLE is rejected by
+    the API, and a column of numbers typed TEXT loses the formatting the whole
+    exercise is for. A blank cell (a pivoted series's sparse grid) is skipped
+    rather than counted as non-numeric — it carries no value to type-check,
+    not a string.
+
+    ``unit_column`` overrides which name resolves the unit — see
+    ``_number_format``.
     """
-    if values and all(_is_number(v) for v in values):
-        return _COLUMN_TYPES.get(unit_for_column(column), "DOUBLE")
+    present = [v for v in values if v not in (None, "")]
+    if present and all(_is_number(v) for v in present):
+        return _COLUMN_TYPES.get(unit_for_column(unit_column or column), "DOUBLE")
     return "TEXT"
 
 
@@ -582,7 +604,7 @@ def a1_column(index: int) -> str:
 
 def a1_range(tab: str, row: int, rows: int, cols: int) -> str:
     """``'Data'!A5:D17`` for a block whose header is at 1-based ``row``."""
-    return f"'{tab}'!A{row}:{a1_column(cols - 1)}{row + rows}"
+    return f"{quote_a1_tab(tab)}!A{row}:{a1_column(cols - 1)}{row + rows}"
 
 
 def add_table_request(
@@ -621,9 +643,15 @@ def add_table_request(
 
 
 def update_table_columns_request(
-    *, table_id: str, columns: list[str], rows: list[list[Any]]
+    *, table_id: str, columns: list[str], rows: list[list[Any]], unit_column: str = ""
 ) -> dict[str, Any]:
-    """Type the Table's columns after it exists (see ``add_table_request``)."""
+    """Type the Table's columns after it exists (see ``add_table_request``).
+
+    ``unit_column`` names the original measure column when ``columns`` came
+    from a pivoted series (see ``_enforce_chart_shape``) — every spread
+    column shares that measure's unit, not whatever category value became its
+    header.
+    """
     return {
         "updateTable": {
             "table": {
@@ -632,7 +660,11 @@ def update_table_columns_request(
                     {
                         "columnIndex": i,
                         "columnName": str(column),
-                        "columnType": column_type(str(column), [r[i] for r in rows if i < len(r)]),
+                        "columnType": column_type(
+                            str(column),
+                            [r[i] for r in rows if i < len(r)],
+                            unit_column=unit_column if i > 0 else "",
+                        ),
                     }
                     for i, column in enumerate(columns)
                 ],
@@ -694,8 +726,8 @@ def _grid(sheet_id: int, start_row: int, rows: int, col: int, end_col: int) -> d
 _AXIS_UNIT_SUFFIX = {PERCENT: "%", CURRENCY: "$"}
 
 
-def _axis_title(column: str) -> str | None:
-    suffix = _AXIS_UNIT_SUFFIX.get(unit_for_column(column))
+def _axis_title(column: str, *, unit_column: str = "") -> str | None:
+    suffix = _AXIS_UNIT_SUFFIX.get(unit_for_column(unit_column or column))
     return f"{column} ({suffix})" if suffix else None
 
 
@@ -708,6 +740,7 @@ def clone_chart_spec(
     columns: int,
     series_max: int = 3,
     column_names: list[str] | None = None,
+    unit_column: str = "",
 ) -> dict[str, Any]:
     """The pack's hand-styled chart, pointed at this run's block.
 
@@ -748,7 +781,7 @@ def clone_chart_spec(
     if len(series) <= 1:
         basic["legendPosition"] = "NO_LEGEND"
     if column_names and len(column_names) > 1:
-        title = _axis_title(column_names[1])
+        title = _axis_title(column_names[1], unit_column=unit_column)
         axes = basic.get("axis")
         if title and isinstance(axes, list):
             # BAR is horizontal, so ITS value axis is BOTTOM, not LEFT — same
@@ -802,6 +835,7 @@ class SlideRecord:
     # the manifest alone.
     commentary: str = ""
     kpi: str = ""
+    kpi_label: str = ""
     chart_type: str = ""
     columns: tuple[str, ...] = ()
     frame: str = ""
@@ -845,6 +879,7 @@ class SlideRecord:
             "headline": self.headline,
             "commentary": self.commentary,
             "kpi": self.kpi,
+            "kpi_label": self.kpi_label,
             "frame": self.frame,
             "columns": list(self.columns),
             "chart_type": self.chart_type,
@@ -1061,6 +1096,7 @@ class DeckBuilder:
         rows: list[list[Any]],
         frame: str,
         slide_object_id: str,
+        unit_column: str = "",
     ) -> dict[str, Any]:
         """One slide's rows in the run Sheet, as a named Sheets Table (§5).
 
@@ -1105,9 +1141,14 @@ class DeckBuilder:
         )
         table_range = a1_range(tab, header_row + 1, len(rows), len(columns))
         kind = await self._name_block(
-            name=name, sheet_id=sheet_id, start_row=header_row, columns=columns, rows=rows
+            name=name,
+            sheet_id=sheet_id,
+            start_row=header_row,
+            columns=columns,
+            rows=rows,
+            unit_column=unit_column,
         )
-        await self._format_block(sheet_id, header_row, columns)
+        await self._format_block(sheet_id, header_row, columns, unit_column=unit_column)
         return {
             "name": name,
             "range": table_range,
@@ -1125,6 +1166,7 @@ class DeckBuilder:
         start_row: int,
         columns: list[str],
         rows: list[list[Any]],
+        unit_column: str = "",
     ) -> str:
         """``addTable``, falling back to a named range (§5).
 
@@ -1135,39 +1177,67 @@ class DeckBuilder:
         ``table_kind`` in the manifest records which a block actually got.
         """
         if self._table_kind == "table":
-            try:
-                out = await self.client.sheets_batch(
-                    self.spreadsheet_id,
-                    [
-                        add_table_request(
-                            name=name,
-                            sheet_id=sheet_id,
-                            start_row=start_row,
-                            columns=columns,
-                            rows=rows,
-                        )
-                    ],
-                )
-                table_id = str(
-                    ((out.get("replies") or [{}])[0].get("addTable") or {})
-                    .get("table", {})
-                    .get("tableId", "")
-                )
-                if table_id:
-                    # Typing is a second request on purpose — see add_table_request.
-                    with contextlib.suppress(Exception):
-                        await self.client.sheets_batch(
-                            self.spreadsheet_id,
-                            [
-                                update_table_columns_request(
-                                    table_id=table_id, columns=columns, rows=rows
-                                )
-                            ],
-                        )
-                return "table"
-            except Exception as exc:  # noqa: BLE001 — the fallback IS the handling
-                print(f"[data-agent] addTable refused ({exc}); using named ranges")
-                self._table_kind = "range"
+            for attempt in range(2):
+                try:
+                    out = await self.client.sheets_batch(
+                        self.spreadsheet_id,
+                        [
+                            add_table_request(
+                                name=name,
+                                sheet_id=sheet_id,
+                                start_row=start_row,
+                                columns=columns,
+                                rows=rows,
+                            )
+                        ],
+                    )
+                    table_id = str(
+                        ((out.get("replies") or [{}])[0].get("addTable") or {})
+                        .get("table", {})
+                        .get("tableId", "")
+                    )
+                    if table_id:
+                        # Typing is a second request on purpose — see add_table_request.
+                        with contextlib.suppress(Exception):
+                            await self.client.sheets_batch(
+                                self.spreadsheet_id,
+                                [
+                                    update_table_columns_request(
+                                        table_id=table_id,
+                                        columns=columns,
+                                        rows=rows,
+                                        unit_column=unit_column,
+                                    )
+                                ],
+                            )
+                    return "table"
+                except GoogleApiError as exc:
+                    # A 400 means the feature itself is refused (Tables
+                    # unsupported on this account/edition) — that never
+                    # changes on retry, so downgrade for the rest of the run.
+                    # Anything else (429/5xx, or no status at all) is
+                    # transient: retry once before falling back for just this
+                    # block, so one blip doesn't permanently drop every later
+                    # block out of the change log's table-tracking path.
+                    if exc.status_code == 400:
+                        print(f"[data-agent] addTable refused ({exc}); using named ranges")
+                        self._table_kind = "range"
+                        break
+                    if attempt == 0:
+                        print(f"[data-agent] addTable transient error, retrying: {exc}")
+                        continue
+                    print(
+                        f"[data-agent] addTable still failing after retry ({exc}); range fallback"
+                    )
+                    break
+                except Exception as exc:  # noqa: BLE001 — network-level, treat as transient
+                    if attempt == 0:
+                        print(f"[data-agent] addTable transient error, retrying: {exc}")
+                        continue
+                    print(
+                        f"[data-agent] addTable still failing after retry ({exc}); range fallback"
+                    )
+                    break
         with contextlib.suppress(Exception):
             await self.client.sheets_batch(
                 self.spreadsheet_id,
@@ -1183,7 +1253,9 @@ class DeckBuilder:
             )
         return "range"
 
-    async def _format_block(self, sheet_id: int, header_row: int, columns: list[str]) -> None:
+    async def _format_block(
+        self, sheet_id: int, header_row: int, columns: list[str], *, unit_column: str = ""
+    ) -> None:
         requests: list[dict[str, Any]] = [
             {
                 "repeatCell": {
@@ -1200,7 +1272,7 @@ class DeckBuilder:
         for idx, column in enumerate(columns):
             if idx == 0:
                 continue  # the domain column stays as written (dates, labels)
-            fmt = _number_format(column)
+            fmt = _number_format(column, unit_column=unit_column)
             if fmt is None:
                 continue
             requests.append(
@@ -1236,7 +1308,13 @@ class DeckBuilder:
         return self._chart_specs.get(chart_id)
 
     async def _clone_chart(
-        self, *, layout: Layout, block: dict[str, Any], columns: list[str], rows: list[list[Any]]
+        self,
+        *,
+        layout: Layout,
+        block: dict[str, Any],
+        columns: list[str],
+        rows: list[list[Any]],
+        unit_column: str = "",
     ) -> int | None:
         if not layout.chart_template:
             return None
@@ -1251,6 +1329,7 @@ class DeckBuilder:
             columns=len(columns),
             series_max=layout.series_max,
             column_names=columns,
+            unit_column=unit_column,
         )
         out = await self.client.sheets_batch(
             self.spreadsheet_id,
@@ -1295,7 +1374,7 @@ class DeckBuilder:
         query_ref: str = "",
         mart: str = "",
     ) -> SlideRecord:
-        columns, rows, pivoted_on = _enforce_chart_shape(
+        columns, rows, pivoted_on, unit_column = _enforce_chart_shape(
             layout=layout,
             chart_type=chart_type,
             columns=columns,
@@ -1314,6 +1393,7 @@ class DeckBuilder:
                 tab_name=tab_name,
                 query_ref=query_ref,
                 mart=mart,
+                unit_column=unit_column,
             )
         else:
             record = await self._add_legacy_slide(
@@ -1344,6 +1424,7 @@ class DeckBuilder:
         query_ref: str = "",
         mart: str = "",
         slide_rows: list[list[Any]] | None = None,
+        unit_column: str = "",
     ) -> SlideRecord:
         """One library slide, duplicated and filled in a single atomic batch.
 
@@ -1370,10 +1451,15 @@ class DeckBuilder:
                 rows=rows,
                 frame=tab_name,
                 slide_object_id=slide_id,
+                unit_column=unit_column,
             )
             if "chart" in layout.slots:
                 chart_id = await self._clone_chart(
-                    layout=layout, block=block, columns=columns, rows=rows
+                    layout=layout,
+                    block=block,
+                    columns=columns,
+                    rows=rows,
+                    unit_column=unit_column,
                 )
 
         ids = {layout.slide_object_id: slide_id}
@@ -1486,6 +1572,7 @@ class DeckBuilder:
             dropped=dropped,
             commentary=commentary,
             kpi=kpi,
+            kpi_label=kpi_label,
             chart_type="",
             columns=tuple(columns or ()),
             frame=tab_name,
@@ -1799,15 +1886,28 @@ class DeckBuilder:
         ]
         await self.client.write_values(self.spreadsheet_id, "'README'!A1", readme)
 
-    async def publish(self) -> dict[str, Any]:
-        """Share both artifacts read-only and return the URLs.
+    async def publish(self) -> dict[str, bool]:
+        """Share both artifacts read-only; returns which ones succeeded.
 
         Public sharing steps outside RLS permanently, so the caller gates this —
-        it is never reached unless the runtime is configured to allow it.
+        it is never reached unless the runtime is configured to allow it. Each
+        file is shared independently and its own failure logged and reported,
+        rather than one exception hiding whether the other file was actually
+        shared: a caller handing out a link on the strength of "publish()
+        didn't raise" would otherwise sometimes hand out one Google 403s.
         """
-        await self.client.share_public(self.presentation_id)
-        await self.client.share_public(self.spreadsheet_id)
-        return self.manifest()
+        shared = {"deck": False, "sheet": False}
+        try:
+            await self.client.share_public(self.presentation_id)
+            shared["deck"] = True
+        except Exception as exc:  # noqa: BLE001 — reported; the sheet share still proceeds
+            print(f"[data-agent] deck share_public failed ({exc}); deck link stays private")
+        try:
+            await self.client.share_public(self.spreadsheet_id)
+            shared["sheet"] = True
+        except Exception as exc:  # noqa: BLE001 — reported; the caller decides what to omit
+            print(f"[data-agent] sheet share_public failed ({exc}); sheet link stays private")
+        return shared
 
     def manifest(self) -> dict[str, Any]:
         return {

@@ -271,10 +271,12 @@ async def snapshot_sheet(
         if not name or not a1 or name in seen:
             continue
         seen.add(name)
-        try:
-            values = await client.read_values(spreadsheet_id, a1)
-        except Exception:  # noqa: BLE001 — a deleted range is itself an edit; record it empty
-            values = []
+        # A failed read is not distinguishable from a genuine deletion, and
+        # this is the version-1 baseline — there is no prior snapshot to fall
+        # back to, so an empty table here would bake a false deletion into the
+        # trackable history forever. Left uncaught: the caller already treats
+        # a failed baseline as "no baseline yet", not a fatal error.
+        values = await client.read_values(spreadsheet_id, a1)
         header = [str(v) for v in (values[0] if values else [])]
         tables.append({"name": name, "header": header, "rows": [list(r) for r in values[1:]]})
     try:

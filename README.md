@@ -356,9 +356,10 @@ fingerprint (provider + model + prompt/skills/knowledge hashes, `GET /agent/vers
 Goldens are version-controlled: `make eval-export` serialises `app.eval_cases` to `evals/cases/*.yaml` (the
 repo is the source of truth, the DB a working surface), redacting anything promoted from a real prod answer
 — remapped user, size-capped rows — and `make eval-import` seeds any environment from the pack. `make eval`
-(down to a single `CASE=`) scores the pack against the running agent, including an LLM-as-judge for insight
-quality that refuses to grade a model of its own family and records a `skipped` verdict rather than a faked
-score when no cross-family judge key is configured. Every golden carries a question tier (`T1`–`T7`, the
+(down to a single `CASE=`) scores the pack against the running agent, including an LLM-as-judge that labels
+answer quality (`low`/`medium`/`high`) and must reproduce the golden set's own labels (calibration) before
+its verdicts count — see "Label judge + calibration + G5" in `AGENTS.md` for the full rubric and gating
+rules. Every golden carries a question tier (`T1`–`T7`, the
 coverage ladder documented in `AGENTS.md`), and `draft` goldens — agent-drafted first passes not yet curated
 to `ready` — are skipped by `make eval` unless `INCLUDE_DRAFTS=1` is passed, so an un-curated question is
 never scored against empty ground truth. `make eval-compare A=<run> B=<run>` is the regression

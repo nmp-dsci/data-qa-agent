@@ -363,6 +363,10 @@ package, matching `eval_run.py`'s no-third-party-deps grain. `MLFLOW_URL` (defau
   lower pass rate, or named pass→fail flips).
 - `scripts/mlflow_registry.py status` (no Makefile target) prints every registered version with its aliases
   and latest eval pass rate — the quickest way to see the registry without opening the UI.
+- **`make register`** also logs a `bundle.json` + `bundle.tar.gz` artifact pair per newly registered
+  fingerprint (prompts/skills/knowledge content hashes + a tree snapshot); **`make agent-checkout FP=av-…`**
+  (`scripts/agent_checkout.py`, s49 M1) rewinds a `.worktrees/<fp>/` checkout to that fingerprint's exact
+  bundle without touching the DB. Full contract in `docs/eval-loop-s49.md`.
 - **The eval → MLflow sink** (`eval_run.py`'s `log_mlflow`, s43 M3) logs one comparable MLflow run per
   `make eval` invocation — params carry the build fingerprint and run framing, metrics carry the pass rate
   and per-tier breakdown — tagged with the `app.eval_runs` id so the two stores reconcile. It is additive and

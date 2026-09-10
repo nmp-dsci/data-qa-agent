@@ -29,9 +29,7 @@ def _stub_promote_inputs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     monkeypatch.setattr(
         mc, "get_alias_version", lambda name, alias: {"champion": "3", "challenger": "4"}[alias]
     )
-    monkeypatch.setattr(
-        reg, "_version_info", lambda version: {"agent_version_id": f"av-{version}"}
-    )
+    monkeypatch.setattr(reg, "_version_info", lambda version: {"agent_version_id": f"av-{version}"})
     monkeypatch.setattr(
         reg,
         "_latest_eval",

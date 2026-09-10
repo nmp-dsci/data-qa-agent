@@ -317,6 +317,18 @@ def test_test_candidate_refuses_without_rows_or_snippet() -> None:
     assert not outcome.ok and "truth rows" in (outcome.error or "")
 
 
+def test_test_candidate_refuses_with_no_expectation_even_if_it_would_run() -> None:
+    """A candidate that merely doesn't crash is not proven (review-3, D4)."""
+    outcome = skill_miner.test_candidate(
+        skill_src="def f(): ...",
+        meta={"sandbox_test": "f()"},
+        rows=[{"a": 1}],
+        expect_cols=[],
+    )
+    assert not outcome.ok
+    assert "no expectation" in (outcome.error or "")
+
+
 def test_apply_candidate_appends_the_skill_and_writes_a_test(tmp_path: Path) -> None:
     skills = tmp_path / skill_miner.SKILLS_FILE
     skills.parent.mkdir(parents=True)
@@ -382,6 +394,17 @@ def test_apply_edits_refuses_ambiguous_or_missing_text(tmp_path: Path) -> None:
 def test_apply_edits_needs_the_file_to_exist(tmp_path: Path) -> None:
     with pytest.raises(reflect_script.EditError, match="does not exist"):
         reflect_script.apply_edits(tmp_path, "services/data-agent/knowledge/nope.md", [])
+
+
+def test_apply_edits_refuses_a_path_that_resolves_outside_the_worktree(tmp_path: Path) -> None:
+    worktree = tmp_path / "worktree"
+    (worktree / "services/data-agent/knowledge").mkdir(parents=True)
+    outside = tmp_path / "evil.md"
+    outside.write_text("secret\n", encoding="utf-8")
+    rel = "services/data-agent/knowledge/../../../../evil.md"
+    with pytest.raises(reflect_script.EditError, match="escapes the worktree|outside the allowed"):
+        reflect_script.apply_edits(worktree, rel, [{"old": "secret", "new": "x"}])
+    assert outside.read_text(encoding="utf-8") == "secret\n"
 
 
 def test_reflect_prompt_carries_the_diagnosis_and_the_code(tmp_path: Path) -> None:

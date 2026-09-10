@@ -137,3 +137,27 @@ class _Args:
     def __init__(self, *, service: str) -> None:
         self.service = service
         self.dataset = None
+
+
+def test_cmd_export_refuses_a_path_that_resolves_outside_knowledge_dir(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    outside = tmp_path / "evil.md"
+    monkeypatch.setattr(
+        knowledge_pack,
+        "_fetch_pages",
+        lambda service: [
+            {
+                "path": str(outside),
+                "name": "evil",
+                "body": "pwned",
+                "version": 1,
+                "author": "x",
+                "updated_at": "now",
+            }
+        ],
+    )
+    knowledge_pack.cmd_export(_Args(service="db"))
+    out = capsys.readouterr().out
+    assert "refused" in out
+    assert not outside.exists()

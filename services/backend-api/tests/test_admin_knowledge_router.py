@@ -61,3 +61,25 @@ async def test_get_knowledge_502s_when_agent_unreachable(
 def test_knowledge_page_in_defaults_author_to_empty_string() -> None:
     body = admin_knowledge.KnowledgePageIn(body="some text")
     assert body.author == ""
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/etc/passwd.md",
+        "../../etc/passwd.md",
+        "domains/../../../etc/passwd.md",
+        "domains/property-rent/overview.py",
+        "domains\\property-rent\\overview.md",
+        "",
+    ],
+)
+def test_validate_knowledge_path_rejects_escapes_and_non_markdown(path: str) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        admin_knowledge._validate_knowledge_path(path)
+    assert exc_info.value.status_code == 400
+
+
+def test_validate_knowledge_path_allows_a_plain_relative_md_path() -> None:
+    path = "domains/property-rent/bedrooms.md"
+    assert admin_knowledge._validate_knowledge_path(path) == path

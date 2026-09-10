@@ -426,13 +426,25 @@ def cmd_promote(args: argparse.Namespace) -> None:
         return
 
     mc.set_alias(mc.MODEL_NAME, mc.CHAMPION, chall_v)
-    mc.delete_alias(mc.MODEL_NAME, mc.CHALLENGER)
+    delete_error: str | None = None
+    try:
+        mc.delete_alias(mc.MODEL_NAME, mc.CHALLENGER)
+    except mc.MlflowError as exc:
+        # @champion has already moved — the promotion must still be recorded,
+        # a leftover @challenger alias is a clean-up nit, not a lost audit row.
+        delete_error = str(exc)
     _psql(
         "INSERT INTO app.promotions (model_name, from_version, to_version, agent_version_id, "
         f"verdict) VALUES ({_lit(mc.MODEL_NAME)}, {_lit(champ_v)}, {_lit(chall_v)}, "
         f"{_lit(chall_tags.get('agent_version_id'))}::uuid, {_lit(verdict)}::jsonb)"
     )
     print(f"\nPROMOTED — @champion moved v{champ_v} -> v{chall_v}; recorded in app.promotions.")
+    if delete_error:
+        print(
+            f"! could not clear @challenger from v{chall_v}: {delete_error}\n"
+            f"  @challenger still points at v{chall_v} — clear it by hand before the next promote.",
+            file=sys.stderr,
+        )
 
 
 def main() -> None:

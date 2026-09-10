@@ -128,6 +128,28 @@ def sweep_runs(limit: int) -> list[GapSignal]:
     return signals
 
 
+def cases_for_runs(run_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Golden ``checkpoints`` behind swept ``run_ids``, keyed by run id.
+
+    A chat/ad-hoc run swept by ``sweep_runs`` with no matching ``eval_results``
+    row is simply absent — ``expected_cols()`` then has no real expectation to
+    draw on for it, which is the correct, honest outcome (review-3).
+    """
+    if not run_ids:
+        return {}
+    ids = ", ".join(f"'{r}'" for r in run_ids)
+    rows = db_rows(
+        f"""
+        select er.query_run_id::text as run_id, ec.case_key,
+               ec.checkpoints as case_checkpoints
+        from app.eval_results er
+        join app.eval_cases ec on ec.id = er.case_id
+        where er.query_run_id in ({ids})
+        """
+    )
+    return {row["run_id"]: row for row in rows}
+
+
 def eval_run_signals(eval_run_id: str) -> tuple[list[GapSignal], dict[str, dict[str, Any]]]:
     """Gaps + judge/checkpoint failures for the cases of one eval run.
 
@@ -317,6 +339,13 @@ def test_candidate(
         return SandboxOutcome(ok=False, error="the model gave no sandbox_test snippet")
     if not rows:
         return SandboxOutcome(ok=False, error="no truth rows available (is the local stack up?)")
+    if not expect_cols:
+        # No golden `derived_cols` and no model-reported `expect_cols` — a run
+        # that merely doesn't crash is not proof of anything (review-3, D4).
+        return SandboxOutcome(
+            ok=False,
+            error="no expectation: no golden derived_cols or expect_cols for this cluster",
+        )
     code = f"{strip_skill_decorator(skill_src)}\n\n{snippet}\n"
     return run_candidate_in_sandbox(code=code, rows=rows, expect_cols=expect_cols)
 
@@ -356,7 +385,8 @@ def main() -> int:
         if args.run:
             signals, cases = eval_run_signals(args.run)
         else:
-            signals, cases = sweep_runs(args.limit), {}
+            signals = sweep_runs(args.limit)
+            cases = cases_for_runs([s.run_id for s in signals])
     except DbUnavailable as exc:
         print(f"! cannot read the database: {exc}", file=sys.stderr)
         return 1

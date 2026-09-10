@@ -127,10 +127,17 @@ def cmd_export(args: argparse.Namespace) -> None:
     if not rows:
         print("no curator overrides in app.knowledge_pages — nothing to export")
         return
+    knowledge_root = KNOWLEDGE_DIR.resolve()
     changed: list[str] = []
+    refused: list[str] = []
     for row in rows:
         rel = str(row["path"])
-        dest = KNOWLEDGE_DIR / rel
+        dest = (KNOWLEDGE_DIR / rel).resolve()
+        try:
+            dest.relative_to(knowledge_root)
+        except ValueError:
+            refused.append(rel)
+            continue
         if dest.exists():
             frontmatter_raw, _old_body = _split_frontmatter(dest.read_text(encoding="utf-8"))
             if not frontmatter_raw:
@@ -143,10 +150,17 @@ def cmd_export(args: argparse.Namespace) -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(new_content, encoding="utf-8")
         changed.append(str(dest.relative_to(REPO_ROOT)))
+    if refused:
+        print(f"refused {len(refused)} page(s) whose path resolves outside {KNOWLEDGE_DIR}:")
+        for rel in refused:
+            print(f"  {rel}")
     if not changed:
-        print(f"exported {len(rows)} DB page(s) — file tree already matched, nothing changed")
+        print(
+            f"exported {len(rows) - len(refused)} DB page(s) — "
+            "file tree already matched, nothing changed"
+        )
         return
-    print(f"exported {len(rows)} DB page(s), {len(changed)} file(s) changed:")
+    print(f"exported {len(rows) - len(refused)} DB page(s), {len(changed)} file(s) changed:")
     for path in changed:
         print(f"  {path}")
 

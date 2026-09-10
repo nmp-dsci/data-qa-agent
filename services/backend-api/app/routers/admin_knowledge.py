@@ -22,6 +22,7 @@ nothing to invalidate across the service boundary — same as ordinals.
 from __future__ import annotations
 
 import logging
+from pathlib import PurePosixPath
 from typing import Any
 
 import httpx
@@ -84,6 +85,23 @@ class KnowledgePageIn(BaseModel):
     author: str = ""
 
 
+def _validate_knowledge_path(path: str) -> str:
+    """Confine curator writes to a relative ``**/*.md`` path (D3, review-1).
+
+    ``scripts/knowledge_pack.py``'s ``cmd_export`` later joins this value onto
+    ``KNOWLEDGE_DIR`` verbatim; an absolute path or a ``..`` segment stored
+    here would let that join escape the knowledge directory.
+    """
+    if not path or "\x00" in path or "\\" in path:
+        raise HTTPException(status_code=400, detail="invalid knowledge path")
+    if not path.endswith(".md"):
+        raise HTTPException(status_code=400, detail="knowledge path must end in .md")
+    pure = PurePosixPath(path)
+    if pure.is_absolute() or any(part in ("..", "") for part in pure.parts):
+        raise HTTPException(status_code=400, detail="invalid knowledge path")
+    return path
+
+
 @router.put("/admin/knowledge/{path:path}")
 async def put_knowledge(
     path: str, body: KnowledgePageIn, admin: CurrentUser = Depends(require_admin)
@@ -94,6 +112,7 @@ async def put_knowledge(
     new body up on its own next ``load_overrides()`` refresh (<=5s TTL); the
     caller doesn't need to poke it — the same fire-and-forget shape the
     ordinals curator endpoint already relies on."""
+    path = _validate_knowledge_path(path)
     author = body.author or admin.username or admin.email or admin.id
     async with rls_connection(admin.id) as conn:
         row = await conn.execute(

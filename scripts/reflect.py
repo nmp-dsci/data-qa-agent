@@ -161,7 +161,17 @@ def check_target(rel_path: str) -> str:
 
 def apply_edits(worktree: Path, rel_path: str, edits: list[dict[str, str]]) -> None:
     """Apply verbatim, unique search/replace pairs. Any miss aborts the whole edit."""
-    path = worktree / rel_path
+    worktree_root = worktree.resolve()
+    path = (worktree / rel_path).resolve()
+    try:
+        resolved_rel = path.relative_to(worktree_root).as_posix()
+    except ValueError as exc:
+        raise EditError(f"{rel_path!r} escapes the worktree") from exc
+    if not resolved_rel.startswith(ALLOWED_PREFIXES):
+        raise EditError(
+            f"{rel_path!r} resolves to {resolved_rel!r}, outside the allowed "
+            "prompt/knowledge surface"
+        )
     if not path.is_file():
         raise EditError(f"{rel_path} does not exist")
     body = path.read_text(encoding="utf-8")

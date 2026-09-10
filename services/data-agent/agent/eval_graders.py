@@ -443,3 +443,227 @@ def grade_artifact(
         # oddly, without turning layout choice into a pass/fail condition.
         "layouts": [str(s.get("layout") or "") for s in slides],
     }
+
+
+# ---------------------------------------------------------------------------
+# Checkpoints (s49 M2, decision D1) — DIAGNOSTIC ONLY.
+#
+# A golden's outcome (G1 + G5) is what gates. Checkpoints answer the next
+# question — *where* did it go wrong — by scoring the three stages the loop
+# actually has: the extract, the sandbox analysis, and the deck.
+#
+# Three rules make them safe to add:
+#
+# * They never gate. ``scripts/eval_run.py`` computes ``passed`` without them,
+#   so a checkpoint that is wrong (or newly added to an old golden) cannot fail
+#   a case that answered correctly.
+# * They are never shown to the agent. A checkpoint the agent can read is a
+#   spec it will satisfy literally — "use skill X" becomes the goal instead of
+#   the answer.
+# * Every one is optional. An unspecified checkpoint scores ``None``, not 0: a
+#   golden with no ``checkpoints`` block must not look like a failing one.
+# ---------------------------------------------------------------------------
+
+
+def _key_tuple(row: Any, key_cols: Sequence[str]) -> tuple[Any, ...] | None:
+    """The comparable identity of one row, or None when a key column is absent."""
+    if not isinstance(row, dict):
+        return None
+    out: list[Any] = []
+    for col in key_cols:
+        if col not in row:
+            return None
+        value = row[col]
+        num = _num(value)
+        # Keys arrive as text from one side and numbers from the other (psql vs
+        # JSON), so "2077" and 2077 must be the same postcode — but a float key
+        # is compared at its numeric value, not its formatting.
+        out.append(num if num is not None else str(value))
+    return tuple(out)
+
+
+def checkpoint_sql(
+    key_cols: Sequence[str],
+    golden_rows: Sequence[Any],
+    actual_rows: Sequence[Any],
+) -> dict[str, Any]:
+    """Did the agent's extract cover the same key tuples as the golden's?
+
+    F1 over the *set* of key tuples: recall catches an extract that filtered too
+    hard (missing postcodes, a short window), precision catches one that
+    filtered too little. Order and values are G1's job, not this one's.
+    """
+    want = {t for t in (_key_tuple(r, key_cols) for r in golden_rows) if t is not None}
+    got = {t for t in (_key_tuple(r, key_cols) for r in actual_rows) if t is not None}
+    if not want:
+        return {"key_cols": list(key_cols), "score": None, "reason": "golden produced no key rows"}
+    hit = len(want & got)
+    precision = hit / len(got) if got else 0.0
+    recall = hit / len(want)
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+    return {
+        "key_cols": list(key_cols),
+        "golden_keys": len(want),
+        "actual_keys": len(got),
+        "matched": hit,
+        "missing": sorted(str(t) for t in list(want - got)[:10]),
+        "rows_match": round(f1, 4),
+        "score": round(f1, 4),
+    }
+
+
+def checkpoint_analysis(
+    expected_skills: Sequence[str],
+    derived_cols: Sequence[str],
+    *,
+    skills_used: Sequence[str] = (),
+    frame_columns: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Did the sandbox use the skills, and produce the columns, the golden expects?
+
+    Two containments, averaged over whichever were specified: expected skills ⊆
+    skills the run reported, and derived columns ⊆ columns of the frames the
+    analysis step produced. This is the checkpoint the skill miner (s49 M3)
+    reads when it looks for a capability the agent kept hand-rolling.
+    """
+    used = {str(s).strip() for s in skills_used if str(s).strip()}
+    cols = {str(c).strip() for c in frame_columns if str(c).strip()}
+    parts: list[float] = []
+    out: dict[str, Any] = {}
+    if expected_skills:
+        missing = [s for s in expected_skills if s not in used]
+        parts.append(1.0 - len(missing) / len(expected_skills))
+        out["expected_skills"] = list(expected_skills)
+        out["skills_used"] = sorted(used)
+        out["missing_skills"] = missing
+    if derived_cols:
+        missing_cols = [c for c in derived_cols if c not in cols]
+        parts.append(1.0 - len(missing_cols) / len(derived_cols))
+        out["derived_cols"] = list(derived_cols)
+        out["missing_cols"] = missing_cols
+    out["score"] = round(sum(parts) / len(parts), 4) if parts else None
+    return out
+
+
+def _slides_of(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
+    slides = (manifest or {}).get("slides") or []
+    return [s for s in slides if isinstance(s, dict)]
+
+
+def _slide_field(slide: dict[str, Any], field: str) -> str:
+    """A slide field, from the flat view or from the ``spec`` it carries."""
+    value = slide.get(field)
+    if value in (None, ""):
+        value = (
+            (slide.get("spec") or {}).get(field) if isinstance(slide.get("spec"), dict) else None
+        )
+    return str(value or "")
+
+
+def checkpoint_deck(
+    layouts_any_of: Sequence[str],
+    kpi_label_contains: str,
+    manifest: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Did the deck use one of the layouts the golden expects, and label its KPI?
+
+    Deliberately *not* part of G5: G5 refuses to assert layout identity because
+    the agent's choice is free to vary. This checkpoint records the same thing
+    as a diagnosis — a deck that never picks any sensible layout for the shape
+    of the question is a presentation problem worth clustering on — precisely
+    because it cannot fail the case.
+    """
+    slides = _slides_of(manifest)
+    parts: list[float] = []
+    out: dict[str, Any] = {"layouts_used": [_slide_field(s, "layout") for s in slides]}
+    if layouts_any_of:
+        wanted = {str(x).strip().lower() for x in layouts_any_of}
+        hit = any(_slide_field(s, "layout").strip().lower() in wanted for s in slides)
+        parts.append(1.0 if hit else 0.0)
+        out["layouts_any_of"] = list(layouts_any_of)
+        out["layout_hit"] = hit
+    if kpi_label_contains:
+        needle = kpi_label_contains.strip().lower()
+        labels = [_slide_field(s, "kpi_label") for s in slides]
+        hit = any(needle in label.lower() for label in labels if label)
+        parts.append(1.0 if hit else 0.0)
+        out["kpi_label_contains"] = kpi_label_contains
+        out["kpi_labels"] = [label for label in labels if label]
+        out["kpi_hit"] = hit
+    out["score"] = round(sum(parts) / len(parts), 4) if parts else None
+    return out
+
+
+def score_checkpoints(
+    spec: dict[str, Any] | None,
+    *,
+    golden_rows: Sequence[Any] = (),
+    actual_rows: Sequence[Any] = (),
+    skills_used: Sequence[str] = (),
+    frame_columns: Sequence[str] = (),
+    manifest: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """All three checkpoints for one case, as ``{sql, analysis, deck}``.
+
+    Returns ``{}`` for a golden with no ``checkpoints`` block, so the column
+    stays empty rather than filling with null scores that read like failures.
+    """
+    spec = spec or {}
+    if not spec:
+        return {}
+    out: dict[str, Any] = {}
+    sql_spec = spec.get("sql") or {}
+    if sql_spec.get("key_cols"):
+        out["sql"] = checkpoint_sql(list(sql_spec["key_cols"]), golden_rows, actual_rows)
+    analysis_spec = spec.get("analysis") or {}
+    if analysis_spec.get("expected_skills") or analysis_spec.get("derived_cols"):
+        out["analysis"] = checkpoint_analysis(
+            list(analysis_spec.get("expected_skills") or []),
+            list(analysis_spec.get("derived_cols") or []),
+            skills_used=skills_used,
+            frame_columns=frame_columns,
+        )
+    deck_spec = spec.get("deck") or {}
+    if deck_spec.get("layouts_any_of") or deck_spec.get("kpi_label_contains"):
+        out["deck"] = checkpoint_deck(
+            list(deck_spec.get("layouts_any_of") or []),
+            str(deck_spec.get("kpi_label_contains") or ""),
+            manifest,
+        )
+    return out
+
+
+def render_deck_outline(manifest: dict[str, Any] | None, *, max_slides: int = 12) -> str:
+    """The deck as one readable block, for the judge's prompt (s49 M2).
+
+    The judge grades what the user received, and what the user received is a
+    deck — but a deck is JSON with URLs and object ids in it, most of which is
+    noise to a reader. This renders the part a human would look at: layout,
+    headline, the KPI and its label, the chart type, the table size. Lives here
+    rather than in the runner so the eval and any future online sampler show the
+    judge the same shape.
+    """
+    slides = _slides_of(manifest)
+    if not slides:
+        return ""
+    lines: list[str] = []
+    for slide in slides[:max_slides]:
+        index = slide.get("index")
+        parts = [f"slide {int(index) + 1 if isinstance(index, int) else '?'}"]
+        parts.append(_slide_field(slide, "layout") or "unknown layout")
+        headline = _slide_field(slide, "headline")
+        if headline:
+            parts.append(headline)
+        kpi, kpi_label = _slide_field(slide, "kpi"), _slide_field(slide, "kpi_label")
+        if kpi or kpi_label:
+            parts.append(f"kpi {kpi_label or '(unlabelled)'}={kpi or '(blank)'}")
+        chart_type = _slide_field(slide, "chart_type")
+        if chart_type:
+            parts.append(f"chart {chart_type}")
+        rows = slide.get("rows") or (slide.get("spec") or {}).get("rows")
+        if rows:
+            parts.append(f"table {rows} rows")
+        lines.append(" · ".join(parts))
+    if len(slides) > max_slides:
+        lines.append(f"… and {len(slides) - max_slides} more slide(s)")
+    return "\n".join(lines)

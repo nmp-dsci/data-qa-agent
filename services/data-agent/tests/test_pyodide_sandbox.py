@@ -13,6 +13,7 @@ import shutil
 import pandas as pd
 import pytest
 
+from agent.sandbox.contract import STDOUT_CAP
 from agent.sandbox.pyodide_runner import _HOST_SCRIPT
 from agent.sandbox.pyodide_runner import run_code as pyodide_run_code
 
@@ -84,3 +85,36 @@ def test_skill_gap_flows_back():
     res = pyodide_run_code(code, _df())
     assert res.ok
     assert [g.need for g in res.skill_gaps] == ["seasonality_adjust"]
+
+
+# --- s49 M0: stdout capture -------------------------------------------------
+
+
+def test_prints_are_captured_in_wasm():
+    """The Pyodide bootstrap has its OWN builtins/stdout layer, separate from
+    runner.py's — a trace must not lose the model's prints just because the
+    container runs this executor instead of the subprocess one."""
+    code = (
+        'print("rows:", len(df))\n'
+        "result = skills.build_report(summary='ok', headlines=[{'label': 'n', 'value': len(df)}])"
+    )
+    res = pyodide_run_code(code, _df())
+
+    assert res.ok, res.error
+    assert "rows: 60" in res.stdout
+
+
+def test_prints_before_a_failure_are_still_returned_in_wasm():
+    res = pyodide_run_code('print("got this far")\nraise ValueError("boom")', _df())
+
+    assert not res.ok
+    assert "got this far" in res.stdout
+
+
+def test_stdout_is_capped_in_wasm():
+    code = 'print("x" * 200000)\nresult = skills.build_report(summary="ok")'
+    res = pyodide_run_code(code, _df())
+
+    assert res.ok, res.error
+    assert len(res.stdout) < STDOUT_CAP + 200
+    assert "stdout truncated" in res.stdout

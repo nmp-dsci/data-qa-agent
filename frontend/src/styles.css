@@ -1124,6 +1124,11 @@ th.sortable:hover { color: var(--text); }
 .arch-kb-pane-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
 .arch-kb-content { margin: 10px 0 0; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 
+.arch-kb-edit { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.arch-kb-edit-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 11px; }
+.arch-kb-edit-textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px; color: var(--text); resize: vertical; }
+.arch-kb-edit-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+
 .arch-tools-table th:first-child, .arch-tools-table td:first-child { width: 22%; }
 .arch-tools-table th:nth-child(2) { width: 8%; }
 .arch-tools-table th:nth-child(4), .arch-tools-table th:nth-child(5) { width: 20%; }

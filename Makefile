@@ -224,10 +224,10 @@ knowledge-import:
 	uv run python scripts/knowledge_pack.py import
 
 skill-mine:
-	uv run python scripts/skill_miner.py $(if $(RUN),--run $(RUN))
+	uv run python scripts/skill_miner.py $(if $(RUN),--run $(RUN)) $(ARGS)
 
 reflect:
-	uv run python scripts/reflect.py --run $(RUN)
+	uv run python scripts/reflect.py --run $(RUN) $(ARGS)
 
 eval-calibrate:
 	uv run python scripts/eval_run.py --calibrate-only $(if $(INCLUDE_DRAFTS),--include-drafts)

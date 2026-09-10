@@ -64,8 +64,69 @@ function GateBadge({ gate, comparable }: { gate: string; comparable: boolean }) 
   );
 }
 
+/** The judge's verdict (s49 M2): a label, and — when it isn't "high" — the stage
+ *  it blames. Rendered next to PASS/FAIL but deliberately not styled like it:
+ *  the label does NOT gate (decision D2), and a reader who confuses the two will
+ *  chase a "failure" the gate never called one. */
+function JudgeBadge({ judge }: { judge: EvalCaseResult["judge"] }) {
+  const label = judge?.label;
+  if (!label) {
+    return (
+      <span style={{ fontSize: 11.5, color: "var(--faint)" }} title={judge?.reason ?? "no judge"}>
+        —
+      </span>
+    );
+  }
+  const tone =
+    label === "high" ? "var(--good)" : label === "medium" ? "var(--warn)" : "var(--bad)";
+  return (
+    <span title={judge?.reason ?? ""}>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: 0.6,
+          textTransform: "uppercase",
+          color: tone,
+          border: `1px solid ${tone}`,
+          borderRadius: 6,
+          padding: "1px 6px",
+        }}
+      >
+        {label}
+      </span>
+      {judge?.diagnosis && judge.diagnosis !== "none" && (
+        <span style={{ fontSize: 11, color: "var(--faint)", marginLeft: 6 }}>
+          {judge.diagnosis}
+        </span>
+      )}
+      {judge?.calibrated === false && (
+        <span style={{ fontSize: 10, color: "var(--warn)", marginLeft: 6 }} title="the judge did not reproduce known labels on this run">
+          uncal
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Checkpoint scores (s49 D1) — where it went wrong, never whether. Shown as a
+ *  muted one-liner under the case so it reads as diagnosis, not verdict. */
+function Checkpoints({ checkpoints }: { checkpoints: EvalCaseResult["checkpoints"] }) {
+  const parts = (["sql", "analysis", "deck"] as const)
+    .map((stage) => {
+      const score = checkpoints?.[stage]?.score;
+      return score === null || score === undefined ? null : `${stage} ${score.toFixed(2)}`;
+    })
+    .filter(Boolean);
+  if (!parts.length) return null;
+  return (
+    <div style={{ fontFamily: mono, fontSize: 10.5, color: "var(--faint)", marginTop: 2 }}>
+      checkpoints · {parts.join(" · ")}
+    </div>
+  );
+}
+
 function CaseRow({ result }: { result: EvalCaseResult }) {
-  const insight = result.g3?.insight;
   const issues = result.g3?.format?.issues ?? [];
   return (
     <tr style={{ borderBottom: "1px solid var(--border)" }}>
@@ -90,16 +151,15 @@ function CaseRow({ result }: { result: EvalCaseResult }) {
             {issues.join("; ")}
           </div>
         )}
+        <Checkpoints checkpoints={result.checkpoints} />
       </td>
       <td style={{ padding: "8px 6px", fontFamily: mono, fontSize: 12 }}>
         {result.g1?.score === null || result.g1?.score === undefined
           ? "—"
           : fmt(result.g1.score)}
       </td>
-      <td style={{ padding: "8px 6px", fontFamily: mono, fontSize: 12 }}>
-        {insight?.total === null || insight?.total === undefined
-          ? "—"
-          : `${insight.total}/${insight.max ?? 10}`}
+      <td style={{ padding: "8px 6px" }}>
+        <JudgeBadge judge={result.judge} />
       </td>
       <td style={{ padding: "8px 6px", fontFamily: mono, fontSize: 12 }}>{result.g4?.turns ?? "—"}</td>
     </tr>
@@ -237,9 +297,15 @@ export function EvalsPage() {
               />
               <Pillar name="G1 extraction" value={fmt(totals.g1_mean)} />
               <Pillar
-                name="G3 insight"
-                value={fmt(totals.g3_insight_mean, 1)}
-                hint={detail.run.judge_model ? detail.run.judge_model : "no judge configured"}
+                name="judge · high"
+                value={`${totals.judge_labels?.high ?? 0}/${totals.cases ?? 0}`}
+                hint={
+                  totals.judge_calibration?.calibrated
+                    ? `calibrated · ${detail.run.judge_model || "judge"}`
+                    : `NOT calibrated · ${totals.judge_calibration?.agreed ?? 0}/${
+                        totals.judge_calibration?.probes ?? 0
+                      } probes`
+                }
               />
               <Pillar
                 name="G4 turns"
@@ -250,6 +316,22 @@ export function EvalsPage() {
 
             {/* Honesty about what a small corpus can prove — the same note the
                 runner prints, surfaced where the numbers are read. */}
+            {/* The judge is advisory below HOLDOUT_MIN_CASES goldens (decision
+                D2). Saying so where the labels are read is the difference
+                between an honest signal and a number people start trusting. */}
+            {totals.judge_gates === false && (totals.judge_labels?.high ?? 0) + (totals.judge_labels?.medium ?? 0) + (totals.judge_labels?.low ?? 0) > 0 && (
+              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>
+                Judge labels are advisory on this pack — PASS/FAIL is decided by G1 and the
+                delivered deck alone.
+              </p>
+            )}
+            {totals.judge_calibration && !totals.judge_calibration.calibrated && (
+              <p style={{ fontSize: 12, color: "var(--warn)", marginTop: 6 }}>
+                The judge did not reproduce the pack's known labels on this run
+                ({totals.judge_calibration.agreed ?? 0}/{totals.judge_calibration.probes ?? 0}{" "}
+                probes agreed), so read every label below as noise until it does.
+              </p>
+            )}
             {totals.generalisation === "unproven" && (
               <p style={{ fontSize: 12, color: "var(--warn)", marginTop: 10 }}>
                 Fewer than 10 cases — no holdout slice, so an improvement here is not yet
@@ -279,7 +361,7 @@ export function EvalsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    {["", "case", "G1", "insight", "turns"].map((h) => (
+                    {["", "case", "G1", "judge", "turns"].map((h) => (
                       <th key={h} style={{ ...label, textAlign: "left", padding: "0 6px 6px" }}>
                         {h}
                       </th>

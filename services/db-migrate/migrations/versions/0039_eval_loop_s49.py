@@ -9,7 +9,8 @@ Four things the s49 review found the loop could not answer, each a column:
 * ``eval_results.otel_trace_id`` / ``mlflow_run_id`` — the stored join from a
   graded case to its span waterfall and its MLflow case run. Before this you
   searched by time window.
-* ``eval_results.judge`` / ``checkpoints`` — the s49 judge verdict
+* ``eval_results.judge`` / ``checkpoints`` / ``g5`` — the s49 judge verdict, the
+  artifact grade that gates alongside G1 (never persisted before),
   ({label, diagnosis, ...}, advisory until the pack has 10 goldens) and the
   diagnostic checkpoint scores (sql / analysis / deck) that never gate (D1, D2).
 * ``eval_cases.golden_answer`` / ``label`` / ``calibration_examples`` /
@@ -42,6 +43,7 @@ _EVAL_RESULT_COLUMNS = (
     ("mlflow_run_id", "text"),
     ("judge", "jsonb"),
     ("checkpoints", "jsonb"),
+    ("g5", "jsonb"),
 )
 _EVAL_CASE_COLUMNS = (
     ("golden_answer", "text"),

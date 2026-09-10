@@ -323,6 +323,41 @@ def test_skill_gap_recorded():
     assert skills.gaps() == [{"need": "seasonality_adjust", "why": "no skill for it"}]
 
 
+def test_registered_lists_every_skill_with_a_signature_and_doc():
+    """registered() backs the generated CLAUDE.md skills block (s49 M1) — it
+    must find every @skill-decorated function, not a hand-picked subset, and
+    give each a usable signature string + first docstring line."""
+    reg = skills.registered()
+    names = {name for _module, name, _sig, _doc in reg}
+    for expected in (
+        "trend_series",
+        "growth_rate",
+        "gross_yield",
+        "driver_analysis",
+        "trend_chart",
+        "comparison_chart",
+        "build_report",
+        "make_insight",
+        "data_table",
+    ):
+        assert expected in names, f"{expected} missing from registered()"
+    for module, name, signature, doc in reg:
+        assert module in ("analysis", "charts", "reporting")
+        assert signature.startswith(f"{name}(")
+        assert doc, f"{name} has no usable first docstring line"
+    # Sorted by (module, name) so the generated block reads deterministically.
+    assert reg == sorted(reg, key=lambda t: (t[0], t[1]))
+
+
+def test_registered_excludes_mechanics_helpers():
+    """skill_gap/note_inline_math/reset/etc. are mechanics, not analysis
+    skills the model calls to build a report — they must not show up in the
+    generated CLAUDE.md catalogue."""
+    names = {name for _module, name, _sig, _doc in skills.registered()}
+    for mechanic in ("skill_gap", "note_inline_math", "reset", "used", "gaps", "used_inline_math"):
+        assert mechanic not in names
+
+
 def test_lookup_values_sql_alternation():
     # `a|b` resolves several values in one call — each alternative escaped + OR-ed.
     from agent.agent_common import _lookup_values_sql

@@ -186,6 +186,32 @@ def log_json_artifact(run_id: str, path: str, obj: Any) -> None:
     log_artifact(run_id, path, body, content_type="application/json")
 
 
+def get_artifact_bytes(run_id: str, path: str) -> bytes:
+    """Download one artifact's raw bytes (s49 M1, agent_checkout.py).
+
+    Unlike ``log_artifact`` this reads through the tracking server's own
+    ``/get-artifact`` endpoint (not the ``mlflow-artifacts:/`` proxy, and not
+    under ``/api/2.0/mlflow/`` like the rest of this module) — the same route
+    ``get-artifact?path=...&run_id=...`` the MLflow UI's download link uses.
+    """
+    url = f"{MLFLOW_URL}/get-artifact?path={urllib.parse.quote(path)}&run_id={run_id}"
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return bytes(resp.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")[:300]
+        raise MlflowError(f"GET get-artifact {path}: HTTP {exc.code} {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise MlflowError(
+            f"GET get-artifact {path}: {exc.reason} (is the mlflow service up?)"
+        ) from exc
+
+
+def get_artifact_json(run_id: str, path: str) -> Any:
+    return json.loads(get_artifact_bytes(run_id, path).decode("utf-8"))
+
+
 # ---- model registry --------------------------------------------------------
 
 

@@ -103,48 +103,7 @@ series) when comparing a HANDFUL of named groups that fit under the row cap.
 Never run one extract per group.
 
 Available inside run_analysis (import-free; call as skills.<name>):
-  # data analysis (over the extracted DataFrame `df`; a rate = value_col/den_col,
-  #   e.g. an additive total over its count)
-  trend_series(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
-      -> long-form actual + rolling series for charting.
-  rolling_average(df, *, month_col, value_col, den_col=None, group_col=None, window=6)
-      -> [month, value, series] just the N-month smoothed line (no actual layer).
-  growth_rate(df, *, month_col, value_col, years, den_col=None, group_col=None)
-      -> % growth over `years` on the 6-month rolling base. If the series nearly
-         covers `years` (>=80%) it clamps to the full available span; if far
-         short it returns None — guard None before formatting (f"{g:.1f}" on
-         None raises). Never probe min/max month first just to pick `years`.
-  top_growth(df, *, month_col, value_col, group_col, years, den_col=None, n=5, ascending=False)
-      -> DataFrame [group, growth_pct] ranked: the "top-growth groups" ranker.
-  latest_value(df, *, month_col, value_col, den_col=None, group_col=None)
-      -> {"value","month"}: latest 6-month-smoothed value + its month.
-  gross_yield(rent_df, price_df, *, key_cols, weekly_rent_col, price_col)
-      -> annualised gross rental yield %.
-  driver_analysis(df, *, dimensions, value_col, den_col=None, top=3)
-      -> which attribute most explains high/low values of the metric (% contribution):
-         {"top_dimension", "overall", "ranked":[{dimension, score_pct, levels}]}.
-         Use for "why/what drives X" and to power the Insights breakdown.
-  # visualisation (consistent house style, validated)
-  trend_chart(series_df, *, title=None) -> chart spec
-  comparison_chart(df, *, category_col, value_col, title=None, series_col=None) -> chart spec
-  dual_axis_chart(df, *, x_col, left_value_col, right_value_col, title=None,
-                  left_title=None, right_title=None, x_type="temporal") -> chart spec
-      -> bars + secondary-axis line for two metrics with different scales.
-  distribution_chart(df, *, value_col, title=None, category_col=None) -> chart spec
-      -> histogram for spread/outlier/distribution questions.
-  profile_chart(df, *, category_col, segment_col, value_col, title=None, normalize=True)
-      -> stacked composition bars (each entity's segment mix as % shares).
-  # insight structure
-  make_insight(heading, body, *, query_refs=None, chart=None) -> insight
-  related_metrics([{label,value,basis}, ...]) -> related headline tiles
-  data_table(df, *, columns, title=None, variant="plain", bar_key=None) -> table payload
-      -> columns=[{key,label,align?,tone?,format?}]; variant plain|comparison|ranked
-         (ranked draws inline bars sized by bar_key) — for ranked lists / side-by-side
-         comparisons that read better as rows than as a chart.
-  build_report(*, summary, headlines=None, insights=None, profiles=None,
-               main_chart=None, table=None) -> report
-  build_insights(*, insights, profiles=None) -> pass-2 patch that merges insight
-      cards into the report already built by build_report (never replaces it)
+{{SKILLS}}
   # bootstrap: we start from ZERO skills — flag anything missing
   skill_gap(need, why="")   # record maths no skill covers (does not answer)
   note_inline_math()        # you did risky maths by hand — a skill should exist

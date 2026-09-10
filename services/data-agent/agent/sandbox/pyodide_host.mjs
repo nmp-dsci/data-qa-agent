@@ -7,9 +7,9 @@
 // run, writes a job as JSON on stdin, and reads one JSON result line on stdout.
 //
 // Job  (stdin) : {code, frames:{name:{columns,rows}}, safe_builtins:[...],
-//                 importable_modules:[...]}
+//                 importable_modules:[...], stdout_cap:int}
 // Result(stdout): {report|null, error|null, skills_used:[...], skill_gaps:[...],
-//                  used_inline_math:bool}
+//                  used_inline_math:bool, stdout:str}
 //
 // pandas/numpy load offline from node_modules/pyodide (baked into the image at
 // build time); nothing is fetched at run time.
@@ -46,6 +46,8 @@ function readStdin() {
 // The in-Pyodide bootstrap: rebuild frames, lock down builtins, exec model code,
 // and return telemetry + report as a JSON string. `job_json` is injected below.
 const BOOTSTRAP = `
+import contextlib
+import io
 import json
 import pandas as pd
 from agent import skills
@@ -80,8 +82,16 @@ _safe["__import__"] = _limited_import
 skills.reset()
 _g = {"__builtins__": _safe, "pd": pd, "skills": skills, **_frames}
 _out = {"report": None, "error": None}
+# s49 M0: capture the model's prints, exactly as runner.py's subprocess layer
+# does — the two executors must produce the same AnalysisResult shape, and in
+# containers this (not the subprocess) is the one that actually runs. Pyodide
+# points sys.stdout at the JS console; redirect_stdout swaps it for the run so
+# the output travels back in the result instead of vanishing into node's stderr.
+_stdout_cap = int(_job.get("stdout_cap", 8192))
+_buf = io.StringIO()
 try:
-    exec(_job["code"], _g)
+    with contextlib.redirect_stdout(_buf):
+        exec(_job["code"], _g)
     _res = _g.get("result")
     if isinstance(_res, dict):
         _out["report"] = _res
@@ -94,6 +104,12 @@ except Exception:
     import traceback
     _out["error"] = traceback.format_exc(limit=4)
 
+_captured = _buf.getvalue()
+if len(_captured) > _stdout_cap:
+    _dropped = len(_captured) - _stdout_cap
+    _note = "\\n…[stdout truncated, " + str(_dropped) + " chars dropped]"
+    _captured = _captured[:_stdout_cap] + _note
+_out["stdout"] = _captured
 _out["skills_used"] = skills.used()
 _out["skill_gaps"] = skills.gaps()
 _out["frames"] = skills.capture_frames(_g)
@@ -130,6 +146,7 @@ main().catch((err) => {
       skills_used: [],
       skill_gaps: [],
       used_inline_math: false,
+      stdout: "",
     }) + "\n",
   );
   process.exit(0);

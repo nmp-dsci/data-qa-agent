@@ -124,12 +124,26 @@ async def get_eval_run(
                 "g2": r.g2 or {},
                 "g3": r.g3 or {},
                 "g4": r.g4 or {},
+                "g5": r.g5,
+                # s49 M2: the judge's label + diagnosis, and the diagnostic
+                # checkpoint scores. Both are read-only here and neither is part
+                # of `passed` — the tab shows them beside the verdict precisely
+                # so a reader can see what the gate did *not* consider.
+                "judge": r.judge or {},
+                "checkpoints": r.checkpoints or {},
+                # s49 M0: the deck the run actually specified, so the tab (and
+                # the presentation checkpoints) can be read against what was
+                # asked for rather than only the URLs it produced.
+                "artifact_manifest": r.artifact_manifest,
             }
             for r in await conn.execute(
                 text(
                     "SELECT c.case_key, c.question, c.dataset, c.holdout, e.tier, e.passed, "
-                    "e.notes, e.query_run_id, e.g1, e.g2, e.g3, e.g4 "
+                    "e.notes, e.query_run_id, e.g1, e.g2, e.g3, e.g4, "
+                    "e.judge, e.checkpoints, e.g5, "
+                    "qr.artifact_manifest "
                     "FROM app.eval_results e JOIN app.eval_cases c ON c.id = e.case_id "
+                    "LEFT JOIN app.query_runs qr ON qr.id = e.query_run_id "
                     "WHERE e.eval_run_id = :id ORDER BY c.case_key"
                 ),
                 {"id": run_id},

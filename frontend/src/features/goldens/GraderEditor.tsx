@@ -8,7 +8,12 @@
 import type React from "react";
 import { KitMultiSelect } from "@/components/kit/KitMultiSelect";
 import { KitSelect } from "@/components/kit/KitSelect";
-import type { GraderSpec } from "../../lib/api";
+import type {
+  CalibrationExample,
+  GoldenCheckpoints,
+  GoldenLabel,
+  GraderSpec,
+} from "../../lib/api";
 import {
   GRADER_KIND_INFO,
   GRADER_KINDS,
@@ -55,6 +60,29 @@ function options(current: string[], opts: string[]) {
   return [...extra, ...opts].map((c) => ({ value: c, label: c }));
 }
 
+/** Comma/newline-separated free text ⇄ a string list. Chips would be nicer, but
+ *  these lists name skills and columns the curator often pastes from a trace, so
+ *  a textarea is the faster surface and loses nothing. */
+function toList(text: string): string[] {
+  return text
+    .split(/[\n,]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+const LABELS: GoldenLabel[] = ["high", "medium", "low"];
+
+const area: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  fontSize: 12.5,
+  padding: 8,
+  background: "var(--panel-2)",
+  color: "var(--text)",
+  border: "1px solid var(--border-2)",
+  borderRadius: 8,
+};
+
 interface GraderEditorProps {
   grader: GraderSpec;
   onChange: (g: GraderSpec) => void;
@@ -63,6 +91,18 @@ interface GraderEditorProps {
   tier: string;
   status: string;
   onStatusChange: (status: string) => void;
+  /** s49 M2 — golden v2: the reference answer the judge grades against, the
+   *  label it must return for it, calibration examples, and the diagnostic
+   *  checkpoints. All optional: a golden with none of them is still scoreable,
+   *  it just has no judge reference and no per-stage diagnosis. */
+  goldenAnswer: string;
+  onGoldenAnswerChange: (text: string) => void;
+  label: GoldenLabel | "";
+  onLabelChange: (label: GoldenLabel) => void;
+  calibrationExamples: CalibrationExample[];
+  onCalibrationExamplesChange: (examples: CalibrationExample[]) => void;
+  checkpoints: GoldenCheckpoints;
+  onCheckpointsChange: (checkpoints: GoldenCheckpoints) => void;
 }
 
 export function GraderEditor({
@@ -72,6 +112,14 @@ export function GraderEditor({
   tier,
   status,
   onStatusChange,
+  goldenAnswer,
+  onGoldenAnswerChange,
+  label: goldenLabel,
+  onLabelChange,
+  calibrationExamples,
+  onCalibrationExamplesChange,
+  checkpoints,
+  onCheckpointsChange,
 }: GraderEditorProps) {
   const g = grader ?? {};
   const set = (patch: Partial<GraderSpec>) => onChange({ ...g, ...patch });
@@ -236,6 +284,187 @@ export function GraderEditor({
             />
             <span className="muted">a chart or table on some slide</span>
           </label>
+        </div>
+      </div>
+
+      {/* ── Golden v2 (s49 M2): the judge's reference + the diagnostic
+          checkpoints. Kept below the grader because the grader is what gates:
+          nothing in this block can fail a case, and the copy says so. */}
+      <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "rgb(120,160,255)" }}>
+            ◆ REFERENCE ANSWER — what the judge grades against
+          </span>
+          <span style={label}>advisory · never gates a case</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 14, marginTop: 8, alignItems: "flex-start" }}>
+          <div style={{ ...field, flex: 1, minWidth: 0 }}>
+            <span style={label}>golden answer</span>
+            <textarea
+              data-testid="golden-answer"
+              value={goldenAnswer}
+              onChange={(e) => onGoldenAnswerChange(e.target.value)}
+              rows={5}
+              placeholder="The answer a domain expert would give, with the numbers in it."
+              style={area}
+            />
+          </div>
+          <div style={field}>
+            <span style={label}>label</span>
+            <KitSelect
+              testId="golden-label"
+              ariaLabel="Reference answer label"
+              value={goldenLabel || "high"}
+              onValueChange={(v) => onLabelChange((v || "high") as GoldenLabel)}
+              options={LABELS.map((l) => ({ value: l, label: l }))}
+            />
+            <span style={{ ...label, opacity: 0.6, maxWidth: 150 }}>
+              what the judge must return for this text
+            </span>
+          </div>
+        </div>
+
+        {/* Calibration examples — answers with known labels the judge must
+            reproduce before any of its labels are trusted. */}
+        <div style={{ marginTop: 10 }}>
+          <span style={label}>calibration examples</span>
+          {calibrationExamples.map((example, index) => (
+            <div
+              // Index keys are correct here: rows are positional and edited in
+              // place, never reordered.
+              key={index}
+              style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "flex-start" }}
+            >
+              <KitSelect
+                testId={`calibration-label-${index}`}
+                ariaLabel={`Calibration example ${index + 1} label`}
+                value={example.label}
+                onValueChange={(v) =>
+                  onCalibrationExamplesChange(
+                    calibrationExamples.map((e, i) =>
+                      i === index ? { ...e, label: (v || "medium") as GoldenLabel } : e,
+                    ),
+                  )
+                }
+                options={LABELS.map((l) => ({ value: l, label: l }))}
+              />
+              <textarea
+                data-testid={`calibration-answer-${index}`}
+                value={example.answer}
+                onChange={(e) =>
+                  onCalibrationExamplesChange(
+                    calibrationExamples.map((row, i) =>
+                      i === index ? { ...row, answer: e.target.value } : row,
+                    ),
+                  )
+                }
+                rows={2}
+                style={{ ...area, flex: 1 }}
+              />
+              <button
+                type="button"
+                style={btn()}
+                onClick={() =>
+                  onCalibrationExamplesChange(calibrationExamples.filter((_, i) => i !== index))
+                }
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            data-testid="calibration-add"
+            style={{ ...btn(), marginTop: 6 }}
+            onClick={() =>
+              onCalibrationExamplesChange([
+                ...calibrationExamples,
+                { label: "medium", answer: "" },
+              ])
+            }
+          >
+            + Add example
+          </button>
+        </div>
+
+        {/* Checkpoints — diagnosis, not gates. Never shown to the agent: a
+            checkpoint it can read becomes the goal instead of the answer. */}
+        <div
+          style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, alignItems: "flex-start" }}
+        >
+          <div style={field}>
+            <span style={label}>checkpoint · sql key cols</span>
+            <input
+              data-testid="checkpoint-key-cols"
+              value={(checkpoints.sql?.key_cols ?? []).join(", ")}
+              onChange={(e) =>
+                onCheckpointsChange({ ...checkpoints, sql: { key_cols: toList(e.target.value) } })
+              }
+              placeholder="postcode"
+              style={{ ...area, width: 190 }}
+            />
+          </div>
+          <div style={field}>
+            <span style={label}>checkpoint · expected skills</span>
+            <input
+              data-testid="checkpoint-skills"
+              value={(checkpoints.analysis?.expected_skills ?? []).join(", ")}
+              onChange={(e) =>
+                onCheckpointsChange({
+                  ...checkpoints,
+                  analysis: { ...checkpoints.analysis, expected_skills: toList(e.target.value) },
+                })
+              }
+              placeholder="latest_value, growth_rate"
+              style={{ ...area, width: 220 }}
+            />
+          </div>
+          <div style={field}>
+            <span style={label}>checkpoint · derived cols</span>
+            <input
+              data-testid="checkpoint-derived-cols"
+              value={(checkpoints.analysis?.derived_cols ?? []).join(", ")}
+              onChange={(e) =>
+                onCheckpointsChange({
+                  ...checkpoints,
+                  analysis: { ...checkpoints.analysis, derived_cols: toList(e.target.value) },
+                })
+              }
+              placeholder="rent_growth_pct"
+              style={{ ...area, width: 190 }}
+            />
+          </div>
+          <div style={field}>
+            <span style={label}>checkpoint · layouts any of</span>
+            <input
+              data-testid="checkpoint-layouts"
+              value={(checkpoints.deck?.layouts_any_of ?? []).join(", ")}
+              onChange={(e) =>
+                onCheckpointsChange({
+                  ...checkpoints,
+                  deck: { ...checkpoints.deck, layouts_any_of: toList(e.target.value) },
+                })
+              }
+              placeholder="Title + Chart"
+              style={{ ...area, width: 190 }}
+            />
+          </div>
+          <div style={field}>
+            <span style={label}>checkpoint · kpi label contains</span>
+            <input
+              data-testid="checkpoint-kpi-label"
+              value={checkpoints.deck?.kpi_label_contains ?? ""}
+              onChange={(e) =>
+                onCheckpointsChange({
+                  ...checkpoints,
+                  deck: { ...checkpoints.deck, kpi_label_contains: e.target.value },
+                })
+              }
+              placeholder="rent"
+              style={{ ...area, width: 170 }}
+            />
+          </div>
         </div>
       </div>
 

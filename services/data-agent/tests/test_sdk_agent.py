@@ -145,6 +145,10 @@ class _FakeAnalysis:
     skills_used: list[str] = field(default_factory=list)
     skill_gaps: list[Any] = field(default_factory=list)
     used_inline_math: bool = False
+    frames: list[dict[str, Any]] = field(default_factory=list)
+    # s49 M0: the sandbox now returns whatever the model's code printed; the
+    # analysis trace step (and its span) report its length.
+    stdout: str = ""
     error: str | None = None
 
 
@@ -828,10 +832,17 @@ class _FakeTracer:
         self.spans: list[tuple[str, _FakeSpan]] = []
 
     @contextlib.contextmanager
-    def start_as_current_span(self, name: str) -> Iterator[_FakeSpan]:
+    def start_as_current_span(self, name: str, context: Any = None) -> Iterator[_FakeSpan]:
+        # ``context`` mirrors the real tracer's signature: s49 M0's child spans
+        # pass the run span's context explicitly (the SDK invokes tool handlers
+        # and hooks from tasks this module never created, so the ambient
+        # contextvar is not a reliable parent).
         span = _FakeSpan()
         self.spans.append((name, span))
         yield span
+
+    def named(self, name: str) -> list[_FakeSpan]:
+        return [span for span_name, span in self.spans if span_name == name]
 
 
 @pytest.fixture
@@ -856,7 +867,7 @@ def test_span_attributes_on_a_successful_run(_fake_otel: _FakeTracer) -> None:
     out, _sdk = _run(_happy_script(queue, {}), plan="pro", progress=queue)
 
     assert out is not None
-    assert len(_fake_otel.spans) == 1
+    # The run span is opened first; s49 M0's child spans follow inside it.
     name, span = _fake_otel.spans[0]
     assert name == "agent_sdk.answer"
 
@@ -925,3 +936,63 @@ def test_agent_span_is_a_no_op_without_otlp_endpoint(monkeypatch: pytest.MonkeyP
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
     out, _sdk = _run(_happy_script(queue, {}), progress=queue)
     assert out is not None
+
+
+def test_child_spans_describe_every_step_of_a_run(_fake_otel: _FakeTracer) -> None:
+    """s49 M0: the run is a waterfall, not one opaque span.
+
+    Every translated step gets a child span carrying the same facts the flat
+    trace entry carries — so "which stage was slow / wrong?" is answerable from
+    the trace viewer alone, without joining back to app.query_runs.
+    """
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    out, _sdk = _run(_happy_script(queue, {}), plan="pro", progress=queue)
+    assert out is not None
+
+    names = [name for name, _ in _fake_otel.spans]
+    assert names[0] == "agent_sdk.answer"  # the run span is opened first
+    assert names.count("model.turn") == 4  # one per assistant message
+    assert names.count("tool.extract") == 1
+    assert names.count("tool.run_analysis") == 1
+
+    extract = _fake_otel.named("tool.extract")[0].attributes
+    assert extract["status"] == "success"
+    assert extract["sql"] == "SELECT 1"
+    assert extract["frame"] == "df"
+    assert extract["row_count"] == 2  # the fixture extract's row count
+    assert extract["ms"] >= 0
+
+    analysis = _fake_otel.named("tool.run_analysis")[0].attributes
+    assert analysis["status"] == "ok"
+    assert analysis["runtime"] == settings.sandbox_runtime
+    assert len(analysis["code_sha"]) == 12
+    assert analysis["skills_used"] == "trend_series"
+    assert analysis["skill_gaps"] == 0
+    assert analysis["stdout_len"] == 0
+    assert "error" not in analysis  # None attributes are dropped, not stringified
+
+
+def test_a_denied_knowledge_read_is_recorded_on_its_span(_fake_otel: _FakeTracer) -> None:
+    """A run that spent its turns being denied looks identical to one that never
+    asked, unless the denials are on the trace."""
+    deps = sdk_agent._SdkDeps(user_id="u1", otel_context=None)  # noqa: SLF001
+    deps.knowledge_reads = settings.max_knowledge_reads
+    hook = sdk_agent.make_knowledge_hook(deps)
+
+    async def go() -> Any:
+        return await hook(
+            {
+                "tool_name": "Read",
+                "tool_input": {"file_path": "/ws/knowledge/domains/property-sales/overview.md"},
+            },
+            None,
+            None,
+        )
+
+    decision = asyncio.run(go())
+
+    assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
+    span = _fake_otel.named("tool.Read")[0].attributes
+    assert span["denied"] is True
+    assert span["quota_left"] == 0
+    assert span["path"] == "/ws/knowledge/domains/property-sales/overview.md"

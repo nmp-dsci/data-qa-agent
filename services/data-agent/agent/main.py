@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from .otlp import otlp_processors
+from .otlp import agent_span, otlp_processors
 
 # Configured before importing sandbox_agent: agent_common (pulled in by that
 # module) instruments pydantic-ai/httpx at import time, which needs
@@ -42,9 +42,11 @@ from .eval_graders import (  # noqa: E402
     grade_extraction,
     grade_presentation_format,
 )
-from .eval_judge import judge_insight  # noqa: E402
+from .eval_judge import calibrate_judge, judge_answer  # noqa: E402
 from .gsuite import GoogleClient  # noqa: E402
-from .knowledge import knowledge_version, load_pages, read_knowledge  # noqa: E402
+from .knowledge import get_page as _knowledge_get_page  # noqa: E402
+from .knowledge import knowledge_version, list_pages_meta, load_pages, read_knowledge  # noqa: E402
+from .knowledge import load_overrides as _load_knowledge_overrides  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
 from .pack import load_pack, pack_path, pack_to_catalogue  # noqa: E402
 from .pack_api import (  # noqa: E402
@@ -437,10 +439,49 @@ class GradeRequest(BaseModel):
     artifact: dict[str, Any] | None = None
     # Set false to score G1/G2/G3-structural only and skip the LLM call.
     judge: bool = True
+    # s49 M2 — what the judge grades against. The reference answer a human wrote
+    # for this golden, the rows it was written from, and the deck the user
+    # received (rendered by the runner from artifact_manifest). Empty strings are
+    # a valid state: a golden with no golden_answer yet still gets a label, just
+    # a weaker one, and the verdict says what it had.
+    golden_answer: str = ""
+    golden_values: str = ""
+    deck_outline: str = ""
+    # s49 M0 — the run this grading is about, so the grade's own span can be
+    # joined to the answer's span waterfall and to app.eval_results without a
+    # time-window search. Optional: /agent/eval/grade is also callable ad hoc
+    # (the Goldens tab), where there is no eval case and no run to point at.
+    run_id: str = ""
+    otel_trace_id: str = ""
+    case_key: str = ""
 
 
 @app.post("/agent/eval/grade")
 async def eval_grade(req: GradeRequest) -> dict[str, Any]:
+    """Score one answer against its golden, inside its own span (s49 M0).
+
+    The span is the point of the delegation below: grading is an LLM call of
+    its own, and until it had a span a slow ``make eval`` was indistinguishable
+    from a slow agent. The identifiers are attributes rather than a parent link
+    because the graded run finished long before this call — they are what joins
+    this span to that run's trace and to its app.eval_results row.
+    """
+    with agent_span(
+        "eval.grade",
+        run_id=req.run_id or None,
+        otel_trace_id=req.otel_trace_id or None,
+        case_key=req.case_key or None,
+    ) as span:
+        out = await _grade_case(req)
+        verdict = out.get("judge")
+        if isinstance(verdict, dict):
+            for key in ("label", "diagnosis"):
+                if verdict.get(key) is not None:
+                    span.set_attribute(f"judge_{key}", str(verdict[key]))
+        return out
+
+
+async def _grade_case(req: GradeRequest) -> dict[str, Any]:
     """Score one answer against its golden.
 
     Lives in the data-agent because that is where the graders, the report
@@ -471,13 +512,6 @@ async def eval_grade(req: GradeRequest) -> dict[str, Any]:
         req.report, expected_objects=list(spec.get("expected_objects") or [])
     )
 
-    # G3 (insight half) — is the answer worth reading?
-    g3_insight = (
-        await judge_insight(question=req.question, answer=req.answer)
-        if req.judge
-        else {"skipped": True, "reason": "judge disabled for this run"}
-    )
-
     # G5 — the artifact the user actually received (s46). Only scored when the
     # run produced one: a deployment without deck export is not a failing run,
     # it is a differently-configured one, so this stays None rather than 0.
@@ -491,38 +525,84 @@ async def eval_grade(req: GradeRequest) -> dict[str, Any]:
         else None
     )
 
+    # The judge (s49 M2) — one label against the golden's reference answer, plus
+    # the stage it blames. Scored last so it can see G1: "the numbers were right
+    # but the answer reads wrong" is a different diagnosis from "the numbers were
+    # wrong", and the judge cannot tell those apart on prose alone. It never
+    # gates (decision D1/D2) — see scripts/eval_run.py's pass rule.
+    judge = (
+        await judge_answer(
+            question=req.question,
+            golden_answer=req.golden_answer,
+            golden_values=req.golden_values,
+            answer=req.answer,
+            deck_outline=req.deck_outline,
+            g1=g1.get("score"),
+        )
+        if req.judge
+        else {"skipped": True, "reason": "judge disabled for this run", "label": None}
+    )
+
     return {
         "g1": g1,
         "g3_format": g3_format,
-        "g3_insight": g3_insight,
+        "judge": judge,
         "g5_artifact": g5_artifact,
     }
 
 
 class JudgeRequest(BaseModel):
-    """One live answer to score for insight quality, with no golden (s32 W4)."""
+    """One answer to label, with an optional reference answer (s49 M2)."""
 
     question: str
     answer: str
-    evidence: str = ""
+    golden_answer: str = ""
+    golden_values: str = ""
+    deck_outline: str = ""
+
+
+class CalibrateRequest(BaseModel):
+    """The labelled material a run's judge must reproduce before it is trusted."""
+
+    # Each case: {case_key, question, golden_answer, label, calibration_examples}.
+    cases: list[dict[str, Any]] = []
 
 
 @app.post("/agent/eval/judge")
 async def eval_judge_only(req: JudgeRequest) -> dict[str, Any]:
-    """Score insight quality alone — the online sampler's entry point.
+    """Label one answer — the online sampler's entry point.
 
     Separate from ``/agent/eval/grade`` because the inputs genuinely differ: that
-    endpoint compares an answer to a golden and returns G1/G2/G3; this one has no
-    golden at all, so it can only score whether the answer is *worth reading* —
-    grounded, direct, explains why, so-what, clear. It cannot tell you the numbers
-    are right. Folding it into the grade endpoint would let a caller ask for G1
-    with no ground truth and get a confident-looking null.
+    endpoint compares an answer to a golden and returns G1/G3/G5 too; this one
+    returns the label alone. Folding it into the grade endpoint would let a
+    caller ask for G1 with no ground truth and get a confident-looking null.
 
-    Same frozen, hashed rubric as the eval judge, and the same refusal to grade a
-    model of its own family — so a run with no cross-family key records a
-    ``skipped`` verdict rather than a fabricated score.
+    A live sample has no golden, so ``golden_answer`` is usually empty and the
+    judge grades the answer against the data it shows. That is a weaker reading
+    than an eval's, and the verdict says so by carrying no reference — it is not
+    silently presented as the same measurement.
     """
-    return await judge_insight(question=req.question, answer=req.answer, evidence=req.evidence)
+    return await judge_answer(
+        question=req.question,
+        golden_answer=req.golden_answer,
+        golden_values=req.golden_values,
+        answer=req.answer,
+        deck_outline=req.deck_outline,
+    )
+
+
+@app.post("/agent/eval/calibrate")
+async def eval_calibrate(req: CalibrateRequest) -> dict[str, Any]:
+    """Does this judge reproduce the labels the pack already knows? (s49 M2)
+
+    Run once per ``make eval``, before any case is scored. Every golden's own
+    ``golden_answer`` must come back as its ``label``, and every curator-written
+    calibration example as its own — one disagreement and the whole run's labels
+    are recorded as uncalibrated. A judge that cannot re-derive known labels is
+    not measuring the unknown ones either, and saying so is the difference
+    between a judge and a decoration.
+    """
+    return await calibrate_judge(req.cases)
 
 
 @app.get("/agent/version")
@@ -533,6 +613,11 @@ async def agent_version() -> dict[str, str]:
     resulting id onto every ``app.query_runs`` row, so any answer — and any eval
     score derived from it — is attributable to an exact build.
     """
+    # s49 (D3): refresh the knowledge curator-override cache first so a page
+    # just edited in the Architecture tab moves knowledge_version() (and
+    # therefore the composed fingerprint) within this call, not just on the
+    # next run — best-effort, degrades to the last-known cache on a DB hiccup.
+    await _load_knowledge_overrides()
     return build_fingerprint()
 
 
@@ -1202,6 +1287,11 @@ class KnowledgeFile(BaseModel):
     description: str = ""
     size: int
     sha256: str | None = None
+    # s49 (D3): only meaningful for kind == "knowledge" — "file" (the default)
+    # or "db" (a curator override not yet exported), with the DB row's version
+    # when overridden. Drives the Architecture tab's edit box.
+    source: str = "file"
+    version: int = 0
 
 
 class ArchitectureKnowledge(BaseModel):
@@ -1396,7 +1486,11 @@ def _knowledge_files() -> list[KnowledgeFile]:
                 filename=p.rel_path,
                 label=p.name,
                 description=p.description,
-                size=len(p.raw or p.body),
+                size=len(
+                    (p.frontmatter_raw or "") + p.body if p.source == "db" else (p.raw or p.body)
+                ),
+                source=p.source,
+                version=p.version,
             )
         )
     return files
@@ -1411,6 +1505,7 @@ async def agent_architecture() -> ArchitectureResponse:
     sdk_agent's own tool definitions — nothing here is hand-duplicated, and
     nothing builds a per-run workspace (see ``_knowledge_files``).
     """
+    await _load_knowledge_overrides()  # s49: DB-overridden pages read live here too
     model, provider = _active_model_and_provider()
     return ArchitectureResponse(
         runtime=ArchitectureRuntime(
@@ -1454,6 +1549,67 @@ async def agent_architecture_content(kind: str, name: str = "") -> dict[str, str
     if kind == "knowledge":
         return {"content": read_knowledge(name)}
     raise HTTPException(status_code=400, detail=f"unknown kind: {kind!r}")
+
+
+# ---------------------------------------------------------------------------
+# Knowledge curator (s49 M4, D3): structured read endpoints for the
+# Architecture tab's edit box, distinct from ``/agent/architecture/content``
+# above (which returns agent-facing prose via ``read_knowledge``). These carry
+# ``source``/``version``/``author`` so the UI can show what it's editing and
+# whether it's a plain file or a curator override.
+#
+# GET-only here on purpose: data-agent's only DB roles are ``agent_ro``
+# (SELECT — what these two endpoints use) and ``admin_ro`` (SELECT,
+# BYPASSRLS, the admin SQL editor). Neither can write ``app.knowledge_pages``
+# (migration 0039 grants INSERT/UPDATE to ``app_user`` only, which is
+# backend-api's role, not this service's — see ``config.py``). So the write
+# path lives entirely in backend-api (``routers/admin_knowledge.py``), the
+# same role ``goldens.py``'s ordinals endpoints already write through; it does
+# not proxy a PUT through this service the way ``/admin/pack`` does, because
+# there is nothing on this side that could execute it.
+# ---------------------------------------------------------------------------
+
+
+class KnowledgePageMeta(BaseModel):
+    path: str
+    name: str
+    description: str
+    source: str  # "file" | "db"
+    version: int
+    author: str
+    updated_at: str
+
+
+class KnowledgePageOut(KnowledgePageMeta):
+    body: str
+
+
+@app.get("/agent/knowledge", response_model=list[KnowledgePageMeta])
+async def agent_knowledge_list() -> list[KnowledgePageMeta]:
+    """Every knowledge page (path/name/description/source/version), DB
+    overrides refreshed first so an edit shows up here within the TTL."""
+    await _load_knowledge_overrides()
+    return [KnowledgePageMeta(**row) for row in list_pages_meta()]
+
+
+@app.get("/agent/knowledge/{path:path}", response_model=KnowledgePageOut)
+async def agent_knowledge_get(path: str) -> KnowledgePageOut:
+    """One page's full body — the effective one (DB override wins), for the
+    curator edit box's starting value."""
+    await _load_knowledge_overrides()
+    page = _knowledge_get_page(path)
+    if page is None:
+        raise HTTPException(status_code=404, detail=f"no knowledge page at {path!r}")
+    return KnowledgePageOut(
+        path=page.rel_path,
+        name=page.name,
+        description=page.description,
+        source=page.source,
+        version=page.version,
+        author=page.author,
+        updated_at=page.updated_at,
+        body=page.body,
+    )
 
 
 # ---------------------------------------------------------------------------

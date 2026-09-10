@@ -1280,6 +1280,24 @@ export interface GraderSpec {
   min_slides?: number;
 }
 
+/** s49 M2 — golden v2. The judge grades the agent's answer against
+ *  `golden_answer` (a human-written reference) and must return `label` for it;
+ *  `calibration_examples` are extra answers with known labels that prove the
+ *  judge still works. `checkpoints` are diagnostic per-stage expectations — they
+ *  are never shown to the agent and never gate a case (decision D1). */
+export type GoldenLabel = "low" | "medium" | "high";
+
+export interface CalibrationExample {
+  label: GoldenLabel;
+  answer: string;
+}
+
+export interface GoldenCheckpoints {
+  sql?: { key_cols?: string[] };
+  analysis?: { expected_skills?: string[]; derived_cols?: string[] };
+  deck?: { layouts_any_of?: string[]; kpi_label_contains?: string };
+}
+
 export interface GoldenListItem {
   id: string;
   dataset: string | null;
@@ -1306,6 +1324,10 @@ export interface GoldenFull extends GoldenListItem {
   golden_data: unknown;
   golden_report: unknown;
   grader?: GraderSpec | null;
+  golden_answer?: string | null;
+  label?: GoldenLabel | null;
+  calibration_examples?: CalibrationExample[] | null;
+  checkpoints?: GoldenCheckpoints | null;
 }
 
 export interface GoldenInput {
@@ -1322,6 +1344,10 @@ export interface GoldenInput {
   golden_report?: unknown;
   grader?: GraderSpec | null;
   expectation?: string | null;
+  golden_answer?: string | null;
+  label?: GoldenLabel | null;
+  calibration_examples?: CalibrationExample[] | null;
+  checkpoints?: GoldenCheckpoints | null;
 }
 
 /** The extract a golden's SQL runs to (respecting `as_user` RLS impersonation).
@@ -1475,9 +1501,21 @@ export interface EvalRun {
     errors?: number;
     pass_rate?: number;
     g1_mean?: number | null;
-    g3_insight_mean?: number | null;
     g4_turns_mean?: number | null;
     generalisation?: string;
+    /** s49 M2: the judge's verdicts as a distribution — three ordered labels
+     *  have no meaningful mean, so none is reported. */
+    judge_labels?: { high?: number; medium?: number; low?: number };
+    /** Whether the judge's label participated in `passed` for this run's pack
+     *  size (false below HOLDOUT_MIN_CASES goldens — decision D2). */
+    judge_gates?: boolean;
+    judge_calibration?: {
+      calibrated?: boolean;
+      probes?: number;
+      agreed?: number;
+      model?: string | null;
+      rubric_hash?: string | null;
+    };
   };
   agent: EvalAgentVersion;
 }
@@ -1495,9 +1533,25 @@ export interface EvalCaseResult {
   g2: { score?: number; expected_objects?: string[]; built_object_types?: string[] };
   g3: {
     format?: { passed?: boolean; issues?: string[]; object_types?: string[] };
-    insight?: { total?: number | null; max?: number; skipped?: boolean; reason?: string };
   };
   g4: { turns?: number; latency_ms?: number; input_tokens?: number | null };
+  /** s49 M2 — the judge's verdict. Recorded and displayed; it does not gate. */
+  judge?: {
+    label?: GoldenLabel | null;
+    diagnosis?: "sql" | "analysis" | "presentation" | "knowledge" | "none" | null;
+    reason?: string;
+    model?: string;
+    effort?: string;
+    calibrated?: boolean;
+    skipped?: boolean;
+    rubric_hash?: string;
+  };
+  /** Diagnostic per-stage scores (0-1, or null when unspecified). Never gates. */
+  checkpoints?: {
+    sql?: { score?: number | null; rows_match?: number; missing?: string[] };
+    analysis?: { score?: number | null; missing_skills?: string[]; missing_cols?: string[] };
+    deck?: { score?: number | null; layout_hit?: boolean; kpi_hit?: boolean };
+  };
 }
 
 export interface EvalComparison {
@@ -1739,6 +1793,10 @@ export interface ArchitectureKnowledgeFile {
   description: string;
   size: number;
   sha256?: string | null;
+  // s49 (D3): only meaningful for kind === "knowledge" — "file" (default) or
+  // "db" (a curator override not yet exported), with its DB row version.
+  source?: "file" | "db";
+  version?: number;
 }
 
 export interface ArchitectureTool {
@@ -1812,4 +1870,43 @@ export function getPack(): Promise<Pack> {
 
 export function updatePackLayout(layoutId: string, update: PackLayoutUpdate): Promise<Pack> {
   return adminPut<Pack>(`/admin/pack/layouts/${layoutId}`, update);
+}
+
+/* ---------------------------------------------------------------------------
+ * Knowledge curator (s49 M4, D3) — read/edit one knowledge page from the
+ * Architecture tab's edit box. Reads proxy the data-agent's GET
+ * /agent/knowledge(/{path}) (it holds the markdown files); the PUT writes
+ * app.knowledge_pages directly in backend-api (services/backend-api/app/
+ * routers/admin_knowledge.py) — the data-agent has no DB role that can write
+ * it, see that router's module docstring.
+ * ------------------------------------------------------------------------- */
+
+export interface KnowledgePageMeta {
+  path: string;
+  name: string;
+  description: string;
+  source: "file" | "db";
+  version: number;
+  author: string;
+  updated_at: string;
+}
+
+export interface KnowledgePage extends KnowledgePageMeta {
+  body: string;
+}
+
+export function listKnowledgePages(): Promise<KnowledgePageMeta[]> {
+  return adminGet<KnowledgePageMeta[]>("/admin/knowledge");
+}
+
+export function getKnowledgePage(path: string): Promise<KnowledgePage> {
+  return adminGet<KnowledgePage>(`/admin/knowledge/${encodeURIComponent(path)}`);
+}
+
+export function saveKnowledgePage(
+  path: string,
+  body: string,
+  author = "",
+): Promise<KnowledgePage> {
+  return adminPut<KnowledgePage>(`/admin/knowledge/${encodeURIComponent(path)}`, { body, author });
 }

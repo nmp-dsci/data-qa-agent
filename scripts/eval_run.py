@@ -49,6 +49,7 @@ from eval_pack import CASES_DIR, REPO_ROOT, pack_version  # noqa: E402
 # on the host instead means `make eval` picks it up immediately.
 sys.path.insert(0, str(REPO_ROOT / "services" / "data-agent"))
 from agent.eval_graders import grade_extraction as _grade_extraction_local  # noqa: E402
+from agent.eval_graders import render_deck_outline, score_checkpoints  # noqa: E402
 
 
 def _host_port(name: str, default: str) -> str:
@@ -76,6 +77,22 @@ ASK_TIMEOUT = 300
 # Below this many scored cases a holdout slice is meaningless, so the run is
 # labelled rather than pretending the result generalises.
 HOLDOUT_MIN_CASES = 10
+
+
+# s49 decision D2: the judge is ADVISORY until the pack has HOLDOUT_MIN_CASES
+# goldens. Below that a label is one opinion about one of three questions —
+# nowhere near enough to fail a build on — so `passed` is computed from the
+# deterministic graders alone and the label is recorded beside it. Kept as a
+# function of the pack size so switching the judge on is one line, at a
+# threshold that was decided in advance rather than the day it looked good.
+def judge_gates(case_count: int) -> bool:
+    """Does the judge's label participate in `passed` for a pack this size?"""
+    return case_count >= HOLDOUT_MIN_CASES
+
+
+# Labels are the graded quantity; these numbers exist only so a label can be
+# averaged in MLflow and read as a trend. Nothing gates on them.
+JUDGE_LABEL_SCORE = {"low": 0.0, "medium": 0.5, "high": 1.0}
 
 
 def _http(url: str, *, body: Any = None, token: str = "", timeout: int = 60) -> Any:
@@ -282,6 +299,107 @@ def _turns_for(run_id: str | None) -> int:
     return int(out) if out.isdigit() else 0
 
 
+def _columns_of(rows: list[dict[str, Any]]) -> set[str]:
+    """Every column name present across a result set."""
+    return {str(k) for row in rows if isinstance(row, dict) for k in row}
+
+
+def _analysis_evidence(run_id: str | None) -> dict[str, Any]:
+    """What the sandbox actually did, from the run's trace.
+
+    The ``/ask`` response is the user's view; the trace is the record. The
+    analysis step carries ``skills_used`` (and, once W-A's capture lands,
+    ``frames`` with their column heads) — the two things the analysis checkpoint
+    scores. Read from ``app.query_runs`` for the same reason ``_turns_for`` is:
+    a golden replays as a non-admin user, who is not served the trace.
+    """
+    if not run_id:
+        return {"skills_used": [], "frame_columns": []}
+    out = _psql(
+        "SELECT coalesce(jsonb_agg(e), '[]') FROM app.query_runs q, "
+        f"jsonb_array_elements(q.trace) e WHERE q.id = {_lit(run_id)}::uuid "
+        "AND e->>'kind' = 'analysis'"
+    )
+    try:
+        steps = json.loads(out or "[]")
+    except json.JSONDecodeError:
+        return {"skills_used": [], "frame_columns": []}
+    skills: list[str] = []
+    columns: list[str] = []
+    for step in steps:
+        for name in step.get("skills_used") or []:
+            if name not in skills:
+                skills.append(str(name))
+        # Frame heads arrive as {name: {columns: [...]}} or as a list of frames;
+        # accept both plus a bare list of row dicts, because the shape is W-A's
+        # to settle and a checkpoint that only works for one of them would look
+        # like an agent regression the day it changes.
+        frames = step.get("frames")
+        for frame in frames.values() if isinstance(frames, dict) else (frames or []):
+            if isinstance(frame, dict):
+                cols = frame.get("columns")
+                if cols is None and isinstance(frame.get("rows"), list) and frame["rows"]:
+                    first = frame["rows"][0]
+                    cols = list(first) if isinstance(first, dict) else []
+                for col in cols or []:
+                    if col not in columns:
+                        columns.append(str(col))
+    return {"skills_used": skills, "frame_columns": columns}
+
+
+def _artifact_manifest(run_id: str | None, answer: dict[str, Any]) -> dict[str, Any] | None:
+    """The deck as the agent specified it, preferring the persisted manifest.
+
+    ``query_runs.artifact_manifest`` (migration 0039, written by W-A) is the
+    record of what was built; the ``/ask`` response's ``artifact`` is the same
+    ``slides[].spec`` shape and stands in until that persistence lands. Falling
+    back rather than requiring the column means the judge sees a deck outline on
+    day one instead of after two workstreams have both merged.
+    """
+    if run_id:
+        out = _scalar(
+            "SELECT coalesce(artifact_manifest::text, '') FROM app.query_runs "
+            f"WHERE id = {_lit(run_id)}::uuid"
+        )
+        if out:
+            try:
+                manifest = json.loads(out)
+                if isinstance(manifest, dict) and manifest.get("slides"):
+                    return manifest
+            except json.JSONDecodeError:
+                pass
+    artifact = answer.get("artifact")
+    return artifact if isinstance(artifact, dict) else None
+
+
+def _otel_trace_id(run_id: str | None) -> str:
+    """The trace the answer emitted (s49 M0), read off its query_runs row.
+
+    Stored on ``eval_results`` so a graded case links straight to its span
+    waterfall in MLflow; ``/ask`` never returns it, so this is a DB read like
+    ``_turns_for``. Empty when tracing is off or the run row is gone.
+    """
+    if not run_id:
+        return ""
+    return _scalar(
+        f"SELECT coalesce(otel_trace_id, '') FROM app.query_runs WHERE id = {_lit(run_id)}::uuid"
+    )
+
+
+def _values_digest(rows: list[dict[str, Any]], *, limit: int = 12) -> str:
+    """The golden's rows as compact JSON lines — the judge's reference values.
+
+    Capped: the judge is reading, not joining. A hundred rows of ground truth
+    costs tokens and buries the shape the reference answer was written from.
+    """
+    if not rows:
+        return ""
+    lines = [json.dumps(row, default=str) for row in rows[:limit]]
+    if len(rows) > limit:
+        lines.append(f"… and {len(rows) - limit} more row(s)")
+    return "\n".join(lines)
+
+
 def golden_truth(case: dict[str, Any], token: str) -> list[dict[str, Any]]:
     """Ground truth = what ``golden_sql`` returns *now*, under the golden's user.
 
@@ -299,6 +417,39 @@ def golden_truth(case: dict[str, Any], token: str) -> list[dict[str, Any]]:
         print(f"    ! golden_sql failed: {exc.code} {exc.read()[:160]!r}")
         return []
     return _rows_as_dicts(result)
+
+
+def calibrate(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    """Ask the agent's judge to reproduce the labels this pack already knows.
+
+    One HTTP call for the whole pack, before any case is replayed: the answer is
+    a property of the judge, not of a case, and running it first means a broken
+    judge is visible in the first ten seconds of a run instead of after twenty
+    minutes of scoring. Soft-fails to "not calibrated" — an unreachable judge is
+    a reason to distrust the labels, not to abandon the deterministic graders.
+    """
+    probes = [
+        {
+            "case_key": c.get("case_key"),
+            "question": c.get("question"),
+            "golden_answer": c.get("golden_answer"),
+            "label": c.get("label"),
+            "calibration_examples": c.get("calibration_examples") or [],
+        }
+        for c in cases
+        if c.get("golden_answer")
+    ]
+    if not probes:
+        return {
+            "calibrated": False,
+            "probes": 0,
+            "agreed": 0,
+            "reason": "no golden_answer in the selected cases",
+        }
+    try:
+        return dict(_http(f"{AGENT}/agent/eval/calibrate", body={"cases": probes}, timeout=300))
+    except Exception as exc:  # noqa: BLE001 — a judge failure is data, not a crash
+        return {"calibrated": False, "probes": len(probes), "agreed": 0, "error": str(exc)}
 
 
 def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
@@ -335,6 +486,8 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
     }
 
     latency_ms = int((time.time() - started) * 1000)
+    manifest = _artifact_manifest(answer.get("run_id"), answer)
+    otel_trace_id = _otel_trace_id(answer.get("run_id"))
     golden_rows = golden_truth(case, token)
     actual_rows = _rows_as_dicts(answer)
 
@@ -364,6 +517,17 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
                 # than only the in-process report tests what was delivered.
                 "artifact": answer.get("artifact"),
                 "judge": use_judge,
+                # s49 M2: what the judge grades against — the human-written
+                # reference answer, the rows it was written from, and the deck
+                # the user received rendered as an outline.
+                "golden_answer": str(case.get("golden_answer") or ""),
+                "golden_values": _values_digest(golden_rows),
+                "deck_outline": render_deck_outline(manifest),
+                # s49 M0: what the grade span is about, so grading joins to the
+                # run it graded without a time-window search.
+                "run_id": str(answer.get("run_id") or ""),
+                "otel_trace_id": otel_trace_id,
+                "case_key": str(key),
             },
             timeout=180,
         )
@@ -390,7 +554,7 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
             reduce=str(spec.get("reduce") or ""),
         )
     g3_format = graded.get("g3_format") or {}
-    g3_insight = graded.get("g3_insight") or {}
+    judge = graded.get("judge") or {}
     # None when the run produced no artifact (deck export off) — which must not
     # be read as a failure, only as "not applicable to this configuration".
     g5_artifact = graded.get("g5_artifact")
@@ -415,15 +579,42 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
         "score": 1.0 if not wanted else round(len(built) / max(len(wanted), 1), 4),
     }
 
-    # A case passes when the numbers are right and the report is well-formed.
-    # Insight is scored and reported but does not gate on its own — a judge is
-    # advisory until it has been calibrated against human ratings.
+    # Checkpoints (s49 D1) — WHERE it went wrong, never WHETHER. Scored from the
+    # same evidence the graders use plus the run's own trace, and persisted
+    # beside the outcome so a failure has a first suspect. They never gate, and
+    # the agent never sees them.
+    evidence = _analysis_evidence(answer.get("run_id"))
+    checkpoints = score_checkpoints(
+        case.get("checkpoints"),
+        golden_rows=golden_rows,
+        actual_rows=actual_rows,
+        skills_used=evidence["skills_used"],
+        # Derived columns can appear either in the sandbox's frames or, for a
+        # derivation the agent pushed into SQL, in the delivered rows. Both are
+        # "the column exists", which is what the checkpoint asks.
+        frame_columns=evidence["frame_columns"] + sorted(_columns_of(actual_rows)),
+        manifest=manifest,
+    )
+
+    # A case passes when the numbers are right (G1) and the thing the user
+    # actually received is sound (G5) — decision D2, "Pass = G1 + G5".
+    #
+    # G3-format is deliberately NOT in the gate any more. It lints the
+    # in-process report object, which s46 reduced to a vestigial by-product of
+    # the Slides/Sheets deck: this very case delivered a correct three-slide
+    # deck and still failed the old gate on "summary is empty". A gate that
+    # fails a correct answer for the shape of a structure nobody reads teaches
+    # people to ignore the gate. The issues are still scored, persisted and
+    # shown — they just no longer decide.
+    #
+    # The judge's label is recorded and displayed, and does not gate while the
+    # pack is under HOLDOUT_MIN_CASES goldens; judge_gates() is the switch.
     g1_score = g1.get("score")
-    passed = bool(g3_format.get("passed")) and (g1_score is None or g1_score >= 0.8)
-    # When a deck was produced, its well-formedness gates too: an answer whose
+    passed = g1_score is None or g1_score >= 0.8
+    # When a deck was produced, its well-formedness gates: an answer whose
     # deliverable is broken has not answered, however right the numbers are.
-    # Absent an artifact this is a no-op, so runs without deck export keep the
-    # exact gate they had before.
+    # Absent an artifact this is a no-op, so a run without deck export is graded
+    # on its numbers alone rather than failed for a configuration choice.
     if g5_artifact is not None:
         passed = passed and bool(g5_artifact.get("passed"))
 
@@ -433,11 +624,14 @@ def score_case(case: dict[str, Any], *, use_judge: bool) -> dict[str, Any]:
         "dataset": case.get("dataset"),
         "holdout": bool(case.get("holdout")),
         "query_run_id": answer.get("run_id"),
+        "otel_trace_id": otel_trace_id,
         "g1": g1,
         "g2": g2,
-        "g3": {"format": g3_format, "insight": g3_insight},
+        "g3": {"format": g3_format},
         "g4": g4,
         "g5": g5_artifact,
+        "judge": judge,
+        "checkpoints": checkpoints,
         "passed": passed,
         "latency_ms": latency_ms,
         "_raw": raw_answer,
@@ -482,14 +676,15 @@ def persist(
             or None
         )
 
+    # The judge that actually labelled this run, and under which rubric. Both
+    # are run-level columns (0021) because a score is only comparable to another
+    # produced by the same judge under the same rubric text.
     judge_m = ""
-    for r in results:
-        verdict = (r.get("g3") or {}).get("insight") or {}
-        judge_m = verdict.get("judge_model") or judge_m
     judge_hash = ""
     for r in results:
-        verdict = (r.get("g3") or {}).get("insight") or {}
-        judge_hash = verdict.get("judge_prompt_hash") or judge_hash
+        verdict = r.get("judge") or {}
+        judge_m = verdict.get("model") or judge_m
+        judge_hash = verdict.get("rubric_hash") or judge_hash
 
     run_id = _scalar(
         "INSERT INTO app.eval_runs (agent_version_id, dataset, pack, pack_version, "
@@ -504,12 +699,16 @@ def persist(
     statements = []
     for r in results:
         statements.append(
-            "INSERT INTO app.eval_results (eval_run_id, case_id, query_run_id, tier, "
-            "g1, g2, g3, g4, passed, notes) SELECT "
+            "INSERT INTO app.eval_results (eval_run_id, case_id, query_run_id, "
+            "otel_trace_id, tier, "
+            "g1, g2, g3, g4, g5, judge, checkpoints, passed, notes) SELECT "
             f"{_lit(run_id)}::uuid, c.id, {_lit(r.get('query_run_id'))}::uuid, "
+            f"{_lit(r.get('otel_trace_id') or '')}, "
             f"{_lit(r.get('tier'))}, {_lit(r.get('g1') or {})}::jsonb, "
             f"{_lit(r.get('g2') or {})}::jsonb, {_lit(r.get('g3') or {})}::jsonb, "
-            f"{_lit(r.get('g4') or {})}::jsonb, {_lit(bool(r.get('passed')))}, "
+            f"{_lit(r.get('g4') or {})}::jsonb, {_lit(r.get('g5') or {})}::jsonb, "
+            f"{_lit(r.get('judge') or {})}::jsonb, "
+            f"{_lit(r.get('checkpoints') or {})}::jsonb, {_lit(bool(r.get('passed')))}, "
             f"{_lit(r.get('error') or '')} "
             f"FROM app.eval_cases c WHERE c.case_key = {_lit(r['case_key'])};"
         )
@@ -577,7 +776,7 @@ def log_case_mlflow(
     *,
     eval_run_id: str,
     experiment: str | None,
-) -> None:
+) -> str | None:
     """s44 M3b: one MLflow run per graded case, with its actual output logged
     as artifacts — the corpus a future optimisation loop (prompt/skill/
     workspace tuning, or a judge trained on real answers) reads from.
@@ -592,15 +791,17 @@ def log_case_mlflow(
     raised.
     """
     if not mlflow_enabled():
-        return
+        return None
     if result.get("error"):
-        return  # nothing ran; not worth a run row
+        return None  # nothing ran; not worth a run row
     try:
         import mlflow_client as mc  # noqa: PLC0415 — optional sink, same dir
 
         fp = _fingerprint_components()
         extras = _run_extras(result.get("query_run_id"))
         exp_id = mc.ensure_experiment(mc.EVALS_EXPERIMENT)
+        judge = result.get("judge") or {}
+        checkpoints = result.get("checkpoints") or {}
         run_id = mc.start_run(
             exp_id,
             f"case · {result.get('case_key', '?')}",
@@ -610,13 +811,14 @@ def log_case_mlflow(
                 "case_key": result.get("case_key"),
                 "experiment": experiment,
                 "agent_version_id": extras.get("agent_version_id"),
+                "judge_label": judge.get("label"),
+                "judge_diagnosis": judge.get("diagnosis"),
             },
         )
         g1 = result.get("g1") or {}
         g2 = result.get("g2") or {}
         g3 = result.get("g3") or {}
         g3_format = g3.get("format") or {}
-        g3_insight = g3.get("insight") or {}
         raw = result.get("_raw") or {}
         mc.log_batch(
             run_id,
@@ -639,7 +841,13 @@ def log_case_mlflow(
                 "g1_score": g1.get("score"),
                 "g2_score": g2.get("score"),
                 "g3_format_passed": 1.0 if g3_format.get("passed") else 0.0,
-                "g3_insight_total": g3_insight.get("total"),
+                # The label as a number so it charts, with the words kept as a
+                # tag below — MLflow metrics cannot hold "medium".
+                "judge_label_score": JUDGE_LABEL_SCORE.get(str(judge.get("label") or "")),
+                "judge_calibrated": 1.0 if judge.get("calibrated") else 0.0,
+                "checkpoint_sql": (checkpoints.get("sql") or {}).get("score"),
+                "checkpoint_analysis": (checkpoints.get("analysis") or {}).get("score"),
+                "checkpoint_deck": (checkpoints.get("deck") or {}).get("score"),
                 "passed": 1.0 if result.get("passed") else 0.0,
                 "turns": (result.get("g4") or {}).get("turns"),
                 "input_tokens": raw.get("input_tokens"),
@@ -654,8 +862,13 @@ def log_case_mlflow(
         if extras.get("trace") is not None:
             mc.log_json_artifact(run_id, "trace.json", extras["trace"])
         mc.end_run(run_id)
+        # s49 M0: handed back so the eval_results row can point at this run —
+        # the stored join from a graded case to the artifacts (answer, report,
+        # trace) that produced its score.
+        return str(run_id)
     except Exception as exc:  # noqa: BLE001 — observability must not fail the eval
         print(f"    mlflow(case) · skipped ({exc})")
+        return None
 
 
 def log_mlflow(
@@ -725,7 +938,8 @@ def log_mlflow(
                 "cases": totals.get("cases"),
                 "errors": totals.get("errors"),
                 "g1_mean": totals.get("g1_mean"),
-                "g3_insight_mean": totals.get("g3_insight_mean"),
+                "judge_high": (totals.get("judge_labels") or {}).get("high"),
+                "judge_low": (totals.get("judge_labels") or {}).get("low"),
                 "g4_turns_mean": totals.get("g4_turns_mean"),
                 **tier_metrics,
             },
@@ -744,11 +958,8 @@ def summarise(results: list[dict[str, Any]]) -> dict[str, Any]:
         for r in scored
         if isinstance((r.get("g1") or {}).get("score"), (int, float))
     ]
-    insights = [
-        (r.get("g3") or {}).get("insight", {}).get("total")
-        for r in scored
-        if isinstance((r.get("g3") or {}).get("insight", {}).get("total"), (int, float))
-    ]
+    labels = [str((r.get("judge") or {}).get("label") or "") for r in scored]
+    label_counts = {name: labels.count(name) for name in ("high", "medium", "low")}
     turns = [r["g4"]["turns"] for r in scored if r.get("g4")]
     return {
         "cases": len(results),
@@ -756,7 +967,11 @@ def summarise(results: list[dict[str, Any]]) -> dict[str, Any]:
         "passed": len(passed),
         "pass_rate": round(len(passed) / len(results), 4) if results else 0.0,
         "g1_mean": round(sum(g1s) / len(g1s), 4) if g1s else None,
-        "g3_insight_mean": round(sum(insights) / len(insights), 2) if insights else None,
+        # The judge's verdicts, as a distribution rather than an average: three
+        # ordered labels have no meaningful mean, and reporting one would invite
+        # a threshold on a number nobody defined.
+        "judge_labels": label_counts,
+        "judge_gates": judge_gates(len(results)),
         "g4_turns_mean": round(sum(turns) / len(turns), 2) if turns else None,
         # Honest about what a small corpus can prove.
         "generalisation": "unproven" if len(results) < HOLDOUT_MIN_CASES else "holdout-scored",
@@ -777,7 +992,12 @@ def main() -> None:
         default=None,
         help="eval_run id this attempt argues against (default: newest run on the same pack)",
     )
-    parser.add_argument("--no-judge", action="store_true", help="skip the LLM half of G3")
+    parser.add_argument("--no-judge", action="store_true", help="skip the judge entirely")
+    parser.add_argument(
+        "--calibrate-only",
+        action="store_true",
+        help="run the judge calibration for the selected cases and stop (make eval-calibrate)",
+    )
     parser.add_argument(
         "--include-drafts",
         action="store_true",
@@ -800,8 +1020,37 @@ def main() -> None:
     label = f"experiment {args.experiment}" if args.experiment else "baseline"
     print(f"eval · {len(cases)} case(s) · pack {pack_v} · {label}")
 
+    # Calibrate BEFORE scoring (s49 M2). A judge that cannot reproduce the
+    # labels the pack already knows is not measuring the unknown ones either, so
+    # the run records that fact up front and stamps it on every verdict rather
+    # than discovering it after the fact — or never.
+    calibration = calibrate(cases) if not args.no_judge else {"calibrated": False, "skipped": True}
+    if not args.no_judge:
+        state = "calibrated" if calibration.get("calibrated") else "NOT calibrated"
+        print(
+            f"judge · {calibration.get('model') or 'none'} · {state} "
+            f"({calibration.get('agreed', 0)}/{calibration.get('probes', 0)} probes agreed)"
+        )
+        for row in calibration.get("results") or []:
+            if not row.get("agreed"):
+                print(
+                    f"    ! {row['case_key']} {row['probe']}: "
+                    f"want {row['expected']}, got {row['got']}"
+                )
+    if args.calibrate_only:
+        print(json.dumps(calibration, indent=2))
+        return
+
     results = [score_case(c, use_judge=not args.no_judge) for c in cases]
+    # Every verdict carries whether the judge that produced it was calibrated,
+    # so a label read six months from now says how much to trust itself.
+    for r in results:
+        if isinstance(r.get("judge"), dict):
+            r["judge"]["calibrated"] = bool(calibration.get("calibrated"))
     totals = summarise(results)
+    totals["judge_calibration"] = {
+        k: calibration.get(k) for k in ("calibrated", "probes", "agreed", "model", "rubric_hash")
+    }
     run_id = persist(results, args=args, pack_v=pack_v, totals=totals)
     version_id = (
         _scalar(f"SELECT agent_version_id FROM app.eval_runs WHERE id = {_lit(run_id)}::uuid")
@@ -815,7 +1064,18 @@ def main() -> None:
     # graded results rather than logged inline during the scoring loop).
     if mlflow_enabled():
         for r in results:
-            log_case_mlflow(r, eval_run_id=run_id, experiment=args.experiment)
+            case_mlflow_id = log_case_mlflow(r, eval_run_id=run_id, experiment=args.experiment)
+            # s49 M0: the row is already written (the eval_run_id it needs only
+            # exists after persist), so the MLflow id is stamped on afterwards
+            # rather than by reordering the two — an UPDATE here cannot fail the
+            # eval, whereas moving persist() after a soft-failing sink could.
+            if case_mlflow_id:
+                _psql(
+                    "UPDATE app.eval_results e SET mlflow_run_id = "
+                    f"{_lit(case_mlflow_id)} FROM app.eval_cases c "
+                    f"WHERE c.id = e.case_id AND e.eval_run_id = {_lit(run_id)}::uuid "
+                    f"AND c.case_key = {_lit(r.get('case_key'))}"
+                )
 
     print(f"\nrun {run_id}")
     for r in results:
@@ -823,9 +1083,12 @@ def main() -> None:
             print(f"  ERROR {r['case_key']}: {r['error']}")
             continue
         g1 = (r.get("g1") or {}).get("score")
-        insight = (r.get("g3") or {}).get("insight", {}).get("total")
+        verdict = r.get("judge") or {}
+        label = verdict.get("label") or "—"
+        diagnosis = verdict.get("diagnosis")
         mark = "PASS" if r.get("passed") else "FAIL"
-        print(f"  {mark} {r['case_key']}  G1={g1}  insight={insight}  turns={r['g4']['turns']}")
+        blame = f"/{diagnosis}" if diagnosis and diagnosis != "none" else ""
+        print(f"  {mark} {r['case_key']}  G1={g1}  judge={label}{blame}  turns={r['g4']['turns']}")
     print(f"\n{json.dumps(totals, indent=2)}")
     if totals["generalisation"] == "unproven":
         print(

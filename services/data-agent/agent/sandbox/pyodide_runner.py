@@ -25,7 +25,7 @@ from typing import Any
 
 import pandas as pd
 
-from .contract import AnalysisResult, SkillGap
+from .contract import STDOUT_CAP, AnalysisResult, SkillGap
 from .runner import (
     _IMPORTABLE_MODULES,  # single source of truth for the allowlists
     _SAFE_BUILTIN_NAMES,
@@ -69,6 +69,11 @@ def run_code(
             "frames": {name: _frame_payload(f) for name, f in all_frames.items()},
             "safe_builtins": list(_SAFE_BUILTIN_NAMES),
             "importable_modules": sorted(_IMPORTABLE_MODULES),
+            # s49 M0: the cap is enforced in-Pyodide (before the JSON crosses
+            # the pipe) rather than here, so a runaway print loop cannot make
+            # the result line itself enormous. Same number as the subprocess
+            # executor — one contract, two runtimes.
+            "stdout_cap": STDOUT_CAP,
         },
         default=str,
     )
@@ -97,6 +102,7 @@ def run_code(
         skill_gaps=gaps,
         frames=payload.get("frames", []),
         used_inline_math=payload.get("used_inline_math", False),
+        stdout=payload.get("stdout", ""),
         error=payload.get("error"),
     )
 

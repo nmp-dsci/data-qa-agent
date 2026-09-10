@@ -36,6 +36,10 @@ MAX_CASE_BYTES = 64_000
 VALID_KINDS = {"scalar", "row_set", "ranked_set", "series"}
 VALID_AGGREGATES = {"sum", "ratio"}
 VALID_TIERS = {f"T{n}" for n in range(1, 8)}
+# s49 M2 — golden v2 (see docs/eval-loop-s49.md). The judge grades against
+# golden_answer and must return `label` for it; checkpoints diagnose, never gate.
+VALID_LABELS = {"low", "medium", "high"}
+CHECKPOINT_STAGES = {"sql", "analysis", "deck"}
 
 
 def _load_cases() -> list[tuple[str, dict[str, Any]]]:
@@ -182,6 +186,73 @@ def test_grader_spec_is_dispatchable(filename: str, case: dict[str, Any]) -> Non
         assert spec["aggregate"] in VALID_AGGREGATES, (
             f"{key}: unknown aggregate {spec['aggregate']!r}"
         )
+
+
+@pytest.mark.parametrize("filename,case", CASES, ids=[c.get("case_key", "?") for _, c in CASES])
+def test_golden_v2_is_well_formed(filename: str, case: dict[str, Any]) -> None:
+    """The judge's reference material must be usable, or calibration is theatre.
+
+    A ``label`` with no ``golden_answer`` labels nothing; an example with a label
+    outside the three-way vocabulary can never be reproduced, so it would fail
+    every calibration for a reason that has nothing to do with the judge.
+    """
+    key = case.get("case_key")
+    answer = case.get("golden_answer")
+    label = case.get("label")
+    if label is not None:
+        assert answer, f"{key}: label {label!r} with no golden_answer to label"
+        assert label in VALID_LABELS, f"{key}: label {label!r} not in {sorted(VALID_LABELS)}"
+    for i, example in enumerate(case.get("calibration_examples") or []):
+        assert isinstance(example, dict), f"{key}: calibration_examples[{i}] is not an object"
+        assert example.get("label") in VALID_LABELS, (
+            f"{key}: calibration_examples[{i}].label "
+            f"{example.get('label')!r} not in {sorted(VALID_LABELS)}"
+        )
+        assert str(example.get("answer") or "").strip(), (
+            f"{key}: calibration_examples[{i}] has no answer text"
+        )
+
+
+@pytest.mark.parametrize("filename,case", CASES, ids=[c.get("case_key", "?") for _, c in CASES])
+def test_checkpoints_are_shaped_for_the_scorer(filename: str, case: dict[str, Any]) -> None:
+    """Checkpoints never gate — so a malformed one fails HERE or nowhere.
+
+    ``score_checkpoints`` ignores a stage it does not recognise, by design: a
+    diagnostic must never break a run. That silence is exactly why the pack-lint
+    has to be strict, or a typo'd stage name would score nothing forever and
+    look like an agent that simply never hits its checkpoints.
+    """
+    key = case.get("case_key")
+    checkpoints = case.get("checkpoints") or {}
+    assert isinstance(checkpoints, dict), f"{key}: checkpoints is not an object"
+    unknown = set(checkpoints) - CHECKPOINT_STAGES
+    assert not unknown, f"{key}: unknown checkpoint stage(s) {sorted(unknown)}"
+    for field in (
+        ("sql", "key_cols"),
+        ("analysis", "expected_skills"),
+        ("analysis", "derived_cols"),
+        ("deck", "layouts_any_of"),
+    ):
+        stage, name = field
+        value = (checkpoints.get(stage) or {}).get(name)
+        if value is not None:
+            assert isinstance(value, list) and all(isinstance(v, str) for v in value), (
+                f"{key}: checkpoints.{stage}.{name} must be a list of strings"
+            )
+    kpi = (checkpoints.get("deck") or {}).get("kpi_label_contains")
+    assert kpi is None or isinstance(kpi, str), f"{key}: checkpoints.deck.kpi_label_contains"
+
+
+def test_pack_fields_cover_golden_v2() -> None:
+    """Export/import must round-trip the new keys, or a curated reference answer
+    silently fails to reach CI — the exact failure the pack exists to prevent."""
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    from eval_pack import FIELDS  # noqa: PLC0415
+
+    for field in ("golden_answer", "label", "calibration_examples", "checkpoints"):
+        assert field in FIELDS, f"eval_pack.FIELDS is missing {field}"
 
 
 @pytest.mark.skipif(not DB_UP, reason="database not running — SQL checks need the stack up")

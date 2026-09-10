@@ -22,6 +22,8 @@ replaces this executor with Pyodide/WASM (no syscalls) behind the same
 
 from __future__ import annotations
 
+import contextlib
+import io
 import multiprocessing as mp
 import queue as _queue
 import traceback
@@ -29,7 +31,7 @@ from typing import Any
 
 import pandas as pd
 
-from .contract import AnalysisResult, SkillGap
+from .contract import AnalysisResult, SkillGap, cap_stdout
 
 # Resource caps for one run.
 _CPU_SECONDS = 8
@@ -169,8 +171,15 @@ def _child(  # pragma: no cover - subprocess
         "skills": skills,
         **frames,  # the governed extract(s), by name — usually just `df`
     }
+    # s49 M0: capture what the code prints. `print` is in the safe builtins and
+    # resolves sys.stdout at call time, so redirecting the module attribute is
+    # enough — no need to hand the exec'd namespace a different print. Every
+    # exit path reads the buffer, including the error one: the output leading
+    # up to a traceback is usually the whole diagnosis.
+    buffer = io.StringIO()
     try:
-        exec(code, sandbox_globals)  # noqa: S102 - the whole point; namespace is locked down
+        with contextlib.redirect_stdout(buffer):
+            exec(code, sandbox_globals)  # noqa: S102 - the whole point; namespace is locked down
         result = sandbox_globals.get("result")
         if not isinstance(result, dict):
             out.put(
@@ -180,6 +189,7 @@ def _child(  # pragma: no cover - subprocess
                     "skills_used": skills.used(),
                     "skill_gaps": skills.gaps(),
                     "used_inline_math": skills.used_inline_math(),
+                    "stdout": cap_stdout(buffer.getvalue()),
                 }
             )
             return
@@ -190,6 +200,7 @@ def _child(  # pragma: no cover - subprocess
                 "skill_gaps": skills.gaps(),
                 "frames": skills.capture_frames(sandbox_globals),
                 "used_inline_math": skills.used_inline_math(),
+                "stdout": cap_stdout(buffer.getvalue()),
             }
         )
     except Exception:  # noqa: BLE001 - report model-code errors so the model self-corrects
@@ -199,6 +210,7 @@ def _child(  # pragma: no cover - subprocess
                 "skills_used": skills.used(),
                 "skill_gaps": skills.gaps(),
                 "used_inline_math": skills.used_inline_math(),
+                "stdout": cap_stdout(buffer.getvalue()),
             }
         )
 
@@ -257,5 +269,6 @@ def run_code(
         skill_gaps=gaps,
         frames=payload.get("frames", []),
         used_inline_math=payload.get("used_inline_math", False),
+        stdout=payload.get("stdout", ""),
         error=payload.get("error"),
     )

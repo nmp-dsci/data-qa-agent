@@ -73,9 +73,22 @@ _LIST_COLS = (
 _FULL_COLS = (
     "id, source, dataset, tier, question, expectation, as_user, tags, holdout, "
     "authoring_status, golden_sql, golden_sandbox, golden_data, golden_report, "
-    "golden_objects, grader, created_at, updated_at"
+    "golden_objects, grader, "
+    # s49 M2 — golden v2: the reference answer the judge grades against, the
+    # label it must return for it, curator-written calibration examples, and the
+    # diagnostic per-stage checkpoints (which never gate).
+    "golden_answer, label, calibration_examples, checkpoints, "
+    "created_at, updated_at"
 )
-_JSONB_COLS = {"tags", "golden_data", "golden_report", "golden_objects", "grader"}
+_JSONB_COLS = {
+    "tags",
+    "golden_data",
+    "golden_report",
+    "golden_objects",
+    "grader",
+    "calibration_examples",
+    "checkpoints",
+}
 
 
 class GoldenIn(BaseModel):
@@ -93,6 +106,10 @@ class GoldenIn(BaseModel):
     golden_objects: Any | None = None
     grader: Any | None = None
     expectation: str | None = None
+    golden_answer: str | None = None
+    label: str | None = None
+    calibration_examples: Any | None = None
+    checkpoints: Any | None = None
 
 
 class GoldenPatch(BaseModel):
@@ -110,6 +127,10 @@ class GoldenPatch(BaseModel):
     golden_objects: Any | None = None
     grader: Any | None = None
     expectation: str | None = None
+    golden_answer: str | None = None
+    label: str | None = None
+    calibration_examples: Any | None = None
+    checkpoints: Any | None = None
 
 
 def _jsonb_param(value: Any) -> str | None:
@@ -249,12 +270,15 @@ async def create_golden(
                     "INSERT INTO app.eval_cases "
                     "(source, question, expectation, dataset, tier, as_user, tags, holdout, "
                     " authoring_status, golden_sql, golden_sandbox, golden_data, golden_report, "
-                    " golden_objects, grader) "
+                    " golden_objects, grader, golden_answer, label, calibration_examples, "
+                    " checkpoints) "
                     "VALUES ('authored', :q, :exp, :ds, :tier, :as_user, CAST(:tags AS jsonb), "
                     " :holdout, :status, :sql, :sandbox, "
                     " CAST(:data AS jsonb), CAST(:report AS jsonb), "
                     " CAST(COALESCE(:objects, '[]') AS jsonb), "
-                    " CAST(COALESCE(:grader, '{}') AS jsonb)) "
+                    " CAST(COALESCE(:grader, '{}') AS jsonb), :golden_answer, :label, "
+                    " CAST(COALESCE(:calibration_examples, '[]') AS jsonb), "
+                    " CAST(COALESCE(:checkpoints, '{}') AS jsonb)) "
                     "RETURNING id"
                 ),
                 {
@@ -272,6 +296,10 @@ async def create_golden(
                     "report": _jsonb_param(body.golden_report),
                     "objects": _jsonb_param(body.golden_objects),
                     "grader": _jsonb_param(body.grader),
+                    "golden_answer": body.golden_answer,
+                    "label": body.label,
+                    "calibration_examples": _jsonb_param(body.calibration_examples),
+                    "checkpoints": _jsonb_param(body.checkpoints),
                 },
             )
         ).scalar()

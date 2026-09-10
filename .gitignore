@@ -39,3 +39,6 @@ docs/chronicle/assets/POA_2016_NSW_reduced.geojson
 
 # s43: MLflow tracking store (sqlite + artifacts) — local volume, never committed.
 .mlflow/
+
+# s49 M3: the offline optimiser works in throwaway git worktrees here.
+.worktrees/

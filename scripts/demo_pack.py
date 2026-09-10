@@ -174,8 +174,7 @@ def cmd_export(args: argparse.Namespace) -> None:
         path.write_text(json.dumps(entry, indent=1) + "\n")
         artifact_note = " + slides" if entry["artifact"] else ""
         print(
-            f"exported {path.relative_to(REPO_ROOT)}  "
-            f"({len(entry['pages'])} pages{artifact_note})"
+            f"exported {path.relative_to(REPO_ROOT)}  ({len(entry['pages'])} pages{artifact_note})"
         )
 
 

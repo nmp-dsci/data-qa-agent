@@ -52,7 +52,7 @@ class _FakeResult:
     def __init__(self, row: dict[str, Any] | None) -> None:
         self._row = row
 
-    def mappings(self) -> "_FakeResult":
+    def mappings(self) -> _FakeResult:
         return self
 
     def first(self) -> dict[str, Any] | None:

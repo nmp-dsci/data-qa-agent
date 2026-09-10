@@ -248,9 +248,7 @@ def main() -> int:
         with os.fdopen(fd, "w") as fh:
             for key, value in values.items():
                 fh.write(f"{key}={value}\n")
-        print(
-            f"\nWrote GOOGLE_DECK_CLIENT_ID/_SECRET/_REFRESH_TOKEN to {tmp_path} (mode 0600)."
-        )
+        print(f"\nWrote GOOGLE_DECK_CLIENT_ID/_SECRET/_REFRESH_TOKEN to {tmp_path} (mode 0600).")
         print("Copy those three lines into .env, then delete the file.")
     print("\nThen set DECK_EXPORT=1 (and DECK_PUBLIC=1 to share artifacts read-only),")
     print("and restart the data-agent: docker compose up -d --no-deps data-agent")

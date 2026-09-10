@@ -41,7 +41,7 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 const MAP_STOPS: FlightStop[] = [
   { key: "frontend", label: "Frontend", note: "React · Slides/Sheets artifact viewer" },
   { key: "backend", label: "Backend API", note: "auth · RLS session · agent proxy" },
-  { key: "runtime", label: "Agent runtime", note: "champion / challenger — see badge below" },
+  { key: "runtime", label: "Agent runtime", note: "pydantic_ai / agent_sdk — see badge below" },
   { key: "tools", label: "MCP tools", note: "extract · run_analysis · lookup_values · add_slide" },
   { key: "guard", label: "SQL guard + RLS", note: "sql_guardrails · agent_ro role" },
   { key: "db", label: "Postgres", note: "marts · staging · app" },

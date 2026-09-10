@@ -1505,6 +1505,8 @@ export interface EvalRun {
   };
   /** s50: MLflow experiment that holds the OTLP traces, when the backend knows it. */
   mlflow_experiment_id?: string;
+  /** s50: MLflow experiment that holds the per-case eval runs, when the backend knows it. */
+  mlflow_evals_experiment_id?: string;
 }
 
 export interface EvalCaseResult {

@@ -334,6 +334,8 @@ async def get_eval_run(
         run["tokens"] = tokens
         if settings.mlflow_trace_experiment_id:
             run["mlflow_experiment_id"] = settings.mlflow_trace_experiment_id
+        if settings.mlflow_evals_experiment_id:
+            run["mlflow_evals_experiment_id"] = settings.mlflow_evals_experiment_id
 
         comparison: dict[str, Any] | None = None
         if run["base_run_id"]:

@@ -342,6 +342,7 @@ function CaseDrilldown({ result, run }: { result: EvalCaseResult; run: EvalRun }
   const otherSql = trace.sql.filter((s) => (s.sql ?? "").trim() !== (primarySql ?? "").trim());
   const base = mlflowBase();
   const traceExp = run.mlflow_experiment_id ?? "1";
+  const evalsExp = run.mlflow_evals_experiment_id;
 
   return (
     <div style={{ padding: "4px 0 14px", minWidth: 0, overflowWrap: "anywhere" }} data-testid="eval-case-drilldown">
@@ -553,8 +554,8 @@ function CaseDrilldown({ result, run }: { result: EvalCaseResult; run: EvalRun }
           </span>
           <span>
             <span style={label}>mlflow case run </span>
-            {result.mlflow_run_id ? (
-              <a href={`${base}/#/experiments/2/runs/${result.mlflow_run_id}`} target="_blank" rel="noreferrer">
+            {result.mlflow_run_id && evalsExp ? (
+              <a href={`${base}/#/experiments/${evalsExp}/runs/${result.mlflow_run_id}`} target="_blank" rel="noreferrer">
                 {result.mlflow_run_id.slice(0, 12)}… ↗
               </a>
             ) : (

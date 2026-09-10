@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArchitectureRuntime,
   createServiceAccount,
   getArchitecture,
   getExploreDatasets,
@@ -79,10 +78,6 @@ function ThemeSection() {
  *  `require_admin`), and there's no non-admin equivalent yet, so non-admins
  *  get a static "managed by your administrator" line instead of a fetch that
  *  would just 403. */
-function runtimeLabel(runtime: ArchitectureRuntime): string {
-  return runtime.agent_runtime === "agent_sdk" ? "champion" : "challenger";
-}
-
 function AgentSection({ user }: { user: User }) {
   const isAdmin = user.role === "admin";
   const q = useQuery({
@@ -102,7 +97,6 @@ function AgentSection({ user }: { user: User }) {
       {isAdmin && runtime && (
         <div className="settings-row">
           <span className="badge">{runtime.agent_runtime}</span>
-          <span className="pill">{runtimeLabel(runtime)}</span>
           <code>{runtime.model}</code>
           {runtime.fingerprint?.fingerprint && (
             <span className="muted" title="build fingerprint (version.build_fingerprint)">

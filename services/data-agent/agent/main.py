@@ -31,7 +31,7 @@ logfire.configure(
 # Importing the module is safe with no `claude_agent_sdk` installed — that
 # import is lazy inside sdk_agent._load_sdk(), called only when a run actually
 # drives the SDK — so this module-level import never breaks the offline stub
-# or the pydantic_ai champion path.
+# or the pydantic_ai path.
 from . import analytics, sdk_agent  # noqa: E402
 from .chart import trend_overlay_encoding, validate_chart_spec  # noqa: E402
 from .config import settings  # noqa: E402
@@ -636,7 +636,7 @@ async def agent_config() -> ConfigSection:
         ConfigItem(
             key="AGENT_RUNTIME",
             value=s.agent_runtime,
-            note="pydantic_ai (champion) | agent_sdk (Claude Agent SDK challenger)",
+            note="pydantic_ai | agent_sdk (Claude Agent SDK)",
         ),
         ConfigItem(key="LLM_PROVIDER", value=s.llm_provider, note="deepseek | anthropic"),
         ConfigItem(key="model", value=active_model, note="model used by the active provider"),
@@ -1271,7 +1271,7 @@ def _template_bytes() -> bytes:
 
 
 class ArchitectureRuntime(BaseModel):
-    agent_runtime: str  # "pydantic_ai" (champion) | "agent_sdk" (challenger)
+    agent_runtime: str  # "pydantic_ai" | "agent_sdk" (Claude Agent SDK)
     model: str
     provider: str
     sandbox_runtime: str
@@ -1320,8 +1320,8 @@ def _active_model_and_provider() -> tuple[str, str]:
 
     Mirrors ``sdk_agent.answer_with_sdk``'s model choice and ``_run_agent``'s
     runtime dispatch — the SDK runtime drives ``sdk_model`` through the Claude
-    Code CLI (subscription/OAuth auth, not an API key); the champion uses
-    whichever provider key ``LLM_PROVIDER`` selects.
+    Code CLI (subscription/OAuth auth, not an API key); the pydantic_ai runtime
+    uses whichever provider key ``LLM_PROVIDER`` selects.
     """
     s = settings
     if s.agent_runtime == "agent_sdk":

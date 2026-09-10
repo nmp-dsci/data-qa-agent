@@ -397,3 +397,117 @@ def gross_yield(
     if ratio.empty:
         return None
     return round(float(ratio.mean()) * 100.0, 2)
+
+
+@skill
+def period_metric(
+    df: pd.DataFrame,
+    *,
+    period_col: str,
+    value_col: str,
+    den_col: str | None = None,
+    weight_col: str | None = None,
+    group_col: str | None = None,
+    period: str | None = None,
+    per_group_latest: bool = False,
+    min_den: float = 0.0,
+    decimals: int = 2,
+) -> pd.DataFrame:
+    """The weighted metric for a single period (default the latest), unsmoothed.
+
+    The point-in-time counterpart to ``latest_value``. Where ``latest_value``
+    headlines a 6-month-smoothed figure (the right number for a trend), this
+    answers "what was it *in that month*" — the figure a KPI tile quotes when the
+    question names a month, e.g. bond-weighted average weekly rent for the latest
+    month (s49). No rolling base is applied; the period's own rows are combined.
+
+    Weighting is mandatory and comes in two shapes — pass exactly one:
+
+    * ``den_col``: ``value_col`` is a TOTAL, so the metric is a ratio of sums,
+      ``sum(value_col) / sum(den_col)`` (total_weekly_rent / n_rented).
+    * ``weight_col``: ``value_col`` is already a per-unit RATE, so the metric is
+      the weighted mean ``sum(value_col * weight_col) / sum(weight_col)``
+      (avg_weekly_rent weighted by n_rented).
+
+    With neither, the plain mean of ``value_col`` is returned — correct only when
+    every row already carries equal weight; prefer a weight wherever one exists,
+    because a mean of per-row averages is not the population average.
+
+    ``period=None`` selects the newest period in the frame (the same one for
+    every group, so groups stay comparable); ``per_group_latest=True`` gives each
+    group its own newest period instead; passing ``period="2026-05"`` (a
+    ``YYYY-MM-DD`` value is truncated to its month) pins one explicitly.
+
+    Returns a DataFrame ``[<group_col>?, <period_col>, value, numerator,
+    denominator, n_rows]``, one row per group, sorted by value descending — the
+    numerator/denominator/n_rows travel with the figure so a report can state its
+    basis ("across 51 new bonds") without re-deriving it. Groups whose
+    denominator falls under ``min_den`` are dropped, and a zero denominator is
+    NULLIF'd away (the row is dropped) rather than emitted as inf/NaN into a
+    tile. An empty or unmatched frame returns the same columns with no rows.
+    """
+    if den_col is not None and weight_col is not None:
+        raise ValueError(
+            "pass den_col (value_col is a total) or weight_col (value_col is a rate), not both"
+        )
+    out_cols = ([group_col] if group_col else []) + [
+        period_col,
+        "value",
+        "numerator",
+        "denominator",
+        "n_rows",
+    ]
+    needed = [c for c in (period_col, value_col, den_col, weight_col, group_col) if c]
+    if df.empty or any(c not in df.columns for c in needed):
+        return pd.DataFrame(columns=out_cols)
+
+    work = pd.DataFrame(index=df.index)
+    key = df[period_col].astype(str).str.strip()
+    # 'YYYY-MM-DD' and 'YYYY-MM' both key on the month, so a date-typed month
+    # column and a string one select the same period.
+    work["__period"] = key.mask(key.str.match(r"^\d{4}-\d{2}-\d{2}"), key.str.slice(0, 7))
+    work["__group"] = df[group_col].astype(str) if group_col else "_all"
+    value = pd.to_numeric(df[value_col], errors="coerce")
+    if den_col is not None:
+        work["__num"] = value
+        work["__den"] = pd.to_numeric(df[den_col], errors="coerce")
+    elif weight_col is not None:
+        weight = pd.to_numeric(df[weight_col], errors="coerce")
+        work["__num"] = value * weight
+        work["__den"] = weight
+    else:
+        work["__num"] = value
+        work["__den"] = 1.0
+    work = work.dropna(subset=["__period", "__num", "__den"])
+    work = work[work["__period"] != ""]
+    if work.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    if period is not None:
+        want = str(period).strip()
+        want = want[:7] if len(want) > 7 else want
+        work = work[work["__period"] == want]
+    elif per_group_latest:
+        work = work[work["__period"] == work.groupby("__group")["__period"].transform("max")]
+    else:
+        work = work[work["__period"] == work["__period"].max()]
+    if work.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    agg = (
+        work.groupby(["__group", "__period"], dropna=False)
+        .agg(numerator=("__num", "sum"), denominator=("__den", "sum"), n_rows=("__num", "size"))
+        .reset_index()
+    )
+    if min_den > 0:
+        agg = agg[agg["denominator"] >= float(min_den)]
+    # NULLIF-equivalent: no denominator, no metric — drop rather than emit inf.
+    safe_den = agg["denominator"].replace(0, float("nan"))
+    agg["value"] = (agg["numerator"] / safe_den).round(decimals)
+    agg = agg.dropna(subset=["value"])
+    if agg.empty:
+        return pd.DataFrame(columns=out_cols)
+    agg = agg.rename(columns={"__period": period_col, "__group": group_col or "__group"})
+    agg["n_rows"] = agg["n_rows"].astype(int)
+    agg = agg.sort_values("value", ascending=False).reset_index(drop=True)
+    return agg[out_cols]

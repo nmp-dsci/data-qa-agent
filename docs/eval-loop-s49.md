@@ -134,6 +134,31 @@ skill-mine [RUN=…]          reflect RUN=…         eval-calibrate
 - No new secrets. Never commit `.env`. Prod is demo mode and has no data-agent; nothing here touches prod.
 - Do not touch `migrations/` (coordinator-owned) or `Makefile` (coordinator-owned). If you need a column or target that is missing, say so in your report.
 
-## M5 run log
+## M5 run log (2026-09-10, local stack, agent_sdk / sonnet-5)
 
-(filled in by W-F)
+Two made-up goldens in `evals/cases/s49_test.yaml` (tag `s49-m5`): a T1 scalar
+(bond-weighted average weekly rent, 3-bedroom houses, postcode 2250, latest
+month = $697.08 at 2026-05-01) and a T2 ranked set (top 5 suburbs by house
+sales in the 12 months to 2026-06-01: Dubbo 999, Orange 874, Port Macquarie
+691, Austral 593, Armidale 586). Pack version `pv-45d6f889`.
+
+| Step | Result |
+|---|---|
+| Judge calibration (`make eval-calibrate`) | calibrated, 10/10 probes agreed across the 5 goldens (each `golden_answer` → high, each calibration example → its label); model claude-sonnet-5, rubric `label-v1` / `jr-227c9a32` |
+| Baseline, 3 repeats × 2 goldens | 6/6 PASS on G1 + G5. Every `eval_results` row carries `otel_trace_id`, `mlflow_run_id`, `judge`, `checkpoints`, `g5`. Judge: rent = medium / diagnosis `analysis` (×2) and `presentation` (×1); sales = high / none (×3). Checkpoints: rent analysis 1.0 · deck 1.0; sales analysis 1.0 · deck 0.5 |
+| Trace density | one baseline run (`tr-01a08b13b338…`): `POST /ask → agent_sdk.answer → model.turn ×n, tool.Read, tool.extract, tool.run_analysis (code_sha, runtime=pyodide, ms=5210, skills_used=latest_value,trend_series,trend_chart,build_report), tool.start_deck, tool.add_slide` visible in MLflow `data-qa/traces` |
+| Champion eval (`make eval TAG=s49-m5 EXPERIMENT=s49-champion`) | run `5b20ddf0`, fingerprint `av-c0b82300d1cd` (registry v18, `@champion`), 2/2 pass, turns 43 / 85 |
+| Challenger minted | `skills/analysis.py latest_value` now also returns `raw_value` + `count`; rebuild → `av-6c427412dec2` (`skills_hash s-ba375b69 → s-fb4bcebb`, every other component unchanged); `make register` → v19 with `bundle.json` (1226 B) + `bundle.tar.gz` (22.6 KB) |
+| Challenger eval (`--base 5b20ddf0`) | run `360d1124`, 2/2 pass, turns 48 / 57, judge medium/analysis + medium/presentation; Evaluations tab shows GATE PASS, B vs A, hypothesis |
+| `make promote` | `pass_rate >= champion AND no pass->fail flips` → 1.0 vs 1.0, flips [], **PROMOTED v18 → v19**; `@challenger` cleared (after fixing `mlflow_client.delete_alias`, which MLflow 3.x had been rejecting silently); `app.promotions` row written |
+| Rewind (`make agent-checkout FP=av-c0b82300d1cd`) | worktree at the recorded git sha; its `skills/analysis.py` is byte-identical to the committed pre-challenger file and differs from the live one; prints the compose override and the DB drift-check SQL |
+| Knowledge curator path | `PUT /admin/knowledge/domains/property-rent/bedrooms.md` (author admin) → version 1, fingerprint `av-6c427412dec2 → av-657854291b2f` (`kv-3fa6fae2 → kv-6b5cbddd`); Architecture tab shows EDITED + CURATOR OVERRIDE; `make knowledge-export` wrote the file back (committed) |
+| Offline optimiser (`make skill-mine RUN=5b20ddf0`) | first run: cluster = rent golden's `analysis` diagnosis; Opus proposed `period_metric` (ratio-of-sums for one period); candidate ran clean in the real sandbox but **failed the gate** because the golden's `derived_cols` named the extract column (`avg_weekly_rent`) — status `candidate-failed`, no PR. Golden corrected to `derived_cols: [value]`; rerun → `ok: true` → **draft PR #42** https://github.com/nmp-dsci/data-qa-agent/pull/42 (`optimise/skill-period-metric-skill`: helper + test) |
+| Offline optimiser (`make reflect RUN=5b20ddf0`) | `no-failures`: no failed or low-labelled case in the run, so no prompt/knowledge edit proposed (medium labels are not evidence enough, by design) |
+
+Observations worth keeping:
+
+- The judge's `medium / analysis` on the rent golden is the loop working as designed: G1 passes because the smoothed `latest_value` is within 1% of the raw month, but the judge notices the answer does not quote the actual latest-month figure. That is exactly what the challenger helper adds; the agent still has to be told to use `raw_value` (a CLAUDE.md/knowledge edit — the reflector's job), so the label did not move on this run.
+- Two evals in parallel plus Chrome exhausted memory on this machine once; run eval lanes one at a time with grafana/prometheus stopped.
+- `mlflow_registry.py ensure` does not create `app.agent_versions` rows; backend-api does, on the first run of a new fingerprint. Register after an eval, not before.
+

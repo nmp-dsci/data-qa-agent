@@ -70,8 +70,10 @@ cases:
       expected_skills:
       - latest_value
       - build_report
+      # the column a helper must DERIVE for this question (avg_weekly_rent is the
+      # extract column, already present before any analysis runs)
       derived_cols:
-      - avg_weekly_rent
+      - value
     deck:
       layouts_any_of:
       - KPI + Trend

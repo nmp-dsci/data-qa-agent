@@ -1029,6 +1029,40 @@ export async function getAnalyticsSummary(days = 14): Promise<AnalyticsSummary> 
   return adminGet<AnalyticsSummary>(`/analytics/summary?days=${days}`);
 }
 
+/* ---------------------------------------------------------------------------
+ * Handover analytics (s48 §7) — did anyone open the deck we handed them, and
+ * what did they change? Fed by scripts/handover_poll.py.
+ * ------------------------------------------------------------------------- */
+
+export interface HandoverAnalytics {
+  days: number;
+  decks: number;
+  opened: number;
+  edited: number;
+  edit_rate: number | null;
+  median_minutes_to_first_edit: number | null;
+  edits_by_event: { event: string; edits: number }[];
+  edits_by_layout: {
+    layout_id: string;
+    decks: number;
+    edits: number;
+    headline_edits: number;
+    chart_edits: number;
+  }[];
+  layout_usage: { layout_id: string; slides: number }[];
+  recent: {
+    run_id: string;
+    question: string | null;
+    deck_url: string | null;
+    edits: number;
+    last_edit_at: string | null;
+  }[];
+}
+
+export async function getHandoverAnalytics(days = 30): Promise<HandoverAnalytics> {
+  return adminGet<HandoverAnalytics>(`/analytics/handover?days=${days}`);
+}
+
 function adminListQuery(params?: { limit?: number; since?: string }): string {
   const qs = new URLSearchParams();
   if (params?.limit != null) qs.set("limit", String(params.limit));
@@ -1354,6 +1388,16 @@ export function prepGolden(body: { sql: string; as_user?: string | null }): Prom
 async function adminPost<T>(path: string, body: unknown): Promise<T> {
   const resp = await apiFetch(`${API}${path}`, {
     method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Admin request failed (${resp.status})`);
+  return resp.json();
+}
+
+async function adminPut<T>(path: string, body: unknown): Promise<T> {
+  const resp = await apiFetch(`${API}${path}`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
@@ -1722,4 +1766,50 @@ export function getArchitecture(): Promise<ArchitectureData> {
 export function getArchitectureContent(kind: string, name = ""): Promise<{ content: string }> {
   const qs = new URLSearchParams({ kind, name });
   return adminGet<{ content: string }>(`/architecture/content?${qs}`);
+}
+
+/* ---------------------------------------------------------------------------
+ * Pack Inspector (s48 §P2) — the synced template pack's admin tab: what the
+ * agent's slide/chart menu actually is right now, straight from Google via
+ * the data-agent's GET/PUT /agent/pack(/layouts/{id}), proxied at
+ * /admin/pack (services/backend-api/app/routers/admin_pack.py).
+ * ------------------------------------------------------------------------- */
+
+export interface PackLayout {
+  id: string;
+  name: string;
+  enabled: boolean;
+  use_when: string;
+  source: string;
+  slots: string[];
+  table_template: string;
+  chart_template: string | null; // "<tab>!<chart title>"
+  grader_shape: string;
+  issues: string[];
+  thumbnail_url: string | null;
+}
+
+export interface Pack {
+  name: string;
+  version: number;
+  synced_at: string;
+  slides_url: string;
+  sheet_url: string;
+  folder_url: string;
+  layouts: PackLayout[];
+  issues: string[];
+  stale: boolean;
+}
+
+export interface PackLayoutUpdate {
+  enabled?: boolean;
+  use_when?: string;
+}
+
+export function getPack(): Promise<Pack> {
+  return adminGet<Pack>("/admin/pack");
+}
+
+export function updatePackLayout(layoutId: string, update: PackLayoutUpdate): Promise<Pack> {
+  return adminPut<Pack>(`/admin/pack/layouts/${layoutId}`, update);
 }

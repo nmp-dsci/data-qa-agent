@@ -37,6 +37,7 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 — public endpo
 SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 SLIDES_API = "https://slides.googleapis.com/v1/presentations"
 DRIVE_API = "https://www.googleapis.com/drive/v3/files"
+FOLDER_MIME = "application/vnd.google-apps.folder"
 
 # Slides works in EMU (English Metric Units): 914400 per inch. A default Google
 # Slides page is 10in x 5.625in (16:9).
@@ -138,9 +139,99 @@ class GoogleClient:
 
     # -- drive --------------------------------------------------------------
 
-    async def copy_file(self, file_id: str, name: str) -> str:
-        out = await self._call("POST", f"{DRIVE_API}/{file_id}/copy", json={"name": name})
+    async def copy_file(
+        self,
+        file_id: str,
+        name: str,
+        *,
+        parent: str = "",
+        app_properties: dict[str, str] | None = None,
+    ) -> str:
+        body: dict[str, Any] = {"name": name}
+        if parent:
+            body["parents"] = [parent]
+        if app_properties:
+            body["appProperties"] = app_properties
+        out = await self._call("POST", f"{DRIVE_API}/{file_id}/copy", json=body)
         return str(out["id"])
+
+    async def create_folder(
+        self,
+        name: str,
+        *,
+        parent: str = "",
+        app_properties: dict[str, str] | None = None,
+    ) -> str:
+        body: dict[str, Any] = {"name": name, "mimeType": FOLDER_MIME}
+        if parent:
+            body["parents"] = [parent]
+        if app_properties:
+            body["appProperties"] = app_properties
+        out = await self._call("POST", DRIVE_API, json=body)
+        return str(out["id"])
+
+    async def find_files(
+        self,
+        *,
+        app_properties: dict[str, str] | None = None,
+        name: str = "",
+        mime_type: str = "",
+        parent: str = "",
+        fields: str = "files(id,name,mimeType,appProperties)",
+    ) -> list[dict[str, Any]]:
+        """``files.list`` over the app's own files.
+
+        The whole idempotency story of the pack scaffold rests on this: a pack is
+        found by its ``appProperties``, never by remembering an id, so re-running
+        the scaffold reuses the folder and both files instead of littering Drive
+        with v2, v3, v4 copies of the same pack.
+
+        ``drive.file`` scope means this only ever sees files this app created,
+        which is also why searching by appProperties is safe — no other app's
+        metadata is visible to it.
+        """
+        clauses = ["trashed = false"]
+        for key, value in (app_properties or {}).items():
+            clauses.append(f"appProperties has {{ key='{key}' and value='{value}' }}")
+        if name:
+            clauses.append(f"name = '{name}'")
+        if mime_type:
+            clauses.append(f"mimeType = '{mime_type}'")
+        if parent:
+            clauses.append(f"'{parent}' in parents")
+        out = await self._call(
+            "GET", DRIVE_API, params={"q": " and ".join(clauses), "fields": fields}
+        )
+        return [dict(f) for f in out.get("files") or []]
+
+    async def update_file(
+        self,
+        file_id: str,
+        *,
+        app_properties: dict[str, str] | None = None,
+        name: str = "",
+        add_parents: str = "",
+        remove_parents: str = "",
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if app_properties:
+            body["appProperties"] = app_properties
+        if name:
+            body["name"] = name
+        params: dict[str, Any] = {}
+        if add_parents:
+            params["addParents"] = add_parents
+        if remove_parents:
+            params["removeParents"] = remove_parents
+        return await self._call("PATCH", f"{DRIVE_API}/{file_id}", json=body, params=params)
+
+    async def file_meta(
+        self, file_id: str, *, fields: str = "id,name,version,modifiedTime"
+    ) -> dict[str, Any]:
+        """Drive metadata. ``version`` is the cheap change detector the handover
+        poller keys on: it increments on every content edit, so one small GET
+        answers "has a human touched this deck?" without reading the deck."""
+        return await self._call("GET", f"{DRIVE_API}/{file_id}", params={"fields": fields})
 
     async def share_public(self, file_id: str) -> None:
         """Anyone with the link may view.
@@ -178,13 +269,34 @@ class GoogleClient:
             "POST", f"{SHEETS_API}/{spreadsheet_id}:batchUpdate", json={"requests": requests}
         )
 
+    async def get_spreadsheet(
+        self, spreadsheet_id: str, *, fields: str = "", include_grid_data: bool = False
+    ) -> dict[str, Any]:
+        """``spreadsheets.get``. ``fields`` matters: asking for
+        ``sheets(properties,charts)`` returns every chart's full ChartSpec, which
+        is what the builder clones — and skips the grid data, which would be
+        megabytes."""
+        params: dict[str, Any] = {}
+        if fields:
+            params["fields"] = fields
+        if include_grid_data:
+            params["includeGridData"] = "true"
+        return await self._call("GET", f"{SHEETS_API}/{spreadsheet_id}", params=params)
+
     async def write_values(
-        self, spreadsheet_id: str, a1_range: str, values: list[list[Any]]
+        self,
+        spreadsheet_id: str,
+        a1_range: str,
+        values: list[list[Any]],
+        *,
+        raw: bool = True,
     ) -> None:
+        """Write a range. ``raw=False`` (USER_ENTERED) is what makes a written
+        ``=HYPERLINK(...)`` a link rather than the literal text of a formula."""
         await self._call(
             "PUT",
             f"{SHEETS_API}/{spreadsheet_id}/values/{a1_range}",
-            params={"valueInputOption": "RAW"},
+            params={"valueInputOption": "RAW" if raw else "USER_ENTERED"},
             json={"values": values},
         )
 
@@ -201,6 +313,11 @@ class GoogleClient:
         out = await self._call("POST", SLIDES_API, json={"title": title})
         return str(out["presentationId"])
 
+    async def get_presentation_pages(self, presentation_id: str, *, fields: str) -> dict[str, Any]:
+        """``presentations.get`` with a field mask — the snapshot path reads only
+        the handful of properties it diffs, not the whole document."""
+        return await self._call("GET", f"{SLIDES_API}/{presentation_id}", params={"fields": fields})
+
     async def get_presentation(self, presentation_id: str) -> dict[str, Any]:
         return await self._call("GET", f"{SLIDES_API}/{presentation_id}")
 
@@ -212,6 +329,20 @@ class GoogleClient:
         return await self._call(
             "POST", f"{SLIDES_API}/{presentation_id}:batchUpdate", json={"requests": requests}
         )
+
+    async def page_thumbnail(
+        self, presentation_id: str, page_object_id: str, *, size: str = "MEDIUM"
+    ) -> str:
+        """``presentations.pages.getThumbnail`` for one library slide (Pack
+        Inspector, s48 §P2). This is the expensive read of that feature — one
+        HTTP round trip per slide — so callers must cache the result, keyed on
+        (slides_id, Drive ``version``), rather than call this on every request."""
+        out = await self._call(
+            "GET",
+            f"{SLIDES_API}/{presentation_id}/pages/{page_object_id}/thumbnail",
+            params={"thumbnailProperties.thumbnailSize": size},
+        )
+        return str(out.get("contentUrl") or "")
 
 
 def sheet_url(spreadsheet_id: str) -> str:

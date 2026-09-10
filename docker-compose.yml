@@ -207,13 +207,27 @@ services:
       GOOGLE_DECK_REFRESH_TOKEN: ${GOOGLE_DECK_REFRESH_TOKEN:-}
       # A curated layout pack; empty uses the built-in catalogue.
       GOOGLE_SLIDES_TEMPLATE_ID: ${GOOGLE_SLIDES_TEMPLATE_ID:-}
+      # s48: the pack's Sheet (the `_pack` catalogue tab + the template charts
+      # the builder clones), and which synced snapshot under PACK_DIR to load.
+      # packs/ is bind-mounted below — the runtime reads pack.json, never
+      # Google, so a container without network to Drive still has the catalogue.
+      GOOGLE_SHEET_TEMPLATE_ID: ${GOOGLE_SHEET_TEMPLATE_ID:-}
+      PACK_NAME: ${PACK_NAME:-nsw-property}
+      PACK_DIR: ${PACK_DIR:-/app/packs}
       DECK_EXPORT: ${DECK_EXPORT:-1}
       # Public read-only sharing. Separate flag on purpose: this is the one call
       # that puts a file outside RLS, and a public link cannot be un-published.
       DECK_PUBLIC: ${DECK_PUBLIC:-0}
       MAX_SLIDES: ${MAX_SLIDES:-8}
+      AGENT_REQUEST_LIMIT: ${AGENT_REQUEST_LIMIT:-22}
+      AGENT_TOTAL_TOKENS_LIMIT: ${AGENT_TOTAL_TOKENS_LIMIT:-600000}
     volumes:
       - dbt_target:/dbt-target:ro
+      # s48: the synced template packs. Mounted rather than baked so a resync —
+      # from scripts/pack_sync.py or the Pack Inspector's PUT, which writes
+      # pack.json from inside the container — takes effect on the next run
+      # without rebuilding the image. Writable for that reason (data-agent only).
+      - ./packs:/app/packs
     ports:
       # Host port is overridable (AGENT_HOST_PORT) like the backend's; the
       # in-network address stays data-agent:8100. Worker replicas (s40 M1)
@@ -225,6 +239,32 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+
+  # s48 §7: the handover poller — a 15-minute loop that asks Drive whether a
+  # run's deck/sheet moved since it was last checked, and if so records what
+  # changed (app.artifact_snapshots/artifact_edits). Same image, same env as
+  # data-agent (it needs the same Google credential and DB access, nothing
+  # more), running the poll script instead of uvicorn. `make handover-poll
+  # ARGS=--once` runs a single pass without this profile.
+  handover-poller:
+    build: ./services/data-agent
+    # scripts/ lives at the repo root, outside this image's build context, so
+    # it's bind-mounted in at /app/scripts (dev-only, like the queue worker's
+    # image reuse above); PYTHONPATH=/app makes `agent` importable regardless
+    # of where the script file sits.
+    command: ["python", "/app/scripts/handover_poll.py"]
+    profiles: ["handover"]
+    restart: unless-stopped
+    environment:
+      <<: *agent-env
+      WARMUP_ON_START: "0"
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
+    volumes:
+      - ./scripts:/app/scripts:ro
     depends_on:
       pipeline:
         condition: service_completed_successfully
@@ -268,6 +308,7 @@ services:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
     volumes:
       - dbt_target:/dbt-target:ro
+      - ./packs:/app/packs:ro
     depends_on:
       redis:
         condition: service_healthy

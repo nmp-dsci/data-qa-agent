@@ -158,6 +158,17 @@ class Settings(BaseSettings):
     # pack exists.
     google_slides_template_id: str = ""
 
+    # --- s48: template packs ---------------------------------------------
+    # The pack's second half: the Sheet holding the `_pack` catalogue tab and the
+    # hand-styled template charts the builder clones. Both ids are written by
+    # scripts/pack_scaffold.py; empty = no pack, and the built-in catalogue runs.
+    google_sheet_template_id: str = ""
+    # Which pack under PACK_DIR the runtime loads. `packs/<PACK_NAME>/pack.json`
+    # is a repo file (synced from Google by scripts/pack_sync.py), so a container
+    # only needs it mounted or baked — never a Google round trip at boot.
+    pack_name: str = "nsw-property"
+    pack_dir: str = "packs"
+
     # Master switch, independent of whether credentials happen to be present —
     # so a machine that has a token can still run the agent without exporting.
     deck_export: bool = True

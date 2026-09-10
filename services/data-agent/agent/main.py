@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import logfire
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -43,8 +43,21 @@ from .eval_graders import (  # noqa: E402
     grade_presentation_format,
 )
 from .eval_judge import judge_insight  # noqa: E402
+from .gsuite import GoogleClient  # noqa: E402
 from .knowledge import knowledge_version, load_pages, read_knowledge  # noqa: E402
 from .nl2sql import build_sql, phrase_answer  # noqa: E402
+from .pack import load_pack, pack_path, pack_to_catalogue  # noqa: E402
+from .pack_api import (  # noqa: E402
+    PackApiError,
+    PackLayoutNotFound,
+    PackLayoutUpdate,
+    PackLayoutUpdateOut,
+    PackOut,
+    PackUnavailable,
+    get_google_client,
+)
+from .pack_api import get_pack as _pack_api_get_pack  # noqa: E402
+from .pack_api import update_pack_layout as _pack_api_update_layout  # noqa: E402
 from .pages import chart_object_from_spec, compose_pages, page_plan, planned_kinds  # noqa: E402
 from .provider import choose_provider  # noqa: E402
 from .sandbox import explain_sandbox_error, run_code  # noqa: E402
@@ -1306,6 +1319,12 @@ def _layouts_md() -> str:
     """
     if not sdk_agent.deck_enabled():
         return ""
+    # s48: a synced template pack is a repo file, so this resolves it directly
+    # rather than waiting for a run to warm the cache — the /agent/version
+    # fingerprint must reflect the pack the next run will actually use.
+    pack = load_pack(pack_path(settings.pack_dir, settings.pack_name))
+    if pack is not None and pack.slides_id:
+        return render_layouts_md(pack_to_catalogue(pack))
     catalogue = sdk_agent._catalogue_cache.get(settings.google_slides_template_id)
     return render_layouts_md(catalogue or DEFAULT_CATALOGUE)
 
@@ -1435,3 +1454,34 @@ async def agent_architecture_content(kind: str, name: str = "") -> dict[str, str
     if kind == "knowledge":
         return {"content": read_knowledge(name)}
     raise HTTPException(status_code=400, detail=f"unknown kind: {kind!r}")
+
+
+# ---------------------------------------------------------------------------
+# Pack Inspector (s48 §P2): admin-facing read/edit surface over the synced
+# template pack. Both endpoints just delegate to agent/pack_api.py — the
+# reason this file gets a full module rather than a couple of inline
+# functions (unlike the Architecture endpoints above) is the PUT handler's
+# write path (Sheets values.update + a full re-sync), which needs to be
+# independently testable with a FakeClient (tests/test_pack_api.py).
+# ---------------------------------------------------------------------------
+
+
+@app.get("/agent/pack", response_model=PackOut)
+async def agent_pack(client: GoogleClient = Depends(get_google_client)) -> PackOut:
+    return await _pack_api_get_pack(client)
+
+
+@app.put("/agent/pack/layouts/{layout_id}", response_model=PackLayoutUpdateOut)
+async def agent_pack_layout_update(
+    layout_id: str,
+    body: PackLayoutUpdate,
+    client: GoogleClient = Depends(get_google_client),
+) -> PackLayoutUpdateOut:
+    try:
+        return await _pack_api_update_layout(layout_id, body, client=client)
+    except PackLayoutNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PackUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PackApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

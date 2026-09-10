@@ -453,11 +453,57 @@ and `explore/pages_builder.py`. Nothing renders them any more, but they remain t
 runtime's output contract and drive the SSE plan frames. Removing them is gated on retiring that runtime —
 do not delete them piecemeal.
 
+**The deck's design is a template pack (s48).** `docs/template-packs.md` is the contract. A pack is two
+Google files a curator edits by hand — `Pack.slides` (one **library slide** per layout, where a shape's
+alt-text *title* is what makes it a slot: `headline`, `chart`, `table`, `commentary`, `kpi`, `kpi_label`,
+`subtitle`, `footer`, `source`) and `Pack.sheet` (the `_pack` catalogue tab plus `tpl_*` tabs carrying
+hand-styled charts) — plus `packs/<name>/pack.json`, the snapshot the runtime reads. `scripts/pack_scaffold.py`
+creates the two files from nothing; `scripts/pack_sync.py` is the **only** writer of pack.json (`make
+pack-scaffold` / `make pack-sync`). `agent/pack.py` parses it into the `deck.Layout` catalogue, so a curator's
+`use_when` sentences and slot geometry are what the agent reads in `layouts.md`.
+
+**Pack Inspector (s48 §P2).** Admin → Pack (`frontend/src/features/admin/PackView.tsx`) is a read/edit tab
+over the synced pack: `GET /admin/pack` → `services/backend-api/app/routers/admin_pack.py` (proxy, same
+pattern as `routers/architecture.py`) → `GET /agent/pack` (`agent/pack_api.py`), which renders pack.json plus a
+per-layout Slides thumbnail (`presentations.pages.getThumbnail`, cached in-process keyed on the Slides file's
+Drive `version` — never fetched per request) and `stale` (the Sheet's `modifiedTime` vs. the last sync).
+`PUT /agent/pack/layouts/{id}` writes only the changed `_pack`-tab cell(s) via Sheets `values.update`, then
+re-syncs through `agent/pack_sync.py::sync_pack` — the same function `scripts/pack_sync.py` calls, refactored
+out of the script so the CLI and the Inspector can never write pack.json differently — and busts `sdk_agent`'s
+in-process catalogue caches so the next run sees the change. Slides/charts themselves stay Google-only edits
+(enable/withhold and `use_when` are the only fields this tab can write). `packs/` is bind-mounted writable
+into the data-agent container (the worker's mount stays `:ro`) precisely so this PUT can persist pack.json;
+the repo copy is then the reviewable diff.
+
+Why library slides and not master layouts: the Slides API cannot author master layouts and the Slides editor
+cannot author CHART/TABLE placeholders, so a library slide is the only artifact authorable from *both* sides.
+Each `add_slide` is one atomic batch — `duplicateObject` with a deterministic `objectIds` map, `updateSlidesPosition`
+to the end, `deleteText`/`insertText` per text slot, `deleteObject` on the chart placeholder and
+`createSheetsChart(LINKED)` at its exact geometry — and `finish()` appends **Sources & SQL** (every query the
+answer rests on) before deleting the library slides that are left. Charts are **clones of the pack's chart
+spec** with the GridRanges rewritten (`deck.clone_chart_spec`), never composed here: styling is the curator's
+job. An enabled layout that fails validation is treated as disabled, so a half-edited pack degrades to a
+smaller menu rather than to broken slides. `footer` and `source` are filled by the builder, never the agent.
+
+The run Sheet is `Data` (a named Sheets **Table** per slide, typed from `units.py`, chart anchored beside it;
+oversized frames get their own tab), `Manifest` (the `SlideRecord` fields the change-log differs on:
+`layout_id`, `slide_object_id`, `table_name`/`table_range`/`table_kind`, `chart_id`, `query_ref`, `mart`,
+`notes_object_id`, `slide_url`) and `README`. Both generated files carry Drive `appProperties`
+(`dp_run_id`/`dp_pack`/`dp_pack_version`/`dp_kind`) and land in a `Data Pilot runs` folder. The builder also
+returns the **version-1 baseline snapshot** (`agent/handover_snapshot.py`, shared with the handover poller) on
+`artifact["baseline"]`, so a later diff compares against what the builder actually produced.
+
+Two live-API constraints are load-bearing and easy to undo by accident: `addTable` must carry **no**
+`columnProperties` (they land one column right and corrupt the header) — types go on a following `updateTable`;
+and a Sheets chart axis must not carry `titleTextPosition` without a title (500 INTERNAL). A refused `addTable`
+falls back to a named range and records `table_kind: "range"`.
+
 This is a **dev-only** capability: one generating Google account, a refresh token in `.env`
 (`scripts/google_auth.py --write-env` mints it), and `DECK_EXPORT=1`. The credential is
 `GOOGLE_DECK_CLIENT_ID`/`_SECRET`/`_REFRESH_TOKEN` — a **Desktop app** OAuth client, deliberately not the
 `GOOGLE_CLIENT_ID` Web client that Google Sign-in validates ID-token audiences against; one variable for
-both would break sign-in. Prod/demo deploys no data-agent service at all, so
+both would break sign-in. `GOOGLE_SHEET_TEMPLATE_ID` (the pack's Sheet), `PACK_NAME` and `PACK_DIR` select the
+pack; `packs/` is bind-mounted into the container (writable for data-agent so the Pack Inspector can resync). Prod/demo deploys no data-agent service at all, so
 it holds no Google credential and cannot reach Google; demo replay hands back URLs recorded in the pack.
 `DECK_PUBLIC` is a separate flag because anyone-with-link sharing puts a file outside RLS permanently.
 
@@ -638,6 +684,20 @@ by event type and user), the users table (role, last active — derived from `MA
 datasets table (row counts, access — count of `dataset_access` grants), and Q&A/agent metrics from
 `query_runs` (latency, row counts, generated SQL, input/output token counts from the LLM path's
 `run.usage()` — null for the offline stub). Same stream feeds Logfire.
+
+### Handover analytics — what happens to a deck after it's handed over (s48 §7)
+
+A deck is a Google Slides file the app no longer controls once it's sent, so `scripts/handover_poll.py`
+(`make handover-poll ARGS=--once`, or the `handover-poller` compose service under `profiles: [handover]`,
+15-minute loop) watches for change: for every run with an `artifact_deck_url` checked more than
+`--interval` seconds ago within the last `--days` (30), it asks Drive `files.get` for the current
+`version`; if it moved, it snapshots the deck/sheet content (`agent.handover.normalise_deck`/
+`normalise_sheet`), diffs against the previous snapshot (`agent.handover.diff_snapshots`), and records the
+result in `app.artifact_snapshots` / `app.artifact_edits` (migration `0038_artifact_handover`), bumping
+`query_runs.artifact_last_checked` / `artifact_opened_at` / `artifact_edit_count`. Read-only against the
+user's files. `GET /analytics/handover?days=30` (admin-only, `admin_ro`) aggregates it for the Analytics
+tab's Handover section: decks/opened/edited/edit-rate/median-minutes-to-first-edit tiles, edits by layout,
+edits by event, and a recent-decks table with deck links.
 
 ## Evaluation & user-journey tests
 

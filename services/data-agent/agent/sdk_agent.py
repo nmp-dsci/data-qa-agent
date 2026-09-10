@@ -43,6 +43,7 @@ from .knowledge import knowledge_version
 from .memory import recall_memories
 from .ordinals import ordinals_snapshot_hash
 from .otlp import agent_span
+from .pack import PackSpec, load_pack, pack_path, pack_to_catalogue
 from .pages import compose_pages, page_plan, planned_kinds
 from .report import select_primary_query
 from .sandbox_agent import (
@@ -138,12 +139,21 @@ class _SdkDeps(_SbDeps):
     # reaches the visualisation phase (or forever, if export is off).
     deck: Any = None
     slide_calls: int = 0
+    # s48: the run's identity, so the deck can stamp its footer and its Drive
+    # appProperties without the tools having to be re-plumbed a run context.
+    run_id: str = ""
+    question: str = ""
+    # frame name -> the extract that produced it, so a slide can name its query
+    # in the manifest (the Sources & SQL slide is built from these).
+    frame_refs: dict[str, str] = field(default_factory=dict)
     # Set when a tool blows its budget past the courtesy STOP. The message loop
     # checks it after every message and closes the query — the SDK has no
     # exception channel back into the model's loop, so this is how the
     # champion's SandboxBudgetExhausted hard stop is reproduced.
     abort_reason: str | None = None
     knowledge_denials: int = 0
+    # s48 §7: the deck's version-1 snapshot, taken by the builder at finish().
+    deck_baseline: dict[str, Any] = field(default_factory=dict)
     hook_events: list[dict[str, Any]] = field(default_factory=list)
 
     def after_frame(self, name: str, frame: Any) -> None:
@@ -155,6 +165,8 @@ class _SdkDeps(_SbDeps):
         """
         if self.ws is None:
             return
+        if self.queries:
+            self.frame_refs[name] = list(self.queries)[-1]
         safe = _UNSAFE_FRAME_CHARS.sub("_", name) or "frame"
         try:
             frames_dir = self.ws / "frames"
@@ -223,7 +235,9 @@ TOOL_DESCRIPTIONS = {
         "picture. `headline` is the slide title; `commentary` is one or two "
         "sentences on what the numbers mean, not what they show. Use `columns` "
         "to pick and order which of the frame's columns to plot; the first is "
-        "the x axis / label column."
+        "the x axis / label column. On a KPI layout, `kpi` is the number itself "
+        "and the optional `kpi_label` says what it measures (e.g. 'median sale "
+        "price'). The footer and the source line are filled in for you."
     ),
 }
 
@@ -247,6 +261,7 @@ TOOL_SCHEMAS = {
             "headline": {"type": "string"},
             "commentary": {"type": "string"},
             "kpi": {"type": "string"},
+            "kpi_label": {"type": "string"},
             "frame": {"type": "string"},
             "columns": {"type": "array", "items": {"type": "string"}},
             "chart_type": {
@@ -259,6 +274,18 @@ TOOL_SCHEMAS = {
 }
 
 
+# The first schema-qualified relation a query reads — what the deck's `source`
+# line and the Sources & SQL slide name. A regex, not sqlglot: this is a label
+# on a slide, and the guardrail that actually decides what may be read has
+# already run by the time a slide is built.
+_MART_RE = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*)", re.IGNORECASE)
+
+
+def mart_of(sql: str) -> str:
+    match = _MART_RE.search(sql or "")
+    return match.group(1) if match else ""
+
+
 @dataclass
 class DeckContext:
     """Everything the deck tools need that is not per-call state."""
@@ -266,6 +293,9 @@ class DeckContext:
     client: GoogleClient
     catalogue: tuple[Layout, ...]
     template_id: str
+    # s48: present when packs/<PACK_NAME>/pack.json was loaded; None = the s46
+    # built-in catalogue, which builds slides from predefined layouts instead.
+    pack: PackSpec | None = None
 
 
 # Cap rows written per slide. The marts are pre-aggregated, so a legitimate
@@ -406,7 +436,18 @@ def build_tool_server(
         if deps.deck is not None:
             return _text("The deck is already open — go straight to add_slide.")
         title = str(args.get("title") or "").strip() or "Analysis"
-        builder = DeckBuilder(client=deck_ctx.client, catalogue=deck_ctx.catalogue, title=title)
+        pack = deck_ctx.pack
+        builder = DeckBuilder(
+            client=deck_ctx.client,
+            catalogue=deck_ctx.catalogue,
+            title=title,
+            run_id=deps.run_id,
+            question=deps.question,
+            pack_name=pack.name if pack else "",
+            pack_version=pack.version if pack else 0,
+            pack_sheet_id=pack.sheet_id if pack else "",
+            table_templates=dict(pack.table_templates) if pack else {},
+        )
         try:
             await builder.start(deck_ctx.template_id)
         except Exception as exc:  # noqa: BLE001 — surfaced to the model to react to
@@ -470,16 +511,20 @@ def build_tool_server(
                 )
 
         deps.slide_calls += 1
+        query_ref = deps.frame_refs.get(frame_name, "")
         try:
             record = await builder.add_slide(
                 layout=layout,
                 headline=str(args.get("headline") or "").strip(),
                 commentary=str(args.get("commentary") or "").strip(),
                 kpi=str(args.get("kpi") or "").strip(),
+                kpi_label=str(args.get("kpi_label") or "").strip(),
                 columns=columns,
                 rows=rows,
                 chart_type=str(args.get("chart_type") or "") or None,
                 tab_name=frame_name,
+                query_ref=query_ref,
+                mart=mart_of(deps.queries.get(query_ref, {}).get("sql", "")),
             )
         except Exception as exc:  # noqa: BLE001 — the model can retry a slide
             return _text(f"Slide not added: {exc}", is_error=True)
@@ -784,7 +829,7 @@ async def answer_with_sdk(
     """
     sdk = _load_sdk()
     rid = run_id or uuid.uuid4().hex
-    deps = _SdkDeps(user_id=user_id, progress=progress, user_plan=plan)
+    deps = _SdkDeps(user_id=user_id, progress=progress, user_plan=plan, question=question)
     trace: SdkTrace | None = None
     # The sync fingerprint (no DB read) so the span's identity always matches
     # exactly what /agent/version returns and what backend-api resolves to an
@@ -809,6 +854,7 @@ async def answer_with_sdk(
             # emitted BEFORE any model work, so the frontend draws its ghost slots
             # while the CLI is still spawning.
             plan_slots = page_plan(plan=plan)
+            deps.run_id = rid
             deps.page_indexes = {
                 s["kind"]: s["index"] for s in plan_slots if s["status"] != "locked"
             }
@@ -866,6 +912,7 @@ async def answer_with_sdk(
                     env=cli_env(),
                 )
                 await _drive(sdk, options, question, deps, trace)
+                await _finish_deck(deps)
                 await _publish_deck(deps)
 
             result = _assemble(deps, trace, question, plan)
@@ -903,6 +950,7 @@ async def answer_with_sdk(
 # stays one batch per slide rather than paying a discovery call every question.
 _deck_client: GoogleClient | None = None
 _catalogue_cache: dict[str, tuple[Layout, ...]] = {}
+_pack_catalogue_cache: dict[str, tuple[Layout, ...]] = {}
 
 
 async def _build_deck_context() -> DeckContext | None:
@@ -918,6 +966,21 @@ async def _build_deck_context() -> DeckContext | None:
     if _deck_client is None:
         _deck_client = GoogleClient()
     template_id = settings.google_slides_template_id
+    # s48: a synced template pack wins. It is a repo file, so this costs no
+    # round trip — and it is the ONLY way a curator's `use_when` sentences and
+    # slot geometry reach the agent.
+    pack = load_pack(pack_path(settings.pack_dir, settings.pack_name))
+    if pack is not None and pack.slides_id:
+        catalogue = _pack_catalogue_cache.get(pack.slides_id)
+        if catalogue is None:
+            catalogue = pack_to_catalogue(pack)
+            _pack_catalogue_cache[pack.slides_id] = catalogue
+        return DeckContext(
+            client=_deck_client,
+            catalogue=catalogue,
+            template_id=pack.slides_id,
+            pack=pack,
+        )
     catalogue = _catalogue_cache.get(template_id)
     if catalogue is None:
         try:
@@ -927,6 +990,35 @@ async def _build_deck_context() -> DeckContext | None:
             catalogue = DEFAULT_CATALOGUE
         _catalogue_cache[template_id] = catalogue
     return DeckContext(client=_deck_client, catalogue=catalogue, template_id=template_id)
+
+
+def _deck_sources(deps: _SdkDeps) -> list[dict[str, Any]]:
+    """Every extract this run made, for the auto-appended Sources & SQL slide."""
+    return [
+        {
+            "ref": ref,
+            "mart": mart_of(str(q.get("sql") or "")),
+            "rows": int(q.get("row_count") or 0),
+            "sql": str(q.get("sql") or ""),
+        }
+        for ref, q in deps.queries.items()
+    ]
+
+
+async def _finish_deck(deps: _SdkDeps) -> None:
+    """Close the deck: Sources & SQL, clear the library slides, write the Sheet.
+
+    The version-1 baseline snapshot comes back from here and rides on the
+    artifact, so the change-log workstream stores what the builder saw rather
+    than re-reading a deck that may already have been edited.
+    """
+    builder = deps.deck
+    if builder is None:
+        return
+    try:
+        deps.deck_baseline = await builder.finish(_deck_sources(deps))
+    except Exception as exc:  # noqa: BLE001 — an unfinished deck is still a deck
+        print(f"[data-agent] deck finish failed ({exc}); the slides are still there")
 
 
 async def _publish_deck(deps: _SdkDeps) -> None:
@@ -1040,9 +1132,24 @@ def _assemble(deps: _SdkDeps, trace: SdkTrace, question: str, plan: str) -> dict
         # s46: the Sheets/Slides artifact this run produced, or None when deck
         # export is off. Carried alongside the report rather than inside it, so
         # backend-api can persist the URLs without reshaping the report.
-        "artifact": deps.deck.manifest() if deps.deck is not None else None,
+        "artifact": _artifact(deps),
         **usage,
     }
+
+
+def _artifact(deps: _SdkDeps) -> dict[str, Any] | None:
+    """The run's Sheets/Slides artifact, or None when deck export is off.
+
+    ``baseline`` is the §7 version-1 snapshot: carried on the artifact rather
+    than written from here, so this module never grows a database dependency and
+    the change-log workstream owns the storage.
+    """
+    if deps.deck is None:
+        return None
+    manifest = dict(deps.deck.manifest())
+    if deps.deck_baseline:
+        manifest["baseline"] = deps.deck_baseline
+    return manifest
 
 
 def _knowledge_used(deps: _SdkDeps, trace: SdkTrace) -> list[str]:

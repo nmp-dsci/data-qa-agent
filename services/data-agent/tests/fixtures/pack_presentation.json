@@ -1,0 +1,1133 @@
+{
+ "presentationId": "1A-4SLXcoMfxWzKoKZhfnUEVKC2KXaq6G9Jhk2tfvwRo",
+ "pageSize": {
+  "width": {
+   "magnitude": 9144000,
+   "unit": "EMU"
+  },
+  "height": {
+   "magnitude": 5143500,
+   "unit": "EMU"
+  }
+ },
+ "slides": [
+  {
+   "objectId": "lib_L1",
+   "pageElements": [
+    {
+     "objectId": "L1_headline",
+     "title": "headline",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.6213,
+      "scaleY": 0.3353,
+      "translateX": 640080,
+      "translateY": 1874518.9999999998,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "The answer in one line\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L1_subtitle",
+     "title": "subtitle",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.6213,
+      "scaleY": 0.1829,
+      "translateX": 640080,
+      "translateY": 2926080,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "The question this deck answers\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L1_footer",
+     "title": "footer",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.524,
+      "scaleY": 0.0914,
+      "translateX": 457200,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Data Pilot\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L1_slide_id",
+     "title": "slide_id",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.1219,
+      "scaleY": 0.061,
+      "translateX": 8732520,
+      "translateY": 18288,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "L1\n"
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "objectId": "lib_L2",
+   "pageElements": [
+    {
+     "objectId": "L2_headline",
+     "title": "headline",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.2286,
+      "translateX": 457200,
+      "translateY": 292608,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "The finding, stated as a sentence\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L2_chart",
+     "title": "chart",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.9449,
+      "translateX": 457200,
+      "translateY": 1143000,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "[chart]\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L2_commentary",
+     "title": "commentary",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.1676,
+      "translateX": 457200,
+      "translateY": 4114800,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "What it means, in one or two sentences.\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L2_source",
+     "title": "source",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.1887,
+      "scaleY": 0.0914,
+      "translateX": 5120640,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Source: \u2014\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L2_footer",
+     "title": "footer",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.524,
+      "scaleY": 0.0914,
+      "translateX": 457200,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Data Pilot\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L2_slide_id",
+     "title": "slide_id",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.1219,
+      "scaleY": 0.061,
+      "translateX": 8732520,
+      "translateY": 18288,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "L2\n"
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "objectId": "lib_L3",
+   "pageElements": [
+    {
+     "objectId": "L3_headline",
+     "title": "headline",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.2286,
+      "translateX": 457200,
+      "translateY": 292608,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "The finding, stated as a sentence\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L3_kpi",
+     "title": "kpi",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.7163,
+      "scaleY": 0.2743,
+      "translateX": 457200,
+      "translateY": 1188720,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "$1.25m\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L3_kpi_label",
+     "title": "kpi_label",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.7163,
+      "scaleY": 0.1372,
+      "translateX": 457200,
+      "translateY": 2011680,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "median sale price\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L3_commentary",
+     "title": "commentary",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.7163,
+      "scaleY": 0.4877,
+      "translateX": 457200,
+      "translateY": 2514600,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "What it means, in one or two sentences.\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L3_chart",
+     "title": "chart",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.9355,
+      "scaleY": 0.9449,
+      "translateX": 2880360,
+      "translateY": 1143000,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "[chart]\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L3_source",
+     "title": "source",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.1887,
+      "scaleY": 0.0914,
+      "translateX": 5120640,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Source: \u2014\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L3_footer",
+     "title": "footer",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.524,
+      "scaleY": 0.0914,
+      "translateX": 457200,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Data Pilot\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L3_slide_id",
+     "title": "slide_id",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.1219,
+      "scaleY": 0.061,
+      "translateX": 8732520,
+      "translateY": 18288,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "L3\n"
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "objectId": "lib_L4",
+   "pageElements": [
+    {
+     "objectId": "L4_headline",
+     "title": "headline",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.2286,
+      "translateX": 457200,
+      "translateY": 292608,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "The finding, stated as a sentence\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L4_chart",
+     "title": "chart",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.9449,
+      "translateX": 457200,
+      "translateY": 1143000,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "[chart]\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L4_commentary",
+     "title": "commentary",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.1676,
+      "translateX": 457200,
+      "translateY": 4114800,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "What it means, in one or two sentences.\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L4_source",
+     "title": "source",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.1887,
+      "scaleY": 0.0914,
+      "translateX": 5120640,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Source: \u2014\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L4_footer",
+     "title": "footer",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.524,
+      "scaleY": 0.0914,
+      "translateX": 457200,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Data Pilot\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L4_slide_id",
+     "title": "slide_id",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.1219,
+      "scaleY": 0.061,
+      "translateX": 8732520,
+      "translateY": 18288,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "L4\n"
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "objectId": "lib_L6",
+   "pageElements": [
+    {
+     "objectId": "L6_headline",
+     "title": "headline",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.2286,
+      "translateX": 457200,
+      "translateY": 292608,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "The finding, stated as a sentence\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L6_table",
+     "title": "table",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.9449,
+      "translateX": 457200,
+      "translateY": 1143000,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "[table]\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L6_commentary",
+     "title": "commentary",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.1676,
+      "translateX": 457200,
+      "translateY": 4114800,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "What it means, in one or two sentences.\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L6_source",
+     "title": "source",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.1887,
+      "scaleY": 0.0914,
+      "translateX": 5120640,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Source: \u2014\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L6_footer",
+     "title": "footer",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.524,
+      "scaleY": 0.0914,
+      "translateX": 457200,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Data Pilot\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L6_slide_id",
+     "title": "slide_id",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.1219,
+      "scaleY": 0.061,
+      "translateX": 8732520,
+      "translateY": 18288,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "L6\n"
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "objectId": "lib_L9",
+   "pageElements": [
+    {
+     "objectId": "L9_headline",
+     "title": "headline",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 0.2286,
+      "translateX": 457200,
+      "translateY": 292608,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Sources & SQL\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L9_table",
+     "title": "table",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 2.7432,
+      "scaleY": 1.1278,
+      "translateX": 457200,
+      "translateY": 1143000,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "[table]\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L9_footer",
+     "title": "footer",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 1.524,
+      "scaleY": 0.0914,
+      "translateX": 457200,
+      "translateY": 4681728,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "Data Pilot\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "objectId": "L9_slide_id",
+     "title": "slide_id",
+     "size": {
+      "width": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      },
+      "height": {
+       "magnitude": 3000000,
+       "unit": "EMU"
+      }
+     },
+     "transform": {
+      "scaleX": 0.1219,
+      "scaleY": 0.061,
+      "translateX": 8732520,
+      "translateY": 18288,
+      "unit": "EMU"
+     },
+     "shape": {
+      "text": {
+       "textElements": [
+        {
+         "textRun": {
+          "content": "L9\n"
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -435,6 +435,32 @@ server (s43): `make up` exports them to `OTLP_ENDPOINT=http://mlflow:5000` tagge
 and the `data-qa-agent` registry (@champion/@challenger) in one UI — no external account needed. Set
 `LOGFIRE_TOKEN` to *also* ship to Logfire Cloud; exporters are additive.
 
+### Template packs (the deck's design)
+
+The Slides deck the agent produces is built from a **template pack** — two Google files a curator edits by
+hand, plus a synced snapshot in the repo:
+
+| Piece | Where | Who edits |
+|---|---|---|
+| `Pack.slides` | Drive: `Data Pilot/packs/<name>-v<n>/` | curator, in Google Slides — one *library slide* per layout; a shape's **alt-text title** (`headline`, `chart`, `commentary`, …) is what makes it a slot |
+| `Pack.sheet` | same folder | curator, in Google Sheets — the `_pack` catalogue tab (which layouts exist and when to use each) plus `tpl_*` tabs whose hand-styled charts the builder clones |
+| `packs/<name>/pack.json` | this repo | `scripts/pack_sync.py` only — the snapshot the runtime reads; never edit it by hand |
+
+```bash
+make pack-scaffold    # create both Google files, write the two ids into .env, then sync
+make pack-sync        # re-read a curator's edits into packs/<name>/pack.json
+make pack-sync ARGS=--check   # CI-friendly: non-zero if pack.json is stale
+```
+
+`PACK_NAME` (default `nsw-property`) picks the pack; `PACK_DIR` says where the snapshots live (the container
+gets `./packs` mounted read-only). With no pack.json — or with `GOOGLE_SHEET_TEMPLATE_ID` unset — the agent
+falls back to the built-in catalogue and builds slides from predefined Slides layouts exactly as before.
+
+Each run then gets one Sheet with `Data` (a named Sheets **Table** per slide, typed from `units.py`, with the
+slide's chart anchored beside it), `Manifest` (one row per slide: layout, table, range, chart id, query, mart,
+slide link) and `README` tabs — and a deck whose last slide is an auto-appended **Sources & SQL** listing every
+query the answer rests on.
+
 ## Troubleshooting
 
 - **Port already in use** — the dev DB uses host port **5434** (5432/5433 were taken by other local

@@ -19,7 +19,7 @@ from ..agent_version import current_agent_version_id
 from ..auth import CurrentUser, get_current_user
 from ..channel import get_channel
 from ..config import settings
-from ..db import jsonable, rls_connection
+from ..db import admin_ro_connection, jsonable, rls_connection
 from ..limits import check_daily_llm_cap, check_demo_ip_rate
 from ..scrub import scrub_text
 from ..tracing import current_trace_id
@@ -251,9 +251,16 @@ async def _persist_answer(
     # restores the deck the same way it used to restore pages. messages.report
     # is already the jsonb that history reads back, so this needs no new column
     # — query_runs keeps its own flat URL columns for the audit/ops path.
+    #
+    # s48 §7: ``artifact.baseline`` (when present) is the version-1 snapshot
+    # the change-log differ needs — it belongs in app.artifact_snapshots, not
+    # duplicated into every reload of this conversation, so it's stripped
+    # before folding and persisted separately below once run_id exists.
     artifact = result.get("artifact")
+    baseline = artifact.get("baseline") if isinstance(artifact, dict) else None
     if artifact and isinstance(report, dict):
-        report = {**report, "artifact": artifact}
+        artifact_for_report = {k: v for k, v in artifact.items() if k != "baseline"}
+        report = {**report, "artifact": artifact_for_report}
     async with rls_connection(user.id) as conn:
         message_id = str(
             (
@@ -360,7 +367,59 @@ async def _persist_answer(
                 "security_denied",
                 {"surface": "chat", "reason": str(result.get("error"))[:200]},
             )
+    if baseline:
+        await _persist_artifact_baseline(run_id, artifact or {}, baseline)
     return message_id, run_id
+
+
+async def _persist_artifact_baseline(
+    run_id: str, artifact: dict[str, Any], baseline: dict[str, Any]
+) -> None:
+    """The §7 version-1 row(s) in app.artifact_snapshots, one per kind the
+    baseline carries (``deck``/``sheet``).
+
+    The builder only ever hands back the normalised snapshot, not a Drive
+    ``version`` (that would mean the deck-build path taking on a Google round
+    trip it doesn't otherwise need) — so this always writes ``drive_version =
+    1``, which is what a freshly built deck's Drive revision actually is. The
+    poller (``scripts/handover_poll.py``) then diffs against whatever this
+    inserts as the latest snapshot, and only falls back to reconstructing a
+    baseline from the manifest for pre-existing runs that predate this write.
+    ``modified_time`` isn't in the baseline either (same reason) — ``now()`` is
+    the moment the deck was actually finished, close enough for a value that
+    only orders snapshots, never diffs against itself.
+
+    Uses ``admin_ro_connection`` rather than ``rls_connection``: migration 0038
+    grants the ``admin_ro`` role INSERT on exactly these two columns' worth of
+    tables (see its docstring) for this one write path, the same role the
+    poller itself writes through — RLS has no policy for artifact_snapshots at
+    all, so a normal user connection couldn't write this row regardless.
+    Best-effort: a failure here must not fail the answer that already
+    persisted.
+    """
+    file_ids = {
+        "deck": str(artifact.get("presentation_id") or ""),
+        "sheet": str(artifact.get("spreadsheet_id") or ""),
+    }
+    try:
+        async with admin_ro_connection() as conn:
+            async with conn.begin():
+                for kind in ("deck", "sheet"):
+                    snapshot = baseline.get(kind)
+                    file_id = file_ids[kind]
+                    if not snapshot or not file_id:
+                        continue
+                    await conn.execute(
+                        text(
+                            "INSERT INTO app.artifact_snapshots "
+                            "(run_id, kind, file_id, drive_version, modified_time, snapshot) "
+                            "VALUES (:rid, :kind, :fid, 1, now(), CAST(:snap AS jsonb)) "
+                            "ON CONFLICT (run_id, kind, drive_version) DO NOTHING"
+                        ),
+                        {"rid": run_id, "kind": kind, "fid": file_id, "snap": _json(snapshot)},
+                    )
+    except Exception as exc:  # noqa: BLE001 — the baseline write is best-effort
+        print(f"[backend-api] artifact baseline persist failed for run {run_id}: {exc}")
 
 
 async def _retitle_conversation(user: CurrentUser, conversation_id: str, question: str) -> None:

@@ -7,8 +7,9 @@
 // they are the subject of the data, never its audience.
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { AnalyticsSummary, getAnalyticsSummary } from "../../lib/api";
+import { AnalyticsSummary, getAnalyticsSummary, getHandoverAnalytics } from "../../lib/api";
 import { HudBox } from "../../ui/flightdeck";
+import { SimpleTable } from "../../ui/SimpleTable";
 
 const WINDOWS = [7, 14, 30] as const;
 
@@ -188,6 +189,123 @@ export function AnalyticsPage() {
           </table>
         </div>
       </section>
+
+      <HandoverSection days={days} />
     </main>
+  );
+}
+
+// s48 §7 — what happened to a deck after we handed it over. A separate query
+// (own window control off — it follows the page's days selector, but degrades
+// independently: no decks yet is a normal empty state, not a page error).
+function minutesLabel(mins: number | null): string {
+  if (mins == null) return "—";
+  if (mins < 60) return `${Math.round(mins)}m`;
+  if (mins < 1440) return `${Math.round(mins / 60)}h`;
+  return `${Math.round(mins / 1440)}d`;
+}
+
+function HandoverSection({ days }: { days: number }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["analytics-handover", days],
+    queryFn: () => getHandoverAnalytics(days),
+    refetchInterval: 60_000,
+  });
+
+  return (
+    <section className="ops-section">
+      <div className="ops-section-label">Handover — decks after they leave the app</div>
+      {isLoading && <div className="skel" style={{ height: 120 }} />}
+      {error && !isLoading && (
+        <p className="error">Could not load handover analytics: {(error as Error).message}</p>
+      )}
+      {data && !data.decks && (
+        <p className="ops-note">
+          No decks in the last {data.days} days yet — ask a question that produces one, then give
+          the poller (<code>make handover-poll</code>) a pass.
+        </p>
+      )}
+      {data && data.decks > 0 && (
+        <>
+          <div className="ops-grid">
+            <HudBox label={`decks · ${data.days}d`} value={data.decks} lit>
+              <div className="ops-tile-sub">handed over as a Slides deck</div>
+            </HudBox>
+            <HudBox label="opened" value={data.opened}>
+              <div className="ops-tile-sub">{pctOf(data.opened, data.decks)} of decks</div>
+            </HudBox>
+            <HudBox label="edited" value={data.edited}>
+              <div className="ops-tile-sub">
+                {data.edit_rate != null ? `${Math.round(data.edit_rate * 100)}%` : "—"} edit rate
+              </div>
+            </HudBox>
+            <HudBox label="time to first edit" value={minutesLabel(data.median_minutes_to_first_edit)}>
+              <div className="ops-tile-sub">median, among edited decks</div>
+            </HudBox>
+          </div>
+
+          <div className="ops-section" style={{ marginTop: 16 }}>
+            <div className="ops-section-label">Edits by layout</div>
+            <SimpleTable
+              columns={[
+                { key: "layout_id", label: "Layout" },
+                { key: "decks", label: "Decks", align: "right" },
+                { key: "edits", label: "Edits", align: "right" },
+                { key: "headline_edits", label: "Headline edits", align: "right" },
+                { key: "chart_edits", label: "Chart edits", align: "right" },
+              ]}
+              rows={data.edits_by_layout}
+            />
+          </div>
+
+          <div className="ops-section" style={{ marginTop: 16 }}>
+            <div className="ops-section-label">Edits by event</div>
+            <SimpleTable
+              columns={[
+                { key: "event", label: "Event" },
+                { key: "edits", label: "Edits", align: "right" },
+              ]}
+              rows={data.edits_by_event}
+            />
+          </div>
+
+          <div className="ops-section" style={{ marginTop: 16 }}>
+            <div className="ops-section-label">Recent decks</div>
+            {/* Hand-rolled, not SimpleTable: SimpleTable stringifies every cell, and
+                this is the one table that needs an actual link, not text. */}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Question</th>
+                    <th>Deck</th>
+                    <th>Edits</th>
+                    <th>Last edit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.recent.map((r) => (
+                    <tr key={r.run_id}>
+                      <td>{r.question ?? "—"}</td>
+                      <td>
+                        {r.deck_url ? (
+                          <a href={r.deck_url} target="_blank" rel="noreferrer">
+                            open deck
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{r.edits}</td>
+                      <td>{r.last_edit_at ? timeAgo(r.last_edit_at) : "never"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
   );
 }

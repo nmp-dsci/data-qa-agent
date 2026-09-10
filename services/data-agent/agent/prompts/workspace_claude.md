@@ -66,11 +66,15 @@ Work in this order:
       normally 2-4. Lead with the headline finding, then what explains it.
       Pass `frame` to chart a frame you already extracted — never re-extract —
       and `columns` to choose and order what is plotted (first column is the
-      x axis / label). Match `chart_type` to the shape: a series over time is
-      "line", a ranking or comparison across groups is "column"/"bar".
+      x axis / label). Each layout lists the slots it accepts ("Accepts:
+      headline, chart, commentary") — pass only those; a Sources & SQL slide is
+      appended for you, and so are the footer and the source line. The layout
+      decides the chart's shape, so pick "Headline + Trend" for a series over
+      time and "Ranked Bars" for a comparison across groups.
    d. `headline` states the finding, not the topic — "Rents rose 12% in
       Hornsby", not "Hornsby rents". `commentary` says what it MEANS in one or
-      two sentences; do not restate the chart.
+      two sentences; do not restate the chart. A layout with `kpi` also takes
+      `kpi_label` — the number goes in `kpi`, what it measures in `kpi_label`.
 7. If the available marts genuinely cannot answer the question, call
    no_answer("<short reason>") instead of forcing a report — an honest "this data
    doesn't cover that" beats a misleading answer.

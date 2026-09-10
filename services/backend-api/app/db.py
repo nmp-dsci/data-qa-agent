@@ -85,14 +85,23 @@ admin_ro_engine = create_async_engine(
 async def admin_ro_connection() -> AsyncIterator[AsyncConnection]:
     """Yield a read-only, RLS-bypassing connection for cross-user aggregates.
 
-    SELECT-only by role grant, so nothing reached through here can write —
-    including by accident. Reserved for the small, deliberate set of surfaces
-    that legitimately need to see across every user (the ops rollup refresh,
-    the admin-only Analytics summary): every ordinary user-facing read stays
-    on rls_connection so isolation is enforced by the database as usual. Any
-    new caller of this connection must sit behind require_admin (never a
-    demo-mode bypass) — this is the one connection where RLS isn't the
-    backstop.
+    SELECT-only by role grant for reads, so nothing reached through here can
+    read across users by accident. Reserved for the small, deliberate set of
+    surfaces that legitimately need to see across every user (the ops rollup
+    refresh, the admin-only Analytics summary): every ordinary user-facing
+    read stays on rls_connection so isolation is enforced by the database as
+    usual. Any new caller that *reads* through this connection must sit behind
+    require_admin (never a demo-mode bypass) — this is the one connection
+    where RLS isn't the backstop.
+
+    One narrow exception since migration 0038: this role also has INSERT on
+    app.artifact_snapshots/app.artifact_edits and UPDATE on three
+    app.query_runs columns — grants scoped to exactly those tables/columns for
+    the handover poller and the /ask artifact-baseline write (routers/ask.py),
+    neither of which needs RLS bypass to see other users' data, only to write
+    a row the requesting user's own RLS policy doesn't grant INSERT on. That
+    write path does not need require_admin: it writes only the current
+    request's own run_id, nothing cross-user.
     """
     async with admin_ro_engine.connect() as conn:
         yield conn

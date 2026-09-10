@@ -69,3 +69,44 @@ cases:
         ),
         main_table=ranked[["postcode", "avg_rent_then", "avg_rent_now", "rent_growth_pct"]],
     )
+- case_key: nsw_rent-median-weekly-rent-2br-units-postcode-2077-latest-month-s48a1
+  question: What was the median weekly rent for 2-bedroom units in postcode 2077 in the latest month?
+  dataset: nsw_rent
+  tier: T1
+  as_user: user1
+  holdout: false
+  origin_env: dev
+  authoring_status: ready
+  expectation: The single most recent month's median weekly rent for 2-bedroom units in postcode
+    2077, as a scalar KPI (718 as at 2026-05-01, verified against the live mart).
+  tags:
+  - s48-gate
+  - shape:scalar
+  grader:
+    kind: scalar
+    tolerance_pct: 1.0
+    expect_chart: true
+    min_slides: 2
+  golden_sql: |
+    SELECT median_weekly_rent
+    FROM marts.property_rent
+    WHERE postcode = '2077' AND property_type = 'unit' AND bedroom_band = '2'
+      AND month = (
+        SELECT max(month) FROM marts.property_rent
+        WHERE postcode = '2077' AND property_type = 'unit' AND bedroom_band = '2'
+      )
+  golden_sandbox: |
+    latest = skills.latest_value(df, month_col="month", value_col="median_weekly_rent")
+    result = skills.build_report(
+        summary=(
+            f"2-bedroom units in postcode 2077 had a median weekly rent of "
+            f"**${latest['value']:,.0f}** as at {latest['month']}."
+        ),
+        headlines=[
+            {"label": "Median Weekly Rent", "value": f"${latest['value']:,.0f}", "basis": latest["month"]},
+        ],
+        main_chart=skills.trend_chart(
+            skills.trend_series(df, month_col="month", value_col="median_weekly_rent"),
+            title="2BR Unit Median Weekly Rent — Postcode 2077",
+        ),
+    )

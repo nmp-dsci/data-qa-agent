@@ -122,6 +122,7 @@ services:
       # runs' Traces tab empty. Ids come from `make mlflow-init` output; on a
       # store initialised before s50 data-qa/evals is id 2.
       MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-2}
+      MLFLOW_EVALS_EXPERIMENT_ID: ${MLFLOW_EVALS_EXPERIMENT_ID:-2}
       # s35: Slack's workspace signing secret, used to verify X-Slack-Signature.
       # A fixed dev value so the signature path is exercisable locally without a
       # real workspace; empty CLOSES the Slack endpoint (404), which is the

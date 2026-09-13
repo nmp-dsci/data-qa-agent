@@ -216,7 +216,7 @@ a.ext{color:var(--accent-2);text-decoration:none;border-bottom:1px dotted var(--
   <div class="stat good"><div class="v">PR #42</div><div class="l">optimiser draft PR, test-gated</div></div>
 </div>
 <nav class="toc">
-  <a href="#walk">1 · Walkthrough</a><a href="#trace">2 · Tracing</a><a href="#depth">2b · Depth</a><a href="#settings">2c · Settings</a><a href="#golden">3 · Goldens + judge</a><a href="#gate">4 · Champion vs challenger</a><a href="#version">5 · Version control</a><a href="#kb">6 · Knowledge curator</a><a href="#opt">7 · Optimiser</a><a href="#delivered">8 · What shipped</a><a href="#next">9 · What to review</a>
+  <a href="#walk">1 · Walkthrough</a><a href="#trace">2 · Tracing</a><a href="#depth">2b · Depth</a><a href="#settings">2c · Settings</a><a href="#mlflow-fix">2d · MLflow</a><a href="#golden">3 · Goldens + judge</a><a href="#gate">4 · Champion vs challenger</a><a href="#version">5 · Version control</a><a href="#kb">6 · Knowledge curator</a><a href="#opt">7 · Optimiser</a><a href="#delivered">8 · What shipped</a><a href="#next">9 · What to review</a>
 </nav>
 <div class="thesis"><div class="k">Verdict</div><p>The loop is <strong>fully tracked, judged against goldens, versioned and rewindable</strong>, and champion vs challenger promotion works on two goldens. The optimiser first declined to open a PR because its candidate failed the golden checkpoint test, then, once the checkpoint was corrected, opened <a class="ext" href="https://github.com/nmp-dsci/data-qa-agent/pull/42">draft PR #42</a> with a tested <code>period_metric</code> helper. Both behaviours are the D4 guarantee working.</p></div>
 </header>
@@ -255,6 +255,16 @@ a.ext{color:var(--accent-2);text-decoration:none;border-bottom:1px dotted var(--
 <section id="settings">
 <div class="sec-head"><h2>2c · Settings tab</h2><h3>Preferences feature dropped, live agent shown</h3></div>
 <div class="shot"><img src="s50_shot_settings.jpg" alt="Settings tab"><div class="cap"><b>Settings.</b> Remembered preferences are gone from the tab, the API and the agent (the <code>remember</code> tool and prompt slot are removed, which moved the fingerprint to <code>av-35a3adc47556</code>). The stale Model provider block is replaced by the live runtime, champion status, model and fingerprint. The <code>app.user_memories</code> table is left in place for now.</div></div>
+</section>
+
+
+<section id="mlflow-fix">
+<div class="sec-head"><h2>2d · MLflow traces</h2><h3>Added after your review: traces beside the eval runs, noise gone</h3></div>
+<div class="grid g2">
+<div class="shot"><img src="s50_shot_mlflow_evals_traces.jpg" alt="MLflow evals experiment traces tab"><div class="cap"><b>data-qa/evals → Traces.</b> Agent traces now land in the same experiment as the eval runs. The store had 282,699 root spans of which 57 were chat asks; the rest were health, metrics and preflight scrapes. A head sampler in both services drops those at the root, and the stored noise was purged (831 MB → 41 MB, backup kept).</div></div>
+<div class="shot"><img src="s50_shot_mlflow_run_traces.jpg" alt="MLflow case run traces tab"><div class="cap"><b>Case run → Traces.</b> The eval runner links each case's trace to its MLflow case run and to the pack-level eval run, so the waterfall is one click from the run. MLflow cannot link across experiments, which is why traces moved.</div></div>
+</div>
+<div class="note n-warn"><p><strong>A grader bug surfaced while verifying.</strong> One rerun scored G1 = 0 on a deck whose KPI said $699 (0.3% off the golden): the agent's extract happened not to carry the golden's <code>avg_weekly_rent</code> column, and the deck-KPI path was skipped because the prose label "avg weekly rent, 3-bed houses…" did not equal the column name. The matcher now accepts a label whose leading tokens spell the column, and uses a lone KPI slide when nothing else disambiguates. Rerun: G1 = 1.0 via <code>manifest_kpi</code>.</p></div>
 </section>
 
 <section id="golden">

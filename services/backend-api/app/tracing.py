@@ -36,6 +36,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from .config import settings
+from .trace_sampling import noise_sampler
 
 log = logging.getLogger("uvicorn.error")
 
@@ -72,6 +73,9 @@ def configure() -> None:
             service_name="backend-api",
             send_to_logfire="if-token-present",
             additional_span_processors=_otlp_processors(),
+            # s50: head-sample away healthcheck/scrape/preflight roots so the
+            # MLflow experiment holds agent work, not 140k ``GET /health``.
+            sampling=logfire.SamplingOptions(head=noise_sampler()),
         )
         # capture_all is deliberately off: the outbound calls this service makes
         # carry whole questions and answers, and a span attribute is a copy of

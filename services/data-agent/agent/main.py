@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .otlp import agent_span, otlp_processors
+from .trace_sampling import noise_sampler
 
 # Configured before importing sandbox_agent: agent_common (pulled in by that
 # module) instruments pydantic-ai/httpx at import time, which needs
@@ -24,6 +25,8 @@ logfire.configure(
     send_to_logfire="if-token-present",
     # s37: also export to a self-hosted collector when OTLP_ENDPOINT is set.
     additional_span_processors=otlp_processors(),
+    # s50: drop healthcheck/preflight roots at the head (see trace_sampling).
+    sampling=logfire.SamplingOptions(head=noise_sampler()),
 )
 
 # M5 (architecture tab): only sdk_agent's own tool-metadata constants are read

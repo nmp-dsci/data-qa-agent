@@ -423,7 +423,8 @@ an offline heuristic. Retitle pre-existing conversations with
 Every agent run is traced with the **Logfire SDK** (an OpenTelemetry SDK) — tool calls, model requests, and
 (with `capture_all=True`) the raw HTTP payloads sent to the provider. Spans land in the self-hosted **MLflow**
 server (s43): `make up` exports them to `OTLP_ENDPOINT=http://mlflow:5000` tagged with
-`MLFLOW_TRACE_EXPERIMENT_ID`, so http://localhost:5500 shows span waterfalls, token/cost aggregates, eval runs
+`MLFLOW_TRACE_EXPERIMENT_ID` (the `data-qa/evals` experiment, so eval runs and their agent traces sit
+together — `make mlflow-init` prints the id), so http://localhost:5500 shows span waterfalls, token/cost aggregates, eval runs
 and the `data-qa-agent` registry (@champion/@challenger) in one UI — no external account needed. Set
 `LOGFIRE_TOKEN` to *also* ship to Logfire Cloud; exporters are additive.
 

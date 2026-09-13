@@ -344,10 +344,20 @@ script speaks stdlib-only `urllib` REST (`scripts/mlflow_client.py`) rather than
 package, matching `eval_run.py`'s no-third-party-deps grain. `MLFLOW_URL` (default
 `http://localhost:5500`) points the host-side scripts at the server; dev+CI only, no prod/terraform change.
 
-- **`make mlflow-init`** (`scripts/mlflow_registry.py init`) creates the `data-qa/traces` and `data-qa/evals`
-  experiments (idempotent) and warns if the traces experiment's id doesn't match the services'
-  `MLFLOW_TRACE_EXPERIMENT_ID` — on a fresh store `data-qa/traces` is created first and gets id `1`, which is
-  the default, but a store that already has other experiments needs the id set explicitly in `.env`.
+- **`make mlflow-init`** (`scripts/mlflow_registry.py init`) creates the `data-qa/evals` experiment
+  (idempotent) and prints the `MLFLOW_TRACE_EXPERIMENT_ID=<id>` line to put in `.env`, warning if the
+  services' current value differs. **Traces and eval runs share that one experiment (s50)** — MLflow only
+  lists a run's linked traces when they live in the run's own experiment, so the earlier separate
+  `data-qa/traces` experiment left every eval run's Traces tab empty. It is no longer created; a legacy
+  one can be deleted. The compose default is `2` (a store initialised before s50); a fresh store gets `1`.
+- **Trace noise is head-sampled away (s50).** `trace_sampling.py` in both services installs a
+  `ParentBased(root=…)` sampler via `logfire.SamplingOptions(head=…)` that drops root spans named
+  `GET /metrics`, `GET /health*`, `OPTIONS …` and `POST /events` (the analytics beacon) — before s50 the
+  local store held ~280k healthcheck/scrape traces around 57 `POST /ask`. Children follow the root's
+  decision across the backend-api → data-agent hop, so a kept trace is always whole.
+- **Eval traces link to their runs (s50).** `eval_run.py` calls `traces/link-to-run` for each case's
+  `tr-<otel_trace_id>` against both the case run and the pack-level eval run, so either run's Traces
+  tab shows the agent's span waterfall. Soft-fail like the rest of the sink.
 - **`make register`** (`scripts/mlflow_registry.py ensure`) mirrors every `app.agent_versions` fingerprint
   into the `data-qa-agent` registered model as one model version (idempotent — re-running only registers new
   fingerprints). It bootstraps `@champion` to the fingerprint the live agent reports (`GET /agent/version`,

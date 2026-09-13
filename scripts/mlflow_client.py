@@ -20,7 +20,9 @@ from typing import Any
 
 MLFLOW_URL = os.environ.get("MLFLOW_URL", "http://localhost:5500").rstrip("/")
 
-TRACES_EXPERIMENT = "data-qa/traces"
+# s50: one experiment for eval runs AND OTLP traces — MLflow only lists a
+# run's linked traces when they live in the run's own experiment. The old
+# separate "data-qa/traces" experiment is legacy and no longer created.
 EVALS_EXPERIMENT = "data-qa/evals"
 MODEL_NAME = "data-qa-agent"
 CHAMPION = "champion"
@@ -118,6 +120,20 @@ def log_batch(
 
 def end_run(run_id: str, status: str = "FINISHED") -> None:
     api("POST", "runs/update", {"run_id": run_id, "status": status, "end_time": _now_ms()})
+
+
+def link_traces_to_run(trace_ids: list[str], run_id: str) -> None:
+    """Attach already-ingested traces (``tr-<otel_trace_id>``) to a run (s50).
+
+    MLflow 3.6+'s ``traces/link-to-run`` sets ``mlflow.sourceRun`` on each
+    trace so the run's Traces tab lists it. The traces must already exist in
+    the run's experiment; that is why the services export to the evals
+    experiment. Empty input is a no-op rather than a bad request.
+    """
+    ids = [t for t in trace_ids if t]
+    if not ids:
+        return
+    api("POST", "traces/link-to-run", {"trace_ids": ids, "run_id": run_id})
 
 
 def get_run(run_id: str) -> dict[str, Any]:

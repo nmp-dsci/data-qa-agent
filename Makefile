@@ -20,7 +20,7 @@ help:
 	@echo "make eval-pack-version - print the content hash of the golden pack"
 	@echo "make eval-lint     - zero-LLM-cost pack-lint (case shape, grader columns vs golden_sql)"
 	@echo ""
-	@echo "make mlflow-init   - s43: create the MLflow experiments (traces/evals), print ids"
+	@echo "make mlflow-init   - s43/s50: create the MLflow evals experiment (traces + eval runs), print its id"
 	@echo "make register      - s43: mirror app.agent_versions into the MLflow model registry"
 	@echo "make promote       - s43: comparator gate; on PASS move @champion + record history"
 	@echo ""

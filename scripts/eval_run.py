@@ -882,8 +882,11 @@ def log_mlflow(
     pack_v: str,
     eval_run_id: str,
     agent_version_id: str | None,
-) -> None:
+) -> str | None:
     """s43 M3: mirror this eval into MLflow as one comparable run.
+
+    Returns the MLflow run id (None when skipped or failed) so the per-case
+    traces can be linked to it afterwards (s50).
 
     Additive and soft-fail by design — the app.eval_runs write above is the
     source of truth, so a down tracking server must never fail `make eval`.
@@ -893,7 +896,7 @@ def log_mlflow(
     ``mlflow_enabled()``).
     """
     if not mlflow_enabled():
-        return
+        return None
     try:
         import mlflow_client as mc  # noqa: PLC0415 — optional sink, same dir
 
@@ -949,8 +952,33 @@ def log_mlflow(
         )
         mc.end_run(run_id)
         print(f"mlflow · logged run {run_id} to {mc.EVALS_EXPERIMENT!r}")
+        return str(run_id)
     except Exception as exc:  # noqa: BLE001 — observability must not fail the eval
         print(f"mlflow · skipped ({exc})")
+        return None
+
+
+def link_case_traces(result: dict[str, Any], *run_ids: str | None) -> None:
+    """s50: attach the case's agent trace to its MLflow run(s), soft-fail.
+
+    ``otel_trace_id`` is the 32-hex id stamped on ``app.query_runs``; MLflow's
+    trace id for an OTLP-ingested span is ``tr-<that>``. Linked to both the
+    per-case run and the pack-level eval run, so either run's Traces tab shows
+    the span waterfall — this only works because the services export spans to
+    the evals experiment (``MLFLOW_TRACE_EXPERIMENT_ID``), MLflow being unable
+    to link across experiments. Same soft-fail contract as the other sinks.
+    """
+    trace_id = str(result.get("otel_trace_id") or "").strip()
+    if not trace_id:
+        return
+    try:
+        import mlflow_client as mc  # noqa: PLC0415 — optional sink, same dir
+
+        for run_id in run_ids:
+            if run_id:
+                mc.link_traces_to_run([f"tr-{trace_id}"], run_id)
+    except Exception as exc:  # noqa: BLE001 — observability must not fail the eval
+        print(f"    mlflow(link) · skipped ({exc})")
 
 
 def summarise(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1066,7 +1094,7 @@ def main() -> None:
         _scalar(f"SELECT agent_version_id FROM app.eval_runs WHERE id = {_lit(run_id)}::uuid")
         or None
     )
-    log_mlflow(
+    eval_mlflow_id = log_mlflow(
         results, totals, args=args, pack_v=pack_v, eval_run_id=run_id, agent_version_id=version_id
     )
     # s44 M3b: one MLflow run per graded case (the eval_run_id above is only
@@ -1075,6 +1103,9 @@ def main() -> None:
     if mlflow_enabled():
         for r in results:
             case_mlflow_id = log_case_mlflow(r, eval_run_id=run_id, experiment=args.experiment)
+            # s50: the trace already exists in the evals experiment (the
+            # services export there); link it so both runs' Traces tabs list it.
+            link_case_traces(r, case_mlflow_id, eval_mlflow_id)
             # s49 M0: the row is already written (the eval_run_id it needs only
             # exists after persist), so the MLflow id is stamped on afterwards
             # rather than by reordering the two — an UPDATE here cannot fail the

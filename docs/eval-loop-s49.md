@@ -160,5 +160,7 @@ Observations worth keeping:
 
 - The judge's `medium / analysis` on the rent golden is the loop working as designed: G1 passes because the smoothed `latest_value` is within 1% of the raw month, but the judge notices the answer does not quote the actual latest-month figure. That is exactly what the challenger helper adds; the agent still has to be told to use `raw_value` (a CLAUDE.md/knowledge edit — the reflector's job), so the label did not move on this run.
 - Two evals in parallel plus Chrome exhausted memory on this machine once; run eval lanes one at a time with grafana/prometheus stopped.
+- MLflow shows a run's linked traces only from the run's own experiment, so agent traces now export to the evals experiment (`MLFLOW_TRACE_EXPERIMENT_ID` = the `data-qa/evals` id) and `eval_run.py` links each case trace to its case run and the eval run. A head sampler (`trace_sampling.py` in both services) drops `GET /metrics`, `GET /health*`, `OPTIONS *`, `/events` roots — the local store held 282,699 root spans of which 57 were chat asks.
+- The scalar grader's deck-KPI match compares a SQL column name to a prose label; it now accepts labels whose leading tokens spell the column and uses a lone KPI slide when nothing else disambiguates (a $699 deck had graded 0.0 because the extract lacked the golden's column).
 - `mlflow_registry.py ensure` does not create `app.agent_versions` rows; backend-api does, on the first run of a new fingerprint. Register after an eval, not before.
 

@@ -1,9 +1,10 @@
 """Agent registry + promotion CLI over MLflow (s43 M0/M2/M3, bundle s49 M1).
 
 Subcommands:
-  init      ensure the data-qa/traces + data-qa/evals experiments exist; print
-            ids and warn when the traces id differs from what the services'
-            MLFLOW_TRACE_EXPERIMENT_ID assumes (default 1 on a fresh store).
+  init      ensure the data-qa/evals experiment exists; print its id as the
+            MLFLOW_TRACE_EXPERIMENT_ID line for .env and warn when the
+            services' current value differs (s50: traces and eval runs share
+            this one experiment so a run's Traces tab can list its traces).
   ensure    mirror app.agent_versions -> model versions of `data-qa-agent`,
             one per fingerprint, params = the composed build fingerprint. Also
             logs a `bundle.json` + `bundle.tar.gz` artifact pair to the
@@ -252,18 +253,27 @@ def _log_bundle_artifacts(run_id: str, row: dict[str, Any], fp: str) -> None:
 
 
 def cmd_init(_: argparse.Namespace) -> None:
-    traces_id = mc.ensure_experiment(mc.TRACES_EXPERIMENT)
+    """Create the one experiment traces AND eval runs share, and say which id to export.
+
+    s50: OTLP spans used to go to a separate ``data-qa/traces`` experiment.
+    MLflow only lists a run's linked traces when the trace lives in the run's
+    own experiment, so every eval run's Traces tab was empty. Now the services'
+    ``MLFLOW_TRACE_EXPERIMENT_ID`` must be the evals experiment's id — this
+    prints the exact line for ``.env``. The legacy ``data-qa/traces``
+    experiment is no longer created and can be deleted once its purge is done.
+    """
     evals_id = mc.ensure_experiment(mc.EVALS_EXPERIMENT)
-    print(f"experiment {mc.TRACES_EXPERIMENT!r}: id {traces_id}")
-    print(f"experiment {mc.EVALS_EXPERIMENT!r}: id {evals_id}")
+    print(f"experiment {mc.EVALS_EXPERIMENT!r}: id {evals_id}  (traces + eval runs)")
+    print(f"  .env => MLFLOW_TRACE_EXPERIMENT_ID={evals_id}")
     import os
 
-    assumed = os.environ.get("MLFLOW_TRACE_EXPERIMENT_ID", "1")
-    if traces_id != assumed:
+    assumed = os.environ.get("MLFLOW_TRACE_EXPERIMENT_ID", "2")
+    if evals_id != assumed:
         print(
-            f"WARNING: services default MLFLOW_TRACE_EXPERIMENT_ID={assumed} but the traces "
-            f"experiment id is {traces_id} — set MLFLOW_TRACE_EXPERIMENT_ID={traces_id} in .env "
-            "and recreate backend-api/data-agent, or spans will land in the wrong experiment."
+            f"WARNING: services currently use MLFLOW_TRACE_EXPERIMENT_ID={assumed} but the evals "
+            f"experiment id is {evals_id} — set MLFLOW_TRACE_EXPERIMENT_ID={evals_id} in .env "
+            "and recreate backend-api/data-agent, or spans will land in an experiment whose "
+            "eval runs cannot link to them."
         )
 
 

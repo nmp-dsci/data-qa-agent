@@ -103,6 +103,24 @@ def _normalise_field_name(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.strip().casefold()).strip("_")
 
 
+def _label_names_field(label: str, wanted: str) -> bool:
+    """True when a KPI's prose label names the golden's ``value_col``.
+
+    Golden columns are SQL identifiers (``avg_weekly_rent``); KPI labels are
+    prose the agent wrote ("avg weekly rent, 3-bed houses, postcode 2250").
+    Exact match after normalisation is kept; otherwise every token of the
+    column name must appear, in order, at the start of the label's tokens, so
+    "avg weekly rent, ..." names ``avg_weekly_rent`` but "median weekly rent"
+    does not.
+    """
+    norm_label = _normalise_field_name(label)
+    if norm_label == wanted:
+        return True
+    want = [t for t in wanted.split("_") if t]
+    have = [t for t in re.split(r"[^a-z0-9]+", norm_label) if t]
+    return bool(want) and have[: len(want)] == want
+
+
 def _kpi_fields(slide: dict[str, Any]) -> tuple[str, str]:
     """A KPI slide's ``(kpi, kpi_label)`` text, from either the flat manifest
     view or ``spec()`` — whichever the caller happened to pass in."""
@@ -148,10 +166,19 @@ def _manifest_kpi_value(artifact: dict[str, Any] | None, value_col: str = "") ->
         kpi_texts.append(kpi)
         if label:
             any_labelled = True
-            if wanted and _normalise_field_name(label) == wanted:
+            if wanted and _label_names_field(label, wanted):
                 matched_text = kpi
     if wanted and any_labelled:
-        chosen = matched_text
+        # s50: a lone KPI slide is the deck's answer even when its prose label
+        # does not spell the golden's column name — with one KPI there is
+        # nothing to disambiguate, and falling through to key_match graded a
+        # correct $699 deck as 0.0 because the agent's extract happened not to
+        # carry the golden's value column.
+        chosen = (
+            matched_text
+            if matched_text is not None
+            else (kpi_texts[0] if len(kpi_texts) == 1 else None)
+        )
     elif wanted:
         chosen = kpi_texts[-1] if kpi_texts else None
     else:

@@ -253,3 +253,54 @@ def test_grade_presentation_format() -> None:
 
     empty = grade_presentation_format(None)
     assert empty["passed"] is False
+
+
+def test_manifest_kpi_matches_prose_label_by_leading_tokens() -> None:
+    """s50: the golden's column name is a SQL identifier, the KPI label is prose."""
+    from agent.eval_graders import reduce_scalar_actual
+
+    artifact = {
+        "slides": [
+            {"kpi": "$699", "kpi_label": "avg weekly rent, 3-bed houses, postcode 2250"},
+            {"kpi": "", "kpi_label": ""},
+        ]
+    }
+    out = reduce_scalar_actual(
+        golden_rows=[{"month": "2026-05-01", "avg_weekly_rent": 697.08}],
+        actual_rows=[{"month": "2026-05-01", "total_weekly_rent": 35551}],
+        value="avg_weekly_rent",
+        artifact=artifact,
+    )
+    assert out["scalar_source"] == "manifest_kpi"
+    assert out["value"] == 699
+
+
+def test_manifest_kpi_lone_slide_used_when_label_does_not_name_field() -> None:
+    from agent.eval_graders import reduce_scalar_actual
+
+    artifact = {"slides": [{"kpi": "$699", "kpi_label": "rent snapshot"}]}
+    out = reduce_scalar_actual(
+        golden_rows=[{"month": "2026-05-01", "avg_weekly_rent": 697.08}],
+        actual_rows=[{"month": "2026-05-01", "total_weekly_rent": 35551}],
+        value="avg_weekly_rent",
+        artifact=artifact,
+    )
+    assert out["scalar_source"] == "manifest_kpi" and out["value"] == 699
+
+
+def test_manifest_kpi_two_unlabelled_matches_still_ambiguous() -> None:
+    from agent.eval_graders import reduce_scalar_actual
+
+    artifact = {
+        "slides": [
+            {"kpi": "$699", "kpi_label": "rent snapshot"},
+            {"kpi": "$1,200", "kpi_label": "median sale price"},
+        ]
+    }
+    out = reduce_scalar_actual(
+        golden_rows=[{"month": "2026-05-01", "avg_weekly_rent": 697.08}],
+        actual_rows=[{"month": "2026-05-01", "avg_weekly_rent": 697.08}],
+        value="avg_weekly_rent",
+        artifact=artifact,
+    )
+    assert out["scalar_source"] == "key_match"

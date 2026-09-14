@@ -128,8 +128,15 @@ class Settings(BaseSettings):
     otlp_endpoint: str = ""
     # s43 M1: MLflow's /v1/traces ingest routes spans to an experiment via the
     # x-mlflow-experiment-id header. Empty = plain OTLP (no header), which any
-    # generic collector accepts.
+    # generic collector accepts. s50: point it at the data-qa/evals experiment
+    # (compose default 2; `make mlflow-init` prints it) — MLflow only shows a
+    # run's linked traces when they share the run's experiment, so this is
+    # also what makes the Evaluations run's Traces tab non-empty.
     mlflow_trace_experiment_id: str = ""
+    # s50: the eval loop's per-case MLflow runs live in their own experiment,
+    # whose id isn't guaranteed by a fresh MLflow store either — same reason
+    # as mlflow_trace_experiment_id above. Empty = don't link (no safe guess).
+    mlflow_evals_experiment_id: str = ""
 
     # ---- Ops deck (s32 W0/W2/W4) ------------------------------------------
     # Machine token for POST /ops/ingest/* — the k6, promptfoo and deploy

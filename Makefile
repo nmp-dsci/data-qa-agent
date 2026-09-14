@@ -20,7 +20,7 @@ help:
 	@echo "make eval-pack-version - print the content hash of the golden pack"
 	@echo "make eval-lint     - zero-LLM-cost pack-lint (case shape, grader columns vs golden_sql)"
 	@echo ""
-	@echo "make mlflow-init   - s43: create the MLflow experiments (traces/evals), print ids"
+	@echo "make mlflow-init   - s43/s50: create the MLflow evals experiment (traces + eval runs), print its id"
 	@echo "make register      - s43: mirror app.agent_versions into the MLflow model registry"
 	@echo "make promote       - s43: comparator gate; on PASS move @champion + record history"
 	@echo ""
@@ -123,7 +123,7 @@ eval-lint:
 eval:
 	uv run python scripts/eval_run.py \
 	  $(if $(DATASET),--dataset $(DATASET)) $(if $(TIER),--tier $(TIER)) \
-	  $(if $(CASE),--case $(CASE)) $(if $(EXPERIMENT),--experiment $(EXPERIMENT)) \
+	  $(if $(CASE),--case $(CASE)) $(if $(TAG),--tag $(TAG)) $(if $(EXPERIMENT),--experiment $(EXPERIMENT)) \
 	  $(if $(HYPOTHESIS),--hypothesis "$(HYPOTHESIS)") $(if $(NO_JUDGE),--no-judge) \
 	  $(if $(INCLUDE_DRAFTS),--include-drafts)
 
@@ -206,7 +206,31 @@ register:
 	uv run python scripts/mlflow_registry.py ensure
 
 promote:
-	uv run python scripts/mlflow_registry.py promote
+	uv run python scripts/mlflow_registry.py promote $(if $(ALPHA),--alpha $(ALPHA))
+
+# s49: the eval loop as a versioned, traced, optimisable system
+# (docs/eval-loop-s49.md). agent-checkout rewinds prompts/skills/knowledge to a
+# registered fingerprint; knowledge-export/import move curator edits between the
+# DB and services/data-agent/knowledge/ (repo is the source of truth, same as
+# goldens); skill-mine / reflect are the offline optimiser — draft PRs only (D4);
+# eval-calibrate runs the judge against the golden set without scoring a run.
+agent-checkout:
+	uv run python scripts/agent_checkout.py $(FP)
+
+knowledge-export:
+	uv run python scripts/knowledge_pack.py export
+
+knowledge-import:
+	uv run python scripts/knowledge_pack.py import
+
+skill-mine:
+	uv run python scripts/skill_miner.py $(if $(RUN),--run $(RUN)) $(ARGS)
+
+reflect:
+	uv run python scripts/reflect.py --run $(RUN) $(ARGS)
+
+eval-calibrate:
+	uv run python scripts/eval_run.py --calibrate-only $(if $(INCLUDE_DRAFTS),--include-drafts)
 
 loadtest:
 	@command -v k6 >/dev/null || { echo "k6 not installed (brew install k6)"; exit 1; }

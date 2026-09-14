@@ -17,8 +17,10 @@ deterministic offline stub.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -437,14 +439,7 @@ async def answer_with_sandbox(
         trace.extend(page_steps)
         # Telemetry (your requirement): record which skills produced this answer +
         # any gaps, as a trace step that persists into app.query_runs.
-        trace.append(
-            {
-                "kind": "analysis",
-                "skills_used": deps.skills_used,
-                "skill_gaps": deps.skill_gaps,
-                "used_inline_math": deps.used_inline_math,
-            }
-        )
+        trace.append(_analysis_rollup(deps))
         usage = _usage_totals(trace, model_name)
 
         primary = select_primary_query(deps.queries)
@@ -714,6 +709,35 @@ def _decision_log(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+def _analysis_rollup(deps: _SbDeps) -> dict[str, Any]:
+    """The run-level ``analysis`` trace entry — the one that reaches app.query_runs.
+
+    The per-call steps ``_do_run_analysis`` appends are condensed into the
+    decision log, not stored verbatim, so without this the evidence a wrong
+    number is diagnosed from (what the code printed, which executor ran it, how
+    long it took) never left the process. ``passes`` keeps them one per
+    run_analysis call, because a two-pass run's second pass is a different piece
+    of code with different output — flattening them would hide which one lied.
+    """
+    passes = [s for s in deps.steps if s.get("kind") == "analysis"]
+    return {
+        "kind": "analysis",
+        "skills_used": deps.skills_used,
+        "skill_gaps": deps.skill_gaps,
+        "used_inline_math": deps.used_inline_math,
+        "ms": sum(int(s.get("ms") or 0) for s in passes) or None,
+        "runtime": settings.sandbox_runtime,
+        "passes": [
+            {
+                key: s.get(key)
+                for key in ("code_sha", "runtime", "status", "ms", "stdout", "frames", "error")
+                if s.get(key) is not None
+            }
+            for s in passes
+        ],
+    }
+
+
 async def _do_search_knowledge(deps: _SbDeps, query: str, why: str = "") -> str:
     deps.emit("Searching knowledge", query)
     text, inlined = search_knowledge_result(query)
@@ -832,6 +856,24 @@ async def _do_extract(
     )
 
 
+# s49 M0: how many rows of each derived frame the trace keeps. Enough to see the
+# shape and the leading values (which is what a "why is this number wrong?"
+# reading needs) without duplicating an extract into every stored trace.
+_FRAME_HEAD_ROWS = 20
+
+
+def _frame_heads(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The sandbox's derived frames, truncated to their first rows for the trace."""
+    heads = []
+    for frame in frames:
+        rows = list(frame.get("rows") or [])
+        head = dict(frame)
+        head["rows"] = rows[:_FRAME_HEAD_ROWS]
+        head["truncated"] = len(rows) > _FRAME_HEAD_ROWS
+        heads.append(head)
+    return heads
+
+
 async def _do_run_analysis(deps: _SbDeps, code: str, why: str = "", *, max_runs: int) -> str:
     if not deps.frames:
         return "no data yet — call extract(sql) first to load a DataFrame."
@@ -851,7 +893,9 @@ async def _do_run_analysis(deps: _SbDeps, code: str, why: str = "", *, max_runs:
     deps.emit("Building the report", "")
     # s40 M0: run_code blocks on a subprocess; off the event loop so one
     # sandbox pass can't stall every other request on this worker.
+    started = time.perf_counter()
     result = await asyncio.to_thread(run_code, code, frames=deps.frames)
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
     # Accumulate across passes — pass 2's telemetry must not erase pass 1's.
     for name in result.skills_used:
         if name not in deps.skills_used:
@@ -866,6 +910,18 @@ async def _do_run_analysis(deps: _SbDeps, code: str, why: str = "", *, max_runs:
             "skill_gaps": [g.model_dump() for g in result.skill_gaps],
             "error": result.error,
             "why": why,
+            # s49 M0: the evidence a diagnosis actually needs. `code_sha`
+            # identifies the exact code without storing it twice (the tool call
+            # itself is already in the model entry); `runtime` says which of the
+            # two executors ran it; `stdout` is what the model printed while
+            # working (capped in the sandbox, not here); `frames` are heads only
+            # — a derived frame can be the whole extract, and a trace is read,
+            # not recomputed from.
+            "code_sha": hashlib.sha256(code.encode("utf-8")).hexdigest()[:12],
+            "runtime": settings.sandbox_runtime,
+            "stdout": result.stdout,
+            "frames": _frame_heads(result.frames),
+            "ms": elapsed_ms,
         }
     )
     if result.error:

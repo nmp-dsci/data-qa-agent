@@ -20,6 +20,9 @@ import {
   ExploreDimension,
   GoldenInput,
   GoldenListItem,
+  GoldenCheckpoints,
+  GoldenLabel,
+  CalibrationExample,
   GraderSpec,
   createGolden,
   deleteGolden,
@@ -34,7 +37,7 @@ import { Annunciator, Annunciators } from "../../ui/flightdeck";
 import { SimpleTable } from "../../ui/SimpleTable";
 import { BuilderFilter } from "./BuilderFilter";
 import { GraderEditor } from "./GraderEditor";
-import { graderColumns, graderIssue, pruneGrader } from "./graderSpec";
+import { graderColumns, graderIssue, pruneCheckpoints, pruneGrader } from "./graderSpec";
 
 // The dataset list comes from the registry, not a literal (s24 M1). Hardcoding
 // it silently locked nsw_yield — a registered dataset since migration 0025 —
@@ -56,6 +59,12 @@ interface Draft {
    *  and what the grader validates its column names against. */
   golden_data: unknown;
   grader: GraderSpec;
+  /** s49 M2 — golden v2: the judge's reference answer + the label it must
+   *  return for it, calibration examples, and the diagnostic checkpoints. */
+  golden_answer: string;
+  label: GoldenLabel | "";
+  calibration_examples: CalibrationExample[];
+  checkpoints: GoldenCheckpoints;
 }
 
 const emptyDraft = (dataset: string): Draft => ({
@@ -69,6 +78,10 @@ const emptyDraft = (dataset: string): Draft => ({
   golden_sql: "",
   golden_data: null,
   grader: {},
+  golden_answer: "",
+  label: "high",
+  calibration_examples: [],
+  checkpoints: {},
 });
 
 // ---------------------------------------------------------------------------
@@ -409,6 +422,10 @@ export function GoldensPage({
         golden_sql: g.golden_sql ?? "",
         golden_data: g.golden_data ?? null,
         grader: g.grader ?? {},
+        golden_answer: g.golden_answer ?? "",
+        label: g.label ?? "high",
+        calibration_examples: g.calibration_examples ?? [],
+        checkpoints: g.checkpoints ?? {},
       });
     } catch (e) {
       setMsg((e as Error).message);
@@ -473,6 +490,12 @@ export function GoldensPage({
         golden_sql: draft.golden_sql,
         golden_data: draft.golden_data,
         grader: pruneGrader(draft.grader),
+        golden_answer: draft.golden_answer || null,
+        // A label with no reference answer would be a label on nothing, so it
+        // travels only when there is text for the judge to grade.
+        label: draft.golden_answer ? draft.label || "high" : null,
+        calibration_examples: draft.calibration_examples.filter((e) => e.answer.trim()),
+        checkpoints: pruneCheckpoints(draft.checkpoints),
       };
       if (draft.id) {
         await updateGolden(draft.id, body);
@@ -689,6 +712,14 @@ export function GoldensPage({
               tier={draft.tier}
               status={draft.authoring_status}
               onStatusChange={(status) => patch("authoring_status", status)}
+              goldenAnswer={draft.golden_answer}
+              onGoldenAnswerChange={(text) => patch("golden_answer", text)}
+              label={draft.label}
+              onLabelChange={(label) => patch("label", label)}
+              calibrationExamples={draft.calibration_examples}
+              onCalibrationExamplesChange={(rows) => patch("calibration_examples", rows)}
+              checkpoints={draft.checkpoints}
+              onCheckpointsChange={(cp) => patch("checkpoints", cp)}
             />
             {graderBlocker && draft.authoring_status !== "ready" && (
               <p className="muted" style={{ fontSize: 11.5 }}>

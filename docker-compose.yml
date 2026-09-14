@@ -116,9 +116,13 @@ services:
       # Set OTLP_ENDPOINT= (empty) to turn span export off entirely.
       OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://mlflow:5000}
       # MLflow routes OTLP spans by experiment id (x-mlflow-experiment-id).
-      # `make mlflow-init` creates data-qa/traces first, so 1 is its id on a
-      # fresh store; the init target warns if yours differs.
-      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-1}
+      # s50: spans go to the SAME experiment as the eval runs (data-qa/evals)
+      # — MLflow only lists a run's linked traces when they live in the run's
+      # own experiment, so a separate traces experiment left the Evaluations
+      # runs' Traces tab empty. Ids come from `make mlflow-init` output; on a
+      # store initialised before s50 data-qa/evals is id 2.
+      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-2}
+      MLFLOW_EVALS_EXPERIMENT_ID: ${MLFLOW_EVALS_EXPERIMENT_ID:-2}
       # s35: Slack's workspace signing secret, used to verify X-Slack-Signature.
       # A fixed dev value so the signature path is exercisable locally without a
       # real workspace; empty CLOSES the Slack endpoint (404), which is the
@@ -179,7 +183,7 @@ services:
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
       # s43 M1: self-hosted traces to the MLflow server (see backend-api).
       OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://mlflow:5000}
-      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-1}
+      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-2}
       # s40 (D2): LLM_STUB=1 forces the deterministic stub answer, streamed
       # across STUB_LATENCY_S seconds — the zero-spend workload for E2-E8 and
       # the C-series load runs.

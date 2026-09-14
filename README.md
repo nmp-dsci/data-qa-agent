@@ -356,9 +356,10 @@ fingerprint (provider + model + prompt/skills/knowledge hashes, `GET /agent/vers
 Goldens are version-controlled: `make eval-export` serialises `app.eval_cases` to `evals/cases/*.yaml` (the
 repo is the source of truth, the DB a working surface), redacting anything promoted from a real prod answer
 — remapped user, size-capped rows — and `make eval-import` seeds any environment from the pack. `make eval`
-(down to a single `CASE=`) scores the pack against the running agent, including an LLM-as-judge for insight
-quality that refuses to grade a model of its own family and records a `skipped` verdict rather than a faked
-score when no cross-family judge key is configured. Every golden carries a question tier (`T1`–`T7`, the
+(down to a single `CASE=`) scores the pack against the running agent, including an LLM-as-judge that labels
+answer quality (`low`/`medium`/`high`) and must reproduce the golden set's own labels (calibration) before
+its verdicts count — see "Label judge + calibration + G5" in `AGENTS.md` for the full rubric and gating
+rules. Every golden carries a question tier (`T1`–`T7`, the
 coverage ladder documented in `AGENTS.md`), and `draft` goldens — agent-drafted first passes not yet curated
 to `ready` — are skipped by `make eval` unless `INCLUDE_DRAFTS=1` is passed, so an un-curated question is
 never scored against empty ground truth. `make eval-compare A=<run> B=<run>` is the regression
@@ -422,7 +423,8 @@ an offline heuristic. Retitle pre-existing conversations with
 Every agent run is traced with the **Logfire SDK** (an OpenTelemetry SDK) — tool calls, model requests, and
 (with `capture_all=True`) the raw HTTP payloads sent to the provider. Spans land in the self-hosted **MLflow**
 server (s43): `make up` exports them to `OTLP_ENDPOINT=http://mlflow:5000` tagged with
-`MLFLOW_TRACE_EXPERIMENT_ID`, so http://localhost:5500 shows span waterfalls, token/cost aggregates, eval runs
+`MLFLOW_TRACE_EXPERIMENT_ID` (the `data-qa/evals` experiment, so eval runs and their agent traces sit
+together — `make mlflow-init` prints the id), so http://localhost:5500 shows span waterfalls, token/cost aggregates, eval runs
 and the `data-qa-agent` registry (@champion/@challenger) in one UI — no external account needed. Set
 `LOGFIRE_TOKEN` to *also* ship to Logfire Cloud; exporters are additive.
 

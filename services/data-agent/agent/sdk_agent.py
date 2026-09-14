@@ -9,7 +9,7 @@ system prompt and exposes ``search_knowledge``/``read_knowledge``/
     ``schema/<schema>_<table>.md``, a copy of the knowledge tree, and a
     ``frames/`` directory — and lets the model explore it with Read/Grep/Glob;
   * exposes the governed tools (``extract``, ``run_analysis``, ``lookup_values``,
-    ``no_answer``, ``remember``) over an **in-process MCP server** named ``dp``;
+    ``no_answer``) over an **in-process MCP server** named ``dp``;
   * drives it with ``claude_agent_sdk.query()`` against the Claude Code CLI,
     which authenticates with a subscription/OAuth login rather than an API key.
 
@@ -31,6 +31,7 @@ import asyncio
 import contextlib
 import importlib
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,18 +41,17 @@ from .config import settings
 from .deck import DEFAULT_CATALOGUE, DeckBuilder, Layout, load_catalogue, render_layouts_md
 from .gsuite import GoogleClient, credentials_present
 from .knowledge import knowledge_version
-from .memory import recall_memories
 from .ordinals import ordinals_snapshot_hash
-from .otlp import agent_span
+from .otlp import agent_span, child_span, clip, current_context, emit_span, set_attributes
 from .pack import PackSpec, load_pack, pack_path, pack_to_catalogue
 from .pages import compose_pages, page_plan, planned_kinds
 from .report import select_primary_query
 from .sandbox_agent import (
     SandboxBudgetExhausted,
+    _analysis_rollup,
     _do_extract,
     _do_lookup_values,
     _do_no_answer,
-    _do_remember,
     _do_run_analysis,
     _merge_decision_log,
     _query_list,
@@ -68,7 +68,7 @@ ENGINE = "agent_sdk"
 
 MCP_SERVER = "dp"
 BUILTIN_TOOLS = ["Read", "Grep", "Glob"]
-GOVERNED_TOOLS = ["extract", "run_analysis", "lookup_values", "no_answer", "remember"]
+GOVERNED_TOOLS = ["extract", "run_analysis", "lookup_values", "no_answer"]
 # s46: registered only when a generating credential is configured AND export is
 # on, so a run that cannot build a deck is never offered the tools.
 DECK_TOOLS = ["start_deck", "add_slide"]
@@ -160,6 +160,11 @@ class _SdkDeps(_SbDeps):
     # _artifact() knows to leave the (private-but-valid) URLs alone rather
     # than a partial-failure dict meaning "omit the ones that are False".
     publish_status: dict[str, bool] | None = None
+    # s49 M0: the run span's OTel context, captured once inside ``agent_span``.
+    # Tool handlers and the PreToolUse hook are invoked by the SDK from tasks
+    # this module never creates, so the ambient contextvar is not a reliable
+    # parent for their spans — this is.
+    otel_context: Any = None
 
     def after_frame(self, name: str, frame: Any) -> None:
         """Mirror a head sample of the extracted frame into ``frames/``.
@@ -226,7 +231,6 @@ TOOL_DESCRIPTIONS = {
         "report. Give a short, user-facing reason (what's missing / what the data "
         "does cover). Then return a one-line confirmation."
     ),
-    "remember": "Store a durable user preference about how they want answers.",
     "start_deck": (
         "Open the answer's Google Slides deck and its backing Sheet. Call ONCE, "
         "after your analysis is done and before the first add_slide.\n\n"
@@ -260,7 +264,6 @@ TOOL_SCHEMAS = {
         required=["column", "pattern", "table"],
     ),
     "no_answer": _schema({"reason": "string", "why": "string"}, required=["reason"]),
-    "remember": _schema({"fact": "string"}, required=["fact"]),
     "start_deck": _schema({"title": "string"}, required=["title"]),
     "add_slide": {
         "type": "object",
@@ -371,6 +374,39 @@ def _frame_table(frame: Any, columns: list[str] | None) -> tuple[list[str], list
     return cols, rows
 
 
+# Span-attribute budgets (s49 M0). A governed extract's SQL is the single most
+# useful attribute on a trace and the single largest; a sandbox traceback is
+# already summarised to 4 frames but can still be long. Both are clipped so one
+# pathological run cannot blow up every export.
+_SQL_ATTR_CHARS = 4096
+_ERROR_ATTR_CHARS = 1024
+
+
+def _ms_since(started: float) -> int:
+    return int((time.perf_counter() - started) * 1000)
+
+
+def _last_step(deps: _SdkDeps, kind: str) -> dict[str, Any]:
+    """The most recent decision-log step of ``kind`` — the tool's own outcome.
+
+    The ``_do_*`` coroutines are shared with the champion and return prose for
+    the model, not structured results; the step they append is where the
+    governed SQL, the row count and the sandbox telemetry actually live. Reading
+    it back keeps the span and the stored trace reporting the same numbers by
+    construction. Empty when the call bailed before appending one (a refusal).
+    """
+    for step in reversed(deps.steps):
+        if step.get("kind") == kind:
+            return step
+    return {}
+
+
+def _status_of(out: str) -> str:
+    """ok | error for the tools whose only outcome signal is their message."""
+    lowered = out.lower()
+    return "error" if lowered.startswith("stop:") or " failed" in lowered else "ok"
+
+
 def build_tool_server(
     sdk: Any,
     deps: _SdkDeps,
@@ -393,52 +429,94 @@ def build_tool_server(
         return _text(f"STOP: {exc}", is_error=True)
 
     async def extract_tool(args: dict[str, Any]) -> dict[str, Any]:
-        try:
-            out = await _do_extract(
-                deps,
-                str(args.get("sql") or ""),
-                str(args.get("name") or "df"),
-                str(args.get("purpose") or ""),
-                str(args.get("why") or ""),
-                max_extracts=max_extracts,
+        with child_span("tool.extract", parent=deps.otel_context) as span:
+            started = time.perf_counter()
+            try:
+                out = await _do_extract(
+                    deps,
+                    str(args.get("sql") or ""),
+                    str(args.get("name") or "df"),
+                    str(args.get("purpose") or ""),
+                    str(args.get("why") or ""),
+                    max_extracts=max_extracts,
+                )
+            except SandboxBudgetExhausted as exc:
+                set_attributes(span, status="budget", ms=_ms_since(started))
+                return budget_stop(exc)
+            # The step the call just appended carries the *governed* SQL (as
+            # rewritten by the extract layer) and the real row count — reading
+            # it back beats re-deriving either from the tool's own arguments.
+            step = _last_step(deps, "sql")
+            set_attributes(
+                span,
+                sql=clip(step.get("sql") or args.get("sql"), _SQL_ATTR_CHARS),
+                status=step.get("status") or "refused",
+                row_count=step.get("row_count"),
+                frame=step.get("frame"),
+                ms=_ms_since(started),
             )
-        except SandboxBudgetExhausted as exc:
-            return budget_stop(exc)
-        return _text(out, is_error=out.startswith("STOP:"))
+            return _text(out, is_error=out.startswith("STOP:"))
 
     async def run_analysis_tool(args: dict[str, Any]) -> dict[str, Any]:
-        try:
-            out = await _do_run_analysis(
-                deps,
-                str(args.get("code") or ""),
-                str(args.get("why") or ""),
-                max_runs=max_runs,
+        with child_span("tool.run_analysis", parent=deps.otel_context) as span:
+            started = time.perf_counter()
+            try:
+                out = await _do_run_analysis(
+                    deps,
+                    str(args.get("code") or ""),
+                    str(args.get("why") or ""),
+                    max_runs=max_runs,
+                )
+            except SandboxBudgetExhausted as exc:
+                set_attributes(span, status="budget", ms=_ms_since(started))
+                return budget_stop(exc)
+            step = _last_step(deps, "analysis")
+            set_attributes(
+                span,
+                code_sha=step.get("code_sha"),
+                runtime=step.get("runtime"),
+                status=step.get("status") or "refused",
+                ms=step.get("ms", _ms_since(started)),
+                skills_used=",".join(step.get("skills_used") or []) or None,
+                skill_gaps=len(step.get("skill_gaps") or []),
+                stdout_len=len(step.get("stdout") or ""),
+                error=clip(step.get("error"), _ERROR_ATTR_CHARS) or None,
             )
-        except SandboxBudgetExhausted as exc:
-            return budget_stop(exc)
-        return _text(
-            _with_deck_next_step(out, deck_ctx is not None), is_error=out.startswith("STOP:")
-        )
+            return _text(
+                _with_deck_next_step(out, deck_ctx is not None), is_error=out.startswith("STOP:")
+            )
 
     async def lookup_values_tool(args: dict[str, Any]) -> dict[str, Any]:
-        out = await _do_lookup_values(
-            deps,
-            str(args.get("column") or ""),
-            str(args.get("pattern") or ""),
-            str(args.get("table") or ""),
-            str(args.get("why") or ""),
-        )
-        return _text(out)
+        with child_span("tool.lookup_values", parent=deps.otel_context) as span:
+            out = await _do_lookup_values(
+                deps,
+                str(args.get("column") or ""),
+                str(args.get("pattern") or ""),
+                str(args.get("table") or ""),
+                str(args.get("why") or ""),
+            )
+            set_attributes(span, status=_status_of(out))
+            return _text(out)
 
     async def no_answer_tool(args: dict[str, Any]) -> dict[str, Any]:
-        out = await _do_no_answer(deps, str(args.get("reason") or ""), str(args.get("why") or ""))
-        return _text(out)
-
-    async def remember_tool(args: dict[str, Any]) -> dict[str, Any]:
-        out = await _do_remember(deps, str(args.get("fact") or ""))
-        return _text(out)
+        with child_span("tool.no_answer", parent=deps.otel_context) as span:
+            out = await _do_no_answer(
+                deps, str(args.get("reason") or ""), str(args.get("why") or "")
+            )
+            set_attributes(span, status=_status_of(out))
+            return _text(out)
 
     async def start_deck_tool(args: dict[str, Any]) -> dict[str, Any]:
+        with child_span("tool.start_deck", parent=deps.otel_context) as span:
+            out = await _start_deck(args)
+            set_attributes(
+                span,
+                deck_id=getattr(deps.deck, "presentation_id", None),
+                status="error" if out.get("is_error") else "ok",
+            )
+            return out
+
+    async def _start_deck(args: dict[str, Any]) -> dict[str, Any]:
         if deck_ctx is None:
             return _text("STOP: deck export is not configured for this run.", is_error=True)
         if deps.deck is not None:
@@ -468,6 +546,26 @@ def build_tool_server(
         )
 
     async def add_slide_tool(args: dict[str, Any]) -> dict[str, Any]:
+        with child_span("tool.add_slide", parent=deps.otel_context) as span:
+            before = len(getattr(deps.deck, "slides", ()) or ())
+            out = await _add_slide(args)
+            # Only a slide that was actually appended gets described: a rejected
+            # call (unknown layout, empty frame) would otherwise re-report the
+            # PREVIOUS slide's attributes as if it had been added again.
+            slides = list(getattr(deps.deck, "slides", ()) or ())
+            record = slides[-1] if len(slides) > before else None
+            set_attributes(
+                span,
+                status="error" if out.get("is_error") else "ok",
+                index=getattr(record, "index", None),
+                layout=getattr(record, "layout", None) or str(args.get("layout") or "") or None,
+                chart_type=getattr(record, "chart_type", None),
+                rows=getattr(record, "rows", None),
+                has_kpi=bool(getattr(record, "kpi", "")) if record is not None else None,
+            )
+            return out
+
+    async def _add_slide(args: dict[str, Any]) -> dict[str, Any]:
         if deck_ctx is None:
             return _text("STOP: deck export is not configured for this run.", is_error=True)
         builder = deps.deck
@@ -568,7 +666,6 @@ def build_tool_server(
         "run_analysis": run_analysis_tool,
         "lookup_values": lookup_values_tool,
         "no_answer": no_answer_tool,
-        "remember": remember_tool,
     }
     names = list(GOVERNED_TOOLS)
     if deck_ctx is not None:
@@ -588,6 +685,21 @@ def build_tool_server(
 
 # Argument keys across Read/Grep/Glob that can carry a filesystem location.
 _PATH_ARG_KEYS = ("file_path", "path", "pattern", "notebook_path")
+
+
+def _first_path_arg(tool_input: Any) -> str:
+    """The first filesystem-ish argument a Read/Grep/Glob call carries.
+
+    Only for the span's ``path`` attribute — the authorisation decision below
+    resolves *every* path argument, and must keep doing so.
+    """
+    if not isinstance(tool_input, dict):
+        return ""
+    for key in _PATH_ARG_KEYS:
+        raw = str(tool_input.get(key) or "")
+        if raw:
+            return raw
+    return ""
 
 
 def _knowledge_target(tool_input: Any) -> str | None:
@@ -688,14 +800,34 @@ def make_knowledge_hook(deps: _SdkDeps) -> Any:
 
     async def hook(input_data: Any, tool_use_id: str | None, context: Any) -> dict[str, Any]:
         data = input_data if isinstance(input_data, dict) else {}
-        if data.get("tool_name") not in BUILTIN_TOOLS:
+        tool_name = str(data.get("tool_name") or "")
+        if tool_name not in BUILTIN_TOOLS:
             return {}
         tool_input = data.get("tool_input")
+        # s49 M0: every built-in file tool call gets a span, whatever this hook
+        # decides. The decision IS the interesting part — a run that spent its
+        # turns being denied looks identical to one that never asked, unless the
+        # denials are recorded. Emitted at the end of the hook via _file_span so
+        # `denied` is known; the CLI runs the tool itself, so there is no
+        # duration here to measure honestly.
+        quota_left = max(settings.max_knowledge_reads - deps.knowledge_reads, 0)
+
+        def _file_span(*, page: str | None, denied: bool) -> None:
+            emit_span(
+                f"tool.{tool_name}",
+                parent=deps.otel_context,
+                path=clip(_first_path_arg(tool_input), 512) or None,
+                knowledge_page=page,
+                denied=denied,
+                quota_left=quota_left,
+            )
+
         resolved_args: list[Path] = []
         if deps.ws is not None:
             ws = deps.ws.resolve()
             resolved_args = _resolved_path_args(ws, tool_input)
             if any(not _within(ws, resolved) for resolved in resolved_args):
+                _file_span(page=None, denied=True)
                 return _deny("path is outside the run workspace")
         page = _knowledge_target(tool_input)
         if page is None:
@@ -706,26 +838,31 @@ def make_knowledge_hook(deps: _SdkDeps) -> Any:
                     _within(knowledge_dir, resolved) for resolved in resolved_args
                 )
                 if not touches_knowledge:
-                    search_root = _search_root(ws, str(data.get("tool_name") or ""), tool_input)
+                    search_root = _search_root(ws, tool_name, tool_input)
                     touches_knowledge = search_root is not None and (
                         search_root == knowledge_dir or _within(search_root, knowledge_dir)
                     )
                 if touches_knowledge:
                     deps.knowledge_denials += 1
+                    _file_span(page=None, denied=True)
                     return _deny(
                         "read knowledge pages one at a time by path; "
                         "whole-directory reads are not permitted"
                     )
+            _file_span(page=None, denied=False)
             return {}
         if page in deps.knowledge_pages:
+            _file_span(page=page, denied=False)
             return {}
         if deps.knowledge_reads >= settings.max_knowledge_reads:
             deps.knowledge_denials += 1
+            _file_span(page=page, denied=True)
             return _deny("knowledge read limit reached; proceed with the pages you have.")
         deps.knowledge_pages.append(page)
         deps.knowledge_reads += 1
         deps.steps.append({"kind": "knowledge", "status": "read", "name": page, "why": ""})
         deps.emit("Reading knowledge", page)
+        _file_span(page=page, denied=False)
         return {}
 
     return hook
@@ -762,11 +899,6 @@ def cli_env() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # The run
 # ---------------------------------------------------------------------------
-
-
-def _memories_block(recalled: list[str]) -> str:
-    """The champion's wording, so the two prompts differ only by structure."""
-    return "\n".join(f"- {m}" for m in recalled) if recalled else "(none stored yet)"
 
 
 def _finish_span(span: Any, *, deps: _SdkDeps, trace: SdkTrace | None) -> None:
@@ -857,6 +989,10 @@ async def answer_with_sdk(
         # already never raises.
         with contextlib.suppress(Exception):
             span.set_attribute("ordinals_snapshot_hash", await ordinals_snapshot_hash())
+        # s49 M0: every child span this run opens — model turns, tool calls,
+        # file reads — hangs off this context explicitly, because the SDK
+        # invokes those callbacks from tasks created outside this `with`.
+        deps.otel_context = current_context()
         try:
             # The page plan is deterministic policy per user (s10): declared and
             # emitted BEFORE any model work, so the frontend draws its ghost slots
@@ -868,7 +1004,6 @@ async def answer_with_sdk(
             }
             deps.emit_frame("plan", {"pages": plan_slots})
 
-            recalled = await recall_memories(user_id, question)
             include_insights = "insights" in deps.page_indexes
             base_dir = Path(settings.sdk_workspace_dir) if settings.sdk_workspace_dir else None
             deck_ctx = await _build_deck_context()
@@ -877,7 +1012,6 @@ async def answer_with_sdk(
                 rid,
                 question,
                 include_insights=include_insights,
-                memories_block=_memories_block(recalled),
                 layouts_md=layouts_md,
                 base_dir=base_dir,
             ) as ws:
@@ -888,7 +1022,11 @@ async def answer_with_sdk(
                 # host's user/project settings into a server run. The file stays in
                 # the workspace so Read/Grep still see it.
                 system_prompt = (ws / "CLAUDE.md").read_text(encoding="utf-8")
-                trace = SdkTrace(system_prompt=system_prompt, question=question)
+                trace = SdkTrace(
+                    system_prompt=system_prompt,
+                    question=question,
+                    otel_parent=deps.otel_context,
+                )
                 server = build_tool_server(
                     sdk,
                     deps,
@@ -1127,14 +1265,7 @@ def _assemble(deps: _SdkDeps, trace: SdkTrace, question: str, plan: str) -> dict
 
     steps = _merge_decision_log(list(trace.entries), deps.steps)
     steps.extend(page_steps)
-    steps.append(
-        {
-            "kind": "analysis",
-            "skills_used": deps.skills_used,
-            "skill_gaps": deps.skill_gaps,
-            "used_inline_math": deps.used_inline_math,
-        }
-    )
+    steps.append(_analysis_rollup(deps))
     usage = trace.usage_totals(settings.sdk_model)
 
     primary = select_primary_query(deps.queries)

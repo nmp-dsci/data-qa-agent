@@ -5,7 +5,7 @@
 // test_grader_columns_exist_in_golden_sql) and the runner dispatch
 // (services/data-agent/agent/eval_graders.py). A golden is only "ready" — i.e.
 // scoreable — when graderIssue() returns null.
-import type { GraderSpec } from "../../lib/api";
+import type { GoldenCheckpoints, GraderSpec } from "../../lib/api";
 
 export const GRADER_KINDS = ["scalar", "row_set", "ranked_set", "series"] as const;
 export type GraderKind = (typeof GRADER_KINDS)[number];
@@ -144,5 +144,33 @@ export function pruneGrader(g: GraderSpec): GraderSpec {
   // eval_graders.grade_artifact, so only non-defaults are written.
   if (g.expect_chart === false) out.expect_chart = false;
   if (g.min_slides != null && g.min_slides !== 1) out.min_slides = g.min_slides;
+  return out;
+}
+
+/** Strip a checkpoints block down to the stages that actually name something, so
+ *  an empty editor saves `{}` rather than a scaffold of blank arrays. An empty
+ *  stage and a missing stage must score identically (null, never 0) — see
+ *  eval_graders.score_checkpoints — and the cleanest way to guarantee that is
+ *  never to persist the empty one. */
+export function pruneCheckpoints(cp: GoldenCheckpoints): GoldenCheckpoints {
+  const out: GoldenCheckpoints = {};
+  const keyCols = (cp.sql?.key_cols ?? []).filter(Boolean);
+  if (keyCols.length) out.sql = { key_cols: keyCols };
+
+  const skills = (cp.analysis?.expected_skills ?? []).filter(Boolean);
+  const derived = (cp.analysis?.derived_cols ?? []).filter(Boolean);
+  if (skills.length || derived.length) {
+    out.analysis = {};
+    if (skills.length) out.analysis.expected_skills = skills;
+    if (derived.length) out.analysis.derived_cols = derived;
+  }
+
+  const layouts = (cp.deck?.layouts_any_of ?? []).filter(Boolean);
+  const kpi = (cp.deck?.kpi_label_contains ?? "").trim();
+  if (layouts.length || kpi) {
+    out.deck = {};
+    if (layouts.length) out.deck.layouts_any_of = layouts;
+    if (kpi) out.deck.kpi_label_contains = kpi;
+  }
   return out;
 }

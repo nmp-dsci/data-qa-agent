@@ -23,6 +23,7 @@ tests.
 from __future__ import annotations
 
 import functools
+import inspect
 import json
 from collections.abc import Callable
 from typing import Any
@@ -53,6 +54,10 @@ def skill[F: Callable[..., Any]](fn: F) -> F:
 
     Also records the id() of any DataFrame argument, so a run knows which derived
     frames actually fed a report object (charts/analysis) vs pure scratch frames.
+
+    Tags the wrapper with ``__skill__ = True`` so :func:`registered` can find
+    every skill by introspection rather than a hand-maintained list — the same
+    list that used to go stale in ``agent/prompts/workspace_claude.md`` (s49 M1).
     """
 
     @functools.wraps(fn)
@@ -64,6 +69,7 @@ def skill[F: Callable[..., Any]](fn: F) -> F:
                 _CONSUMED.append(id(value))
         return fn(*args, **kwargs)
 
+    wrapper.__skill__ = True  # type: ignore[attr-defined]
     return wrapper  # type: ignore[return-value]
 
 
@@ -138,6 +144,9 @@ def used_inline_math() -> bool:
 
 
 # Re-export the skill surface the sandbox exposes as `skills.*`.
+from . import analysis as analysis_mod  # noqa: E402
+from . import charts as charts_mod  # noqa: E402
+from . import reporting as reporting_mod  # noqa: E402
 from .analysis import (  # noqa: E402
     driver_analysis,
     gross_yield,
@@ -161,6 +170,55 @@ from .reporting import (  # noqa: E402
     make_insight,
     related_metrics,
 )
+
+
+def _format_signature(fn: Callable[..., Any]) -> str:
+    """A compact ``name(args)`` string with defaults but no type annotations —
+    the same shape the hand-written skills list in ``workspace_claude.md`` used
+    to spell out by hand. ``inspect.signature`` follows ``functools.wraps``'
+    ``__wrapped__`` link, so this reflects the underlying skill's real params.
+    """
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return f"{fn.__name__}()"
+    parts: list[str] = []
+    seen_kwonly = False
+    for param in sig.parameters.values():
+        if param.kind is inspect.Parameter.KEYWORD_ONLY and not seen_kwonly:
+            parts.append("*")
+            seen_kwonly = True
+        if param.default is inspect.Parameter.empty:
+            parts.append(param.name)
+        else:
+            parts.append(f"{param.name}={param.default!r}")
+    return f"{fn.__name__}({', '.join(parts)})"
+
+
+def _first_doc_line(fn: Callable[..., Any]) -> str:
+    doc = (fn.__doc__ or "").strip()
+    return doc.splitlines()[0].strip() if doc else ""
+
+
+def registered() -> list[tuple[str, str, str, str]]:
+    """``(module, name, signature, first docstring line)`` for every
+    ``@skill``-decorated function, sorted by module then name.
+
+    Backs the generated ``## Skills available in run_analysis`` block in
+    ``agent/prompts/workspace_claude.md`` (s49 M1) — the skill catalogue the
+    model reads is derived from the actual registered skills, not a
+    hand-maintained list that can drift out of sync with the library.
+    """
+    out: list[tuple[str, str, str, str]] = []
+    for module in (analysis_mod, charts_mod, reporting_mod):
+        module_name = module.__name__.rsplit(".", 1)[-1]
+        for name, obj in vars(module).items():
+            if not getattr(obj, "__skill__", False):
+                continue
+            out.append((module_name, name, _format_signature(obj), _first_doc_line(obj)))
+    out.sort(key=lambda t: (t[0], t[1]))
+    return out
+
 
 __all__ = [
     # analysis
@@ -191,4 +249,5 @@ __all__ = [
     "gaps",
     "used_inline_math",
     "capture_frames",
+    "registered",
 ]

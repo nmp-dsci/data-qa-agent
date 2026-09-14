@@ -20,6 +20,7 @@ from typing import Any
 
 from .agent_common import _stringify
 from .knowledge import load_pages
+from .otlp import emit_span
 from .pricing import cost_usd
 
 # Built-in tools whose file arguments can name a knowledge page.
@@ -126,7 +127,12 @@ def _normalize(
 class SdkTrace:
     """Accumulates one Agent SDK run into the app's flat trace + usage totals."""
 
-    def __init__(self, *, system_prompt: str, question: str) -> None:
+    def __init__(self, *, system_prompt: str, question: str, otel_parent: Any = None) -> None:
+        # s49 M0: the run span's OTel context, so every translated step can be
+        # recorded as a child span under it. ``None`` (the default, and what
+        # ``otlp.current_context()`` returns with tracing off) keeps this class
+        # a pure translator — unit tests construct it without any OTel at all.
+        self.otel_parent = otel_parent
         self.entries: list[dict[str, Any]] = [
             {"kind": "system", "content": system_prompt},
             {"kind": "user", "content": question},
@@ -135,6 +141,10 @@ class SdkTrace:
         self.result: Any | None = None
         self.final_text: str = ""
         self.num_turns: int = 0
+        # Assistant messages seen so far — the ``turn`` attribute on the
+        # per-turn span. Distinct from ``num_turns``, which the SDK's own
+        # ResultMessage reports at the end of the run.
+        self.model_turns: int = 0
         self.session_id: str | None = None
         self.total_tokens: int = 0
         # tool_use_id → tool name, so a tool_result entry can name its tool the
@@ -192,6 +202,23 @@ class SdkTrace:
             self.final_text = text.strip()
         usage_fields = _usage_fields(getattr(msg, "usage", None))
         self.total_tokens += usage_fields.get("total_tokens") or 0
+        self.model_turns += 1
+        # s49 M0: one child span per model turn, carrying exactly what the flat
+        # trace entry carries. A point-in-time span rather than a timed one —
+        # the SDK hands the assistant message over only once the turn is
+        # already finished, so this process never sees its start.
+        emit_span(
+            "model.turn",
+            parent=self.otel_parent,
+            turn=self.model_turns,
+            input_tokens=usage_fields.get("input_tokens"),
+            output_tokens=usage_fields.get("output_tokens"),
+            cache_read=usage_fields.get("cache_read_tokens"),
+            cache_write=usage_fields.get("cache_write_tokens"),
+            stop_reason=getattr(msg, "stop_reason", None),
+            tool_calls=",".join(str(c["name"]) for c in tool_calls) or None,
+            model=getattr(msg, "model", None),
+        )
         self.entries.append(
             {
                 "kind": "model",

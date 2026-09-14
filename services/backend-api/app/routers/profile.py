@@ -1,9 +1,7 @@
 """Self-service profile endpoints for the Settings tab.
 
-Memories: app.user_memories is strictly owner-only under RLS (no admin
-override), so listing/deleting under the caller's RLS context can only ever
-touch their own rows. Access: the caller's role + dataset grants, read from the
-same tables the admin panel uses.
+Access: the caller's role + dataset grants, read from the same tables the
+admin panel uses.
 """
 
 from __future__ import annotations
@@ -17,41 +15,6 @@ from ..auth import CurrentUser, get_current_user
 from ..db import jsonable, rls_connection
 
 router = APIRouter(tags=["profile"])
-
-
-@router.get("/me/memories")
-async def list_my_memories(
-    user: CurrentUser = Depends(get_current_user),
-) -> list[dict[str, Any]]:
-    """The agent's remembered preferences for the current user."""
-    async with rls_connection(user.id) as conn:
-        rows = (
-            (
-                await conn.execute(
-                    text(
-                        "SELECT id, kind, content, created_at, last_used_at "
-                        "FROM app.user_memories ORDER BY created_at DESC LIMIT 100"
-                    )
-                )
-            )
-            .mappings()
-            .all()
-        )
-    return [{k: jsonable(v) for k, v in r.items()} for r in rows]
-
-
-@router.delete("/me/memories/{memory_id}")
-async def delete_my_memory(
-    memory_id: str,
-    user: CurrentUser = Depends(get_current_user),
-) -> dict[str, bool]:
-    """Forget one remembered preference (owner-only via RLS)."""
-    async with rls_connection(user.id) as conn:
-        result = await conn.execute(
-            text("DELETE FROM app.user_memories WHERE id = :mid"),
-            {"mid": memory_id},
-        )
-    return {"deleted": (result.rowcount or 0) > 0}
 
 
 @router.get("/me/access")

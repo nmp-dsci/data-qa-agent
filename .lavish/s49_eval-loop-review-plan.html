@@ -1,0 +1,543 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>s49 · Eval Loop Review</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>s48 · Template Packs</title><style>
+/* ---------------------------------------------------------------------------
+   Flight Deck / Night Flight tokens — lifted verbatim from
+   frontend/src/styles.css:9-147 so this plan renders in the product's own
+   design system rather than a generic one.
+--------------------------------------------------------------------------- */
+:root {
+  --gray-950:#0a0d15; --gray-900:#111522; --gray-850:#171c2b; --gray-800:#1e2434;
+  --gray-700:#242b3d; --gray-600:#333d55; --gray-100:#eaecf3; --gray-300:#9aa4bb;
+  --gray-400:#7a84a0; --ink-code:#0a0d13;
+  --gold-500:#d9a84e; --gold-ink:#1a1204; --gold-200:#f2ca79;
+  --blue-400:#7fb0ff; --green-400:#9ece6a; --amber-400:#e0af68;
+  --red-400:#f2777a; --purple-400:#c58fff; --cyan-400:#7dcfff;
+
+  --bg:var(--gray-950); --panel:var(--gray-900); --panel-2:var(--gray-850);
+  --panel-3:var(--gray-800); --border:var(--gray-700); --border-2:var(--gray-600);
+  --text:var(--gray-100); --muted:var(--gray-300); --faint:var(--gray-400);
+  --accent:var(--gold-500); --accent-ink:var(--gold-ink); --accent-soft:var(--gold-200);
+  --accent-2:var(--blue-400); --code-bg:var(--ink-code);
+  --good:var(--green-400); --good-border:#33502f;
+  --warn:var(--amber-400); --warn-border:#6b5a2a;
+  --bad:var(--red-400); --bad-border:#6b2a2a;
+  --purple:var(--purple-400); --purple-border:#5a3a6b;
+  --info:var(--cyan-400); --info-border:#2f5a7a;
+
+  --radius-sm:6px; --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+  --border:#ddd7c7; --border-2:#c9c1ac; --text:#23293a; --muted:#67604e;
+  --faint:#7d7663; --accent:#9a7328; --accent-ink:#fffaf0; --accent-soft:#7a5c22;
+  --accent-2:#2456c9; --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+  --warn:#8f6a12; --warn-border:#ddc48a; --bad:#c03535; --bad-border:#e3aaaa;
+  --purple:#7137c8; --purple-border:#cdb3ee; --info:#0d6e8c; --info-border:#a4cfdd;
+}
+
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 96px}
+
+h1{font-size:34px;line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;font-weight:650}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+  margin:0 0 6px;font-weight:600;font-family:var(--mono)}
+h3{font-size:21px;margin:0 0 12px;letter-spacing:-.01em;font-weight:620}
+h4{font-size:15px;margin:0 0 8px;font-weight:620}
+p{margin:0 0 14px;color:var(--muted)}
+p.lede{font-size:17px;color:var(--text);max-width:70ch}
+strong{color:var(--text);font-weight:620}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:1px 5px;
+  color:var(--accent-soft);overflow-wrap:anywhere}
+
+section{margin:0 0 64px}
+.sec-head{border-top:1px solid var(--border);padding-top:18px;margin-bottom:24px}
+
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tight{padding:14px 16px}
+
+.thesis{background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:1px solid var(--border-2);border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);padding:22px 24px;margin:28px 0 0}
+.thesis .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.thesis p{color:var(--text);font-size:16.5px;margin:0}
+
+.b{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid;
+  white-space:nowrap;font-weight:600}
+.b-good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,.08)}
+.b-warn{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,.08)}
+.b-bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,.08)}
+.b-info{color:var(--info);border-color:var(--info-border);background:rgba(125,207,255,.08)}
+.b-pur{color:var(--purple);border-color:var(--purple-border);background:rgba(197,143,255,.08)}
+.b-mut{color:var(--faint);border-color:var(--border-2)}
+
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;
+  padding:11px 14px;border-bottom:1px solid var(--border-2);white-space:nowrap;
+  background:var(--panel-2)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;
+  color:var(--muted)}
+tbody tr:last-child td{border-bottom:none}
+td.n{color:var(--text);font-weight:600}
+td.num{font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+tr.dead td{opacity:.62}
+tfoot td{border-top:1px solid var(--border-2);font-weight:700;color:var(--text);
+  background:var(--panel-2)}
+
+figure{margin:0 0 20px;background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{margin-top:14px;font-size:13px;color:var(--faint);
+  border-top:1px solid var(--border);padding-top:12px}
+.svg-l{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;fill:var(--faint)}
+.svg-t{font-family:var(--sans);font-size:12px;fill:var(--text);font-weight:600}
+.svg-s{font-family:var(--sans);font-size:10.5px;fill:var(--muted)}
+
+.note{border-left:3px solid;border-radius:0 var(--radius) var(--radius) 0;
+  padding:13px 16px;margin:0 0 16px;background:var(--panel-2);font-size:14px}
+.note p:last-child{margin-bottom:0}
+.n-bad{border-color:var(--bad)} .n-good{border-color:var(--good)}
+.n-warn{border-color:var(--warn)} .n-info{border-color:var(--info)}
+
+ul.clean{list-style:none;padding:0;margin:0 0 14px}
+ul.clean li{padding:5px 0 5px 20px;position:relative;color:var(--muted);font-size:14px}
+ul.clean li::before{content:"";position:absolute;left:4px;top:14px;width:5px;height:5px;
+  border-radius:50%;background:var(--accent);opacity:.65}
+
+/* done checklist */
+ul.dod{list-style:none;padding:0;margin:0}
+ul.dod li{display:flex;gap:12px;align-items:flex-start;padding:11px 0;
+  border-bottom:1px solid var(--border)}
+ul.dod li:last-child{border-bottom:none}
+ul.dod .box{flex-shrink:0;width:18px;height:18px;border:1.5px solid var(--accent);
+  border-radius:4px;margin-top:2px}
+ul.dod .t{font-size:14.5px;color:var(--text);font-weight:600}
+ul.dod .d{font-size:13px;color:var(--faint);display:block;margin-top:1px;font-weight:400}
+
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;overflow-x:auto;margin:0 0 16px}
+pre code{background:none;border:none;padding:0;color:var(--gray-100);font-size:12.5px;
+  line-height:1.6;display:block;white-space:pre}
+.cm{color:var(--faint)} .ck{color:var(--purple)} .cs{color:var(--good)}
+.cf{color:var(--accent-2)} .cd{color:var(--accent-soft)}
+
+.ms{display:flex;flex-direction:column;gap:0}
+.ms-row{display:flex;gap:16px;align-items:flex-start;padding:0 0 22px;min-width:0}
+.ms-row .ms-b{flex:1 1 auto;min-width:0;padding:0}
+.ms-n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);
+  background:var(--accent);width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ms-n.gate{background:var(--bad);color:#fff}
+.ms-rail{border-left:1px dashed var(--border-2);margin:8px 0 0 17px;grid-column:1}
+.ms-b{padding:0 0 26px}
+.ms-b h4{margin-bottom:4px}
+.ms-b p{font-size:13.5px;margin-bottom:8px}
+
+form.q{background:var(--panel);border:1px solid var(--border-2);
+  border-radius:var(--radius-lg);padding:20px;margin:0 0 16px}
+form.q h4{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+form.q .qid{font-family:var(--mono);font-size:11px;color:var(--accent);
+  border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:1px 6px}
+form.q .qsub{font-size:13px;color:var(--faint);margin:0 0 14px}
+label.opt{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;
+  border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;
+  cursor:pointer;background:var(--panel-2);transition:border-color .12s}
+label.opt:hover{border-color:var(--border-2)}
+label.opt:has(input:checked){border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 8%,var(--panel-2))}
+label.opt input{margin-top:3px;accent-color:var(--accent);flex-shrink:0}
+label.opt .ot{font-weight:620;color:var(--text);font-size:14px}
+label.opt .od{font-size:12.5px;color:var(--faint);display:block;margin-top:2px}
+button.send{font-family:var(--sans);font-weight:620;font-size:13.5px;
+  background:var(--accent);color:var(--accent-ink);border:none;
+  border-radius:var(--radius);padding:9px 18px;cursor:pointer}
+button.send:hover{background:var(--accent-soft)}
+
+.rec{border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--panel));
+  border-radius:var(--radius-lg);padding:20px 22px}
+.rec h4{color:var(--accent)}
+.foot{border-top:1px solid var(--border);padding-top:16px;color:var(--faint);font-size:12.5px}
+
+.k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+pre{margin:0;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+pre code{background:none;border:none;padding:0;color:var(--text)}
+.svg-m{font-family:var(--sans);font-size:11px;fill:var(--muted)}
+form.card label{display:block;padding:6px 0;color:var(--text);cursor:pointer}
+form.card input{margin-right:8px;accent-color:var(--accent)}
+form.card button{margin-top:10px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius-sm);padding:7px 14px;font-weight:600;font-family:var(--mono);font-size:12px;cursor:pointer}
+ul,ol{margin:0 0 10px;padding-left:20px;color:var(--muted)} li{margin-bottom:6px}
+header h2{margin-bottom:10px}
+</style></head><body>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const paint = document.createElement("canvas").getContext("2d");
+function toRgba(c){paint.clearRect(0,0,1,1);paint.fillStyle="#000";paint.fillStyle=c;paint.fillRect(0,0,1,1);return paint.getImageData(0,0,1,1).data;}
+function comp(f,b){const fa=f[3]/255,ba=b[3]/255,a=fa+ba*(1-fa);if(a===0)return[0,0,0,0];return[(f[0]*fa+b[0]*ba*(1-fa))/a,(f[1]*fa+b[1]*ba*(1-fa))/a,(f[2]*fa+b[2]*ba*(1-fa))/a,a*255];}
+function pageIsDark(){const root=document.documentElement;const rb=toRgba(getComputedStyle(root).backgroundColor);const bb=document.body?toRgba(getComputedStyle(document.body).backgroundColor):[0,0,0,0];const [r,g,b,a]=comp(bb,rb);if(a>0)return (0.2126*r+0.7152*g+0.0722*b)/255<0.5;const cs=getComputedStyle(root).colorScheme;if(cs.includes("dark")&&!cs.includes("light"))return true;if(cs.includes("light")&&!cs.includes("dark"))return false;return darkQuery.matches;}
+const diagrams=[...document.querySelectorAll(".mermaid")].map(el=>({el,src:el.innerHTML}));
+let applied,rendering=false,queued=false;
+function queueRender(){queued=true;if(rendering)return;void render();}
+async function render(){rendering=true;try{while(queued){queued=false;const theme=pageIsDark()?"dark":"default";if(theme===applied)continue;mermaid.initialize({startOnLoad:false,theme,securityLevel:"strict"});for(const {el,src} of diagrams){el.removeAttribute("data-processed");el.innerHTML=src;}try{await mermaid.run({nodes:diagrams.map(d=>d.el)});}catch(e){console.error("Mermaid render failed:",e);return;}applied=theme;}}finally{rendering=false;if(queued)queueRender();}}
+if(document.readyState==="complete")queueRender();else window.addEventListener("load",queueRender,{once:true});
+const obs=new MutationObserver(queueRender);for(const el of [document.documentElement,document.body]){if(!el)continue;obs.observe(el,{attributes:true,attributeFilter:["data-theme","class","style"]});}
+document.addEventListener("change",queueRender,true);darkQuery.addEventListener("change",queueRender);
+</script>
+<style>
+.mermaid{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin:0 0 10px;overflow-x:auto}
+.mermaid svg{max-width:100%;height:auto}
+.wb{margin:0 0 22px}
+.wb .cap{font-size:13px;color:var(--faint);padding:0 4px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px;margin:22px 0 0}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px}
+.stat .v{font-size:26px;font-weight:650;letter-spacing:-.02em;color:var(--text);line-height:1.1}
+.stat .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-top:6px}
+.stat.good .v{color:var(--good)} .stat.warn .v{color:var(--warn)} .stat.bad .v{color:var(--bad)}
+.opt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:14px;margin-bottom:16px}
+.opt{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.opt.pick{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
+.opt h4{margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.opt .cost{font-size:13px;color:var(--faint)}
+.opt ul{margin:0;padding-left:18px;font-size:13.5px}
+.opt ul li{margin-bottom:4px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+.toc a{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:4px 10px;text-decoration:none}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}
+.tree{font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--muted);white-space:pre;overflow-x:auto}
+.tree b{color:var(--text);font-weight:600}
+.tree i{color:var(--good);font-style:normal}
+.small{font-size:13px;color:var(--faint)}
+</style>
+<div class="wrap">
+<header>
+<h2>s49 · Evaluation loop review · branch <code>eval-loop-review</code></h2>
+<h1>Make the eval loop fully traced, judged against goldens, and versioned end to end</h1>
+<p class="lede">The loop is NL → SQL → Python sandbox → Sheets/Slides. Most of the plumbing already exists and has been rebuilt several times (s14, s27, s30, s43, s45, s48). This review checks whether what is there today is <em>solid enough to run an optimisation loop on</em>: every agent action visible in MLflow, an LLM judge that compares the agent's answer to the golden, and a version history you can rewind. It also folds in the learnings from NVIDIA's DABstep write-up and takes a position on the knowledge base.</p>
+<div class="stats">
+  <div class="stat good"><div class="v">3</div><div class="l">goldens in evals/cases</div></div>
+  <div class="stat good"><div class="v">G1–G5</div><div class="l">deterministic graders exist</div></div>
+  <div class="stat bad"><div class="v">1 span</div><div class="l">per run on the SDK path</div></div>
+  <div class="stat bad"><div class="v">0</div><div class="l">judge inputs from golden or deck</div></div>
+  <div class="stat warn"><div class="v">av-…</div><div class="l">fingerprint skips skills/ on SDK</div></div>
+</div>
+<nav class="toc">
+  <a href="#today">1 · Loop today</a><a href="#gaps">2 · Gap audit</a><a href="#target">3 · Target tracing</a><a href="#golden">4 · Golden structure</a><a href="#judge">5 · Judge v2</a><a href="#dabstep">6 · DABstep learnings</a><a href="#kb">7 · Knowledge base</a><a href="#version">8 · Version control</a><a href="#cc">9 · Champion vs challenger</a><a href="#plan">10 · Build plan</a><a href="#decide">11 · Decisions</a>
+</nav>
+<div class="thesis"><div class="k">Thesis</div><p>The graders, registry and promotion gate are already good. What is missing is <strong>evidence density</strong>: the Agent SDK run is a single opaque span, the judge never sees the golden or the deck, the sandbox's stdout and derived frames are thrown away, and a change to the helper library does not change the agent's version. Fix those four, structure goldens as an <em>outcome plus hidden checkpoints</em>, and the same two goldens are enough to prove champion-vs-challenger works.</p></div>
+</header>
+
+<!-- ====================================================== 1 TODAY -->
+<section id="today">
+<div class="sec-head"><h2>1 · The loop as it runs today</h2><h3>Verified against the code, not the docs</h3></div>
+<p>Whiteboard 1 is the run-time path a single question takes, with what each stage persists. Everything in it was confirmed by reading the files named in the table underneath.</p>
+<div class="wb">
+<pre class="mermaid">
+flowchart LR
+  U[User question] --> A[backend-api /ask]
+  A --> S[data-agent sdk_agent.answer_with_sdk]
+  subgraph WS[per-run workspace, deleted at end]
+    direction LR
+    C[CLAUDE.md] --- M[marts.md + schema/*.md] --- K[knowledge/*.md] --- F[frames/*.head.csv]
+  end
+  S --- WS
+  S -->|extract sql| SQL[(Postgres marts, RLS)]
+  SQL -->|rows as frame| S
+  S -->|run_analysis code| PY[Pyodide sandbox, skills.* preloaded]
+  PY -->|result dict + skills_used + skill_gaps| S
+  S -->|start_deck / add_slide| G[Google Slides + Sheet]
+  S --> R[(app.query_runs: trace jsonb, sql_text, tokens, otel_trace_id, artifact urls)]
+  S -.one outer span.-> ML[(MLflow data-qa/traces)]
+  G --> H[(artifact_snapshots + artifact_edits via handover_poll)]
+</pre>
+<div class="cap">Whiteboard 1 · run-time path. Dotted edge = the only OTLP span the SDK runtime emits today.</div>
+</div>
+
+<div class="tw"><table>
+<thead><tr><th>Stage</th><th>Tool / entry</th><th>What is persisted</th><th>What is lost</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td class="n">NL → SQL</td><td><code>extract(sql, name, purpose, why)</code></td><td>sql, status, row_count, frame name, purpose, why in <code>trace[]</code> (kind <code>sql</code>)</td><td>the rows themselves (cached in-process only)</td><td>sandbox_agent.py:766-832</td></tr>
+<tr><td class="n">Sandbox</td><td><code>run_analysis(code, why)</code></td><td>code (as tool-call args), status, skills_used, skill_gaps, error; report dict → <code>messages.report</code></td><td>stdout, derived frames, wall time, which runtime ran it</td><td>sandbox_agent.py:835-926 · goldens.py:351</td></tr>
+<tr><td class="n">Deck</td><td><code>start_deck</code> · <code>add_slide</code></td><td>deck_url, sheet_url on query_runs; snapshots + edit events after handover</td><td>the slide manifest as built (layout, headline, kpi per slide) is on the run result but not queryable</td><td>sdk_agent.py:441-564 · 0037/0038</td></tr>
+<tr><td class="n">Eval</td><td><code>make eval</code> → scripts/eval_run.py</td><td>eval_runs + eval_results (g1..g5, passed, query_run_id); MLflow run per pack + run per case with answer.txt / report.json / trace.json</td><td>link from eval_result to the OTLP trace; the golden's own rows</td><td>eval_run.py:311-490, 544-687</td></tr>
+<tr><td class="n">Judge</td><td>eval_judge.judge_insight</td><td>5-criterion insight score, rubric hash <code>insight-v1</code>, cross-family model (DeepSeek judges sonnet-5)</td><td>sees only question + answer text. Never the golden, SQL, rows or deck. No label the goldens share</td><td>eval_judge.py:37-89</td></tr>
+<tr><td class="n">Registry</td><td>scripts/mlflow_registry.py</td><td>one model version per fingerprint; @champion / @challenger; app.promotions</td><td>a materialised manifest of what the fingerprint hashed</td><td>mlflow_registry.py:92-250</td></tr>
+</tbody></table></div>
+
+<div class="grid g2" style="margin-top:16px">
+<div class="card"><h4>Goldens today</h4>
+<ul class="clean">
+<li><strong>3 cases</strong> in <code>evals/cases/nsw_rent.yaml</code> (2) and <code>nsw_sales.yaml</code> (1): a T1 scalar, a T2 ranked set, a T? growth trend.</li>
+<li>Source of truth is the YAML pack; DB table <code>app.eval_cases</code> is the working surface (migrations 0019, 0023, 0029, 0030).</li>
+<li>A golden carries <code>golden_sql</code>, <code>golden_sandbox</code>, <code>golden_data</code> (never committed, only a sha), <code>golden_report</code>, <code>golden_objects</code>, and a <code>grader</code> jsonb with kind / key / tolerance / min_slides / expect_chart.</li>
+<li>Below 10 cases the runner stamps <code>generalisation: unproven</code>. That is correct and should stay.</li>
+</ul></div>
+<div class="card"><h4>Fingerprint today</h4>
+<ul class="clean">
+<li>SDK runtime: <code>provider | model | claude_md | marts | schema | knowledge_version | ordinals | quota</code> → <code>av-&lt;sha12&gt;</code> (version.py:200-262).</li>
+<li><code>image_tag</code> and <code>git_sha</code> ride along as provenance but are excluded from the hash, deliberately, so a rebuild of identical code is the same version.</li>
+<li><strong>Defect:</strong> version.py:80-86 states the SDK runtime has "no skills/ dir the model reads", so <code>skills_hash</code> is not a component. But the sandbox preloads <code>agent/skills/</code> on both runtimes (runner.py:169, pyodide_host.mjs:81). Editing <code>growth_rate()</code> today does not create a new agent version.</li>
+</ul></div>
+</div>
+</section>
+
+<!-- ====================================================== 2 GAPS -->
+<section id="gaps">
+<div class="sec-head"><h2>2 · Gap audit</h2><h3>What stops this loop from being "fully tracked"</h3></div>
+<div class="tw"><table>
+<thead><tr><th>ID</th><th>Gap</th><th>Evidence</th><th>Why it matters for optimisation</th><th>Sev</th></tr></thead>
+<tbody>
+<tr><td class="n">T-1</td><td>SDK run is one span</td><td><code>agent_span()</code> wraps the whole of <code>answer_with_sdk</code> (sdk_agent.py:846, otlp.py:76-108). No child span per model turn or tool call.</td><td>MLflow's trace view cannot show where time or tokens went, or which tool call failed. No run today has per-action spans.</td><td><span class="b b-bad">high</span></td></tr>
+<tr><td class="n">T-2</td><td>Sandbox output discarded</td><td><code>AnalysisResult</code> has report, skills_used, skill_gaps, frames, error (contract.py:23-40) but only status and skills reach the trace; stdout is not captured at all.</td><td>A judge or offline reflector cannot see the intermediate numbers the agent computed, only the final narrative.</td><td><span class="b b-bad">high</span></td></tr>
+<tr><td class="n">T-3</td><td>No stored join eval → trace</td><td><code>query_runs.otel_trace_id</code> exists (0031) but <code>eval_results</code> has no trace id or MLflow run id; the per-case MLflow run is tagged with eval_run_id/case_key only.</td><td>You cannot click from a failing golden to its span waterfall; you search by time window.</td><td><span class="b b-warn">med</span></td></tr>
+<tr><td class="n">T-4</td><td>Deck inputs not visible</td><td>The agent picks a layout and sends headline, commentary, kpi, frame and chart_type per <code>add_slide</code> call (sdk_agent.py:441-564). Those arguments live only in the tool-call trace and the run result; nothing in Postgres lists them per slide.</td><td>The deck is a chosen template plus injected data and text. Judge and reviewer must see exactly what was injected, slide by slide.</td><td><span class="b b-warn">med</span></td></tr>
+<tr><td class="n">J-1</td><td>Judge is blind to the golden</td><td>eval_judge.py builds the prompt from question + answer + optional evidence only.</td><td>It cannot say "wrong" versus "right but dull". The user's ask is judge-vs-golden.</td><td><span class="b b-bad">high</span></td></tr>
+<tr><td class="n">J-2</td><td>Judge output is a score, not a diagnosis</td><td>Returns 5 sub-scores and one-sentence reasoning.</td><td>An optimisation loop needs an ordinal label (low / medium / high) that the goldens also carry, so the judge is calibrated on the golden set before it scores agent answers, plus the failure attributed to a stage: SQL, analysis, presentation, knowledge.</td><td><span class="b b-warn">med</span></td></tr>
+<tr><td class="n">V-1</td><td>skills/ not in SDK fingerprint</td><td>version.py:80-86 vs runner.py:169.</td><td>The exact lever the DABstep approach optimises is invisible to champion/challenger.</td><td><span class="b b-bad">high</span></td></tr>
+<tr><td class="n">V-2</td><td>Fingerprint is a hash, not a manifest</td><td>Registry runs log the component hashes (mlflow_registry.py:92-138) but not the files, so <code>av-3f2a…</code> cannot be reconstructed without guessing the git commit.</td><td>"Traverse back in time" requires a materialised bundle per version.</td><td><span class="b b-warn">med</span></td></tr>
+<tr><td class="n">V-3</td><td>Knowledge is git-only, ordinals are DB-only</td><td>knowledge.py has no write endpoint; ordinals has app.dataset_ordinals + 0036 log.</td><td>Two version stories for one concept. Curator edits to knowledge pages have no home.</td><td><span class="b b-warn">med</span></td></tr>
+<tr><td class="n">O-1</td><td>No offline learning loop</td><td><code>skill_gap()</code> is recorded per run (skills/__init__.py:118) and shown in the trace, but nothing consumes it.</td><td>This is the DABstep phase 1 that does not exist yet.</td><td><span class="b b-warn">med</span></td></tr>
+<tr><td class="n">O-2</td><td>Pipeline duplication in the sandbox</td><td>builtins/import lockdown is implemented twice: runner.py:43-92 and pyodide_host.mjs:48-102.</td><td>Any helper-library change has two places to break. Known (memory: sandbox-has-two-builtins-layers).</td><td><span class="b b-mut">low</span></td></tr>
+</tbody></table></div>
+<div class="note n-good" style="margin-top:16px"><p><strong>What is already solid and should not be touched:</strong> the G1 reduction chain and G5 artifact grader (s48), the append-only <code>app.promotions</code> and the promote rule "pass-rate ≥ champion and zero pass→fail flips" (mlflow_registry.py:230-233), the OTLP re-point to MLflow with <code>x-mlflow-experiment-id</code>, and the per-case MLflow run with answer/report/trace artifacts.</p></div>
+</section>
+
+<!-- ====================================================== 3 TARGET -->
+<section id="target">
+<div class="sec-head"><h2>3 · Target tracing</h2><h3>One trace per run, one span per action, one id joining everything</h3></div>
+<p>Whiteboard 2 is the span tree a single run should produce, and the ids that let a golden failure be followed to its exact tool call. The SDK message stream already carries everything needed (sdk_trace.py translates it to the flat trace); the change is to open a child span per translated step instead of only one outer span.</p>
+<div class="wb">
+<pre class="mermaid">
+flowchart TB
+  R[span run · run_id, fingerprint, user, channel=eval]
+  R --> P1[span model.turn 1 · tokens, cache hits]
+  R --> T1[span tool.extract · sql, rows, ms, status]
+  R --> P2[span model.turn 2]
+  R --> T2[span tool.run_analysis · code_sha, runtime, ms, skills_used, skill_gaps, stdout_len]
+  T2 --> T2a[event frames · derived frame heads]
+  R --> KR[span tool.Read knowledge/ · page, quota_left]
+  R --> P3[span model.turn n]
+  R --> D1[span tool.start_deck · deck_id]
+  R --> D2[span tool.add_slide · layout, headline, chart_type]
+  R --> J[span eval.grade · g1..g5, judge_v2 scores, diagnosis]
+  R -.trace_id.-> Q[(query_runs.otel_trace_id)]
+  Q -.query_run_id.-> E[(eval_results + otel_trace_id + mlflow_run_id)]
+  E -.-> M[(MLflow case run · artifacts)]
+</pre>
+<div class="cap">Whiteboard 2 · target span tree and id chain. Every box is a span in MLflow's trace view; the dashed edges are the stored foreign keys.</div>
+</div>
+<div class="grid g3">
+<div class="card"><h4>Spans</h4><p>Emit a child span from <code>sdk_trace</code> for every model turn and every tool return, with the same attributes the flat trace already carries. Sandbox span gets <code>code_sha</code>, runtime, wall ms, stdout length. Keep the outer span; it is the parent.</p></div>
+<div class="card"><h4>Sandbox capture</h4><p>Extend <code>AnalysisResult</code> with <code>stdout</code> (capped, say 8 KB) and persist the derived frame heads already collected by <code>capture_frames()</code>. Store both in the trace step, not a new table.</p></div>
+<div class="card"><h4>Ids</h4><p>Add <code>otel_trace_id</code> and <code>mlflow_run_id</code> to <code>app.eval_results</code> (migration). The runner already has the query_run id and creates the MLflow run, so this is two columns and two assignments.</p></div>
+<div class="card"><h4>Deck manifest</h4><p>Persist every <code>add_slide</code> call's arguments in slide order (layout, headline, commentary, kpi, kpi_label, frame, columns, chart_type) as <code>query_runs.artifact_manifest</code> jsonb. That is the deck exactly as the agent specified it: template chosen, data and text injected. G5, the judge and the Evaluations tab read from it.</p></div>
+<div class="card"><h4>Eval as a span</h4><p>Grading happens after the run today. Log it as a span on the same trace id (the runner has it) so the MLflow trace shows question → actions → verdict in one view.</p></div>
+<div class="card"><h4>MLflow GenAI view</h4><p>Nothing to build; once child spans exist, the GenAI overview in MLflow 3.12 shows per-tool latency and token percentiles for free (verified in s43).</p></div>
+</div>
+</section>
+
+<!-- ====================================================== 4 GOLDEN -->
+<section id="golden">
+<div class="sec-head"><h2>4 · Golden structure</h2><h3>Outcome golden with hidden checkpoints</h3></div>
+<p>The user's question: should a golden carry sub-answers for SQL, Python and Slides, or only the final answer, with the agent free to optimise SQL and Python on its own? Three shapes were considered.</p>
+<div class="opt-grid">
+<div class="opt"><h4>A · Outcome only <span class="b b-mut">simplest</span></h4><div class="cost">Golden = question + expected value(s) + expected deck properties.</div>
+<ul><li>Agent is free to reach it any way. No leakage possible.</li><li>A failure tells you nothing about where. The judge must guess the stage.</li><li>Cannot grade a run whose SQL was right but whose analysis lost precision.</li></ul></div>
+<div class="opt"><h4>B · Full sub-goldens, all gating <span class="b b-warn">brittle</span></h4><div class="cost">Golden SQL, golden sandbox code, golden slide-by-slide deck, each graded.</div>
+<ul><li>Precise attribution.</li><li>Over-specifies: a different but valid SQL, or a different valid layout, fails. s48 explicitly chose not to assert layout identity.</li><li>Curation cost per golden triples; with 1–2 goldens that is fine, at 30 it is not.</li></ul></div>
+<div class="opt pick"><h4>C · Outcome gates, checkpoints diagnose <span class="b b-good">recommended</span></h4><div class="cost">Golden = outcome (gating) + reference SQL rows, reference frame, reference deck shape (diagnostic only).</div>
+<ul><li>Pass/fail is decided by G1 (values) + G5 (deck exists, has chart/kpi) + judge-v2 correctness.</li><li>Checkpoints are compared, scored, and stored, but never gate. They feed the diagnosis field: SQL diverged / analysis diverged / presentation diverged.</li><li>The agent never sees any of it; it is holdout by construction. Only the offline reflector reads goldens.</li></ul></div>
+</div>
+<div class="card"><h4>Golden v2 shape (extends the existing <code>grader</code> jsonb, no new table)</h4>
+<pre><code><span class="cm"># evals/cases/nsw_rent.yaml · one case</span>
+case_key: nsw_rent-median-weekly-rent-2br-units-postcode-2077-latest-month-s48a1
+question: "..."
+outcome:                      <span class="cm"># GATES</span>
+  grader: {kind: scalar, key: postcode, value_col: median_weekly_rent, tolerance_pct: 1}
+  artifact: {min_slides: 2, expect_chart: false, expect_kpi: true}
+  answer_text: "Median weekly rent for 2-bedroom units in 2077 was $606.92 in ..."   <span class="cm"># judge reference, label high</span>
+  label: high
+  calibration_examples:        <span class="cm"># optional, curator-written; the judge must reproduce these labels</span>
+    - {label: medium, answer: "Rent in 2077 is about $600 a week."}
+    - {label: low, answer: "Rents rose across Sydney last year."}
+checkpoints:                  <span class="cm"># DIAGNOSE ONLY, never shown to the agent</span>
+  sql: {golden_sql: "...", rows_sha: "…", key_cols: [postcode, month]}
+  analysis: {frame_sha: "…", derived_cols: [median_weekly_rent], expected_skills: [latest_value]}
+  deck: {layouts_any_of: [L1, L2], kpi_label_contains: "rent"}
+holdout: true</code></pre>
+<p class="small">The existing columns map directly: <code>golden_sql</code> → checkpoints.sql, <code>golden_sandbox</code> → checkpoints.analysis, <code>golden_objects</code>/<code>golden_report</code> → checkpoints.deck, <code>grader</code> → outcome.grader. The runner's <code>golden_truth()</code> already re-runs golden_sql live, so rows_sha is computed at eval time, not stored.</p></div>
+</section>
+
+<!-- ====================================================== 5 JUDGE -->
+<section id="judge">
+<div class="sec-head"><h2>5 · LLM-as-a-judge v2</h2><h3>One judge, ordinal labels, calibrated on the golden set first</h3></div>
+<div class="grid g2">
+<div class="card"><h4>What it sees <span class="b b-pur">new</span></h4>
+<p>Question, the golden's <code>answer_text</code> and expected values, the agent's answer text, the deck as the agent specified it (each add_slide's layout, headline, commentary, kpi, chart type, rendered as a compact outline), and the G1 numeric verdict. Every input is something the agent chose or the golden defines; nothing is hidden from the judge.</p></div>
+<div class="card"><h4>What it returns</h4>
+<p><code>label: low | medium | high</code> for the answer against the golden, <code>diagnosis: sql | analysis | presentation | knowledge | none</code>, and one sentence. Three ordinal levels, not a 0–10 score: labels are what a curator can assign consistently, and what the goldens carry, so judge and golden speak the same scale. The diagnosis is cross-checked against the checkpoint scores.</p></div>
+</div>
+<div class="grid g3" style="margin-top:14px">
+<div class="card tight"><h4>Model</h4><p><strong>sonnet-5 at medium effort, the same model and runtime as the agent.</strong> The cross-family rule is dropped; everything runs on agent_sdk. Rubric text is hashed as before and versioned <code>label-v1</code>. One line of caution: a same-model judge has a known self-preference bias, which is why the calibration step below is mandatory rather than optional.</p></div>
+<div class="card tight"><h4>Calibrate on goldens first</h4><p>Before scoring any agent answer, the judge scores the golden set itself: each golden's <code>answer_text</code> must come back <code>high</code>, and any curator-written <code>calibration_examples</code> must come back with their stored labels. A judge that cannot reproduce the golden labels does not score the run; the eval is marked <code>judge_uncalibrated</code>.</p></div>
+<div class="card tight"><h4>Gating <span class="b b-warn">advisory until 10 goldens</span></h4><p>A case passes on G1 and G5 only. The judge label and diagnosis are recorded on every eval row and shown in the Evaluations tab but do not gate until the pack reaches 10 goldens (the runner's existing <code>HOLDOUT_MIN_CASES</code>). The old insight judge is removed; its rubric hash stays on historical eval rows only.</p></div>
+</div>
+</section>
+
+<!-- ====================================================== 6 DABSTEP -->
+<section id="dabstep">
+<div class="sec-head"><h2>6 · DABstep learnings applied</h2><h3>NVIDIA's three-phase split, mapped onto what exists here</h3></div>
+<p>The write-up's result: 89.95% on hard tasks at 20s per task versus a Claude Code baseline of 66.93% at 10 minutes. The mechanism was not a better model. It was moving reasoning offline into a tested <code>helper.py</code>, then giving the fast inference agent only function signatures and a short prompt. Three phases: a heavyweight learning loop that discovers shared sub-operations across tasks and refactors them into helpers; fast single-pass inference importing those helpers; offline reflection that audits solutions and feeds prompt fixes back.</p>
+<div class="wb">
+<pre class="mermaid">
+flowchart LR
+  subgraph OFF[Offline · heavyweight model, sees goldens]
+    L[Learning loop: mine skill_gaps + failed checkpoints] --> H[propose helper in skills/analysis.py]
+    H --> T[test against golden checkpoints in sandbox]
+    T -->|pass| PR[git commit → new skills_hash → challenger]
+    T -->|fail| L
+    RF[Reflection: audit traces + judge diagnoses] --> CM[edit CLAUDE.md / knowledge page]
+    CM --> PR
+  end
+  subgraph ON[Online · sonnet-5, never sees goldens]
+    Q[question] --> AG[agent: extract → run_analysis using skills.* → deck]
+  end
+  PR --> AG
+  AG -->|traces, skill_gaps| RF
+  AG -->|traces, skill_gaps| L
+</pre>
+<div class="cap">Whiteboard 3 · the DABstep split as it would run here. Both offline loops emit git commits, which are the only way a challenger is born.</div>
+</div>
+<div class="tw"><table>
+<thead><tr><th>DABstep element</th><th>Here today</th><th>Gap</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td class="n">helper.py library</td><td><code>agent/skills/</code>: 7 analysis, 5 chart, 5 reporting helpers, <code>@skill</code> telemetry, preloaded in the sandbox</td><td>none structurally</td><td>keep; add <code>skills_hash</code> to the SDK fingerprint (V-1)</td></tr>
+<tr><td class="n">Signatures not code in the prompt</td><td>CLAUDE.md says "NEVER do growth/yield/rolling maths yourself, call the skill" (workspace_claude.md:39-45)</td><td>the agent can still Read skills source? No: workspace has no skills/ copy. It sees only the CLAUDE.md summary</td><td>generate the signature block in CLAUDE.md from the <code>@skill</code> registry so it can never drift from the code</td></tr>
+<tr><td class="n">Task-overlap discovery</td><td><code>skill_gap(need, why)</code> recorded per run into the trace and query_runs</td><td>nothing reads it</td><td>M3 skill-miner: cluster gaps + judge diagnoses across runs, rank by frequency</td></tr>
+<tr><td class="n">Test candidates against ground truth</td><td>checkpoints do not exist yet</td><td>section 4</td><td>golden v2 checkpoints.analysis is exactly the test oracle a candidate helper runs against</td></tr>
+<tr><td class="n">Offline reflection → prompt</td><td>eval_diagnose.py is deterministic clustering, no LLM</td><td>no LLM reflection</td><td>M3 reflector: Opus reads failing traces + judge diagnoses, proposes one CLAUDE.md or knowledge diff, opened as a PR</td></tr>
+<tr><td class="n">Group consistency</td><td>none</td><td>—</td><td>defer; with 2 goldens, 3 repeats per golden is the poor man's version</td></tr>
+<tr><td class="n">Fast inference model</td><td>sonnet-5 pinned, 22 max turns, ~47k token CLI preamble</td><td>turns 26-43 at the s45 gate; the champion is the current agent_sdk fingerprint</td><td>turn count is already a G4 metric; the helper library is the lever that lowers it, so track it per version</td></tr>
+</tbody></table></div>
+<div class="note n-warn" style="margin-top:16px"><p><strong>One caution.</strong> DABstep is a fixed benchmark with 450 tasks over one dataset, so a helper library overfit to it still wins. Here the goldens are the training signal by design (memory: goldens-are-the-training-signal) and there are 2 of them. The skill-miner must therefore be gated on holdout the moment the pack passes 10 cases, and until then every proposed helper is a human-reviewed PR, not an auto-merge.</p></div>
+</section>
+
+<!-- ====================================================== 7 KB -->
+<section id="kb">
+<div class="sec-head"><h2>7 · Knowledge base: filesystem markdown or Agent SDK skill?</h2><h3>Opinion: keep the markdown filesystem for facts, use one SKILL.md for procedure</h3></div>
+<div class="opt-grid">
+<div class="opt pick"><h4>Markdown filesystem <span class="b b-good">keep</span></h4>
+<ul><li>Already a 3-tier disclosure system: index → search → read (knowledge.py:147-260), with <code>lint()</code> and a generated INDEX.md.</li><li>Content-hashed into <code>knowledge_version</code> and the fingerprint. Versioning is free.</li><li>Copied into the per-run workspace; the agent greps it with Read/Grep under a quota hook (sdk_agent.py:668-722). Reads are metered and provenance-tracked.</li><li>Facts change per dataset. Pages are the right unit for a curator to edit.</li></ul></div>
+<div class="opt"><h4>Agent SDK skills <span class="b b-mut">not for facts</span></h4>
+<ul><li>A SKILL.md is loaded by description match when the model decides it is relevant. That is procedural knowledge: "how to answer a growth question", not "what a bedroom band is".</li><li>No index, no search, no lint, no read quota. Everything <code>knowledge.py</code> gives you would be rebuilt or lost.</li><li>Skill discovery depends on the SDK's <code>setting_sources</code> and cwd; the per-run workspace already controls both, so a skill would work, but it adds a second discovery mechanism next to the existing one.</li></ul></div>
+</div>
+<div class="card"><h4>What to change</h4>
+<ul class="clean">
+<li><strong>Split by kind, not by mechanism.</strong> Domain facts and presentation rules stay as <code>knowledge/**/*.md</code>. The single procedural document, CLAUDE.md, gains an auto-generated "skills available" block from the <code>@skill</code> registry (section 6). If you later want the SDK's on-demand loading for long procedures, add exactly one <code>skills/analysis/SKILL.md</code> that describes the helper library; keep it generated.</li>
+<li><strong>Give knowledge a curator write path</strong> that mirrors ordinals: <code>app.knowledge_pages</code> (path, body, version, author, created_at) with an append-only log, an admin PUT, and <code>make knowledge-export</code> that writes rows back to <code>services/data-agent/knowledge/</code> for a commit, the same pattern <code>eval_pack.py</code> uses for goldens. The workspace loader prefers the DB row when present. Section 8 says why the export step matters.</li>
+<li><strong>Keep the read quota.</strong> Six page reads per run is a real cost control and a diagnosable signal (knowledge_pages_used).</li>
+</ul></div>
+</section>
+
+<!-- ====================================================== 8 VERSION -->
+<section id="version">
+<div class="sec-head"><h2>8 · Version control for the loop</h2><h3>One agent bundle, reconstructible from its fingerprint</h3></div>
+<p>Everything that changes agent behaviour must be a component of the fingerprint, and every fingerprint must be reconstructible. Today the first is nearly true (minus skills), the second is not. Whiteboard 4 is the lineage the registry should be able to answer for.</p>
+<div class="wb">
+<pre class="mermaid">
+flowchart LR
+  subgraph B["agent bundle = one av- fingerprint"]
+    m["model + provider"] --- c["prompts/workspace_claude.md"] --- s["agent/skills/*.py"] --- k["knowledge/**/*.md"] --- ord["app.dataset_ordinals snapshot"] --- q["quota settings"] --- sc["schema + marts"]
+  end
+  B -->|hash| FP["av-3f2a…"]
+  FP -->|register| MV["MLflow model version · bundle.json + tarball artifact"]
+  MV --> AL{"alias"}
+  AL --> CH["@champion"]
+  AL --> CL["@challenger"]
+  FP -->|stamped on| QR[("query_runs.agent_version_id")]
+  FP -->|stamped on| ER[("eval_runs.agent_version_id")]
+  GIT["git commit sha"] -.provenance.-> MV
+  DB[("app.knowledge_pages + ordinals logs")] -.exported to git before register.-> k
+</pre>
+<div class="cap">Whiteboard 4 · version lineage. A rewind is: read bundle.json from the MLflow version, check out its git sha, restore the two DB snapshots it names.</div>
+</div>
+<div class="grid g2">
+<div class="card"><h4>Rules</h4>
+<ul class="clean">
+<li>Add <code>skills_hash</code> to <code>build_sdk_fingerprint()</code>. This is a one-line fix with a large consequence: every helper change becomes a challenger.</li>
+<li>On <code>make mlflow-register</code>, upload <code>bundle.json</code> (component → hash, git sha, image tag, DB snapshot ids) and a tarball of prompts/, skills/, knowledge/ to the model version. Sizes are tiny.</li>
+<li>Curator edits in the DB (ordinals, future knowledge pages) are exported to git and committed before a register. A version is never "git sha plus unknown DB state".</li>
+<li>Rubric hashes (<code>jr-…</code>) and the pack version are recorded on the eval run, not the agent version. They are the ruler, not the thing measured.</li>
+</ul></div>
+<div class="card"><h4>Time travel</h4>
+<pre><code>make agent-checkout FP=av-3f2a1b9c0d4e
+<span class="cm"># → reads bundle.json from MLflow</span>
+<span class="cm"># → git worktree add .worktrees/av-3f2a… &lt;sha&gt;</span>
+<span class="cm"># → restores knowledge + ordinals rows named in bundle.json</span>
+<span class="cm"># → prints the compose override to run it as a challenger</span></code></pre>
+<p class="small">This is the operation that makes "what did the agent know when it answered run X" a command rather than an archaeology exercise. It is also what the reflector uses to reproduce a failure.</p></div>
+</div>
+</section>
+
+<!-- ====================================================== 9 CC -->
+<section id="cc">
+<div class="sec-head"><h2>9 · Champion vs challenger on two goldens</h2><h3>Proving the system, not the agent</h3></div>
+<p>A challenger is any new fingerprint. With sections 3 to 8 in place, the end-to-end proof is this sequence, and it needs no more goldens than exist.</p>
+<div class="ms">
+<div class="ms-row"><div class="ms-n">1</div><div class="ms-b"><h4>Baseline the champion</h4><p>The judge first reproduces the golden labels (section 5). Then <code>make eval</code> 3 repeats on the 2 ready goldens; the judge label agrees with G1 on 6/6. Every run has child spans in MLflow.</p></div></div>
+<div class="ms-row"><div class="ms-n">2</div><div class="ms-b"><h4>Mint a challenger by editing one helper</h4><p>Change <code>skills/analysis.py</code> (for example a stricter <code>latest_value</code>). Fingerprint changes because skills_hash is now a component. <code>make mlflow-register</code> uploads bundle.json.</p></div></div>
+<div class="ms-row"><div class="ms-n">3</div><div class="ms-b"><h4>Eval the challenger</h4><p>Same pack version, same rubric hash. <code>make eval EXPERIMENT=…</code> stamps hypothesis and base_run_id, which the Evaluations tab already renders as a gate badge.</p></div></div>
+<div class="ms-row"><div class="ms-n gate">4</div><div class="ms-b"><h4>Promote or hold</h4><p><code>make promote</code>: eval accuracy versus the champion, and nothing else. Pass-rate ≥ champion's on the same pack version and zero pass→fail flips, computed from G1 and G5. The judge label is reported alongside, advisory. The rule in mlflow_registry.py:230-233 is unchanged.</p></div></div>
+<div class="ms-row"><div class="ms-n">5</div><div class="ms-b"><h4>Rewind</h4><p><code>make agent-checkout FP=&lt;old champion&gt;</code> reproduces a run bit-for-bit on prompts, skills and knowledge. If that works, the loop is version controlled.</p></div></div>
+</div>
+<div class="note n-info"><p><strong>Runtime note.</strong> Prod is demo mode with no data-agent service, so all of this is dev and CI only, as s43 and s45 already decided. Nothing in this plan touches prod.</p></div>
+</section>
+
+<!-- ====================================================== 10 PLAN -->
+<section id="plan">
+<div class="sec-head"><h2>10 · Build plan</h2><h3>Five milestones, each independently verifiable</h3></div>
+<div class="tw"><table>
+<thead><tr><th>M</th><th>Scope</th><th>Files</th><th>Verify</th><th>Closes</th></tr></thead>
+<tbody>
+<tr><td class="n">M0</td><td>Per-action spans on the SDK path; sandbox stdout + frames in the trace; artifact_manifest column; eval_results gets otel_trace_id + mlflow_run_id; eval grade logged as a span</td><td>sdk_trace.py, otlp.py, sandbox/contract.py, runner.py, pyodide_host.mjs, migration 0039, eval_run.py</td><td>one chat question shows ≥ 6 child spans in MLflow; a failing eval row links to its trace</td><td>T-1 T-2 T-3 T-4</td></tr>
+<tr><td class="n">M1</td><td>skills_hash into SDK fingerprint; bundle.json + tarball on register; <code>make agent-checkout</code></td><td>version.py, mlflow_registry.py, Makefile, scripts/agent_checkout.py</td><td>editing a helper mints a new av-; checkout of the old one reproduces its skills file</td><td>V-1 V-2</td></tr>
+<tr><td class="n">M2</td><td>Golden v2 (outcome + checkpoints) in eval_pack import/export and the Goldens tab; checkpoint scoring in the runner (diagnostic); single sonnet-5 judge with low/medium/high label + diagnosis, golden-set calibration step; insight judge removed; judge advisory (D2)</td><td>eval_pack.py, eval_run.py, eval_graders.py, eval_judge.py, GraderEditor.tsx, api.ts</td><td>2 goldens migrated with labels; judge reproduces all golden labels; 6/6 judge–G1 agreement on champion</td><td>J-1 J-2</td></tr>
+<tr><td class="n">M3</td><td>Offline loop: skill-miner (clusters skill_gaps + diagnoses, proposes a helper, tests against checkpoints.analysis in the sandbox) and reflector (Opus proposes one CLAUDE.md or knowledge diff). Both open PRs, never merge</td><td>scripts/skill_miner.py, scripts/reflect.py, CLAUDE.md signature generator in workspace.py</td><td>a seeded skill_gap produces a passing helper PR; a seeded bad knowledge page produces a diff PR</td><td>O-1</td></tr>
+<tr><td class="n">M4</td><td>Knowledge curator path: app.knowledge_pages + log, admin PUT, export to git, workspace prefers DB row</td><td>migration 0040, main.py, pack-style export script, ArchitecturePage knowledge panel</td><td>edit a page in the UI → export → fingerprint changes</td><td>V-3</td></tr>
+<tr><td class="n">M5</td><td>Run section 9 end to end and record it in docs/eval-loop-s49.md</td><td>docs/</td><td>promote HOLD or PASS with the reason; rewind works</td><td>proof</td></tr>
+</tbody></table></div>
+<div class="grid g2" style="margin-top:16px">
+<div class="card"><h4>Order and effort</h4><ul class="clean"><li><strong>One PR</strong> for M0–M5 (D5). Build order inside it: M0+M1 first (observability and versioning foundation), then M2 (golden contract), then M3 and M4 in parallel, then M5.</li><li>M5 runs the whole loop, including the offline optimiser, against <strong>two made-up golden question/answers</strong> authored for the test, not the existing three.</li><li>Rough sizing: M0 2 days, M1 1 day, M2 2 days, M3 3 days, M4 2 days, M5 half a day.</li></ul></div>
+<div class="card"><h4>Risks</h4><ul class="clean"><li><strong>Span volume.</strong> Per-turn spans on a 40-turn run is fine for sqlite MLflow at this scale; revisit if the pack grows past 50 cases.</li><li><strong>Judge self-preference.</strong> Same model judges its own output. Mitigated by the mandatory golden-label calibration and by G1 staying primary.</li><li><strong>Overfitting the helper library</strong> to 2 goldens (section 6 caution). Mitigated by human-reviewed PRs and the 10-case holdout floor.</li><li><strong>O-2 duplication</strong> means every sandbox contract change is done twice. M0 touches it; a follow-up could generate the pyodide bootstrap from runner.py.</li></ul></div>
+</div>
+</section>
+
+<!-- ====================================================== 11 DECIDE -->
+<section id="decide">
+<div class="sec-head"><h2>11 · Decisions</h2><h3>Locked 2026-09-10</h3></div>
+<div class="tw"><table><thead><tr><th>ID</th><th>Decision</th><th>Consequence</th></tr></thead><tbody>
+<tr><td class="n">D1</td><td>C · outcome gates, checkpoints diagnose</td><td>Golden v2 shape in section 4; agent never sees checkpoints.</td></tr>
+<tr><td class="n">D2</td><td>Judge advisory only until 10 goldens</td><td>Pass = G1 + G5. Judge label + diagnosis recorded and displayed, never gates yet. Promotion = eval accuracy vs champion.</td></tr>
+<tr><td class="n">D3</td><td>Markdown filesystem + DB curator path + generated skills block in CLAUDE.md</td><td>M4 in scope. No Agent SDK SKILL.md for facts.</td></tr>
+<tr><td class="n">D4</td><td>Offline loop opens PRs only, human merges</td><td>skill-miner and reflector never commit to main or a challenger branch on their own.</td></tr>
+<tr><td class="n">D5</td><td>All of M0–M5 in one PR, loop and optimisation fully run, tested on 2 made-up golden Q&amp;As</td><td>M5 is the acceptance test of the PR.</td></tr>
+</tbody></table></div>
+</section>
+
+<div class="foot">s49 · 2026-09-10 · Sources: services/data-agent/agent/{sdk_agent,sdk_trace,otlp,version,knowledge,workspace,eval_graders,eval_judge}.py, sandbox/{runner.py,pyodide_host.mjs,contract.py}, skills/, scripts/{eval_run,eval_pack,mlflow_registry,eval_diagnose}.py, migrations 0019–0038, evals/cases/*.yaml; NVIDIA NeMo Agent Toolkit DABstep write-up (huggingface.co/blog/nvidia/nemo-agent-toolkit-data-explorer-dabstep-1st-place). Design: Flight Deck tokens from frontend/src/styles.css, as in s48.</div>
+</div>
+</body></html>

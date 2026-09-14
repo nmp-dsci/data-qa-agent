@@ -10,12 +10,14 @@ quality trend beside its uptime numbers.
 
 Advisory is the operative word, and the limits are real:
 
-* **It grades without ground truth.** The judge scores insight quality — grounded,
-  direct, explains why, so-what, clear — not correctness. A confidently wrong
-  answer can score well. Only a golden can catch a wrong number.
-* **It is cross-family or nothing.** ``eval_judge`` refuses to grade a model of its
-  own family (self-preference bias), so with DeepSeek answering this needs an
-  Anthropic key. Without one it records nothing rather than fabricating a score.
+* **It grades without ground truth.** The eval judge labels an answer against a
+  golden's reference answer; here there is no reference, so the label is only
+  "does this read like an answer to that question, on the data it shows". A
+  confidently wrong answer can still label ``high``. Only a golden catches a
+  wrong number.
+* **It needs a judge.** ``eval_judge`` returns a ``skipped`` verdict when no
+  ANTHROPIC_API_KEY is configured; this records nothing rather than fabricating
+  a score.
 * **It is a trend, not a gate.** Nothing blocks on it. A drop is a prompt to run
   ``make eval``, which does have ground truth.
 
@@ -111,10 +113,16 @@ def _candidates(*, limit: int, hours: int) -> list[dict[str, Any]]:
     return rows
 
 
+# The trend line ops reads is numeric, but the judge (s49 M2) speaks in labels.
+# Mapped on this side, not in the judge, so the judge stays a three-way
+# classification and only the ops deck carries the (arbitrary) spacing.
+LABEL_SCORE = {"low": 0.0, "medium": 5.0, "high": 10.0}
+
+
 def _judge(question: str, answer: str) -> dict[str, Any]:
-    """Score one answer with the frozen insight rubric (the eval judge's own)."""
-    # No golden, so no evidence block and no G1/G2 — insight only. That boundary
-    # is why this is its own endpoint rather than a flag on /agent/eval/grade.
+    """Label one live answer with the frozen rubric (the eval judge's own)."""
+    # No golden, so no reference answer and no G1/G5 — the label only. That
+    # boundary is why this is its own endpoint, not a flag on /agent/eval/grade.
     payload = {"question": question, "answer": answer}
     request = urllib.request.Request(
         f"{AGENT}/agent/eval/judge",
@@ -135,14 +143,14 @@ def _record(run_id: str, verdict: dict[str, Any]) -> None:
     in the UI" true of this table too.
     """
     payload = json.dumps(verdict).replace("'", "''")
-    score = verdict.get("total")
+    score = LABEL_SCORE.get(str(verdict.get("label") or ""))
     score_sql = "NULL" if score is None else str(float(score))
     _psql(
         "INSERT INTO app.judge_samples "
         "(query_run_id, judge_model, rubric_hash, insight_score, verdict) VALUES ("
         f"'{run_id}', "
-        f"'{str(verdict.get('judge_model') or '').replace(chr(39), chr(39) * 2)}', "
-        f"'{str(verdict.get('judge_prompt_hash') or '').replace(chr(39), chr(39) * 2)}', "
+        f"'{str(verdict.get('model') or '').replace(chr(39), chr(39) * 2)}', "
+        f"'{str(verdict.get('rubric_hash') or '').replace(chr(39), chr(39) * 2)}', "
         f"{score_sql}, '{payload}'::jsonb)"
     )
 
@@ -174,15 +182,15 @@ def main(argv: list[str] | None = None) -> int:
             skipped += 1
             continue
         if verdict.get("skipped"):
-            # The honest case: no cross-family judge configured. Recording a
-            # skipped verdict as a score would invent data, so it is reported and
-            # dropped — the same discipline the eval judge follows.
+            # The honest case: no judge configured. Recording a skipped verdict
+            # as a score would invent data, so it is reported and dropped — the
+            # same discipline the eval judge follows.
             print(f"   skipped {row['run_id']}: {verdict.get('reason')}")
             skipped += 1
             continue
         _record(row["run_id"], verdict)
         judged += 1
-        print(f"   {row['run_id']}  insight {verdict.get('total')}/{verdict.get('max')}")
+        print(f"   {row['run_id']}  label {verdict.get('label')} ({verdict.get('diagnosis')})")
 
     print(f"==> judged {judged}, skipped {skipped}")
     if judged:

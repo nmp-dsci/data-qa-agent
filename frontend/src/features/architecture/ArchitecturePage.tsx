@@ -15,6 +15,8 @@ import {
   getAdminQueryRuns,
   getArchitecture,
   getArchitectureContent,
+  getKnowledgePage,
+  saveKnowledgePage,
 } from "../../lib/api";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
 import { FlightPath, FlightStop, InstrumentLabel } from "../../ui/flightdeck";
@@ -39,7 +41,7 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 const MAP_STOPS: FlightStop[] = [
   { key: "frontend", label: "Frontend", note: "React · Slides/Sheets artifact viewer" },
   { key: "backend", label: "Backend API", note: "auth · RLS session · agent proxy" },
-  { key: "runtime", label: "Agent runtime", note: "champion / challenger — see badge below" },
+  { key: "runtime", label: "Agent runtime", note: "pydantic_ai / agent_sdk — see badge below" },
   { key: "tools", label: "MCP tools", note: "extract · run_analysis · lookup_values · add_slide" },
   { key: "guard", label: "SQL guard + RLS", note: "sql_guardrails · agent_ro role" },
   { key: "db", label: "Postgres", note: "marts · staging · app" },
@@ -124,6 +126,103 @@ function fileKey(f: ArchitectureKnowledgeFile): string {
   return `${f.kind}:${f.id}`;
 }
 
+// s49 (D3): the curator edit box for one knowledge page. Separate fetch from
+// the plain prose pane above (getArchitectureContent) because this one needs
+// the structured GET /admin/knowledge/{path} (source/version/author, plus
+// the effective body as the textarea's starting value) and a Save that PUTs
+// back through the same endpoint — writes land in backend-api's own DB role,
+// see admin_knowledge.py's module docstring for why the data-agent can't do it.
+function KnowledgeEditBox({
+  path,
+  onSaved,
+}: {
+  path: string;
+  onSaved: (path: string, source: "file" | "db", version: number) => void;
+}) {
+  const [body, setBody] = useState("");
+  const [meta, setMeta] = useState<{
+    source: "file" | "db";
+    version: number;
+    author: string;
+    updated_at: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [savedNote, setSavedNote] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    setErr("");
+    setSavedNote("");
+    getKnowledgePage(path)
+      .then((p) => {
+        if (!live) return;
+        setBody(p.body);
+        setMeta({ source: p.source, version: p.version, author: p.author, updated_at: p.updated_at });
+      })
+      .catch((e: unknown) => {
+        if (live) setErr((e as Error).message);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [path]);
+
+  const save = () => {
+    setSaving(true);
+    setErr("");
+    setSavedNote("");
+    saveKnowledgePage(path, body)
+      .then((p) => {
+        setMeta({ source: "db", version: p.version, author: p.author, updated_at: p.updated_at });
+        setSavedNote(
+          "Saved — the agent picks it up within 5s (its curator-override cache TTL).",
+        );
+        onSaved(path, "db", p.version);
+      })
+      .catch((e: unknown) => setErr((e as Error).message))
+      .finally(() => setSaving(false));
+  };
+
+  if (loading) return <p className="muted">loading…</p>;
+  if (err) return <p className="error">{err}</p>;
+
+  return (
+    <div className="arch-kb-edit">
+      <div className="arch-kb-edit-meta muted">
+        <span className={meta?.source === "db" ? "badge claude" : "badge"}>
+          {meta?.source === "db" ? "curator override" : "file"}
+        </span>
+        {meta && meta.source === "db" && (
+          <>
+            <span>version {meta.version}</span>
+            {meta.author && <span>by {meta.author}</span>}
+            {meta.updated_at && <span>{new Date(meta.updated_at).toLocaleString()}</span>}
+          </>
+        )}
+      </div>
+      <textarea
+        className="arch-kb-edit-textarea"
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        rows={16}
+        spellCheck={false}
+      />
+      <div className="arch-kb-edit-actions">
+        <button className="btn-mint" onClick={save} disabled={saving || !body.trim()}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+        {savedNote && <span className="muted">{savedNote}</span>}
+      </div>
+    </div>
+  );
+}
+
 function KnowledgeBrowser({
   files,
   knowledgeVersion,
@@ -135,6 +234,12 @@ function KnowledgeBrowser({
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  // Local overlay so a Save reflects immediately in the list badge/size
+  // without waiting on a full /agent/architecture refetch (which itself
+  // only sees the new row once the data-agent's own TTL cache refreshes).
+  const [overlay, setOverlay] = useState<Record<string, { source: "file" | "db"; version: number }>>(
+    {},
+  );
 
   const selected = useMemo(
     () => files.find((f) => fileKey(f) === selectedKey) ?? files[0] ?? null,
@@ -175,17 +280,25 @@ function KnowledgeBrowser({
         {Object.entries(groups).map(([kind, items]) => (
           <div key={kind} className="arch-kb-group">
             <div className="arch-kb-group-label">{KIND_LABEL[kind] ?? kind}</div>
-            {items.map((f) => (
-              <button
-                key={fileKey(f)}
-                className={fileKey(f) === selectedKey ? "arch-kb-item active" : "arch-kb-item"}
-                onClick={() => setSelectedKey(fileKey(f))}
-                title={f.description}
-              >
-                <span className="arch-kb-item-name">{f.filename}</span>
-                <span className="arch-kb-item-size muted">{f.size.toLocaleString()}b</span>
-              </button>
-            ))}
+            {items.map((f) => {
+              const ov = overlay[fileKey(f)];
+              return (
+                <button
+                  key={fileKey(f)}
+                  className={fileKey(f) === selectedKey ? "arch-kb-item active" : "arch-kb-item"}
+                  onClick={() => setSelectedKey(fileKey(f))}
+                  title={f.description}
+                >
+                  <span className="arch-kb-item-name">{f.filename}</span>
+                  {(ov?.source ?? f.source) === "db" && (
+                    <span className="badge claude" title="curator override">
+                      edited
+                    </span>
+                  )}
+                  <span className="arch-kb-item-size muted">{f.size.toLocaleString()}b</span>
+                </button>
+              );
+            })}
           </div>
         ))}
       </div>
@@ -204,6 +317,15 @@ function KnowledgeBrowser({
             {loading && <p className="muted">loading…</p>}
             {err && <p className="error">{err}</p>}
             {!loading && !err && <pre className="arch-kb-content">{content}</pre>}
+            {!loading && !err && selected.kind === "knowledge" && (
+              <KnowledgeEditBox
+                key={selected.id}
+                path={selected.id}
+                onSaved={(path, source, version) =>
+                  setOverlay((prev) => ({ ...prev, [`knowledge:${path}`]: { source, version } }))
+                }
+              />
+            )}
           </>
         ) : (
           <p className="muted">No files.</p>

@@ -1,19 +1,29 @@
-"""Agent registry + promotion CLI over MLflow (s43 M0/M2/M3).
+"""Agent registry + promotion CLI over MLflow (s43 M0/M2/M3, bundle s49 M1).
 
 Subcommands:
-  init      ensure the data-qa/traces + data-qa/evals experiments exist; print
-            ids and warn when the traces id differs from what the services'
-            MLFLOW_TRACE_EXPERIMENT_ID assumes (default 1 on a fresh store).
+  init      ensure the data-qa/evals experiment exists; print its id as the
+            MLFLOW_TRACE_EXPERIMENT_ID line for .env and warn when the
+            services' current value differs (s50: traces and eval runs share
+            this one experiment so a run's Traces tab can list its traces).
   ensure    mirror app.agent_versions -> model versions of `data-qa-agent`,
-            one per fingerprint, params = the composed build fingerprint.
-            Bootstrap aliases: @champion = the build the live agent reports
-            (fallback: newest), @challenger = the newest other build, if any.
+            one per fingerprint, params = the composed build fingerprint. Also
+            logs a `bundle.json` + `bundle.tar.gz` artifact pair to the
+            register run (s49 M1) — a portable snapshot of the prompts/skills/
+            knowledge that produced this fingerprint, so `agent_checkout.py`
+            can reproduce it even without the git sha (e.g. uncommitted local
+            work). Bootstrap aliases: @champion = the build the live agent
+            reports (fallback: newest), @challenger = the newest other build,
+            if any.
   status    print versions, aliases, and each version's latest eval pass-rate.
-  promote   the comparator gate (ConvFinQA rule): the challenger's latest eval
-            on the same pack must have pass_rate >= champion's AND no golden
-            that passed for the champion may fail for the challenger. On PASS
-            the @champion alias moves, @challenger is cleared, and an
-            append-only row lands in app.promotions.
+  promote   the comparator gate (s51): the challenger's latest eval on the
+            same pack is paired with the champion's case by case, and the
+            challenger must beat the champion at a one-tailed exact McNemar
+            test on the discordant pairs (p <= --alpha, default 0.05). Ties
+            and small packs HOLD — with fewer than 5 discordant pairs no
+            outcome can be significant at 0.05, which is the honest answer
+            for a two-golden pack. On PASS the @champion alias moves,
+            @challenger is cleared, and an append-only row lands in
+            app.promotions with the full verdict (b, c, p, alpha).
 
 Postgres stays the operational source of truth (adjustment 2 in the s43 plan):
 MLflow is the comparison UI and the alias mechanics; `ensure` is idempotent and
@@ -23,9 +33,15 @@ re-runnable after any new build shows up in app.agent_versions.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
+import math
+import subprocess
 import sys
+import tarfile
 import urllib.request
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +49,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mlflow_client as mc  # noqa: E402
 
 AGENT = "http://localhost:8100"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_AGENT_DIR = REPO_ROOT / "services" / "data-agent"
+
+# The behaviour-surface directories a `bundle.tar.gz` snapshots (s49 M1) — the
+# same surfaces build_sdk_fingerprint()/build_fingerprint() hash, minus the
+# schema/marts (those come from the DB catalogue, not files a checkout could
+# usefully restore). agent_checkout.py extracts this tree relative to
+# services/data-agent/ so the paths below double as the tar's arcnames.
+BUNDLE_DIRS = (
+    Path("agent") / "prompts",
+    Path("agent") / "skills",
+    Path("knowledge"),
+)
 
 FINGERPRINT_COLS = (
     "id, fingerprint, label, provider, model_id, prompt_hash, skills_hash, "
@@ -64,22 +93,192 @@ def _live_fingerprint() -> str | None:
         return None
 
 
+# ---- bundle (s49 M1) --------------------------------------------------------
+#
+# `agent_checkout.py FP` needs to reproduce the prompts/skills/knowledge that
+# produced a fingerprint. `git_sha` is the preferred route (a worktree at that
+# commit), but a fingerprint minted from uncommitted local work has no
+# reachable commit — the tarball is the fallback that always works, captured
+# from the working tree at the moment `ensure` registers the fingerprint.
+
+
+def _psql_soft(query: str) -> str | None:
+    """Like eval_run.py's `_psql`, but returns None on failure instead of
+    exiting the whole `ensure` run — the ordinals/knowledge_pages tables this
+    is used for are optional (a fresh dev DB, or migration 0039 not applied
+    yet), and a missing one must degrade the bundle, not the registry sync."""
+    proc = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "db",
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "dataqa",
+            "-tA",
+            "-c",
+            query,
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip()
+
+
+# Mirrors agent.ordinals.BAND_ORDERS — duplicated rather than imported so this
+# script stays independent of the data-agent package (same grain as
+# mlflow_client.py's stdlib-only REST client).
+_ORDINALS_SEED: dict[tuple[str, str], list[str]] = {
+    ("nsw_sales", "area_band"): ["<400", "400-700", "700-1000", "1000-5000", "5000+", "unknown"],
+    ("nsw_rent", "bedroom_band"): ["0", "1", "2", "3", "4", "5+", "unknown"],
+}
+
+
+def _ordinals_db_hash() -> str:
+    """Same canonicalisation as agent.ordinals.ordinals_snapshot_hash(): the
+    code seed merged with any app.dataset_ordinals curator overrides, hashed
+    as sorted tight-separator JSON. A DB miss (table absent, service down)
+    degrades to hashing the seed alone, never raises."""
+    merged = dict(_ORDINALS_SEED)
+    out = _psql_soft(
+        "SELECT row_to_json(t) FROM (SELECT d.slug, o.column_name, o.ordered_values "
+        "FROM app.dataset_ordinals o JOIN app.datasets d ON d.id = o.dataset_id) t"
+    )
+    for line in (out or "").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        vals = row.get("ordered_values")
+        if isinstance(vals, list) and vals:
+            merged[(str(row["slug"]), str(row["column_name"]))] = [str(v) for v in vals]
+    canonical = [{"dataset": d, "column": c, "order": o} for (d, c), o in sorted(merged.items())]
+    payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _knowledge_pages_db_hash() -> str | None:
+    """Content hash of app.knowledge_pages (curator overrides), or None when
+    the table has no rows or doesn't exist yet (migration 0039)."""
+    out = _psql_soft(
+        "SELECT row_to_json(t) FROM (SELECT path, version, body FROM app.knowledge_pages "
+        "ORDER BY path) t"
+    )
+    if not out:
+        return None
+    rows = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    if not rows:
+        return None
+    h = hashlib.sha256()
+    for row in rows:
+        h.update(str(row.get("path", "")).encode("utf-8"))
+        h.update(b"\0")
+        h.update(str(row.get("version", "")).encode("utf-8"))
+        h.update(b"\0")
+        h.update(str(row.get("body") or "").encode("utf-8"))
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def _bundle_files() -> list[Path]:
+    """Every file under the bundled directories, relative to services/data-agent/."""
+    files: list[Path] = []
+    for rel_dir in BUNDLE_DIRS:
+        abs_dir = DATA_AGENT_DIR / rel_dir
+        if not abs_dir.is_dir():
+            continue
+        for path in sorted(abs_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            if "__pycache__" in path.parts:
+                continue
+            files.append(path.relative_to(DATA_AGENT_DIR))
+    return files
+
+
+def _bundle_tarball(files: list[Path]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for rel in files:
+            tar.add(DATA_AGENT_DIR / rel, arcname=rel.as_posix())
+    return buf.getvalue()
+
+
+def _git_sha() -> str:
+    proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def _log_bundle_artifacts(run_id: str, row: dict[str, Any], fp: str) -> None:
+    """Log bundle.json + bundle.tar.gz to a register run and tag the model
+    version so agent_checkout.py can find them from the fingerprint alone."""
+    files = _bundle_files()
+    components = {
+        k: row.get(k)
+        for k in ("provider", "model_id", "prompt_hash", "skills_hash", "knowledge_version")
+        if row.get(k)
+    }
+    bundle = {
+        "fingerprint": fp,
+        "components": components,
+        "git_sha": row.get("git_sha") or _git_sha(),
+        "image_tag": row.get("image_tag") or "",
+        "files": [f.as_posix() for f in files],
+        "db_snapshots": {
+            "ordinals": _ordinals_db_hash(),
+            "knowledge_pages": _knowledge_pages_db_hash(),
+        },
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    mc.log_json_artifact(run_id, "bundle.json", bundle)
+    mc.log_artifact(
+        run_id, "bundle.tar.gz", _bundle_tarball(files), content_type="application/gzip"
+    )
+
+
 # ---- init ------------------------------------------------------------------
 
 
 def cmd_init(_: argparse.Namespace) -> None:
-    traces_id = mc.ensure_experiment(mc.TRACES_EXPERIMENT)
+    """Create the one experiment traces AND eval runs share, and say which id to export.
+
+    s50: OTLP spans used to go to a separate ``data-qa/traces`` experiment.
+    MLflow only lists a run's linked traces when the trace lives in the run's
+    own experiment, so every eval run's Traces tab was empty. Now the services'
+    ``MLFLOW_TRACE_EXPERIMENT_ID`` must be the evals experiment's id — this
+    prints the exact line for ``.env``. The legacy ``data-qa/traces``
+    experiment is no longer created and can be deleted once its purge is done.
+    """
     evals_id = mc.ensure_experiment(mc.EVALS_EXPERIMENT)
-    print(f"experiment {mc.TRACES_EXPERIMENT!r}: id {traces_id}")
-    print(f"experiment {mc.EVALS_EXPERIMENT!r}: id {evals_id}")
+    print(f"experiment {mc.EVALS_EXPERIMENT!r}: id {evals_id}  (traces + eval runs)")
+    print(f"  .env => MLFLOW_TRACE_EXPERIMENT_ID={evals_id}")
     import os
 
-    assumed = os.environ.get("MLFLOW_TRACE_EXPERIMENT_ID", "1")
-    if traces_id != assumed:
+    assumed = os.environ.get("MLFLOW_TRACE_EXPERIMENT_ID", "2")
+    if evals_id != assumed:
         print(
-            f"WARNING: services default MLFLOW_TRACE_EXPERIMENT_ID={assumed} but the traces "
-            f"experiment id is {traces_id} — set MLFLOW_TRACE_EXPERIMENT_ID={traces_id} in .env "
-            "and recreate backend-api/data-agent, or spans will land in the wrong experiment."
+            f"WARNING: services currently use MLFLOW_TRACE_EXPERIMENT_ID={assumed} but the evals "
+            f"experiment id is {evals_id} — set MLFLOW_TRACE_EXPERIMENT_ID={evals_id} in .env "
+            "and recreate backend-api/data-agent, or spans will land in an experiment whose "
+            "eval runs cannot link to them."
         )
 
 
@@ -120,6 +319,7 @@ def cmd_ensure(_: argparse.Namespace) -> None:
                 "git_sha": row["git_sha"],
             },
         )
+        _log_bundle_artifacts(run_id, row, fp)
         mc.end_run(run_id)
         version = mc.create_model_version(
             mc.MODEL_NAME,
@@ -130,6 +330,7 @@ def cmd_ensure(_: argparse.Namespace) -> None:
                 "agent_version_id": row["id"],
                 "provider": row["provider"],
                 "model_id": row["model_id"],
+                "bundle_run_id": run_id,
             },
             description=row.get("label") or fp,
         )
@@ -172,12 +373,71 @@ def _latest_eval(agent_version_id: str) -> dict[str, Any] | None:
 
 
 def _passed_cases(eval_run_id: str) -> set[str]:
+    return _case_keys(eval_run_id, passed_only=True)
+
+
+def _graded_cases(eval_run_id: str) -> set[str]:
+    return _case_keys(eval_run_id, passed_only=False)
+
+
+def _case_keys(eval_run_id: str, *, passed_only: bool) -> set[str]:
     _lit, _psql, _ = _db()
     out = _psql(
         "SELECT c.case_key FROM app.eval_results r JOIN app.eval_cases c ON c.id = r.case_id "
-        f"WHERE r.eval_run_id = {_lit(eval_run_id)}::uuid AND r.passed"
+        f"WHERE r.eval_run_id = {_lit(eval_run_id)}::uuid"
+        + (" AND r.passed" if passed_only else "")
     )
     return {line.strip() for line in out.splitlines() if line.strip()}
+
+
+DEFAULT_ALPHA = 0.05
+
+
+def mcnemar_one_sided_p(b: int, c: int) -> float:
+    """Exact one-tailed McNemar p-value: P(X >= b | n = b + c, p = 1/2).
+
+    ``b`` = cases the challenger passed and the champion failed, ``c`` = the
+    reverse. Under H0 the two are equally likely, so the discordant pairs are
+    a fair coin; H1 is that the challenger wins more of them. With no
+    discordant pairs there is nothing to test and p = 1.0 (HOLD).
+    """
+    n = b + c
+    if n == 0:
+        return 1.0
+    return float(sum(math.comb(n, k) for k in range(b, n + 1)) / 2**n)
+
+
+def min_discordant_for(alpha: float) -> int:
+    """Smallest n where n straight challenger wins reach significance (0.5**n <= alpha)."""
+    n = 1
+    while 0.5**n > alpha:
+        n += 1
+    return n
+
+
+def promotion_verdict(
+    champ_passed: set[str],
+    chall_passed: set[str],
+    graded: set[str],
+    *,
+    alpha: float = DEFAULT_ALPHA,
+) -> dict[str, Any]:
+    """The paired comparison, kept pure so the rule is testable without MLflow or Postgres."""
+    champ_passed, chall_passed = champ_passed & graded, chall_passed & graded
+    wins = sorted(chall_passed - champ_passed)
+    flips = sorted(champ_passed - chall_passed)
+    p = mcnemar_one_sided_p(len(wins), len(flips))
+    return {
+        "rule": "one-tailed exact McNemar on paired case outcomes: p <= alpha",
+        "alpha": alpha,
+        "cases_paired": len(graded),
+        "challenger_wins": wins,
+        "flips": flips,
+        "discordant": len(wins) + len(flips),
+        "p_value": round(p, 6),
+        "min_discordant_for_alpha": min_discordant_for(alpha),
+        "promoted": p <= alpha,
+    }
 
 
 def _version_info(version: str) -> dict[str, str]:
@@ -225,28 +485,55 @@ def cmd_promote(args: argparse.Namespace) -> None:
 
     champ_rate = champ_eval["totals"].get("pass_rate") or 0.0
     chall_rate = chall_eval["totals"].get("pass_rate") or 0.0
-    flips = sorted(_passed_cases(champ_eval["id"]) - _passed_cases(chall_eval["id"]))
-    verdict = {
-        "rule": "pass_rate >= champion AND no pass->fail flips",
-        "champion": {"version": champ_v, "eval_run": champ_eval["id"], "pass_rate": champ_rate},
-        "challenger": {"version": chall_v, "eval_run": chall_eval["id"], "pass_rate": chall_rate},
-        "pack_version": champ_eval["pack_version"],
-        "flips": flips,
-        "promoted": chall_rate >= champ_rate and not flips,
-    }
+    graded = _graded_cases(champ_eval["id"]) & _graded_cases(chall_eval["id"])
+    verdict = promotion_verdict(
+        _passed_cases(champ_eval["id"]),
+        _passed_cases(chall_eval["id"]),
+        graded,
+        alpha=getattr(args, "alpha", None) or DEFAULT_ALPHA,
+    )
+    verdict.update(
+        {
+            "champion": {"version": champ_v, "eval_run": champ_eval["id"], "pass_rate": champ_rate},
+            "challenger": {
+                "version": chall_v,
+                "eval_run": chall_eval["id"],
+                "pass_rate": chall_rate,
+            },
+            "pack_version": champ_eval["pack_version"],
+        }
+    )
     print(json.dumps(verdict, indent=2))
     if not verdict["promoted"]:
-        print("\nHOLD — challenger does not clear the gate; aliases unchanged.")
+        need = verdict["min_discordant_for_alpha"]
+        print(
+            f"\nHOLD — p={verdict['p_value']} > alpha={verdict['alpha']} "
+            f"({len(verdict['challenger_wins'])} challenger wins vs {len(verdict['flips'])} flips "
+            f"on {verdict['cases_paired']} paired cases; at least {need} discordant pairs, all "
+            f"challenger wins, are needed at this alpha); aliases unchanged."
+        )
         return
 
     mc.set_alias(mc.MODEL_NAME, mc.CHAMPION, chall_v)
-    mc.delete_alias(mc.MODEL_NAME, mc.CHALLENGER)
+    delete_error: str | None = None
+    try:
+        mc.delete_alias(mc.MODEL_NAME, mc.CHALLENGER)
+    except mc.MlflowError as exc:
+        # @champion has already moved — the promotion must still be recorded,
+        # a leftover @challenger alias is a clean-up nit, not a lost audit row.
+        delete_error = str(exc)
     _psql(
         "INSERT INTO app.promotions (model_name, from_version, to_version, agent_version_id, "
         f"verdict) VALUES ({_lit(mc.MODEL_NAME)}, {_lit(champ_v)}, {_lit(chall_v)}, "
         f"{_lit(chall_tags.get('agent_version_id'))}::uuid, {_lit(verdict)}::jsonb)"
     )
     print(f"\nPROMOTED — @champion moved v{champ_v} -> v{chall_v}; recorded in app.promotions.")
+    if delete_error:
+        print(
+            f"! could not clear @challenger from v{chall_v}: {delete_error}\n"
+            f"  @challenger still points at v{chall_v} — clear it by hand before the next promote.",
+            file=sys.stderr,
+        )
 
 
 def main() -> None:
@@ -255,7 +542,14 @@ def main() -> None:
     sub.add_parser("init").set_defaults(fn=cmd_init)
     sub.add_parser("ensure").set_defaults(fn=cmd_ensure)
     sub.add_parser("status").set_defaults(fn=cmd_status)
-    sub.add_parser("promote").set_defaults(fn=cmd_promote)
+    promote = sub.add_parser("promote")
+    promote.add_argument(
+        "--alpha",
+        type=float,
+        default=DEFAULT_ALPHA,
+        help="significance level for the one-tailed McNemar test (default 0.05)",
+    )
+    promote.set_defaults(fn=cmd_promote)
     args = parser.parse_args()
     args.fn(args)
 

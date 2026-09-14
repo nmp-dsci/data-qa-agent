@@ -66,6 +66,16 @@ FIELDS = [
     "golden_objects",
     "golden_data",
     "golden_report",
+    # s49 M2 — golden v2. The outcome half of a golden is no longer only rows:
+    # `golden_answer` is the reference answer the judge grades against, `label`
+    # is what the judge must return for it (normally "high"),
+    # `calibration_examples` are curator-written answers with known labels that
+    # prove the judge still works, and `checkpoints` are the diagnostic
+    # per-stage expectations (decision D1 — they never gate).
+    "golden_answer",
+    "label",
+    "calibration_examples",
+    "checkpoints",
 ]
 
 # ``golden_data`` is *derived*, not specified: G1 grades the agent's extracted
@@ -241,7 +251,15 @@ def cmd_import(args: argparse.Namespace) -> None:
             if not case.get("case_key"):
                 sys.exit(f"{path.name}: a case is missing case_key")
             # jsonb columns need an explicit cast; text/bool ones must not have one.
-            jsonb = {"tags", "grader", "golden_objects", "golden_data", "golden_report"}
+            jsonb = {
+                "tags",
+                "grader",
+                "golden_objects",
+                "golden_data",
+                "golden_report",
+                "calibration_examples",
+                "checkpoints",
+            }
             # Never write derived columns, and never write a field the export
             # reduced to a digest stub — in both cases the database holds the
             # real value and the pack holds only a summary of it.

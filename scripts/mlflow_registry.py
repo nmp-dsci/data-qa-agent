@@ -15,11 +15,15 @@ Subcommands:
             reports (fallback: newest), @challenger = the newest other build,
             if any.
   status    print versions, aliases, and each version's latest eval pass-rate.
-  promote   the comparator gate (ConvFinQA rule): the challenger's latest eval
-            on the same pack must have pass_rate >= champion's AND no golden
-            that passed for the champion may fail for the challenger. On PASS
-            the @champion alias moves, @challenger is cleared, and an
-            append-only row lands in app.promotions.
+  promote   the comparator gate (s51): the challenger's latest eval on the
+            same pack is paired with the champion's case by case, and the
+            challenger must beat the champion at a one-tailed exact McNemar
+            test on the discordant pairs (p <= --alpha, default 0.05). Ties
+            and small packs HOLD — with fewer than 5 discordant pairs no
+            outcome can be significant at 0.05, which is the honest answer
+            for a two-golden pack. On PASS the @champion alias moves,
+            @challenger is cleared, and an append-only row lands in
+            app.promotions with the full verdict (b, c, p, alpha).
 
 Postgres stays the operational source of truth (adjustment 2 in the s43 plan):
 MLflow is the comparison UI and the alias mechanics; `ensure` is idempotent and
@@ -32,6 +36,7 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import subprocess
 import sys
 import tarfile
@@ -368,12 +373,71 @@ def _latest_eval(agent_version_id: str) -> dict[str, Any] | None:
 
 
 def _passed_cases(eval_run_id: str) -> set[str]:
+    return _case_keys(eval_run_id, passed_only=True)
+
+
+def _graded_cases(eval_run_id: str) -> set[str]:
+    return _case_keys(eval_run_id, passed_only=False)
+
+
+def _case_keys(eval_run_id: str, *, passed_only: bool) -> set[str]:
     _lit, _psql, _ = _db()
     out = _psql(
         "SELECT c.case_key FROM app.eval_results r JOIN app.eval_cases c ON c.id = r.case_id "
-        f"WHERE r.eval_run_id = {_lit(eval_run_id)}::uuid AND r.passed"
+        f"WHERE r.eval_run_id = {_lit(eval_run_id)}::uuid"
+        + (" AND r.passed" if passed_only else "")
     )
     return {line.strip() for line in out.splitlines() if line.strip()}
+
+
+DEFAULT_ALPHA = 0.05
+
+
+def mcnemar_one_sided_p(b: int, c: int) -> float:
+    """Exact one-tailed McNemar p-value: P(X >= b | n = b + c, p = 1/2).
+
+    ``b`` = cases the challenger passed and the champion failed, ``c`` = the
+    reverse. Under H0 the two are equally likely, so the discordant pairs are
+    a fair coin; H1 is that the challenger wins more of them. With no
+    discordant pairs there is nothing to test and p = 1.0 (HOLD).
+    """
+    n = b + c
+    if n == 0:
+        return 1.0
+    return float(sum(math.comb(n, k) for k in range(b, n + 1)) / 2**n)
+
+
+def min_discordant_for(alpha: float) -> int:
+    """Smallest n where n straight challenger wins reach significance (0.5**n <= alpha)."""
+    n = 1
+    while 0.5**n > alpha:
+        n += 1
+    return n
+
+
+def promotion_verdict(
+    champ_passed: set[str],
+    chall_passed: set[str],
+    graded: set[str],
+    *,
+    alpha: float = DEFAULT_ALPHA,
+) -> dict[str, Any]:
+    """The paired comparison, kept pure so the rule is testable without MLflow or Postgres."""
+    champ_passed, chall_passed = champ_passed & graded, chall_passed & graded
+    wins = sorted(chall_passed - champ_passed)
+    flips = sorted(champ_passed - chall_passed)
+    p = mcnemar_one_sided_p(len(wins), len(flips))
+    return {
+        "rule": "one-tailed exact McNemar on paired case outcomes: p <= alpha",
+        "alpha": alpha,
+        "cases_paired": len(graded),
+        "challenger_wins": wins,
+        "flips": flips,
+        "discordant": len(wins) + len(flips),
+        "p_value": round(p, 6),
+        "min_discordant_for_alpha": min_discordant_for(alpha),
+        "promoted": p <= alpha,
+    }
 
 
 def _version_info(version: str) -> dict[str, str]:
@@ -421,18 +485,33 @@ def cmd_promote(args: argparse.Namespace) -> None:
 
     champ_rate = champ_eval["totals"].get("pass_rate") or 0.0
     chall_rate = chall_eval["totals"].get("pass_rate") or 0.0
-    flips = sorted(_passed_cases(champ_eval["id"]) - _passed_cases(chall_eval["id"]))
-    verdict = {
-        "rule": "pass_rate >= champion AND no pass->fail flips",
-        "champion": {"version": champ_v, "eval_run": champ_eval["id"], "pass_rate": champ_rate},
-        "challenger": {"version": chall_v, "eval_run": chall_eval["id"], "pass_rate": chall_rate},
-        "pack_version": champ_eval["pack_version"],
-        "flips": flips,
-        "promoted": chall_rate >= champ_rate and not flips,
-    }
+    graded = _graded_cases(champ_eval["id"]) & _graded_cases(chall_eval["id"])
+    verdict = promotion_verdict(
+        _passed_cases(champ_eval["id"]),
+        _passed_cases(chall_eval["id"]),
+        graded,
+        alpha=getattr(args, "alpha", None) or DEFAULT_ALPHA,
+    )
+    verdict.update(
+        {
+            "champion": {"version": champ_v, "eval_run": champ_eval["id"], "pass_rate": champ_rate},
+            "challenger": {
+                "version": chall_v,
+                "eval_run": chall_eval["id"],
+                "pass_rate": chall_rate,
+            },
+            "pack_version": champ_eval["pack_version"],
+        }
+    )
     print(json.dumps(verdict, indent=2))
     if not verdict["promoted"]:
-        print("\nHOLD — challenger does not clear the gate; aliases unchanged.")
+        need = verdict["min_discordant_for_alpha"]
+        print(
+            f"\nHOLD — p={verdict['p_value']} > alpha={verdict['alpha']} "
+            f"({len(verdict['challenger_wins'])} challenger wins vs {len(verdict['flips'])} flips "
+            f"on {verdict['cases_paired']} paired cases; at least {need} discordant pairs, all "
+            f"challenger wins, are needed at this alpha); aliases unchanged."
+        )
         return
 
     mc.set_alias(mc.MODEL_NAME, mc.CHAMPION, chall_v)
@@ -463,7 +542,14 @@ def main() -> None:
     sub.add_parser("init").set_defaults(fn=cmd_init)
     sub.add_parser("ensure").set_defaults(fn=cmd_ensure)
     sub.add_parser("status").set_defaults(fn=cmd_status)
-    sub.add_parser("promote").set_defaults(fn=cmd_promote)
+    promote = sub.add_parser("promote")
+    promote.add_argument(
+        "--alpha",
+        type=float,
+        default=DEFAULT_ALPHA,
+        help="significance level for the one-tailed McNemar test (default 0.05)",
+    )
+    promote.set_defaults(fn=cmd_promote)
     args = parser.parse_args()
     args.fn(args)
 

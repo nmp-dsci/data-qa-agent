@@ -364,13 +364,18 @@ package, matching `eval_run.py`'s no-third-party-deps grain. `MLFLOW_URL` (defau
   falling back to the newest version if the agent is unreachable or its build isn't registered yet) and
   `@challenger` to the newest other version, but only when those aliases don't already exist — a promotion is
   the only thing that moves `@champion` afterwards.
-- **`make promote`** (`scripts/mlflow_registry.py promote`) is the comparator gate, porting ConvFinQA's rule:
-  the challenger's latest eval run must have `pass_rate >= champion`'s **and** no case that passed for the
-  champion may fail for the challenger, both measured against the same golden pack version (different pack
-  versions are refused as not comparable). On PASS, `@champion` moves to the challenger's version,
-  `@challenger` is cleared, and an append-only row is recorded in `app.promotions` (migration 0035 — see
-  Data model). On HOLD, nothing changes and the verdict JSON explains why (missing eval runs, pack mismatch,
-  lower pass rate, or named pass→fail flips).
+- **`make promote`** (`scripts/mlflow_registry.py promote`, optional `ALPHA=`) is the comparator gate. The
+  challenger's latest eval run and the champion's are paired case by case (same golden pack version —
+  different pack versions are refused as not comparable) and the challenger must win a **one-tailed exact
+  McNemar test** on the discordant pairs: with `b` cases the challenger passed and the champion failed and
+  `c` the reverse, `p = P(X >= b | n = b + c, ½)` must be `<= alpha` (default 0.05). Ties HOLD, and so
+  does any pack too small to be significant — at 0.05 that means at least 5 discordant pairs, all won by
+  the challenger. On PASS, `@champion` moves to the challenger's version, `@challenger` is cleared, and an
+  append-only row is recorded in `app.promotions` (migration 0035 — see Data model) carrying the full
+  verdict (`challenger_wins`, `flips`, `discordant`, `p_value`, `alpha`). On HOLD, nothing changes and the
+  verdict explains why (missing eval runs, pack mismatch, or `p > alpha` with how many discordant pairs it
+  would take). Before s51 the rule was `pass_rate >= champion AND no pass→fail flips`, which promoted on
+  a 2/2-vs-2/2 tie; the M5 promotion v18 → v19 in `docs/eval-loop-s49.md` happened under that rule.
 - `scripts/mlflow_registry.py status` (no Makefile target) prints every registered version with its aliases
   and latest eval pass rate — the quickest way to see the registry without opening the UI.
 - **`make register`** also logs a `bundle.json` + `bundle.tar.gz` artifact pair per newly registered

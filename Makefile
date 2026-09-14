@@ -206,7 +206,7 @@ register:
 	uv run python scripts/mlflow_registry.py ensure
 
 promote:
-	uv run python scripts/mlflow_registry.py promote
+	uv run python scripts/mlflow_registry.py promote $(if $(ALPHA),--alpha $(ALPHA))
 
 # s49: the eval loop as a versioned, traced, optimisable system
 # (docs/eval-loop-s49.md). agent-checkout rewinds prompts/skills/knowledge to a

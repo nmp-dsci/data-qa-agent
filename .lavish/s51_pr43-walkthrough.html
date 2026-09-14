@@ -1,0 +1,466 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>s51 · PR #43 Walkthrough</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>s48 · Template Packs</title><style>
+/* ---------------------------------------------------------------------------
+   Flight Deck / Night Flight tokens — lifted verbatim from
+   frontend/src/styles.css:9-147 so this plan renders in the product's own
+   design system rather than a generic one.
+--------------------------------------------------------------------------- */
+:root {
+  --gray-950:#0a0d15; --gray-900:#111522; --gray-850:#171c2b; --gray-800:#1e2434;
+  --gray-700:#242b3d; --gray-600:#333d55; --gray-100:#eaecf3; --gray-300:#9aa4bb;
+  --gray-400:#7a84a0; --ink-code:#0a0d13;
+  --gold-500:#d9a84e; --gold-ink:#1a1204; --gold-200:#f2ca79;
+  --blue-400:#7fb0ff; --green-400:#9ece6a; --amber-400:#e0af68;
+  --red-400:#f2777a; --purple-400:#c58fff; --cyan-400:#7dcfff;
+
+  --bg:var(--gray-950); --panel:var(--gray-900); --panel-2:var(--gray-850);
+  --panel-3:var(--gray-800); --border:var(--gray-700); --border-2:var(--gray-600);
+  --text:var(--gray-100); --muted:var(--gray-300); --faint:var(--gray-400);
+  --accent:var(--gold-500); --accent-ink:var(--gold-ink); --accent-soft:var(--gold-200);
+  --accent-2:var(--blue-400); --code-bg:var(--ink-code);
+  --good:var(--green-400); --good-border:#33502f;
+  --warn:var(--amber-400); --warn-border:#6b5a2a;
+  --bad:var(--red-400); --bad-border:#6b2a2a;
+  --purple:var(--purple-400); --purple-border:#5a3a6b;
+  --info:var(--cyan-400); --info-border:#2f5a7a;
+
+  --radius-sm:6px; --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4); --elev-2:0 8px 24px rgba(0,0,0,.32);
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+  --border:#ddd7c7; --border-2:#c9c1ac; --text:#23293a; --muted:#67604e;
+  --faint:#7d7663; --accent:#9a7328; --accent-ink:#fffaf0; --accent-soft:#7a5c22;
+  --accent-2:#2456c9; --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+  --warn:#8f6a12; --warn-border:#ddc48a; --bad:#c03535; --bad-border:#e3aaaa;
+  --purple:#7137c8; --purple-border:#cdb3ee; --info:#0d6e8c; --info-border:#a4cfdd;
+}
+
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 96px}
+
+h1{font-size:34px;line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;font-weight:650}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+  margin:0 0 6px;font-weight:600;font-family:var(--mono)}
+h3{font-size:21px;margin:0 0 12px;letter-spacing:-.01em;font-weight:620}
+h4{font-size:15px;margin:0 0 8px;font-weight:620}
+p{margin:0 0 14px;color:var(--muted)}
+p.lede{font-size:17px;color:var(--text);max-width:70ch}
+strong{color:var(--text);font-weight:620}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:1px 5px;
+  color:var(--accent-soft);overflow-wrap:anywhere}
+
+section{margin:0 0 64px}
+.sec-head{border-top:1px solid var(--border);padding-top:18px;margin-bottom:24px}
+
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tight{padding:14px 16px}
+
+.thesis{background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:1px solid var(--border-2);border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);padding:22px 24px;margin:28px 0 0}
+.thesis .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.thesis p{color:var(--text);font-size:16.5px;margin:0}
+
+.b{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid;
+  white-space:nowrap;font-weight:600}
+.b-good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,.08)}
+.b-warn{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,.08)}
+.b-bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,.08)}
+.b-info{color:var(--info);border-color:var(--info-border);background:rgba(125,207,255,.08)}
+.b-pur{color:var(--purple);border-color:var(--purple-border);background:rgba(197,143,255,.08)}
+.b-mut{color:var(--faint);border-color:var(--border-2)}
+
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;
+  padding:11px 14px;border-bottom:1px solid var(--border-2);white-space:nowrap;
+  background:var(--panel-2)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;
+  color:var(--muted)}
+tbody tr:last-child td{border-bottom:none}
+td.n{color:var(--text);font-weight:600}
+td.num{font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+tr.dead td{opacity:.62}
+tfoot td{border-top:1px solid var(--border-2);font-weight:700;color:var(--text);
+  background:var(--panel-2)}
+
+figure{margin:0 0 20px;background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{margin-top:14px;font-size:13px;color:var(--faint);
+  border-top:1px solid var(--border);padding-top:12px}
+.svg-l{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;fill:var(--faint)}
+.svg-t{font-family:var(--sans);font-size:12px;fill:var(--text);font-weight:600}
+.svg-s{font-family:var(--sans);font-size:10.5px;fill:var(--muted)}
+
+.note{border-left:3px solid;border-radius:0 var(--radius) var(--radius) 0;
+  padding:13px 16px;margin:0 0 16px;background:var(--panel-2);font-size:14px}
+.note p:last-child{margin-bottom:0}
+.n-bad{border-color:var(--bad)} .n-good{border-color:var(--good)}
+.n-warn{border-color:var(--warn)} .n-info{border-color:var(--info)}
+
+ul.clean{list-style:none;padding:0;margin:0 0 14px}
+ul.clean li{padding:5px 0 5px 20px;position:relative;color:var(--muted);font-size:14px}
+ul.clean li::before{content:"";position:absolute;left:4px;top:14px;width:5px;height:5px;
+  border-radius:50%;background:var(--accent);opacity:.65}
+
+/* done checklist */
+ul.dod{list-style:none;padding:0;margin:0}
+ul.dod li{display:flex;gap:12px;align-items:flex-start;padding:11px 0;
+  border-bottom:1px solid var(--border)}
+ul.dod li:last-child{border-bottom:none}
+ul.dod .box{flex-shrink:0;width:18px;height:18px;border:1.5px solid var(--accent);
+  border-radius:4px;margin-top:2px}
+ul.dod .t{font-size:14.5px;color:var(--text);font-weight:600}
+ul.dod .d{font-size:13px;color:var(--faint);display:block;margin-top:1px;font-weight:400}
+
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;overflow-x:auto;margin:0 0 16px}
+pre code{background:none;border:none;padding:0;color:var(--gray-100);font-size:12.5px;
+  line-height:1.6;display:block;white-space:pre}
+.cm{color:var(--faint)} .ck{color:var(--purple)} .cs{color:var(--good)}
+.cf{color:var(--accent-2)} .cd{color:var(--accent-soft)}
+
+.ms{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 20px}
+.ms-n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);
+  background:var(--accent);width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;grid-row:span 2}
+.ms-n.gate{background:var(--bad);color:#fff}
+.ms-rail{border-left:1px dashed var(--border-2);margin:8px 0 0 17px;grid-column:1}
+.ms-b{padding:0 0 26px}
+.ms-b h4{margin-bottom:4px}
+.ms-b p{font-size:13.5px;margin-bottom:8px}
+
+form.q{background:var(--panel);border:1px solid var(--border-2);
+  border-radius:var(--radius-lg);padding:20px;margin:0 0 16px}
+form.q h4{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+form.q .qid{font-family:var(--mono);font-size:11px;color:var(--accent);
+  border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:1px 6px}
+form.q .qsub{font-size:13px;color:var(--faint);margin:0 0 14px}
+label.opt{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;
+  border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;
+  cursor:pointer;background:var(--panel-2);transition:border-color .12s}
+label.opt:hover{border-color:var(--border-2)}
+label.opt:has(input:checked){border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 8%,var(--panel-2))}
+label.opt input{margin-top:3px;accent-color:var(--accent);flex-shrink:0}
+label.opt .ot{font-weight:620;color:var(--text);font-size:14px}
+label.opt .od{font-size:12.5px;color:var(--faint);display:block;margin-top:2px}
+button.send{font-family:var(--sans);font-weight:620;font-size:13.5px;
+  background:var(--accent);color:var(--accent-ink);border:none;
+  border-radius:var(--radius);padding:9px 18px;cursor:pointer}
+button.send:hover{background:var(--accent-soft)}
+
+.rec{border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--panel));
+  border-radius:var(--radius-lg);padding:20px 22px}
+.rec h4{color:var(--accent)}
+.foot{border-top:1px solid var(--border);padding-top:16px;color:var(--faint);font-size:12.5px}
+
+.k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+pre{margin:0;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+pre code{background:none;border:none;padding:0;color:var(--text)}
+.svg-m{font-family:var(--sans);font-size:11px;fill:var(--muted)}
+form.card label{display:block;padding:6px 0;color:var(--text);cursor:pointer}
+form.card input{margin-right:8px;accent-color:var(--accent)}
+form.card button{margin-top:10px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius-sm);padding:7px 14px;font-weight:600;font-family:var(--mono);font-size:12px;cursor:pointer}
+ul,ol{margin:0 0 10px;padding-left:20px;color:var(--muted)} li{margin-bottom:6px}
+header h2{margin-bottom:10px}
+</style></head><body>
+<style>
+.shot{margin:0 0 18px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:10px}
+.shot img{width:100%;height:auto;display:block;border-radius:var(--radius)}
+.shot .cap{font-size:13px;color:var(--faint);padding:10px 4px 2px}
+.shot .cap b{color:var(--text);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:12px;margin:22px 0 0}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px}
+.stat .v{font-size:26px;font-weight:650;letter-spacing:-.02em;color:var(--text);line-height:1.1}
+.stat .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-top:6px}
+.stat.good .v{color:var(--good)} .stat.warn .v{color:var(--warn)}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+.toc a{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:4px 10px;text-decoration:none}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}
+.walk{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 18px}
+.walk .n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);background:var(--accent);width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.walk .b{padding:0 0 22px;min-width:0}
+.walk .b h4{margin-bottom:4px}
+.walk .b p{font-size:14px;margin-bottom:8px}
+.walk .b code{font-size:.85em}
+.small{font-size:13px;color:var(--faint)}
+a.ext{color:var(--accent-2);text-decoration:none;border-bottom:1px dotted var(--accent-2)}
+</style>
+<style>
+.vid{margin:0 0 14px;background:var(--panel);border:1px solid var(--accent);border-radius:var(--radius-lg);padding:10px;box-shadow:var(--elev-2)}
+.vid img{width:100%;height:auto;display:block;border-radius:var(--radius)}
+.vid .cap{font-size:13px;color:var(--faint);padding:10px 4px 2px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.vid .cap b{color:var(--text);font-weight:600}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:10px;margin:0 0 20px}
+.step{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--muted);min-width:0}
+.step .sn{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--accent);text-transform:uppercase;display:block;margin-bottom:3px}
+.step b{color:var(--text)}
+.term{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;overflow-x:auto;margin:0 0 16px;font-family:var(--mono);font-size:12px;line-height:1.55;color:var(--gray-100);white-space:pre}
+.term .p{color:var(--accent)} .term .ok{color:var(--good)} .term .lo{color:var(--bad)} .term .hi{color:var(--good)} .term .dim{color:var(--faint)}
+.chg{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:14px}
+.chg .card h4{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.chg .card ul.clean li{font-size:13.5px;padding:4px 0 4px 18px}
+.chg .card .files{font-family:var(--mono);font-size:11px;color:var(--faint);border-top:1px solid var(--border);margin-top:10px;padding-top:8px;overflow-wrap:anywhere}
+.tl{list-style:none;padding:0;margin:0;border-left:1px dashed var(--border-2);margin-left:8px}
+.tl li{position:relative;padding:0 0 14px 22px;font-size:13.5px;color:var(--muted)}
+.tl li::before{content:"";position:absolute;left:-5px;top:7px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+.tl li.pipe::before{background:var(--purple)}
+.tl li code{font-size:11px}
+.tl li b{color:var(--text)}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;font-size:13px}
+.kv dt{font-family:var(--mono);font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;padding-top:2px}
+.kv dd{margin:0;color:var(--text)}
+</style>
+<div class="wrap">
+<header>
+<h2>s51 · PR #43 walkthrough</h2>
+<h1>Run an eval, open MLflow, follow one question down to every tool call</h1>
+<p class="lede">This page starts with a recording of the loop as it works today: a fresh <code>make eval</code> against the two s49 goldens, then the drill-down in MLflow from experiment → evaluation run → score → linked trace → the span for each governed tool the agent called. After the video, every change PR #43 made, grouped by the surface you would look at, and the gaps that are still open.</p>
+<div class="stats">
+  <div class="stat good"><div class="v">2 / 2</div><div class="l">cases passed · G1 1.00</div></div>
+  <div class="stat"><div class="v">147</div><div class="l">spans in the recorded trace</div></div>
+  <div class="stat"><div class="v">42</div><div class="l">model turns · 96% cache read</div></div>
+  <div class="stat"><div class="v">$0.40</div><div class="l">cost of the whole eval run</div></div>
+  <div class="stat warn"><div class="v">1 / 2</div><div class="l">judge high · advisory only</div></div>
+</div>
+<div class="toc">
+  <a href="#video">1 · video</a><a href="#trace">2 · what the trace holds</a><a href="#judge">3 · judge vs G1</a>
+  <a href="#changes">4 · every change in the PR</a><a href="#promotion">4b · promotion rule</a><a href="#commits">5 · commit timeline</a><a href="#gaps">6 · open gaps</a><a href="#links">7 · links</a>
+</div>
+</header>
+
+<section id="video">
+<div class="sec-head"><h2>1 · Video</h2><h3>Running an experiment, then drilling down in MLflow</h3></div>
+<p>The run itself is a terminal command. Everything after it is the browser recording — 42 frames, real clicks, nothing staged. The step cards under the video say what each part of the recording is showing.</p>
+<div class="term"><span class="p">$</span> make eval TAG=s49-m5 HYPOTHESIS="s51 walkthrough recording"
+eval · 2 case(s) · pack pv-b06b22db · baseline
+judge · claude-sonnet-5 · <span class="ok">calibrated (6/6 probes agreed)</span>
+  nsw_rent-avg-weekly-rent-3br-houses-postcode-2250-latest-month-s49a
+  nsw_sales-top-5-suburbs-by-house-sales-last-12-months-s49b
+mlflow · logged run <span class="p">5bb9e1b17617443b958520538bda0106</span> to 'data-qa/evals'
+
+run a70c85e5-e2ce-4175-a8d4-9641842a898f
+  <span class="ok">PASS</span> nsw_rent-…-s49a   G1=1.0  judge=<span class="lo">low/knowledge</span>  turns=56
+  <span class="ok">PASS</span> nsw_sales-…-s49b  G1=1.0  judge=<span class="hi">high</span>           turns=76
+
+{ "cases": 2, "passed": 2, "pass_rate": 1.0, "g1_mean": 1.0,
+  "judge_labels": {"high": 1, "medium": 0, "low": 1}, "judge_gates": false,
+  "g4_turns_mean": 66.0, "generalisation": "unproven",
+  "judge_calibration": {"calibrated": true, "probes": 6, "agreed": 6, "rubric_hash": "jr-227c9a32"} }
+<span class="dim">note: fewer than 10 cases — no holdout slice, so an improvement here is not yet evidence that it generalises.</span></div>
+
+<div class="vid">
+  <img src="s51_mlflow_trace_drilldown.gif" alt="Recording: MLflow experiments → data-qa/evals → evaluation runs → case run → linked trace → model turn, tool.extract, tool.run_analysis, tool.add_slide spans → timeline view">
+  <div class="cap"><span><b>MLflow 3.12 · experiment data-qa/evals · trace tr-01a09d43…c67574</b> — the sales case from the run above</span><span>140.4 s · 147 spans · recorded 2026-09-14 10:17</span></div>
+</div>
+<div class="steps">
+  <div class="step"><span class="sn">00:00 · experiments</span><b>Experiments list</b> → click <code>data-qa/evals</code>. Traces and eval runs now live in the same experiment, which is what makes the rest of the path clickable.</div>
+  <div class="step"><span class="sn">overview</span><b>Usage</b> shows 58 traces this week, latency and token panels. Only asks are counted — health checks and Prometheus scrapes are sampled out.</div>
+  <div class="step"><span class="sn">evaluation runs</span><b>Runs table</b> — the top three rows are the run just made: two <code>case ·</code> runs and one <code>eval ·</code> run, with <code>g1_score</code>, <code>g2</code>, <code>g3_format</code>, <code>judge_label</code>, <code>judge_calibrated</code> and the three checkpoint columns.</div>
+  <div class="step"><span class="sn">case run</span><b>Click the case</b> → its single linked trace (tokens, 140.398 s, OK). This link is written by <code>eval_run.py</code> at grading time, so there is no time-window hunting.</div>
+  <div class="step"><span class="sn">trace</span><b>Span tree</b>: <code>POST /ask</code> (backend) → <code>POST /agent/ask</code> (data-agent) → <code>agent_sdk.answer</code> → <code>initialize</code>, <code>tools/list</code>, then alternating <code>model.turn</code> and <code>tool.*</code> children.</div>
+  <div class="step"><span class="sn">search "extract"</span><b>model.turn 36</b> — input 20,620 / output 2 / cache read 19,852 / cache write 766, model <code>claude-sonnet-5</code>, <code>tool_calls: mcp__dp__extract</code>. Then <b>tool.extract</b> — the SQL, status success, row_count 5, frame <code>df</code>, 251 ms.</div>
+  <div class="step"><span class="sn">search "run_analysis"</span><b>tool.run_analysis</b> — runtime pyodide, code_sha, status ok, 5,371 ms, <code>skills_used: comparison_chart,build_report</code>, skill_gaps 0, stdout_len 0.</div>
+  <div class="step"><span class="sn">search "add_slide"</span><b>Two add_slide calls</b>, each with the model turn that chose it: index 0 layout <code>Cover</code>; index 1 layout <code>Ranked Bars</code>, rows 5. This is the deck exactly as the agent specified it.</div>
+  <div class="step"><span class="sn">timeline</span><b>Timeline view</b> shows the real durations of the governed tools. Model turns and the CLI's built-in Read/Glob/Grep are deliberately zero-width point spans — the SDK reports them after the fact, so the span carries the attributes and no invented start time.</div>
+</div>
+</section>
+
+<section id="trace">
+<div class="sec-head"><h2>2 · What the trace holds</h2><h3>Every governed tool call, with what it did, pulled from the MLflow span API</h3></div>
+<p>The same trace the video opens, read back through <code>get-trace-artifact</code>. This is the evidence the judge, the checkpoints and the offline optimiser all consume — none of it is reconstructed from logs.</p>
+<div class="tw"><table>
+<thead><tr><th>Span</th><th>Duration</th><th>Attributes carried</th><th>Where it comes from</th></tr></thead>
+<tbody>
+<tr><td class="n">POST /ask</td><td class="num">139.60 s</td><td>http.*, user agent, route</td><td>backend-api (logfire FastAPI instrumentation)</td></tr>
+<tr><td class="n">POST /agent/ask</td><td class="num">139.41 s</td><td>same, inner service hop</td><td>data-agent — same trace id via propagated context</td></tr>
+<tr><td class="n">agent_sdk.answer</td><td class="num">139.40 s</td><td>runtime, fingerprint, question</td><td><code>sdk_agent.py</code> root agent span</td></tr>
+<tr><td class="n">model.turn × 42</td><td class="num">point</td><td>turn, input_tokens, output_tokens, cache_read, cache_write, tool_calls, model</td><td><code>sdk_trace.py</code> → <code>otlp.emit_span</code> per SDK message</td></tr>
+<tr><td class="n">tool.Read / Glob / Grep × 21</td><td class="num">point</td><td>path / pattern (knowledge reads under quota)</td><td>CLI built-ins observed via the PreToolUse hook</td></tr>
+<tr><td class="n">tool.extract</td><td class="num">0.25 s</td><td>sql, status success, row_count 5, frame df, ms 251</td><td><code>sdk_agent.py:432</code> timed <code>child_span</code></td></tr>
+<tr><td class="n">tool.run_analysis</td><td class="num">5.37 s</td><td>runtime pyodide, code_sha, status ok, skills_used, skill_gaps 0, stdout_len 0</td><td><code>sdk_agent.py:461</code> + <code>_analysis_rollup</code></td></tr>
+<tr><td class="n">tool.start_deck</td><td class="num">12.78 s</td><td>status ok (Slides copy from template pack)</td><td><code>sdk_agent.py:510</code></td></tr>
+<tr><td class="n">tool.add_slide × 2</td><td class="num">0.83 s · 5.40 s</td><td>index, layout Cover / Ranked Bars, chart_type, rows 0 / 5, has_kpi</td><td><code>sdk_agent.py:549</code>; also persisted to <code>query_runs.artifact_manifest</code></td></tr>
+<tr><td class="n">tools/call · initialize · tools/list</td><td class="num">—</td><td>MCP protocol frames</td><td>SDK MCP client instrumentation</td></tr>
+</tbody></table></div>
+<div class="note n-info"><p><strong>Token accounting on this trace.</strong> Summing the 42 <code>model.turn</code> spans: 742,896 nominal input, of which 712,952 (96%) was cache read and 29,860 cache write; 276 output tokens. The Evaluations tab prices exactly that split ($0.2089 for this case). MLflow's own "Token count 419" in the trace header is not this — see <a href="#gaps">open gaps</a>.</p></div>
+</section>
+
+<section id="judge">
+<div class="sec-head"><h2>3 · Judge vs G1</h2><h3>The rent case passed the gate and the judge still flagged it — that is the design working</h3></div>
+<div class="shot"><img src="s51_shot_evals_judge_vs_g1.jpg" alt="Evaluations tab: rent case PASS G1 1.00 via manifest_kpi, judge LOW / knowledge, agent answer empty, golden answer shown alongside"><div class="cap"><b>Evaluations → baseline 10:16 → rent case expanded.</b> Verdict row, answer vs golden, checkpoints expected vs actual, then SQL, sandbox passes, deck and MLflow links further down.</div></div>
+<div class="grid g2">
+  <div class="card"><h4><span class="b b-good">G1 · PASS</span> what the gate saw</h4><p>Scalar grader, source <code>manifest_kpi</code>: the deck's KPI ($704) is within the 1% tolerance of the golden $697.08, and G5 found a delivered deck. Under D1 that alone decides PASS/FAIL.</p></div>
+  <div class="card"><h4><span class="b b-bad">judge · LOW</span> what the judge saw</h4><p>"The deck reports a 6-month smoothed $704 figure for Aug 2026, whereas the reference's true latest-month bond-weighted rent is $697 for May 2026 — the answer used the wrong smoothing convention and wrong period." Stage diagnosis: <code>knowledge</code>. The agent's prose answer was empty, so the judge graded the deck.</p></div>
+</div>
+<div class="note n-warn"><p><strong>Why this is not a bug to chase now.</strong> D2 made the judge advisory until the pack has 10 goldens, precisely so this kind of disagreement is visible without blocking promotion. The checkpoints agree with the judge: <code>sql 0.02</code> (116 rows extracted vs the golden's 1), <code>analysis 0.50</code> (used <code>growth_rate</code>, not just <code>latest_value</code>), <code>deck 1.00</code>. The fix path is a knowledge page on "latest month means the max month, not a smoothed window" — the reflector's job, or a curator edit through the Architecture tab.</p></div>
+</section>
+
+<section id="changes">
+<div class="sec-head"><h2>4 · Every change in the PR</h2><h3>94 files · +9,957 / −693 · grouped by the surface you look at</h3></div>
+<div class="chg">
+<div class="card"><h4><span class="b b-info">tracing</span> One trace per ask, every action a span</h4>
+<ul class="clean">
+<li>Child spans per model turn (tokens, cache split, tool_calls) and per governed tool call; point spans for CLI built-ins.</li>
+<li>OTLP exporters in both services now target the <code>data-qa/evals</code> experiment — MLflow only links traces to runs inside one experiment.</li>
+<li><code>ParentBased</code> head sampler drops <code>GET /metrics</code>, <code>GET /health*</code>, <code>OPTIONS</code>, <code>/events</code> roots. Store went from 282,699 root spans (57 real asks) to real traffic only; sqlite purged 831 MB → 41 MB with a backup kept.</li>
+<li><code>eval_run.py</code> links each case's <code>tr-&lt;otel_trace_id&gt;</code> to its case run and the eval run (<code>mlflow_client.link_traces_to_run</code>, soft-fail).</li>
+</ul><div class="files">sdk_trace.py · otlp.py · sdk_agent.py · trace_sampling.py ×2 · tracing.py · scripts/mlflow_client.py · docker-compose.yml · .env.example</div></div>
+
+<div class="card"><h4><span class="b b-pur">goldens v2</span> Outcome gates, hidden checkpoints, a labelled reference answer</h4>
+<ul class="clean">
+<li><code>eval_cases</code> gains <code>golden_answer</code>, <code>label</code> (low/medium/high, CHECK), <code>calibration_examples</code>, <code>checkpoints</code>.</li>
+<li>Checkpoints (sql.key_cols, analysis.expected_skills / derived_cols, deck.layouts_any_of / kpi_label_contains) score and diagnose; they never gate (D1).</li>
+<li>Two made-up acceptance goldens tagged <code>s49-m5</code>; <code>make eval TAG=</code> filter.</li>
+</ul><div class="files">migrations/0039_eval_loop_s49.py · evals/cases/s49_test.yaml · scripts/eval_pack.py · test_eval_checkpoints.py</div></div>
+
+<div class="card"><h4><span class="b b-pur">judge</span> Label judge, calibrated before it scores</h4>
+<ul class="clean">
+<li>sonnet-5 rubric <code>label-v1</code> (<code>jr-227c9a32</code>) returns low/medium/high + stage diagnosis (sql / analysis / deck / knowledge).</li>
+<li><code>calibrate_judge</code> must reproduce every golden's label and calibration examples first (6/6 today); <code>make eval-calibrate</code>, <code>/agent/eval/calibrate</code>.</li>
+<li>Advisory until <code>HOLDOUT_MIN_CASES=10</code>; the insight judge is gone.</li>
+</ul><div class="files">eval_judge.py · main.py · test_eval_judge.py</div></div>
+
+<div class="card"><h4><span class="b b-good">grading</span> Deck-aware scalar grading</h4>
+<ul class="clean">
+<li>G1 scalar reduction precedence <code>manifest_kpi → key_match → last_row → first_row</code>.</li>
+<li>Prose KPI labels match by leading tokens ("Average Weekly Rent" ↔ <code>avg_weekly_rent</code>); a lone KPI slide disambiguates. A correct $699 deck had graded 0.0 before this.</li>
+<li>G5 (artifact delivered) persisted per result; deck manifest (<code>add_slide</code> args) stored on <code>query_runs.artifact_manifest</code>.</li>
+</ul><div class="files">eval_graders.py · test_eval_graders.py · routers/ask.py</div></div>
+
+<div class="card"><h4><span class="b b-info">versioning</span> Rewind any past agent exactly</h4>
+<ul class="clean">
+<li>Fingerprint <code>av-&lt;sha12&gt;</code> now includes <code>skills_hash</code> (both runtimes preload <code>agent/skills</code>; the old fingerprint claimed otherwise).</li>
+<li>Every registered version writes <code>bundle.json</code> + <code>bundle.tar.gz</code> (CLAUDE.md, marts, schema, knowledge, skills); <code>make agent-checkout FP=</code> restores it.</li>
+<li><b>Promotion rule changed on your review (s51):</b> a one-tailed exact McNemar test on paired case outcomes replaces "pass-rate ≥ champion, zero flips". Promote iff <code>p ≤ α</code> (0.05, <code>make promote ALPHA=</code>); ties and small packs HOLD. Details below. <code>app.promotions</code> row is written before aliases move; MLflow 3.x alias DELETE needed a JSON body — it was silently failing.</li>
+</ul><div class="files">version.py · scripts/mlflow_registry.py · scripts/agent_checkout.py · test_version.py · test_mlflow_registry.py</div></div>
+
+<div class="card"><h4><span class="b b-warn">knowledge</span> Markdown stays; curators get a DB write path</h4>
+<ul class="clean">
+<li><code>app.knowledge_pages</code> + append-only <code>knowledge_pages_log</code>; workspace prefers the DB override; <code>knowledge_version</code> hashes files + overrides.</li>
+<li>Backend routes under <code>/admin/knowledge</code> with path containment; <code>make knowledge-export / import</code> round-trips to git.</li>
+<li>Generated <code>{{SKILLS}}</code> signature block in the workspace CLAUDE.md; <code>{{MEMORIES}}</code> slot and the <code>remember</code> tool removed.</li>
+</ul><div class="files">knowledge.py · workspace.py · routers/admin_knowledge.py · scripts/knowledge_pack.py · prompts/workspace_claude.md · ArchitecturePage.tsx</div></div>
+
+<div class="card"><h4><span class="b b-warn">offline optimiser</span> Draft PRs only, never a commit</h4>
+<ul class="clean">
+<li><b>skill-miner</b>: reads <code>skill_gap()</code> telemetry and sandbox passes, proposes a helper, proves it in the real sandbox against <code>checkpoints.analysis.derived_cols</code>, else marks it unproven. Opened draft PR #42 (<code>period_metric</code>).</li>
+<li><b>reflector</b> (Opus): one CLAUDE.md / knowledge diff per failing run, edits path-contained.</li>
+<li>Sandbox stdout captured in both executors (8 KB cap); analysis passes recorded in the trace.</li>
+</ul><div class="files">scripts/skill_miner.py · scripts/reflect.py · scripts/optimiser_common.py · scripts/optimiser_sandbox_probe.py · evals/optimiser/*.md · sandbox/{contract,runner,pyodide_host}</div></div>
+
+<div class="card"><h4><span class="b b-good">evaluations tab</span> Depth per case</h4>
+<ul class="clean">
+<li>TOKENS / COST / LATENCY / TURNS columns; run-level pillars incl. cost priced with the cache split.</li>
+<li>Case drill-down: verdict + judge reasoning, agent answer vs golden answer, checkpoints expected vs actual, SQL vs golden SQL, sandbox passes, deck manifest, MLflow trace + case-run links.</li>
+<li>Run-detail endpoint joins <code>query_runs</code> / <code>messages</code> / <code>eval_cases</code>; the SDK trace reducer reads tool-call args from the decision log.</li>
+</ul><div class="files">EvalsPage.tsx · routers/evals.py · lib/api.ts · test_evals_router.py</div></div>
+
+<div class="card"><h4><span class="b b-mut">settings</span> Preferences dropped</h4>
+<ul class="clean">
+<li>Remembered-preferences section, <code>/me/memories</code>, agent <code>remember</code> tool all removed; <code>app.user_memories</code> table left in place.</li>
+<li>Agent section shows live runtime, model and fingerprint (no "champion" label by name).</li>
+</ul><div class="files">SettingsPage.tsx · routers/profile.py · GoldensPage.tsx · GraderEditor.tsx · graderSpec.ts</div></div>
+
+<div class="card"><h4><span class="b b-mut">docs & make</h4>
+<ul class="clean">
+<li><code>docs/eval-loop-s49.md</code>: contract W-A..W-F and the full M5 run log (calibration, champion v18 → v19 promotion, rewind, curator edit, skill-mine, reflect).</li>
+<li>Make targets: <code>eval TAG=</code>, <code>eval-calibrate</code>, <code>agent-checkout</code>, <code>knowledge-export/import</code>, <code>skill-mine</code>, <code>reflect</code>.</li>
+<li>AGENTS.md eval section rewritten; README stale references fixed by the gate.</li>
+</ul><div class="files">docs/eval-loop-s49.md · Makefile · AGENTS.md · README.md</div></div>
+</div>
+</section>
+
+
+<section id="promotion">
+<div class="sec-head"><h2>4b · Promotion rule</h2><h3>Significance, not a tie-break — changed from your annotation on this page</h3></div>
+<div class="grid g2">
+<div class="card"><h4><span class="b b-bad">before</span> pass-rate ≥ champion AND zero pass→fail flips</h4><p>A 2/2-vs-2/2 tie promoted (that is how v18 → v19 happened in M5). One extra pass on a two-golden pack looked like an improvement; the flips veto was the only thing resisting noise.</p></div>
+<div class="card"><h4><span class="b b-good">after</span> one-tailed exact McNemar on paired outcomes</h4><p>Cases graded by both runs are paired. <code>b</code> = challenger passed, champion failed; <code>c</code> = the reverse. Under H₀ the discordant pairs are a fair coin, so <code>p = P(X ≥ b | n = b + c, ½)</code>. Promote iff <code>p ≤ α</code> (default 0.05). Flips are still listed, but they count through the test rather than as a veto.</p></div>
+</div>
+<div class="grid g2" style="margin-top:16px">
+<div class="card tight"><div class="k">what it takes</div>
+<div class="tw"><table style="min-width:0"><thead><tr><th>discordant pairs</th><th>all challenger wins → p</th><th>at α = 0.05</th></tr></thead><tbody>
+<tr><td class="num">0 (tie)</td><td class="num">1.000</td><td>HOLD</td></tr>
+<tr><td class="num">2</td><td class="num">0.250</td><td>HOLD</td></tr>
+<tr><td class="num">4</td><td class="num">0.0625</td><td>HOLD</td></tr>
+<tr><td class="num">5</td><td class="num">0.03125</td><td><span class="b b-good">PROMOTE</span></td></tr>
+<tr><td class="num">6 wins + 1 flip</td><td class="num">0.0625</td><td>HOLD</td></tr>
+<tr><td class="num">7 wins + 1 flip</td><td class="num">0.0352</td><td><span class="b b-good">PROMOTE</span></td></tr>
+</tbody></table></div>
+<p style="font-size:13px;margin-top:10px">So the two-golden pack can never promote — which is the honest reading; it matches the runner's own "generalisation: unproven" note. Ten goldens with a clean sweep of five discordant pairs is the first realistic promotion.</p></div>
+<div class="card tight"><div class="k">live · make promote · v19 champion vs v18 as challenger, same pack pv-45d6f889</div>
+<div class="term">{
+  "rule": "one-tailed exact McNemar on paired case outcomes: p <= alpha",
+  "alpha": 0.05, "cases_paired": 2,
+  "challenger_wins": [], "flips": [], "discordant": 0,
+  "p_value": 1.0, "min_discordant_for_alpha": 5,
+  <span class="lo">"promoted": false</span>,
+  "champion":   {"version": "19", "eval_run": "360d1124…", "pass_rate": 1.0},
+  "challenger": {"version": "18", "eval_run": "5b20ddf0…", "pass_rate": 1.0}
+}
+
+<span class="lo">HOLD</span> — p=1.0 &gt; alpha=0.05 (0 challenger wins vs 0 flips on 2 paired
+cases; at least 5 discordant pairs, all challenger wins, are needed at
+this alpha); aliases unchanged.</div>
+<p style="font-size:13px">The same tie that promoted in M5 now holds. <code>@challenger</code> was pointed at v18 only for this check and restored to v20 (today's build). Pure rule in <code>promotion_verdict()</code>, 6 new tests in <code>tests/test_mlflow_registry.py</code>; AGENTS.md and the s49 doc updated.</p></div>
+</div>
+</section>
+
+<section id="commits">
+<div class="sec-head"><h2>5 · Commit timeline</h2><h3>Ten commits so far, three of them written by the no-mistakes pipeline</h3></div>
+<ul class="tl">
+<li><b>421caab</b> plan, contract, migration 0039, make targets</li>
+<li><b>156c504</b> traced, judged, versioned eval loop with the offline optimiser</li>
+<li><b>b906309</b> M5 acceptance — two made-up goldens, tag filter, challenger helper, alias fix</li>
+<li><b>2a4cdf0</b> M5 run log, s50 walkthrough with screenshots, curator edit</li>
+<li class="pipe"><b>58c77f1</b> <code>no-mistakes(review)</code> path-traversal guards on knowledge PUT/export and reflector edits; skill-miner must prove derived cols; promotions row before alias move</li>
+<li class="pipe"><b>c879513</b> <code>no-mistakes(document)</code> stale eval-loop docs in README / AGENTS.md</li>
+<li><b>e5f8d3d</b> Evaluations tab: tokens, cost, latency, case drill-down; Settings preferences dropped</li>
+<li class="pipe"><b>267c088</b> <code>no-mistakes(review)</code> Settings pill no longer names the runtime "champion"; evals case-run link takes the experiment id from config</li>
+<li><b>4bf7618</b> agent traces beside eval runs, scrape noise sampled out, deck-KPI prose label grading</li>
+<li><b>e79fa1f</b> compose passes <code>MLFLOW_EVALS_EXPERIMENT_ID</code> to backend-api · <span class="b b-good">gate checks-passed · CI green</span></li>
+<li><b>next</b> promotion gate = one-tailed McNemar (from this review) · <span class="b b-warn">to commit + re-run the gate</span></li>
+</ul>
+</section>
+
+<section id="gaps">
+<div class="sec-head"><h2>6 · Open gaps</h2><h3>Seen while recording — none block the PR, all are honest</h3></div>
+<div class="grid g2">
+<div class="card"><h4><span class="b b-warn">mlflow</span> Header token count is wrong</h4><p>The trace header says "Token count 419". MLflow computes that from spans carrying its standard <code>mlflow.chat.tokenUsage</code> attribute — on this trace only the <code>chat deepseek-chat</code> retitle span has it. Our <code>model.turn</code> spans use <code>input_tokens</code> / <code>cache_read</code> etc. Fix: also set <code>mlflow.chat.tokenUsage</code> on <code>model.turn</code> (one line in <code>sdk_trace.py</code>) so MLflow's header and Overview token charts agree with the app.</p></div>
+<div class="card"><h4><span class="b b-warn">mlflow</span> Overview → Tool calls shows 0</h4><p>MLflow's tool dashboard only counts spans typed <code>mlflow.spanType = TOOL</code>; ours are untyped logfire spans. Setting <code>mlflow.spanType</code> on <code>tool.*</code> (TOOL), <code>model.turn</code> (LLM) and <code>agent_sdk.answer</code> (AGENT) would light up that tab and the trace icons for free.</p></div>
+<div class="card"><h4><span class="b b-info">judge</span> Rent case: LOW / knowledge</h4><p>Real signal, advisory by design. Candidate knowledge page: "latest month = max(month), never a trailing window". Let the reflector propose it (<code>make reflect RUN=a70c85e5…</code>) or author it in Architecture → knowledge.</p></div>
+<div class="card"><h4><span class="b b-mut">housekeeping</span></h4><ul class="clean"><li>Playwright visual baseline for Settings needs regenerating (<code>frontend/e2e/visual.spec.ts</code>).</li><li>Draft PR #42 (<code>period_metric</code> helper) awaits your judgement.</li><li>Legacy pydantic-ai scaffolding still references <code>_do_remember</code> — out of scope.</li></ul></div>
+</div>
+</section>
+
+<section id="links">
+<div class="sec-head"><h2>7 · Links</h2><h3>Open the same things yourself</h3></div>
+<dl class="kv">
+<dt>PR</dt><dd><a href="https://github.com/nmp-dsci/data-qa-agent/pull/43">nmp-dsci/data-qa-agent#43</a> · head <code>e79fa1f</code></dd>
+<dt>MLflow</dt><dd><a href="http://localhost:5500/#/experiments/2/evaluation-runs">experiment data-qa/evals → Evaluation runs</a> · <a href="http://localhost:5500/#/experiments/2/evaluation-runs?selectedRunUuid=319af2383ad7479a9739a1e556146ecb&selectedEvaluationId=tr-01a09d43397fb965586e9c9072c67574">the recorded trace</a></dd>
+<dt>App</dt><dd><a href="http://localhost:5230/">Data Pilot → Evaluations</a> (deep links normalise to /chat on a fresh load — use the rail)</dd>
+<dt>Run</dt><dd>eval run <code>a70c85e5-e2ce-4175-a8d4-9641842a898f</code> · MLflow run <code>5bb9e1b1…</code> · pack <code>pv-b06b22db</code> · agent <code>av-35a3adc47556</code></dd>
+<dt>Docs</dt><dd><code>docs/eval-loop-s49.md</code> · plan <code>.lavish/s49_eval-loop-review-plan.html</code> · earlier walkthrough <code>.lavish/s50_eval-loop-walkthrough.html</code></dd>
+</dl>
+<div class="foot" style="margin-top:28px">s51 · 2026-09-14 · GIF recorded in Chrome against the local stack (MLflow 3.12); span data read from <code>get-trace-artifact</code>; Evaluations screenshot from the same run · Design: Flight Deck tokens from frontend/src/styles.css.</div>
+</section>
+</div>
+</body></html>

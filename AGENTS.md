@@ -337,6 +337,11 @@ clean `429 Retry-After`, `JOB_DEADLINE_S` (default 240) rides in each job.
 
 ### The MLOps plane: MLflow registry + champion/challenger gate (s43)
 
+**Platform migration (2026-09-21).** The s43 self-hosted MLflow (`:5500`, sqlite) was retired in favour of the
+central server below; experiment `data-qa/evals` lives there, ids come from `../nmp-central-ai/.mlflow-ids.env`,
+and the backend/agent containers reach it over the external `nmp-central` network. Contract:
+`../nmp-central-ai/PLATFORM.md`; receipt: `../nmp-central-ai/ai_specs/s01_m0_m1_build_receipt.md`.
+
 The **central MLflow** server run by `../nmp-central-ai` (`PLATFORM.md`; MLflow 3.16 on Postgres + MinIO,
 host `http://localhost:5000`, in-network `http://mlflow:5000` via the external `nmp-central` docker network)
 is the one MLOps surface for traces (above), eval runs, and the agent registry. This repo runs **no MLflow of

@@ -272,13 +272,17 @@ def cmd_init(_: argparse.Namespace) -> None:
     print(f"  .env => MLFLOW_TRACE_EXPERIMENT_ID={evals_id}")
     import os
 
-    assumed = os.environ.get("MLFLOW_TRACE_EXPERIMENT_ID", "2")
+    # Platform: no numeric default anywhere — an unset id means the services
+    # send no x-mlflow-experiment-id header. The canonical source is
+    # `make -C ../nmp-central-ai mlflow-init` (writes .mlflow-ids.env).
+    assumed = os.environ.get("MLFLOW_TRACE_EXPERIMENT_ID", "").strip() or "<unset>"
     if evals_id != assumed:
         print(
             f"WARNING: services currently use MLFLOW_TRACE_EXPERIMENT_ID={assumed} but the evals "
-            f"experiment id is {evals_id} — set MLFLOW_TRACE_EXPERIMENT_ID={evals_id} in .env "
-            "and recreate backend-api/data-agent, or spans will land in an experiment whose "
-            "eval runs cannot link to them."
+            f"experiment id is {evals_id} — set MLFLOW_TRACE_EXPERIMENT_ID={evals_id} and "
+            f"MLFLOW_EVALS_EXPERIMENT_ID={evals_id} in .env (from nmp-central-ai/.mlflow-ids.env) "
+            "and recreate backend-api/data-agent, or spans will be rejected or land in an "
+            "experiment whose eval runs cannot link to them."
         )
 
 

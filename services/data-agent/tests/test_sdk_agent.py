@@ -848,7 +848,7 @@ def _fake_otel(monkeypatch: pytest.MonkeyPatch) -> _FakeTracer:
     from opentelemetry import trace as ot_trace
 
     tracer = _FakeTracer()
-    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5500")
+    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5000")
     monkeypatch.setattr(ot_trace, "get_tracer", lambda name: tracer)  # noqa: ARG005
 
     async def fake_ordinals_hash() -> str:

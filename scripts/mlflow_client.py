@@ -5,7 +5,9 @@ dependencies, subprocess/urllib against services the compose stack already
 runs. The MLflow tracking server is just HTTP, so this speaks its REST API
 directly instead of pulling the mlflow package into the root project.
 
-Base URL from MLFLOW_URL (default = the compose host port, 5500).
+Base URL from MLFLOW_URL (default = the central nmp-central-ai server on the
+host, http://localhost:5000; from inside compose the services use
+http://mlflow:5000 over the external `nmp-central` network).
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-MLFLOW_URL = os.environ.get("MLFLOW_URL", "http://localhost:5500").rstrip("/")
+MLFLOW_URL = os.environ.get("MLFLOW_URL", "http://localhost:5000").rstrip("/")
 
 # s50: one experiment for eval runs AND OTLP traces — MLflow only lists a
 # run's linked traces when they live in the run's own experiment. The old
@@ -189,7 +191,7 @@ def log_artifact(
         raise MlflowError(f"PUT artifacts/{path}: HTTP {exc.code} {detail}") from exc
     except urllib.error.URLError as exc:
         raise MlflowError(
-            f"PUT artifacts/{path}: {exc.reason} (is the mlflow service up?)"
+            f"PUT artifacts/{path}: {exc.reason} (is the central MLflow up? make platform-up)"
         ) from exc
 
 
@@ -220,7 +222,7 @@ def get_artifact_bytes(run_id: str, path: str) -> bytes:
         raise MlflowError(f"GET get-artifact {path}: HTTP {exc.code} {detail}") from exc
     except urllib.error.URLError as exc:
         raise MlflowError(
-            f"GET get-artifact {path}: {exc.reason} (is the mlflow service up?)"
+            f"GET get-artifact {path}: {exc.reason} (is the central MLflow up? make platform-up)"
         ) from exc
 
 

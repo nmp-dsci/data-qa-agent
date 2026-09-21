@@ -122,14 +122,15 @@ class Settings(BaseSettings):
     logfire_token: str | None = None
     # s37: self-hosted tracing. Logfire is an OpenTelemetry SDK, so the same
     # instrumentation can export anywhere — set this to an OTLP/HTTP collector
-    # (locally the MLflow server, http://mlflow:5000) and spans go there
+    # (locally the central nmp-central-ai MLflow, http://mlflow:5000) and spans go there
     # instead of, or as well as, Logfire Cloud. Empty = off, which is the
     # default and matches the previous behaviour exactly.
     otlp_endpoint: str = ""
     # s43 M1: MLflow's /v1/traces ingest routes spans to an experiment via the
     # x-mlflow-experiment-id header. Empty = plain OTLP (no header), which any
     # generic collector accepts. s50: point it at the data-qa/evals experiment
-    # (compose default 2; `make mlflow-init` prints it) — MLflow only shows a
+    # (no default anywhere; `make -C ../nmp-central-ai mlflow-init` writes the
+    # id to .mlflow-ids.env, copied into .env) — MLflow only shows a
     # run's linked traces when they share the run's experiment, so this is
     # also what makes the Evaluations run's Traces tab non-empty.
     mlflow_trace_experiment_id: str = ""

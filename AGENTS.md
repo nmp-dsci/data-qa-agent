@@ -202,9 +202,10 @@ Logfire is an **OpenTelemetry SDK**, not a lock-in — the FastAPI, httpx and py
 both services carry emits ordinary OTel spans, and only the *destination* is a choice. That makes the
 backend swappable for the cost of one endpoint.
 
-- `OTLP_ENDPOINT` adds an exporter via `additional_span_processors`. Locally it defaults to the MLflow
-  container (`http://mlflow:5000`, header `x-mlflow-experiment-id` from `MLFLOW_TRACE_EXPERIMENT_ID`), so
-  `make up` gives traces + eval runs + the agent registry on **:5500** with no extra step (s43).
+- `OTLP_ENDPOINT` adds an exporter via `additional_span_processors`. Locally it defaults to the **central**
+  MLflow server (`http://mlflow:5000` over the external `nmp-central` docker network, header
+  `x-mlflow-experiment-id` from `MLFLOW_TRACE_EXPERIMENT_ID` — no default; unset = no header), so
+  `make platform-up && make up` gives traces + eval runs + the agent registry on **:5000** (s43 → platform).
 - **Additive, not exclusive.** With both `LOGFIRE_TOKEN` and `OTLP_ENDPOINT` set, spans go to both —
   so evaluating a different backend is a side-by-side comparison, never a cutover.
 - OTLP over **HTTP**, not gRPC: logfire already ships the proto-http exporter, so self-hosting costs no
@@ -336,20 +337,26 @@ clean `429 Retry-After`, `JOB_DEADLINE_S` (default 240) rides in each job.
 
 ### The MLOps plane: MLflow registry + champion/challenger gate (s43)
 
-A self-hosted **MLflow** server (`docker-compose.yml`, sqlite backend store in the gitignored `./.mlflow`
-volume, host port **5500** — 5000 is taken by the ConvFinQA-agent's MLflow on this machine, override with
-`MLFLOW_HOST_PORT`) is the one MLOps surface for traces (above), eval runs, and the agent registry. Postgres
-stays the operational source of truth throughout — MLflow mirrors it, never the other way round — and every
-script speaks stdlib-only `urllib` REST (`scripts/mlflow_client.py`) rather than pulling in the `mlflow`
-package, matching `eval_run.py`'s no-third-party-deps grain. `MLFLOW_URL` (default
-`http://localhost:5500`) points the host-side scripts at the server; dev+CI only, no prod/terraform change.
+The **central MLflow** server run by `../nmp-central-ai` (`PLATFORM.md`; MLflow 3.16 on Postgres + MinIO,
+host `http://localhost:5000`, in-network `http://mlflow:5000` via the external `nmp-central` docker network)
+is the one MLOps surface for traces (above), eval runs, and the agent registry. This repo runs **no MLflow of
+its own** any more — the s43 compose service, its `MLFLOW_HOST_PORT` (:5500) and the sqlite store are gone;
+the old store is archived read-only under the gitignored `./.mlflow` (platform decision D2) and can be
+deleted once nothing needs it. `make platform-up` starts the platform; `mlflow-init` / `register` / `promote`
+run a `curl /health` preflight first and fail fast naming that target. Postgres stays the operational
+source of truth throughout — MLflow mirrors it, never the other way round — and every script speaks
+stdlib-only `urllib` REST (`scripts/mlflow_client.py`) rather than pulling in the `mlflow` package, matching
+`eval_run.py`'s no-third-party-deps grain. `MLFLOW_URL` (default `http://localhost:5000`) points the
+host-side scripts at the server; dev+CI only, no prod/terraform change.
 
-- **`make mlflow-init`** (`scripts/mlflow_registry.py init`) creates the `data-qa/evals` experiment
-  (idempotent) and prints the `MLFLOW_TRACE_EXPERIMENT_ID=<id>` line to put in `.env`, warning if the
-  services' current value differs. **Traces and eval runs share that one experiment (s50)** — MLflow only
-  lists a run's linked traces when they live in the run's own experiment, so the earlier separate
-  `data-qa/traces` experiment left every eval run's Traces tab empty. It is no longer created; a legacy
-  one can be deleted. The compose default is `2` (a store initialised before s50); a fresh store gets `1`.
+- **Experiment ids are never hardcoded.** `make -C ../nmp-central-ai mlflow-init` creates `data-qa/evals`
+  and writes `nmp-central-ai/.mlflow-ids.env` (`MLFLOW_TRACE_EXPERIMENT_ID` / `MLFLOW_EVALS_EXPERIMENT_ID`);
+  copy both into this project's `.env`. Compose has **no numeric default** — unset means the services send
+  no `x-mlflow-experiment-id` header. `make mlflow-init` here (`scripts/mlflow_registry.py init`) is the
+  same check from this side: idempotent, prints the id, warns if `.env` differs. **Traces and eval runs
+  share that one experiment (s50)** — MLflow only lists a run's linked traces when they live in the run's
+  own experiment, so the earlier separate `data-qa/traces` experiment left every eval run's Traces tab
+  empty. It is no longer created.
 - **Trace noise is head-sampled away (s50).** `trace_sampling.py` in both services installs a
   `ParentBased(root=…)` sampler via `logfire.SamplingOptions(head=…)` that drops root spans named
   `GET /metrics`, `GET /health*`, `OPTIONS …` and `POST /events` (the analytics beacon) — before s50 the

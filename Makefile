@@ -1,4 +1,4 @@
-.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote loadtest redteam injection-suite ops-rollup rollback handover-poll
+.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote platform-up mlflow-preflight loadtest redteam injection-suite ops-rollup rollback handover-poll
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
@@ -20,7 +20,8 @@ help:
 	@echo "make eval-pack-version - print the content hash of the golden pack"
 	@echo "make eval-lint     - zero-LLM-cost pack-lint (case shape, grader columns vs golden_sql)"
 	@echo ""
-	@echo "make mlflow-init   - s43/s50: create the MLflow evals experiment (traces + eval runs), print its id"
+	@echo "make platform-up   - start the central platform (nmp-central-ai: MLflow on :5000, Postgres, MinIO)"
+	@echo "make mlflow-init   - s43/s50: ensure the data-qa/evals experiment exists on the central MLflow, print its id"
 	@echo "make register      - s43: mirror app.agent_versions into the MLflow model registry"
 	@echo "make promote       - s43: comparator gate; on PASS move @champion + record history"
 	@echo ""
@@ -199,13 +200,27 @@ NOTES ?=
 # s43: the MLOps plane. init is idempotent (safe to re-run); register mirrors
 # every app.agent_versions fingerprint into the `data-qa-agent` registered
 # model; promote applies the ConvFinQA comparator rule and moves @champion.
-mlflow-init:
+# Platform: MLflow is the CENTRAL server run by ../nmp-central-ai (never a
+# project-local one). MLFLOW_URL in the shell overrides; the scripts read it.
+# Experiment ids come from `make -C ../nmp-central-ai mlflow-init`
+# (.mlflow-ids.env) and go in this project's .env.
+MLFLOW_URL ?= http://localhost:5000
+export MLFLOW_URL
+
+platform-up:
+	$(MAKE) -C ../nmp-central-ai up
+
+# Fail fast, not silent: every target that writes to MLflow checks it first.
+mlflow-preflight:
+	@curl -fsS $(MLFLOW_URL)/health >/dev/null || (echo "central MLflow down at $(MLFLOW_URL): run make platform-up"; exit 1)
+
+mlflow-init: mlflow-preflight
 	uv run python scripts/mlflow_registry.py init
 
-register:
+register: mlflow-preflight
 	uv run python scripts/mlflow_registry.py ensure
 
-promote:
+promote: mlflow-preflight
 	uv run python scripts/mlflow_registry.py promote $(if $(ALPHA),--alpha $(ALPHA))
 
 # s49: the eval loop as a versioned, traced, optimisable system

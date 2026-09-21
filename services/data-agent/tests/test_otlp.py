@@ -82,7 +82,7 @@ def test_agent_span_creates_a_real_span_with_creation_attributes(
     from opentelemetry import trace as ot_trace
 
     fake_tracer = _FakeTracer()
-    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5500")
+    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5000")
     monkeypatch.setattr(ot_trace, "get_tracer", lambda name: fake_tracer)  # noqa: ARG005
 
     with otlp.agent_span("agent_sdk.answer", question_length=42, run_id="r1", model=None) as span:
@@ -110,7 +110,7 @@ def test_agent_span_tracer_uses_the_data_agent_name(monkeypatch: pytest.MonkeyPa
         seen["name"] = name
         return fake_tracer
 
-    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5500")
+    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5000")
     monkeypatch.setattr(ot_trace, "get_tracer", fake_get_tracer)
 
     with otlp.agent_span("agent_sdk.answer"):

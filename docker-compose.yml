@@ -111,18 +111,22 @@ services:
       OPS_INGEST_TOKEN: ${OPS_INGEST_TOKEN:-dev-ops-token}
       # Optional — ships backend traces to Logfire Cloud; local-only otherwise.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
-      # s43 M1: self-hosted traces land in the MLflow server (OTLP ingest at
-      # /v1/traces), so one UI carries traces + eval runs + the agent registry.
-      # Set OTLP_ENDPOINT= (empty) to turn span export off entirely.
+      # s43 M1 / platform: self-hosted traces land in the CENTRAL MLflow server
+      # run by ../nmp-central-ai (OTLP ingest at /v1/traces), so one UI carries
+      # traces + eval runs + the agent registry. `mlflow:5000` resolves over the
+      # external `nmp-central` docker network (see `networks:` at the bottom);
+      # this stack runs no MLflow of its own. Set OTLP_ENDPOINT= (empty) to turn
+      # span export off entirely.
       OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://mlflow:5000}
       # MLflow routes OTLP spans by experiment id (x-mlflow-experiment-id).
       # s50: spans go to the SAME experiment as the eval runs (data-qa/evals)
       # — MLflow only lists a run's linked traces when they live in the run's
-      # own experiment, so a separate traces experiment left the Evaluations
-      # runs' Traces tab empty. Ids come from `make mlflow-init` output; on a
-      # store initialised before s50 data-qa/evals is id 2.
-      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-2}
-      MLFLOW_EVALS_EXPERIMENT_ID: ${MLFLOW_EVALS_EXPERIMENT_ID:-2}
+      # own experiment. No numeric default on purpose (ids differ per store):
+      # unset = no header = MLflow rejects the spans. Put the ids that
+      # `make -C ../nmp-central-ai mlflow-init` writes to .mlflow-ids.env into
+      # this project's .env.
+      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-}
+      MLFLOW_EVALS_EXPERIMENT_ID: ${MLFLOW_EVALS_EXPERIMENT_ID:-}
       # s35: Slack's workspace signing secret, used to verify X-Slack-Signature.
       # A fixed dev value so the signature path is exercisable locally without a
       # real workspace; empty CLOSES the Slack endpoint (404), which is the
@@ -148,6 +152,9 @@ services:
       # Host port is overridable (API_HOST_PORT in .env) so a local dev machine
       # that already has something on 8000 can move the app instead of it.
       - "${API_HOST_PORT:-8000}:8000"
+    # Platform: joins the external nmp-central network to reach mlflow:5000.
+    # `default` stays listed or the service drops off its own stack.
+    networks: [default, nmp-central]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 10s
@@ -181,9 +188,10 @@ services:
       SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-pyodide}
       # Optional — ships agent traces to Logfire Cloud; empty = local-only tracing.
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
-      # s43 M1: self-hosted traces to the MLflow server (see backend-api).
+      # s43 M1 / platform: traces to the central MLflow server over the
+      # nmp-central network (see backend-api). Unset id = no header.
       OTLP_ENDPOINT: ${OTLP_ENDPOINT-http://mlflow:5000}
-      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-2}
+      MLFLOW_TRACE_EXPERIMENT_ID: ${MLFLOW_TRACE_EXPERIMENT_ID:-}
       # s40 (D2): LLM_STUB=1 forces the deterministic stub answer, streamed
       # across STUB_LATENCY_S seconds — the zero-spend workload for E2-E8 and
       # the C-series load runs.
@@ -237,6 +245,9 @@ services:
       # in-network address stays data-agent:8100. Worker replicas (s40 M1)
       # publish nothing, so scaling never contends for this port.
       - "${AGENT_HOST_PORT:-8100}:8100"
+    # Platform: joins the external nmp-central network to reach mlflow:5000.
+    # `default` stays listed or the service drops off its own stack.
+    networks: [default, nmp-central]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8100/health', timeout=3)"]
       interval: 10s
@@ -269,6 +280,9 @@ services:
       PYTHONPATH: /app
     volumes:
       - ./scripts:/app/scripts:ro
+    # Platform: joins the external nmp-central network to reach mlflow:5000.
+    # `default` stays listed or the service drops off its own stack.
+    networks: [default, nmp-central]
     depends_on:
       pipeline:
         condition: service_completed_successfully
@@ -313,6 +327,9 @@ services:
     volumes:
       - dbt_target:/dbt-target:ro
       - ./packs:/app/packs:ro
+    # Platform: joins the external nmp-central network to reach mlflow:5000.
+    # `default` stays listed or the service drops off its own stack.
+    networks: [default, nmp-central]
     depends_on:
       redis:
         condition: service_healthy
@@ -359,36 +376,11 @@ services:
     depends_on:
       - prometheus
 
-  # s43 M0: the MLOps plane. One MLflow server carries all three surfaces —
-  # traces (OTLP ingest at /v1/traces, replacing the s37 Jaeger container),
-  # experiments & eval runs (`make eval` logs one run each), and the agent
-  # registry with @champion/@challenger aliases. sqlite + ./.mlflow volume
-  # mirrors the ConvFinQA-agent setup (decision D3); unlike Jaeger's in-memory
-  # store, traces survive restarts. Host port 5500 because ConvFinQA's MLflow
-  # owns 5000 on this machine (MLFLOW_HOST_PORT overrides, like API_HOST_PORT).
-  #   UI: http://localhost:5500
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v3.12.0
-    command: >
-      mlflow server --host 0.0.0.0 --port 5000
-      --backend-store-uri sqlite:////mlflow/store/mlflow.db
-      --artifacts-destination /mlflow/artifacts
-    environment:
-      # The server's DNS-rebinding guard only accepts localhost Hosts by
-      # default; in-network span export arrives as Host "mlflow:5000" and was
-      # 403'd without this. Keep it to the compose-internal name + localhost.
-      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost,127.0.0.1,localhost:${MLFLOW_HOST_PORT:-5500},127.0.0.1:${MLFLOW_HOST_PORT:-5500}"
-    ports:
-      - "${MLFLOW_HOST_PORT:-5500}:5000"
-    volumes:
-      - ./.mlflow:/mlflow
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:5000/health', timeout=3)"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
+  # s43 M0 -> platform: the MLOps plane (traces, eval runs, agent registry) is
+  # the CENTRAL MLflow server run by ../nmp-central-ai — http://localhost:5000
+  # on the host, http://mlflow:5000 in-network via `nmp-central` (bottom).
+  # This stack no longer runs its own MLflow; the old sqlite store is archived
+  # read-only in ./.mlflow (decision D2). `make platform-up` starts the platform.
 
   frontend:
     image: node:22-bookworm-slim
@@ -396,6 +388,8 @@ services:
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     environment:
       VITE_API_URL: http://localhost:${API_HOST_PORT:-8000}
+      # Platform: the Evaluations page links into the central MLflow UI.
+      VITE_MLFLOW_URL: ${MLFLOW_URL:-http://localhost:5000}
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -407,3 +401,11 @@ services:
 volumes:
   dbdata:
   dbt_target:   # dbt manifest/catalog shared from pipeline -> data-agent
+
+networks:
+  default: {}
+  # The platform's external network, created by `make -C ../nmp-central-ai up`.
+  # Every service that talks to MLflow lists BOTH default and nmp-central —
+  # naming only nmp-central would detach it from this stack.
+  nmp-central:
+    external: true

@@ -57,7 +57,7 @@ Files: `agent/sdk_trace.py`, `agent/otlp.py`, `agent/sdk_agent.py`, `agent/sandb
 4. **Eval ids.** `scripts/eval_run.py` writes `eval_results.otel_trace_id` (read from `query_runs.otel_trace_id` for the case's `query_run_id`) and `eval_results.mlflow_run_id` (the id `log_case_mlflow` creates; refactor so persist happens after MLflow logging, or update the row).
 5. **Grade span.** `/agent/eval/grade` opens `agent_span("eval.grade", run_id=..., otel_trace_id=..., case_key=...)` around grading; the runner passes `run_id`/`otel_trace_id`/`case_key` in `GradeRequest`.
 
-Verify: one chat question on the local stack shows ≥ 6 child spans under `agent_sdk.answer` in MLflow (`http://localhost:5500`, experiment `data-qa/traces`); `SELECT artifact_manifest FROM app.query_runs` is populated; sandbox stdout visible in the trace viewer JSON. Unit tests for `SdkTrace` span emission (use the in-memory OTel exporter), `AnalysisResult.stdout` on both runtimes (`SANDBOX_RUNTIME=subprocess` and `pyodide`).
+Verify: one chat question on the local stack shows ≥ 6 child spans under `agent_sdk.answer` in the central MLflow (`http://localhost:5000`, experiment `data-qa/evals`); `SELECT artifact_manifest FROM app.query_runs` is populated; sandbox stdout visible in the trace viewer JSON. Unit tests for `SdkTrace` span emission (use the in-memory OTel exporter), `AnalysisResult.stdout` on both runtimes (`SANDBOX_RUNTIME=subprocess` and `pyodide`).
 
 ### W-B · M1 versioning (Sonnet, medium)
 

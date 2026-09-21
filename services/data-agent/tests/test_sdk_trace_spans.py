@@ -48,7 +48,7 @@ def exporter(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMemorySpanExporter]:
     memory = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(memory))
-    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5500")
+    monkeypatch.setenv("OTLP_ENDPOINT", "http://localhost:5000")
     monkeypatch.setattr(ot_trace, "get_tracer", lambda name: provider.get_tracer(name))  # noqa: ARG005
     yield memory
     memory.clear()

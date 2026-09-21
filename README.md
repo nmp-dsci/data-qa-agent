@@ -101,7 +101,7 @@ rest are started on demand by the command shown.
 | **5230** | **Frontend** — React + Vite dev server, hot-reloading | <http://localhost:5230> | 5230 | `make up` |
 | **8000** | **Backend API** — auth, RLS, orchestration, admin, integrations | <http://localhost:8000/health> | 8000 | `make up` |
 | **8100** | **Data agent** — NL→SQL, sandbox, page building | <http://localhost:8100/health> | 8100 | `make up` |
-| **5500** | **MLflow** — traces (span waterfalls + tokens/cost), eval runs, agent registry | <http://localhost:5500> | 5000 | `make up` |
+| **5000** | **MLflow** (central, `../nmp-central-ai`) — traces (span waterfalls + tokens/cost), eval runs, agent registry | <http://localhost:5000> | 5000 | `make platform-up` |
 | **5434** | **Postgres** — `postgres`/`postgres`, db `dataqa` | `psql -h localhost -p 5434 -U postgres dataqa` | **5432** | `make up` |
 | **8180** | **dbt docs** — lineage graph, model SQL, column docs | <http://localhost:8180> | 8080 | `make pipeline-docs` |
 | **3000** | **Grafana** — queue-scaling dashboard (`obs` profile) | <http://localhost:3000> | 3000 | `make queue-up` |
@@ -137,7 +137,7 @@ is not always the port you use from your laptop:
 | `localhost:5434` | `db:5432` ← the one that catches people out |
 | `localhost:8000` | `backend-api:8000` |
 | `localhost:8100` | `data-agent:8100` |
-| `localhost:5500` | `mlflow:5000` |
+| `localhost:5000` | `mlflow:5000` (central platform, over the external `nmp-central` network) |
 | `localhost:8180` | `pipeline-docs:8080` |
 
 Port already in use? Every mapping lives in `docker-compose.yml` — change the **left** number only.
@@ -421,10 +421,12 @@ an offline heuristic. Retitle pre-existing conversations with
 `docker compose exec backend-api python -m app.backfill_titles` (`--all` / `--dry-run`).
 
 Every agent run is traced with the **Logfire SDK** (an OpenTelemetry SDK) — tool calls, model requests, and
-(with `capture_all=True`) the raw HTTP payloads sent to the provider. Spans land in the self-hosted **MLflow**
-server (s43): `make up` exports them to `OTLP_ENDPOINT=http://mlflow:5000` tagged with
+(with `capture_all=True`) the raw HTTP payloads sent to the provider. Spans land in the **central MLflow**
+server run by `../nmp-central-ai` (`make platform-up`; this stack runs no MLflow of its own): `make up` exports
+them to `OTLP_ENDPOINT=http://mlflow:5000` over the external `nmp-central` docker network, tagged with
 `MLFLOW_TRACE_EXPERIMENT_ID` (the `data-qa/evals` experiment, so eval runs and their agent traces sit
-together — `make mlflow-init` prints the id), so http://localhost:5500 shows span waterfalls, token/cost aggregates, eval runs
+together — the id comes from `make -C ../nmp-central-ai mlflow-init` → `.mlflow-ids.env`, copied into `.env`;
+there is no default), so http://localhost:5000 shows span waterfalls, token/cost aggregates, eval runs
 and the `data-qa-agent` registry (@champion/@challenger) in one UI — no external account needed. Set
 `LOGFIRE_TOKEN` to *also* ship to Logfire Cloud; exporters are additive.
 

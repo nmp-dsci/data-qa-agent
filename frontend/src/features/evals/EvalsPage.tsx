@@ -52,12 +52,14 @@ function fmtSecs(ms: number | null | undefined): string {
   return ms === null || ms === undefined ? "—" : `${(Number(ms) / 1000).toFixed(1)}s`;
 }
 
-/** MLflow's UI: same host as the app, its own port (MLFLOW_HOST_PORT, 5500 by
- *  default). The frontend has no config for it, so derive from the location —
- *  a link that lands on the local stack is worth more than none. */
+/** The central MLflow UI (nmp-central-ai, :5000). VITE_MLFLOW_URL when set
+ *  (docker-compose passes MLFLOW_URL through); otherwise derive from the
+ *  location — a link that lands on the local platform is worth more than none. */
 function mlflowBase(): string {
+  const configured = import.meta.env.VITE_MLFLOW_URL as string | undefined;
+  if (configured) return configured.replace(/\/+$/, "");
   const host = typeof window === "undefined" ? "localhost" : window.location.hostname;
-  return `http://${host}:5500`;
+  return `http://${host}:5000`;
 }
 
 /** A run's headline identity: experiment label if it has one, else "baseline". */

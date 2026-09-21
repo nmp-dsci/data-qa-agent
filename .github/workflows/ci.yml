@@ -196,6 +196,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The stack joins the external `nmp-central` network to reach the central
+      # MLflow (../nmp-central-ai). CI has no platform, so create the network
+      # empty: the services start, the OTLP exporter simply has nowhere to send.
+      - name: Create the platform network
+        run: docker network create nmp-central
       - name: Build and start stack
         run: docker compose up -d --build
       # `up -d` returns once containers are started, not once uvicorn is

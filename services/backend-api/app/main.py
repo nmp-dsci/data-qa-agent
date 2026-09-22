@@ -62,9 +62,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # existing mart; tolerate marts that don't exist yet (pipeline still building
     # on first boot) with a warning, so the API can start ahead of the one-shot job.
     try:
-        async with rls_connection(None) as conn:
-            for warning in await validate_manifest(conn):
-                log.warning("explore manifest: %s", warning)
+        if not settings.db_disabled:
+            async with rls_connection(None) as conn:
+                for warning in await validate_manifest(conn):
+                    log.warning("explore manifest: %s", warning)
     except ManifestError:
         raise
     except Exception as exc:  # noqa: BLE001 - DB not reachable yet; don't block startup
@@ -239,20 +240,25 @@ async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
 app.include_router(auth.router)
 app.include_router(ask.router)
 app.include_router(events.router)
-app.include_router(sql.router)
-app.include_router(feedback.router)
-app.include_router(goldens.router)
-app.include_router(admin_config.router)
-app.include_router(profile.router)
-app.include_router(explore.router)
-app.include_router(evals.router)
-app.include_router(ops.router)
-app.include_router(integrations.router)
-app.include_router(service_accounts.router)
-app.include_router(analytics.router)
-app.include_router(architecture.router)
-app.include_router(admin_pack.router)
-app.include_router(admin_knowledge.router)
+# s52: a DB-less demo mounts only the three routers above — every other
+# surface either queries Postgres or is an exhibit the frontend now serves as
+# static JSON. Not mounting them (rather than 503ing inside) means no code
+# path in the process can reach an engine.
+if not settings.db_disabled:
+    app.include_router(sql.router)
+    app.include_router(feedback.router)
+    app.include_router(goldens.router)
+    app.include_router(admin_config.router)
+    app.include_router(profile.router)
+    app.include_router(explore.router)
+    app.include_router(evals.router)
+    app.include_router(ops.router)
+    app.include_router(integrations.router)
+    app.include_router(service_accounts.router)
+    app.include_router(analytics.router)
+    app.include_router(architecture.router)
+    app.include_router(admin_pack.router)
+    app.include_router(admin_knowledge.router)
 
 # s36: the MCP front door, mounted rather than run as its own service. The gate
 # wrapper authenticates a dpk_ key pinned to surface='mcp' before the JSON-RPC
@@ -314,6 +320,8 @@ async def health_db(request: Request) -> dict[str, str]:
     """
     if request.headers.get("x-client-channel") != "web":
         return {"status": "skipped", "env": settings.app_env}
+    if settings.db_disabled:
+        return {"status": "disabled", "env": settings.app_env}
     global _health_db_cache, _health_db_cache_at
     now = time.monotonic()
     if _health_db_cache is not None and now - _health_db_cache_at < _HEALTH_DB_MIN_INTERVAL_S:

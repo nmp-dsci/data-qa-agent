@@ -4,7 +4,7 @@ help:
 	@echo "make up            - build + start the whole stack (migrate, pipeline, api, agent, web) on the central Postgres"
 	@echo "make migrate       - run the Alembic migration job on its own (against the central Postgres)"
 	@echo "make pipeline      - dbt build over propertyiq_staging (fdw) -> staging/marts + RLS; run after propertyiq_getdata `db update`"
-	@echo "make pipeline-docs - serve the dbt docs UI (lineage, raw->staging->marts) at localhost:8180"
+	@echo "make pipeline-docs - serve the dbt docs UI (lineage, propertyiq_staging->staging->marts) at localhost:8180"
 	@echo "make down          - stop the stack"
 	@echo "make reset         - stop the stack and drop ONLY this project's schemas in database dataqa (asks; next up re-migrates)"
 	@echo "make db-smoke      - zero-LLM proof the central database serves this project (the platform's make check runs it)"

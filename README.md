@@ -40,13 +40,12 @@ Security isolates them.
 
 ### The data
 
-Two real NSW datasets (place the CSVs in `data/`, they are gitignored — too big to commit):
-
-- `data/nswgov_df.csv` — NSW Government property **sales** (~516 MB) → `marts.property_sales`
-- `data/rentboard_df.csv` — NSW Rental Bond Board **rent** (~63 MB) → `marts.property_rent`
-
-Small committed **samples** live in `data/samples/` (regenerate from the full files with `make samples`); they
-keep `make up` and CI fast while preserving suburbs present in both datasets across the growth window.
+This project ingests nothing itself. The sibling [`propertyiq_getdata`](../propertyiq_getdata) project lands
+the NSW Government property **sales** and Rental Bond Board **rent** CSVs (plus ABS/RBA series), cleans them
+to record grain, and writes them into database `propertyiq` on the central Postgres; migration 0040 imports
+that `staging` schema here as `propertyiq_staging.*` foreign tables over `postgres_fdw`. CI stands up a
+`propertyiq` database from a fixture (`tests/fixtures/propertyiq_staging.sql`, a 500-row extract exported by
+`propertyiq-getdata db export-fixture`) so `make up`/CI stay fast without needing the real upstream data.
 
 ```bash
 make smoke    # end-to-end test: login -> ask -> response, query audit, and RLS isolation
@@ -166,7 +165,6 @@ frontend/               React + Vite: login (dev stub or Google Sign-in) + chat 
                         + Evaluations (admin, read-only) + Settings (incl. admin key management) + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
-data/                   full NSW CSVs (gitignored) + data/samples/ (small committed samples)
 evals/                  journeys.yaml (user-journey evals) + cases/*.yaml (version-controlled golden pack,
                         the source of truth for `app.eval_cases` — see `make eval-export`/`eval-import`)
 scripts/                smoke_test.py, build_poa_paths.py (Explore choropleth paths,
@@ -217,9 +215,9 @@ mart can't support its use case, not just if it's malformed.
 
 **Reviewing propertyiq_staging → staging → marts:** run `make pipeline` then `make pipeline-docs` to serve the
 dbt docs UI at http://localhost:8180 — lineage graph, every model's SQL, and column descriptions (the same
-text `get_schema()` feeds the agent) for `raw` sources through `staging`/intermediate to `marts`. To inspect
-actual rows/counts at any layer, connect to Postgres directly (`localhost:5432`, database `dataqa`, schemas `raw`/`staging`/`marts`
-— see Ports below).
+text `get_schema()` feeds the agent) for the `propertyiq_staging` source through `staging`/intermediate to
+`marts`. To inspect actual rows/counts at any layer, connect to Postgres directly (`localhost:5432`, database
+`dataqa`, schemas `staging`/`marts`, or database `propertyiq` for the foreign tables' origin — see Ports below).
 
 ## Explore
 

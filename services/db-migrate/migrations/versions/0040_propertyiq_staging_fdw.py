@@ -56,13 +56,16 @@ def upgrade() -> None:
     ro_password = os.environ.get("PROPERTYIQ_RO_PASSWORD", ro_user)
 
     op.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw")
-    op.execute("DROP SERVER IF EXISTS propertyiq CASCADE")  # drops mappings + foreign tables; re-created below
+    op.execute(
+        "DROP SERVER IF EXISTS propertyiq CASCADE"
+    )  # drops mappings + foreign tables; re-created below
     op.execute(
         f"CREATE SERVER propertyiq FOREIGN DATA WRAPPER postgres_fdw "
         f"OPTIONS (host {_q(host)}, port {_q(port)}, dbname {_q(dbname)}, fetch_size '10000')"
     )
     op.execute(
-        f"CREATE USER MAPPING FOR PUBLIC SERVER propertyiq OPTIONS (user {_q(ro_user)}, password {_q(ro_password)})"
+        f"CREATE USER MAPPING FOR PUBLIC SERVER propertyiq "
+        f"OPTIONS (user {_q(ro_user)}, password {_q(ro_password)})"
     )
     op.execute("CREATE SCHEMA IF NOT EXISTS propertyiq_staging")
     op.execute("IMPORT FOREIGN SCHEMA staging FROM SERVER propertyiq INTO propertyiq_staging")
@@ -70,13 +73,17 @@ def upgrade() -> None:
     # SQL editor (admin_ro, BYPASSRLS) and the agent's schema doc benefit from
     # seeing the shared layer directly.
     op.execute("GRANT USAGE ON SCHEMA propertyiq_staging TO app_user, agent_ro, admin_ro")
-    op.execute("GRANT SELECT ON ALL TABLES IN SCHEMA propertyiq_staging TO app_user, agent_ro, admin_ro")
+    op.execute(
+        "GRANT SELECT ON ALL TABLES IN SCHEMA propertyiq_staging TO app_user, agent_ro, admin_ro"
+    )
     op.execute("GRANT USAGE ON FOREIGN SERVER propertyiq TO app_user, agent_ro, admin_ro")
 
     # The dlt landing tables. Nothing reads them once staging comes from propertyiq.
     op.execute("DROP TABLE IF EXISTS raw.property_sales CASCADE")
     op.execute("DROP TABLE IF EXISTS raw.property_rent CASCADE")
-    op.execute("DROP TABLE IF EXISTS raw._dlt_loads, raw._dlt_pipeline_state, raw._dlt_version CASCADE")
+    op.execute(
+        "DROP TABLE IF EXISTS raw._dlt_loads, raw._dlt_pipeline_state, raw._dlt_version CASCADE"
+    )
 
     op.execute(
         "INSERT INTO app.schema_migrations (version) VALUES ('0040_propertyiq_staging_fdw') "

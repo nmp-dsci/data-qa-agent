@@ -140,7 +140,6 @@ services/db-migrate/    Alembic migrations (the `migrate` job; runs local + clou
 frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore tab + event tracking
 frontend/public/geo/    pre-built choropleth paths (poa_nsw.paths.json — see scripts/build_topojson.md)
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
-data/samples/           small committed NSW sample CSVs (full data is gitignored)
 evals/                  journeys.yaml — user-journey evals (auth + RLS + growth; grows every phase)
 db/init/                schema + RLS + roles + seed + housing load (run on first `make up`)
 config/                 datasets.yaml, users.seed.yaml
@@ -1219,7 +1218,7 @@ bare runner, and it exits 0 on failure because telemetry must never fail a deplo
 | **0 · Scaffold** | uv monorepo (api + agent), FastAPI hello, React Vite, Postgres via docker-compose — all on localhost | ✅ done |
 | **1 · Auth** | Google ID-token validation + JIT provisioning, Google Sign-in (dev stub fallback), protected `/me`, `/auth/config`, journey evals; 3 seeded users | ✅ done (real Google Sign-in shipped in s11) |
 | **2 · Data + RLS** | Schema + Alembic migrations (all tables above), RLS policies, session-variable middleware, isolation tests | ✅ done |
-| **2b · Pipeline** | dlt CSV→raw; dbt raw→staging→marts with tests/docs; suburb-keyed growth marts; `datasets`/`dataset_access` populated | ✅ done |
+| **2b · Pipeline** | dbt propertyiq_staging(fdw)→staging→marts with tests/docs; suburb-keyed growth marts; `datasets`/`dataset_access` populated | ✅ done (re-based off propertyiq_getdata's shared staging layer, migration 0040) |
 | **3 · Agent** | Pydantic AI agent, read-only role, `run_sql`/`make_chart`/`recall`/`remember`, pgvector memory, Logfire, streaming `/ask` | ✅ done (DeepSeek default, Claude via `LLM_PROVIDER=anthropic`, pgvector memory, Logfire; streaming `/ask` deferred — HTTP contract stays request/response, Logfire gives step tracing instead) |
 | **3b · Tracking + admin** | Event taxonomy + `POST /events`, `events` table, admin-only dashboard (feed, users, datasets, metrics) | ✅ done |
 | **4 · Cloud** | Bicep: Container Apps env + job, ACR, PostgreSQL Flexible (+pgvector), Key Vault, managed identity | ✅ done — shipped on **AWS** instead (s12, `infra/terraform/`): App Runner + ECS jobs, Aurora Serverless v2, ECR, Secrets Manager, S3+CloudFront frontend; the Azure Bicep stays a reference |

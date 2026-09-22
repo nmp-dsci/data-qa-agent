@@ -1,0 +1,504 @@
+{
+  "exported_at": "2026-09-22T01:36:11+00:00",
+  "api": "http://localhost:8010",
+  "routes": 99,
+  "bytes": 2431419,
+  "emails_scrubbed": 14,
+  "files": [
+    {
+      "route": "/admin/datasets",
+      "file": "exhibits/admin/datasets.json",
+      "bytes": 421
+    },
+    {
+      "route": "/explore/datasets",
+      "file": "exhibits/explore/datasets.json",
+      "bytes": 41785
+    },
+    {
+      "route": "/admin/eval-goldens",
+      "file": "exhibits/admin/eval-goldens.json",
+      "bytes": 2258
+    },
+    {
+      "route": "/admin/eval-goldens?dataset=nsw_rent",
+      "file": "exhibits/admin/eval-goldens__dataset=nsw_rent.json",
+      "bytes": 1384
+    },
+    {
+      "route": "/admin/eval-goldens?dataset=nsw_sales",
+      "file": "exhibits/admin/eval-goldens__dataset=nsw_sales.json",
+      "bytes": 876
+    },
+    {
+      "route": "/admin/eval-goldens?dataset=nsw_yield",
+      "file": "exhibits/admin/eval-goldens__dataset=nsw_yield.json",
+      "bytes": 3
+    },
+    {
+      "route": "/admin/eval-goldens/9eb2b69c-12ad-41d7-947b-3efad7b87fe2",
+      "file": "exhibits/admin/eval-goldens/9eb2b69c-12ad-41d7-947b-3efad7b87fe2.json",
+      "bytes": 2578
+    },
+    {
+      "route": "/admin/eval-goldens/2495ed04-f654-4306-b963-cac3bd2c1553",
+      "file": "exhibits/admin/eval-goldens/2495ed04-f654-4306-b963-cac3bd2c1553.json",
+      "bytes": 2470
+    },
+    {
+      "route": "/admin/eval-goldens/0980ea3d-03a1-4a8c-8f96-3d04350406a0",
+      "file": "exhibits/admin/eval-goldens/0980ea3d-03a1-4a8c-8f96-3d04350406a0.json",
+      "bytes": 77647
+    },
+    {
+      "route": "/admin/eval-goldens/555bfee7-c299-4a21-a095-9e1410803511",
+      "file": "exhibits/admin/eval-goldens/555bfee7-c299-4a21-a095-9e1410803511.json",
+      "bytes": 2482
+    },
+    {
+      "route": "/admin/eval-goldens/96c3bf5d-b00f-411f-bc34-c4b849e89aff",
+      "file": "exhibits/admin/eval-goldens/96c3bf5d-b00f-411f-bc34-c4b849e89aff.json",
+      "bytes": 64095
+    },
+    {
+      "route": "/admin/eval-runs?limit=50",
+      "file": "exhibits/admin/eval-runs__limit=50.json",
+      "bytes": 35699
+    },
+    {
+      "route": "/admin/eval-runs/a70c85e5-e2ce-4175-a8d4-9641842a898f",
+      "file": "exhibits/admin/eval-runs/a70c85e5-e2ce-4175-a8d4-9641842a898f.json",
+      "bytes": 23335
+    },
+    {
+      "route": "/admin/eval-runs/8c14f674-9fc3-4136-8953-548dc200b62c",
+      "file": "exhibits/admin/eval-runs/8c14f674-9fc3-4136-8953-548dc200b62c.json",
+      "bytes": 13130
+    },
+    {
+      "route": "/admin/eval-runs/1088a3a2-8fbf-49b5-a191-d3885d357dea",
+      "file": "exhibits/admin/eval-runs/1088a3a2-8fbf-49b5-a191-d3885d357dea.json",
+      "bytes": 12045
+    },
+    {
+      "route": "/admin/eval-runs/360d1124-9185-4e91-b0a9-cb1b6fcb2149",
+      "file": "exhibits/admin/eval-runs/360d1124-9185-4e91-b0a9-cb1b6fcb2149.json",
+      "bytes": 25675
+    },
+    {
+      "route": "/admin/eval-runs/5b20ddf0-b6fe-4a07-bf21-aa533bd6975e",
+      "file": "exhibits/admin/eval-runs/5b20ddf0-b6fe-4a07-bf21-aa533bd6975e.json",
+      "bytes": 24040
+    },
+    {
+      "route": "/admin/eval-runs/fcbe640f-e630-4e56-8e49-9ae301833c95",
+      "file": "exhibits/admin/eval-runs/fcbe640f-e630-4e56-8e49-9ae301833c95.json",
+      "bytes": 12140
+    },
+    {
+      "route": "/admin/eval-runs/523b6d5f-509d-4c8d-b91d-316061ca5893",
+      "file": "exhibits/admin/eval-runs/523b6d5f-509d-4c8d-b91d-316061ca5893.json",
+      "bytes": 11526
+    },
+    {
+      "route": "/admin/eval-runs/99c8b665-bed5-40a0-ad45-7a87c953d0e1",
+      "file": "exhibits/admin/eval-runs/99c8b665-bed5-40a0-ad45-7a87c953d0e1.json",
+      "bytes": 11758
+    },
+    {
+      "route": "/admin/eval-runs/14439ed0-707d-43e7-83b0-873eed38edf9",
+      "file": "exhibits/admin/eval-runs/14439ed0-707d-43e7-83b0-873eed38edf9.json",
+      "bytes": 13553
+    },
+    {
+      "route": "/admin/eval-runs/6a16c748-708e-4624-999f-1c4762af0e36",
+      "file": "exhibits/admin/eval-runs/6a16c748-708e-4624-999f-1c4762af0e36.json",
+      "bytes": 10604
+    },
+    {
+      "route": "/admin/eval-runs/e92e23a4-4766-44fb-97ea-dd821bf801e7",
+      "file": "exhibits/admin/eval-runs/e92e23a4-4766-44fb-97ea-dd821bf801e7.json",
+      "bytes": 12078
+    },
+    {
+      "route": "/admin/eval-runs/15369c8e-7b08-4f5c-96a4-642ad325eae8",
+      "file": "exhibits/admin/eval-runs/15369c8e-7b08-4f5c-96a4-642ad325eae8.json",
+      "bytes": 8746
+    },
+    {
+      "route": "/admin/eval-runs/ca1e87fc-982f-41a3-9963-cfc5bc0d41ae",
+      "file": "exhibits/admin/eval-runs/ca1e87fc-982f-41a3-9963-cfc5bc0d41ae.json",
+      "bytes": 3296
+    },
+    {
+      "route": "/admin/eval-runs/ed6e0491-55c1-45a1-9862-cc32317daa6b",
+      "file": "exhibits/admin/eval-runs/ed6e0491-55c1-45a1-9862-cc32317daa6b.json",
+      "bytes": 9134
+    },
+    {
+      "route": "/admin/eval-runs/c1d28133-722c-46f3-8746-126aebb7a640",
+      "file": "exhibits/admin/eval-runs/c1d28133-722c-46f3-8746-126aebb7a640.json",
+      "bytes": 5182
+    },
+    {
+      "route": "/admin/eval-runs/5e08ae3e-432e-4617-b539-ab3552a32249",
+      "file": "exhibits/admin/eval-runs/5e08ae3e-432e-4617-b539-ab3552a32249.json",
+      "bytes": 19254
+    },
+    {
+      "route": "/admin/eval-runs/bd171ca0-e402-46f4-abd1-6be8c0eba337",
+      "file": "exhibits/admin/eval-runs/bd171ca0-e402-46f4-abd1-6be8c0eba337.json",
+      "bytes": 929
+    },
+    {
+      "route": "/admin/eval-runs/ab6e91fc-f006-4970-b125-921472af3df9",
+      "file": "exhibits/admin/eval-runs/ab6e91fc-f006-4970-b125-921472af3df9.json",
+      "bytes": 929
+    },
+    {
+      "route": "/admin/eval-runs/94648c17-6071-4a25-a850-3b278b36d26d",
+      "file": "exhibits/admin/eval-runs/94648c17-6071-4a25-a850-3b278b36d26d.json",
+      "bytes": 929
+    },
+    {
+      "route": "/admin/eval-runs/37857627-d5f3-4ceb-a7e7-264ceda67aaf",
+      "file": "exhibits/admin/eval-runs/37857627-d5f3-4ceb-a7e7-264ceda67aaf.json",
+      "bytes": 929
+    },
+    {
+      "route": "/admin/eval-runs/b085f12d-27db-4a9c-8718-197168a96535",
+      "file": "exhibits/admin/eval-runs/b085f12d-27db-4a9c-8718-197168a96535.json",
+      "bytes": 2013
+    },
+    {
+      "route": "/admin/eval-runs/25525d2c-f50e-417e-a328-331f944a1b09",
+      "file": "exhibits/admin/eval-runs/25525d2c-f50e-417e-a328-331f944a1b09.json",
+      "bytes": 2008
+    },
+    {
+      "route": "/admin/eval-runs/b7fa2105-33a4-4d3c-8e5e-11d8e9152b2c",
+      "file": "exhibits/admin/eval-runs/b7fa2105-33a4-4d3c-8e5e-11d8e9152b2c.json",
+      "bytes": 2007
+    },
+    {
+      "route": "/admin/eval-runs/938525c4-1338-4ddc-8229-8e1627da0264",
+      "file": "exhibits/admin/eval-runs/938525c4-1338-4ddc-8229-8e1627da0264.json",
+      "bytes": 8310
+    },
+    {
+      "route": "/admin/eval-runs/3948c2a2-6e3f-47c2-8d36-8f014e933477",
+      "file": "exhibits/admin/eval-runs/3948c2a2-6e3f-47c2-8d36-8f014e933477.json",
+      "bytes": 2007
+    },
+    {
+      "route": "/admin/eval-runs/25b92270-c22d-4304-a4b0-196d2b7c1ede",
+      "file": "exhibits/admin/eval-runs/25b92270-c22d-4304-a4b0-196d2b7c1ede.json",
+      "bytes": 1825
+    },
+    {
+      "route": "/admin/eval-runs/4f780955-6f20-4082-b41b-f043d9a74061",
+      "file": "exhibits/admin/eval-runs/4f780955-6f20-4082-b41b-f043d9a74061.json",
+      "bytes": 861
+    },
+    {
+      "route": "/admin/eval-runs/e5bac097-2286-491f-9164-fd2659cf3ff0",
+      "file": "exhibits/admin/eval-runs/e5bac097-2286-491f-9164-fd2659cf3ff0.json",
+      "bytes": 861
+    },
+    {
+      "route": "/admin/eval-runs/89c92429-31fa-4603-800c-1a8cbe96c326",
+      "file": "exhibits/admin/eval-runs/89c92429-31fa-4603-800c-1a8cbe96c326.json",
+      "bytes": 864
+    },
+    {
+      "route": "/admin/eval-runs/45f73843-fa87-441f-bfcc-f3f1f4a6ba6c",
+      "file": "exhibits/admin/eval-runs/45f73843-fa87-441f-bfcc-f3f1f4a6ba6c.json",
+      "bytes": 862
+    },
+    {
+      "route": "/admin/eval-runs/7e66652c-d4cd-43fc-b4f2-b1f9475e28dd",
+      "file": "exhibits/admin/eval-runs/7e66652c-d4cd-43fc-b4f2-b1f9475e28dd.json",
+      "bytes": 6795
+    },
+    {
+      "route": "/admin/eval-runs/3d2a2286-912c-4d08-bd4d-39b6f636b413",
+      "file": "exhibits/admin/eval-runs/3d2a2286-912c-4d08-bd4d-39b6f636b413.json",
+      "bytes": 860
+    },
+    {
+      "route": "/admin/eval-runs/bcd1a955-7020-4642-9a06-d9a7f52e5915",
+      "file": "exhibits/admin/eval-runs/bcd1a955-7020-4642-9a06-d9a7f52e5915.json",
+      "bytes": 861
+    },
+    {
+      "route": "/admin/eval-runs/653bc098-494c-408b-936c-c23c519649d2",
+      "file": "exhibits/admin/eval-runs/653bc098-494c-408b-936c-c23c519649d2.json",
+      "bytes": 856
+    },
+    {
+      "route": "/admin/eval-runs/4df7abad-b61d-4756-92c6-f1884cb44d0b",
+      "file": "exhibits/admin/eval-runs/4df7abad-b61d-4756-92c6-f1884cb44d0b.json",
+      "bytes": 7838
+    },
+    {
+      "route": "/admin/eval-runs/99bd525b-c780-490a-b858-b6eae17301a7",
+      "file": "exhibits/admin/eval-runs/99bd525b-c780-490a-b858-b6eae17301a7.json",
+      "bytes": 8038
+    },
+    {
+      "route": "/admin/eval-runs/f5d877b3-99cf-4f82-9e8f-a69155fa5818",
+      "file": "exhibits/admin/eval-runs/f5d877b3-99cf-4f82-9e8f-a69155fa5818.json",
+      "bytes": 8223
+    },
+    {
+      "route": "/admin/eval-runs/55528752-f09c-41b5-907a-04af15c8064b",
+      "file": "exhibits/admin/eval-runs/55528752-f09c-41b5-907a-04af15c8064b.json",
+      "bytes": 8545
+    },
+    {
+      "route": "/admin/eval-runs/bcba988d-3919-4ea7-9b6f-2945232ddff4",
+      "file": "exhibits/admin/eval-runs/bcba988d-3919-4ea7-9b6f-2945232ddff4.json",
+      "bytes": 7932
+    },
+    {
+      "route": "/admin/eval-runs/43bb8d5e-7265-4573-9541-2ef920a1821c",
+      "file": "exhibits/admin/eval-runs/43bb8d5e-7265-4573-9541-2ef920a1821c.json",
+      "bytes": 7082
+    },
+    {
+      "route": "/admin/eval-runs/890fd655-9a70-450e-96a2-40ef2c960181",
+      "file": "exhibits/admin/eval-runs/890fd655-9a70-450e-96a2-40ef2c960181.json",
+      "bytes": 843
+    },
+    {
+      "route": "/admin/eval-runs/8859959f-32c9-4b32-a585-f6d41bc6dd8e",
+      "file": "exhibits/admin/eval-runs/8859959f-32c9-4b32-a585-f6d41bc6dd8e.json",
+      "bytes": 846
+    },
+    {
+      "route": "/admin/ops/summary?window=24h",
+      "file": "exhibits/admin/ops/summary__window=24h.json",
+      "bytes": 2284
+    },
+    {
+      "route": "/admin/ops/summary?window=7d",
+      "file": "exhibits/admin/ops/summary__window=7d.json",
+      "bytes": 2364
+    },
+    {
+      "route": "/admin/ops/summary?window=28d",
+      "file": "exhibits/admin/ops/summary__window=28d.json",
+      "bytes": 2411
+    },
+    {
+      "route": "/admin/ops/runs?limit=20",
+      "file": "exhibits/admin/ops/runs__limit=20.json",
+      "bytes": 3
+    },
+    {
+      "route": "/architecture",
+      "file": "exhibits/architecture.json",
+      "bytes": 16261
+    },
+    {
+      "route": "/architecture/content?kind=claude_md&name=",
+      "file": "exhibits/architecture/content__kind=claude_md&name=.json",
+      "bytes": 7618
+    },
+    {
+      "route": "/architecture/content?kind=marts&name=",
+      "file": "exhibits/architecture/content__kind=marts&name=.json",
+      "bytes": 1838
+    },
+    {
+      "route": "/architecture/content?kind=schema&name=marts.dim_postcode_geo",
+      "file": "exhibits/architecture/content__kind=schema&name=marts.dim_postcode_geo.json",
+      "bytes": 973
+    },
+    {
+      "route": "/architecture/content?kind=schema&name=marts.property_rent",
+      "file": "exhibits/architecture/content__kind=schema&name=marts.property_rent.json",
+      "bytes": 1674
+    },
+    {
+      "route": "/architecture/content?kind=schema&name=marts.property_sales",
+      "file": "exhibits/architecture/content__kind=schema&name=marts.property_sales.json",
+      "bytes": 1810
+    },
+    {
+      "route": "/architecture/content?kind=schema&name=marts.property_yield",
+      "file": "exhibits/architecture/content__kind=schema&name=marts.property_yield.json",
+      "bytes": 1998
+    },
+    {
+      "route": "/architecture/content?kind=schema&name=staging.int_postcode_geo",
+      "file": "exhibits/architecture/content__kind=schema&name=staging.int_postcode_geo.json",
+      "bytes": 812
+    },
+    {
+      "route": "/architecture/content?kind=schema&name=staging.property_rent",
+      "file": "exhibits/architecture/content__kind=schema&name=staging.property_rent.json",
+      "bytes": 1781
+    },
+    {
+      "route": "/architecture/content?kind=schema&name=staging.property_sales",
+      "file": "exhibits/architecture/content__kind=schema&name=staging.property_sales.json",
+      "bytes": 3010
+    },
+    {
+      "route": "/architecture/content?kind=layouts&name=",
+      "file": "exhibits/architecture/content__kind=layouts&name=.json",
+      "bytes": 944
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=domains%2F_template%2Foverview.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=domains__template_overview.md.json",
+      "bytes": 1344
+    },
+    {
+      "route": "/admin/knowledge/domains%2F_template%2Foverview.md",
+      "file": "exhibits/admin/knowledge/domains/_template/overview.md.json",
+      "bytes": 1525
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=domains%2Fproperty-rent%2Fbedrooms.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=domains_property-rent_bedrooms.md.json",
+      "bytes": 922
+    },
+    {
+      "route": "/admin/knowledge/domains%2Fproperty-rent%2Fbedrooms.md",
+      "file": "exhibits/admin/knowledge/domains/property-rent/bedrooms.md.json",
+      "bytes": 1139
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=domains%2Fproperty-rent%2Foverview.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=domains_property-rent_overview.md.json",
+      "bytes": 1391
+    },
+    {
+      "route": "/admin/knowledge/domains%2Fproperty-rent%2Foverview.md",
+      "file": "exhibits/admin/knowledge/domains/property-rent/overview.md.json",
+      "bytes": 1569
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=domains%2Fproperty-sales%2Foverview.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=domains_property-sales_overview.md.json",
+      "bytes": 1859
+    },
+    {
+      "route": "/admin/knowledge/domains%2Fproperty-sales%2Foverview.md",
+      "file": "exhibits/admin/knowledge/domains/property-sales/overview.md.json",
+      "bytes": 2048
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=domains%2Fproperty-sales%2Fproperty-types.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=domains_property-sales_property-types.md.json",
+      "bytes": 874
+    },
+    {
+      "route": "/admin/knowledge/domains%2Fproperty-sales%2Fproperty-types.md",
+      "file": "exhibits/admin/knowledge/domains/property-sales/property-types.md.json",
+      "bytes": 1069
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=domains%2Fproperty-sales%2Fsegments.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=domains_property-sales_segments.md.json",
+      "bytes": 978
+    },
+    {
+      "route": "/admin/knowledge/domains%2Fproperty-sales%2Fsegments.md",
+      "file": "exhibits/admin/knowledge/domains/property-sales/segments.md.json",
+      "bytes": 1157
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=domains%2Fproperty-sales%2Fsuburbs-and-postcodes.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=domains_property-sales_suburbs-and-postcodes.md.json",
+      "bytes": 1048
+    },
+    {
+      "route": "/admin/knowledge/domains%2Fproperty-sales%2Fsuburbs-and-postcodes.md",
+      "file": "exhibits/admin/knowledge/domains/property-sales/suburbs-and-postcodes.md.json",
+      "bytes": 1241
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=presentation%2Fone-pass-trend-analysis.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=presentation_one-pass-trend-analysis.md.json",
+      "bytes": 3046
+    },
+    {
+      "route": "/admin/knowledge/presentation%2Fone-pass-trend-analysis.md",
+      "file": "exhibits/admin/knowledge/presentation/one-pass-trend-analysis.md.json",
+      "bytes": 3243
+    },
+    {
+      "route": "/architecture/content?kind=knowledge&name=presentation%2Fwhen-to-visualise.md",
+      "file": "exhibits/architecture/content__kind=knowledge&name=presentation_when-to-visualise.md.json",
+      "bytes": 887
+    },
+    {
+      "route": "/admin/knowledge/presentation%2Fwhen-to-visualise.md",
+      "file": "exhibits/admin/knowledge/presentation/when-to-visualise.md.json",
+      "bytes": 1084
+    },
+    {
+      "route": "/admin/knowledge",
+      "file": "exhibits/admin/knowledge.json",
+      "bytes": 1974
+    },
+    {
+      "route": "/admin/query-runs?limit=50",
+      "file": "exhibits/admin/query-runs__limit=50.json",
+      "bytes": 438830
+    },
+    {
+      "route": "/admin/query-runs",
+      "file": "exhibits/admin/query-runs.json",
+      "bytes": 438830
+    },
+    {
+      "route": "/admin/query-runs?limit=2000",
+      "file": "exhibits/admin/query-runs__limit=2000.json",
+      "bytes": 7241
+    },
+    {
+      "route": "/admin/events",
+      "file": "exhibits/admin/events.json",
+      "bytes": 7811
+    },
+    {
+      "route": "/admin/events?limit=2000",
+      "file": "exhibits/admin/events__limit=2000.json",
+      "bytes": 13990
+    },
+    {
+      "route": "/admin/users",
+      "file": "exhibits/admin/users.json",
+      "bytes": 2753
+    },
+    {
+      "route": "/admin/feedback",
+      "file": "exhibits/admin/feedback.json",
+      "bytes": 908244
+    },
+    {
+      "route": "/admin/eval-cases",
+      "file": "exhibits/admin/eval-cases.json",
+      "bytes": 2370
+    },
+    {
+      "route": "/admin/config",
+      "file": "exhibits/admin/config.json",
+      "bytes": 3071
+    },
+    {
+      "route": "/admin/pack",
+      "file": "exhibits/admin/pack.json",
+      "bytes": 2512
+    },
+    {
+      "route": "/me/access",
+      "file": "exhibits/me/access.json",
+      "bytes": 341
+    }
+  ]
+}

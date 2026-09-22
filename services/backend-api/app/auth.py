@@ -200,6 +200,10 @@ async def _service_account_user(key_id: str, secret: str, surface: str | None) -
     field, header or body value can influence which user is returned. There is
     no act-as in v1 (see s35: bot identity, channel membership is the boundary).
     """
+    if settings.db_disabled:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Service keys unavailable"
+        )
     async with rls_connection(None) as conn:
         row = (
             (

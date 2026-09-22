@@ -19,6 +19,7 @@ import {
   saveKnowledgePage,
 } from "../../lib/api";
 import { AgentTrace, RunId, traceSummary } from "../../ui/AgentTrace";
+import { DemoGate } from "../../ui/DemoGate";
 import { FlightPath, FlightStop, InstrumentLabel } from "../../ui/flightdeck";
 
 function Section({ label, children }: { label: string; children: ReactNode }) {
@@ -214,9 +215,12 @@ function KnowledgeEditBox({
         spellCheck={false}
       />
       <div className="arch-kb-edit-actions">
-        <button className="btn-mint" onClick={save} disabled={saving || !body.trim()}>
-          {saving ? "Saving…" : "Save"}
-        </button>
+        {/* s52: curator overrides need the backend's DB — none in the demo. */}
+        <DemoGate title="Curator edits land in the knowledge base's database, which this demo does not ship. Works in dev.">
+          <button className="btn-mint" onClick={save} disabled={saving || !body.trim()}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </DemoGate>
         {savedNote && <span className="muted">{savedNote}</span>}
       </div>
     </div>

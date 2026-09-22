@@ -1,0 +1,1 @@
+{"role":"user","rls_note":"Row-Level Security scopes every query to your own grants.","datasets":[{"slug":"nsw_rent","name":"NSW rental bonds","status":"ready","access":"read"},{"slug":"nsw_sales","name":"NSW property sales","status":"ready","access":"read"},{"slug":"nsw_yield","name":"NSW rental yield","status":"ready","access":"read"}]}

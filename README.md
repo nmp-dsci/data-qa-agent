@@ -473,18 +473,19 @@ query the answer rests on.
 
 ## Deploy to AWS (live)
 
-The app is deployed to AWS (s12) with Terraform under [`infra/terraform/`](./infra/terraform/README.md):
-App Runner runs backend-api + data-agent, ECS Fargate one-shot jobs run the same `migrate`/`pipeline`
-images as local (the pipeline streams the full CSVs from S3), Aurora Serverless v2 (scale-to-zero) is the
-database, and the frontend is a static Vite build in S3 behind CloudFront. Scale-to-zero means the first
-sign-in after an idle hour can take ~30s while Aurora resumes; the login card narrates this ("Waking
-warehouse…") instead of hanging silently (s29 — see `AGENTS.md`), and any other in-flight call rides out
-the same wake transparently via a bounded client-side retry. Merging to `main` is the
-push-button deploy — `.github/workflows/deploy-aws.yml` builds/pushes images, applies Terraform, runs
-migrations, deploys the frontend, and smoke-tests the live URL (`scripts/cloud_smoke.sh`); auth is GitHub
-OIDC, no stored keys. Cheap hardening ships with it: role-level statement timeouts (migration 0018), tiered
-per-user daily AI caps (see below), and CloudWatch billing/5xx alarms → SNS email. See
-`infra/terraform/README.md` for the runbook. The earlier Azure Bicep scaffold under
+The live site is the **walk-in demo with no database** (s52), deployed with Terraform under
+[`infra/terraform/demo/`](./infra/terraform/README.md): one App Runner service runs backend-api with
+`DEMO_MODE=1 DB_DISABLED=1`, and the frontend is a static Vite build in S3 behind CloudFront. Chat replays
+the recorded pack baked into the image; the Goldens / Evals / Ops / Architecture / Admin tabs read a static
+JSON dump committed at `frontend/public/exhibits/` (refresh it with `make export-exhibits` against the local
+stack); the SQL editor and Explore are dev-only. No VPC, no Aurora, no Secrets Manager — about $5/month, no
+cold start. Merging to `main` is the push-button deploy — `.github/workflows/deploy-aws.yml` builds/pushes
+the image, applies Terraform, starts the App Runner deployment, deploys the frontend, and smoke-tests the
+live URL (`scripts/cloud_smoke.sh`) in about five minutes; auth is GitHub OIDC, no stored keys. CloudWatch
+5xx and billing alarms → SNS email ship with it. Everything below that needs Postgres (the eval loop, the
+SQL editor, Explore, RLS, daily AI caps) is the local `make up` stack. The earlier Aurora-backed stack
+(s12–s51: App Runner + ECS jobs + Aurora Serverless v2 + Secrets Manager) is retired; see
+`infra/terraform/README.md` for the cutover runbook. The Azure Bicep scaffold under
 [`infra/`](./infra/README.md) stays as a reference and is not deployed.
 
 ### Daily AI usage caps

@@ -8,7 +8,15 @@ import { isDemoMode } from "../lib/auth";
 const CHIP_TITLE =
   "Runs a live LLM in the full build — this demo replays recorded answers. Everything works in dev.";
 
-export function DemoGate({ children }: { children: ReactNode }) {
+export function DemoGate({
+  children,
+  title = CHIP_TITLE,
+}: {
+  children: ReactNode;
+  /** Override the chip's hover sentence for controls that are gated for a
+   *  reason other than the LLM (s52: the demo has no warehouse either). */
+  title?: string;
+}) {
   if (!isDemoMode()) return <>{children}</>;
   return (
     // A <div>, not a <span>: fieldset is flow content, not phrasing content,
@@ -24,7 +32,7 @@ export function DemoGate({ children }: { children: ReactNode }) {
       <fieldset disabled className="demo-gate-body" aria-disabled="true">
         {children}
       </fieldset>
-      <span className="demo-chip" title={CHIP_TITLE}>
+      <span className="demo-chip" title={title}>
         Not available — demo only
       </span>
     </div>

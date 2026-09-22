@@ -1,4 +1,4 @@
-.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote platform-up mlflow-preflight loadtest redteam injection-suite ops-rollup rollback handover-poll
+.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote platform-up mlflow-preflight loadtest redteam injection-suite ops-rollup rollback handover-poll demo-up dev-up demo-smoke demo-dbless-up demo-dbless-smoke export-exhibits
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
@@ -11,6 +11,8 @@ help:
 	@echo "make reset         - stop and wipe the database volume (re-runs migrations on next up)"
 	@echo "make logs          - tail logs"
 	@echo "make smoke         - run the end-to-end smoke test against a running stack"
+	@echo "make export-exhibits - s52: dump the demo's static exhibit JSON from the dev stack"
+	@echo "make demo-dbless-up  - s52: backend as the DB-less demo (DEMO_MODE=1 DB_DISABLED=1)"
 	@echo ""
 	@echo "make eval-export   - golden examples: DB -> evals/cases/*.yaml (review in a PR)"
 	@echo "make eval-import   - golden examples: evals/cases/*.yaml -> DB (seeds any env)"
@@ -92,10 +94,28 @@ demo-up:
 	DEMO_MODE=1 docker compose up -d --no-deps backend-api
 
 dev-up:
-	DEMO_MODE=0 docker compose up -d --no-deps backend-api
+	DEMO_MODE=0 DB_DISABLED=0 docker compose up -d --no-deps backend-api
 
 demo-smoke:
 	python3 scripts/demo_smoke.py
+
+# s52 DB-less demo: the shape prod runs (no Postgres at all). Chat replays the
+# pack; the exhibit tabs read the static dump in frontend/public/exhibits/.
+#   make export-exhibits    -> (dev backend up) dump every exhibit route to
+#                              frontend/public/exhibits/ — commit the result
+#   make demo-dbless-up     -> backend-api as DEMO_MODE=1 DB_DISABLED=1
+#                              (--build so the container carries the current
+#                              source; --no-deps so the pipeline does NOT re-run)
+#   make demo-dbless-smoke  -> scripts/demo_smoke.py in its DB_DISABLED variant
+#   make dev-up             -> restore the full dev backend
+export-exhibits:
+	uv run python scripts/export_exhibits.py
+
+demo-dbless-up:
+	DEMO_MODE=1 DB_DISABLED=1 docker compose up -d --build --no-deps backend-api
+
+demo-dbless-smoke:
+	DB_DISABLED=1 python3 scripts/demo_smoke.py
 
 # Golden examples move between the database and the version-controlled pack
 # (s24). The repo is the source of truth; the DB is a working surface.

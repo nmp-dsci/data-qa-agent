@@ -3,6 +3,12 @@
 **Audience:** whoever is holding the pager, which is one person. Last reviewed
 2026-07-27 (s32 W2).
 
+> **Stale since s52:** the live site is now the DB-less walk-in demo (no
+> Aurora, no ops deck, no ECS jobs, no data pipeline — see `AGENTS.md` and
+> `infra/terraform/README.md`). Everything below describes the retired
+> Aurora-backed stack (`infra/terraform/foundations/`), kept here until that
+> stack is destroyed per the cutover runbook.
+
 Start at **`/ops`** — the flight deck answers "is it healthy, safe, fast and
 affordable?" in one screen, and every symptom below maps to a lamp on it. Logfire
 is the microscope for a single slow run; CloudWatch is the last resort.

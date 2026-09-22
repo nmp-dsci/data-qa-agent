@@ -137,6 +137,7 @@ export function PackView() {
           move the agent fingerprint.
         </p>
         <LayoutIssues issues={pack.issues} />
+        {mutation.error && <p className="error">{(mutation.error as Error).message}</p>}
       </div>
       <div className="pack-grid">
         {pack.layouts.map((layout) => (

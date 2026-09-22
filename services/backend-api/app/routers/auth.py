@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -7,6 +10,8 @@ from sqlalchemy import text
 from ..auth import SESSION_COOKIE_NAME, CurrentUser, create_access_token, get_current_user
 from ..config import settings
 from ..db import rls_connection
+
+log = logging.getLogger("uvicorn.error")
 
 router = APIRouter(tags=["auth"])
 
@@ -61,6 +66,34 @@ async def auth_config() -> AuthConfig:
     return AuthConfig(auth_mode="dev")
 
 
+def _issue_session(response: Response, user: UserOut) -> TokenResponse:
+    token = create_access_token(
+        user_id=user.id, username=user.username, email=user.email, role=user.role
+    )
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        max_age=settings.jwt_ttl_seconds,
+        httponly=True,
+        samesite="lax",
+        # Secure requires TLS; local dev serves over plain http://localhost.
+        secure=settings.app_env != "dev",
+        path="/",
+    )
+    return TokenResponse(access_token=token, user=user)
+
+
+def _constant_demo_user() -> UserOut:
+    """The one identity a DB-less demo deployment (s52) hands every visitor."""
+    return UserOut(
+        id=settings.demo_user_id,
+        username=settings.demo_username,
+        email=settings.demo_email,
+        display_name="Demo visitor",
+        role="user",
+    )
+
+
 async def _session_for(username: str, response: Response, event: str) -> TokenResponse:
     """Mint the local HS256 session for a seeded user row (dev + demo doors)."""
     async with rls_connection(None) as conn:
@@ -88,25 +121,9 @@ async def _session_for(username: str, response: Response, event: str) -> TokenRe
             {"uid": str(row["id"]), "etype": event},
         )
 
-    token = create_access_token(
-        user_id=str(row["id"]),
-        username=row["username"],
-        email=row["email"],
-        role=row["role"],
-    )
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=token,
-        max_age=settings.jwt_ttl_seconds,
-        httponly=True,
-        samesite="lax",
-        # Secure requires TLS; local dev serves over plain http://localhost.
-        secure=settings.app_env != "dev",
-        path="/",
-    )
-    return TokenResponse(
-        access_token=token,
-        user=UserOut(
+    return _issue_session(
+        response,
+        UserOut(
             id=str(row["id"]),
             username=row["username"],
             email=row["email"],
@@ -141,7 +158,43 @@ async def demo_login(response: Response) -> TokenResponse:
     """
     if not settings.demo_mode:
         raise HTTPException(status_code=404, detail="Not found")
-    return await _session_for(settings.demo_username, response, "demo_login_success")
+    if settings.db_disabled:
+        return _issue_session(response, _constant_demo_user())
+    session = await _session_for(settings.demo_username, response, "demo_login_success")
+    await _sweep_demo_conversations(session.user.id)
+    return session
+
+
+_SWEEP_INTERVAL_S = 6 * 3600
+_last_sweep_monotonic: float | None = None
+
+
+async def _sweep_demo_conversations(demo_user_id: str) -> None:
+    """Clear the shared demo user's day-old chat residue, at most once per 6h.
+
+    Runs from the login path on purpose: a visitor has just woken Aurora, so
+    the sweep rides on that connection instead of a background timer resuming
+    a paused cluster four times a day for an empty demo (s52). Events and
+    query_runs are kept — they are the analytics tab's raw material.
+    """
+    global _last_sweep_monotonic
+    now = time.monotonic()
+    if _last_sweep_monotonic is not None and now - _last_sweep_monotonic < _SWEEP_INTERVAL_S:
+        return
+    _last_sweep_monotonic = now
+    try:
+        # RLS trap: an empty user context sees (and deletes) zero rows, so the
+        # delete has to run AS the demo user.
+        async with rls_connection(demo_user_id) as conn:
+            await conn.execute(
+                text(
+                    "DELETE FROM app.conversations WHERE user_id = :uid "
+                    "AND created_at < now() - interval '24 hours'"
+                ),
+                {"uid": demo_user_id},
+            )
+    except Exception as exc:  # noqa: BLE001 — housekeeping must never fail a login
+        log.warning("demo sweep skipped: %s", exc)
 
 
 @router.post("/auth/logout")
@@ -154,6 +207,15 @@ async def logout(response: Response) -> dict[str, bool]:
 
 @router.get("/me", response_model=UserOut)
 async def me(user: CurrentUser = Depends(get_current_user)) -> UserOut:
+    if settings.db_disabled:
+        # No users table to consult; the HS256 claims are the whole identity.
+        return UserOut(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            display_name=_constant_demo_user().display_name,
+            role=user.role,
+        )
     async with rls_connection(user.id) as conn:
         row = (
             (

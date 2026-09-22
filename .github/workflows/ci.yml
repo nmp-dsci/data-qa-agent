@@ -52,6 +52,10 @@ jobs:
       # here and does the full check locally where the stack is up.
       - name: Golden pack gate
         run: uv run pytest tests/test_eval_pack.py -q
+      # s52: the exhibit key scheme is a contract between the Python exporter and
+      # frontend/src/lib/exhibits.ts; both are pinned to tests/exhibit_key_vectors.json.
+      - name: Exhibit key scheme (Python side)
+        run: uv run pytest tests/test_export_exhibits.py -q
       # The security gate (s32 W3), beside the golden-pack gate for the same
       # reason: deterministic, zero-LLM, zero-network, so it can block every
       # merge. It asserts the SQL guard holds against injection, jailbreak-to-DML,
@@ -89,6 +93,7 @@ jobs:
           node-version: "22"
       - run: npm install
       - run: npm run build
+      - run: npm run test:exhibits
 
   # Infrastructure gate (s32 W4). Deploys used to run `terraform apply
   # -auto-approve` with nothing having looked at a plan first, so an infrastructure
@@ -117,7 +122,7 @@ jobs:
       # so this step is credential-free and runs on every PR including forks.
       - name: Terraform validate
         run: |
-          for dir in infra/terraform/foundations infra/terraform/bootstrap; do
+          for dir in infra/terraform/demo infra/terraform/foundations infra/terraform/bootstrap; do
             echo "== $dir"
             terraform -chdir="$dir" init -backend=false -input=false
             terraform -chdir="$dir" validate
@@ -143,7 +148,7 @@ jobs:
       - name: Terraform plan
         if: steps.creds.outputs.available == 'true'
         id: plan
-        working-directory: infra/terraform/foundations
+        working-directory: infra/terraform/demo
         env:
           AWS_PROFILE: ""
           TF_VAR_aws_profile: ""

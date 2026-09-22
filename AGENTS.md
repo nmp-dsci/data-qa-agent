@@ -41,8 +41,10 @@ Confirmed via the Lavish architecture review — these drive the build:
 ## Target architecture (v1)
 
 Microservices on **Azure Container Apps**, private-by-default behind one ingress. Secrets and identity never
-live in code. *(As deployed in s12 the same shape runs on AWS — App Runner, ECS jobs, Aurora Serverless v2,
-Secrets Manager, S3+CloudFront — via `infra/terraform/`; this table remains the cloud-neutral design.)*
+live in code. *(As deployed in s12 the same shape ran on AWS — App Runner, ECS jobs, Aurora Serverless v2,
+Secrets Manager, S3+CloudFront — via `infra/terraform/foundations/`. Since s52 the deployed site is the
+DB-less demo, one App Runner service via `infra/terraform/demo/`; this table remains the cloud-neutral design
+and the local `make up` stack.)*
 
 | Service | Tech | Azure resource | Owns |
 |---------|------|----------------|------|
@@ -146,9 +148,16 @@ later. Note: the dbt `staging` *schema* is a data-modeling layer, unrelated to a
 **dev local vs dev cloud** are the *same* environment (`APP_ENV=dev`), not different env values — the
 difference is the **deployment target** and where config is sourced: `.env`/compose locally vs service env
 vars + a secrets store in the cloud (`DB_SSL=require`, secrets by reference). The **live deployment is AWS**
-(s12): Terraform in [`infra/terraform/`](./infra/terraform/README.md) provisions App Runner services, ECS
-one-shot jobs (migrate/pipeline), Aurora Serverless v2, Secrets Manager, and the S3+CloudFront frontend;
-`.github/workflows/deploy-aws.yml` is the push-button deploy on merge to `main`. The Azure Bicep scaffold
+and, since **s52, has no database**: the prod site is the walk-in demo only (`DEMO_MODE=1 DB_DISABLED=1`),
+so Terraform in [`infra/terraform/demo/`](./infra/terraform/README.md) provisions exactly one App Runner
+service, an ECR repo, the S3+CloudFront frontend and two alarms — no VPC, no Aurora, no Secrets Manager.
+Chat replays the baked-in pack; the Goldens/Evals/Ops/Architecture/Admin tabs read a static JSON dump
+committed at `frontend/public/exhibits/` (`make export-exhibits` from the local stack, see
+`frontend/src/lib/exhibits.ts` for the file-key scheme); the SQL editor and Explore are dev-only and hidden in
+demo. `.github/workflows/deploy-aws.yml` is the five-minute push-button deploy on merge to `main`. Everything
+that needs Postgres — the eval loop, the SQL editor, Explore, RLS, goldens curation — runs in local dev
+(`make up`). The earlier Aurora-backed stack (`infra/terraform/foundations/`, s12–s51) is retired and only
+awaits its destroy; its shape is recorded in `.lavish/s52_aws-cost-profile.html`. The Azure Bicep scaffold
 in [`infra/`](./infra/README.md) stays as a reference.
 
 ### Platform notes (portability)

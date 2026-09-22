@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -170,6 +172,16 @@ class Settings(BaseSettings):
     # The seeded walk-in identity every visitor shares. RLS still applies —
     # it's a normal app.users row with dataset grants (migration 0033).
     demo_username: str = "demo"
+    # s52: the deployed demo runs with NO database at all (transcript-rag-agent
+    # shape — one App Runner, no VPC/Aurora/secrets). Chat replays the pack,
+    # the exhibit tabs read a static JSON dump served with the frontend, and
+    # every persistence path is a no-op. Only meaningful with demo_mode on;
+    # dev keeps Postgres for the eval loop, SQL editor and Explore.
+    db_disabled: bool = False
+    # The constant identity minted for every visitor when db_disabled: there
+    # is no app.users row to look up, so the session claims come from here.
+    demo_user_id: str = "00000000-0000-4000-8000-00000000d3a0"
+    demo_email: str = "demo@datapilot.local"
     # Free-text chat maps to the nearest recorded answer (D1); below this
     # SequenceMatcher ratio the reply lists the available questions instead.
     demo_fuzzy_threshold: float = 0.35
@@ -210,3 +222,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# s52: a DB-less demo deployment ships with no secrets at all. Sessions there
+# belong to one constant visitor and need only outlive a page load, so a
+# per-process signing key is enough — a redeploy simply shows the door again.
+# Only ever replaces the dev placeholder, so an explicit JWT_SECRET still wins.
+if settings.db_disabled and settings.jwt_secret == "dev-secret-change-me":
+    settings.jwt_secret = secrets.token_urlsafe(48)

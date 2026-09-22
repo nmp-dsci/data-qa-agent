@@ -34,6 +34,10 @@ async def track_event(
     if settings.demo_mode and len(json.dumps(body.payload)) > 2048:
         raise HTTPException(status_code=413, detail="Event payload too large")
     user_id = user.id if user else None
+    if settings.db_disabled:
+        # s52: the beacon keeps its contract so the SPA never errors, but a
+        # DB-less demo has no analytics tab to feed.
+        return {"status": "dropped"}
     async with rls_connection(user_id) as conn:
         await conn.execute(
             text(

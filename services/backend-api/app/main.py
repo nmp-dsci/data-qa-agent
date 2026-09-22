@@ -56,52 +56,16 @@ log = logging.getLogger("uvicorn.error")
 _mcp_inner, mcp_gate = build_mcp_app()
 
 
-# s38 P3: the demo janitor. Every visitor shares one demo user, so their chat
-# residue accumulates; this clears conversations/messages older than a day.
-# Events and query_runs are deliberately KEPT — they are the analytics tab's
-# raw material (uniques, funnel, top questions) and are rate/size-capped at
-# write time instead. In-process rather than an EventBridge/ECS job: demo
-# deployments pin one instance, so a process task IS a singleton, and dev gets
-# the same behaviour for free.
-_DEMO_RESET_INTERVAL_S = 6 * 3600
-
-
-async def _demo_reset_loop() -> None:
-    while True:
-        try:
-            # RLS trap: an empty user context sees (and deletes) ZERO rows, so
-            # the janitor must run AS the demo user — look the id up first
-            # (app.users itself has no RLS) and delete inside that context.
-            async with rls_connection(None) as conn:
-                demo_id = (
-                    await conn.execute(
-                        text("SELECT id FROM app.users WHERE username = :u"),
-                        {"u": settings.demo_username},
-                    )
-                ).scalar()
-            if demo_id is not None:
-                async with rls_connection(str(demo_id)) as conn:
-                    await conn.execute(
-                        text(
-                            "DELETE FROM app.conversations WHERE user_id = :uid "
-                            "AND created_at < now() - interval '24 hours'"
-                        ),
-                        {"uid": str(demo_id)},
-                    )
-        except Exception as exc:  # noqa: BLE001 — janitor failure must never kill the app
-            log.warning("demo reset skipped: %s", exc)
-        await asyncio.sleep(_DEMO_RESET_INTERVAL_S)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Explore manifest check: fail loudly if a declared dim/metric drifted from an
     # existing mart; tolerate marts that don't exist yet (pipeline still building
     # on first boot) with a warning, so the API can start ahead of the one-shot job.
     try:
-        async with rls_connection(None) as conn:
-            for warning in await validate_manifest(conn):
-                log.warning("explore manifest: %s", warning)
+        if not settings.db_disabled:
+            async with rls_connection(None) as conn:
+                for warning in await validate_manifest(conn):
+                    log.warning("explore manifest: %s", warning)
     except ManifestError:
         raise
     except Exception as exc:  # noqa: BLE001 - DB not reachable yet; don't block startup
@@ -116,15 +80,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # only disk read that will ever happen, but doing it here means even
         # the very first /ask never pays that cost inline.
         await asyncio.to_thread(demo_replay.load_pack)
-    reset_task = asyncio.create_task(_demo_reset_loop()) if settings.demo_mode else None
     # s40 M1 (D4): the Grafana queue-depth panel reads a gauge this poller
     # keeps fresh; scrapes then never block on Redis. Only runs in queue mode.
     if settings.queue_mode == "on":
         metrics.start_depth_poller()
     async with _mcp_inner.router.lifespan_context(_mcp_inner):
         yield
-    if reset_task is not None:
-        reset_task.cancel()
     await metrics.stop_depth_poller()
     await engine.dispose()
 
@@ -279,20 +240,25 @@ async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
 app.include_router(auth.router)
 app.include_router(ask.router)
 app.include_router(events.router)
-app.include_router(sql.router)
-app.include_router(feedback.router)
-app.include_router(goldens.router)
-app.include_router(admin_config.router)
-app.include_router(profile.router)
-app.include_router(explore.router)
-app.include_router(evals.router)
-app.include_router(ops.router)
-app.include_router(integrations.router)
-app.include_router(service_accounts.router)
-app.include_router(analytics.router)
-app.include_router(architecture.router)
-app.include_router(admin_pack.router)
-app.include_router(admin_knowledge.router)
+# s52: a DB-less demo mounts only the three routers above — every other
+# surface either queries Postgres or is an exhibit the frontend now serves as
+# static JSON. Not mounting them (rather than 503ing inside) means no code
+# path in the process can reach an engine.
+if not settings.db_disabled:
+    app.include_router(sql.router)
+    app.include_router(feedback.router)
+    app.include_router(goldens.router)
+    app.include_router(admin_config.router)
+    app.include_router(profile.router)
+    app.include_router(explore.router)
+    app.include_router(evals.router)
+    app.include_router(ops.router)
+    app.include_router(integrations.router)
+    app.include_router(service_accounts.router)
+    app.include_router(analytics.router)
+    app.include_router(architecture.router)
+    app.include_router(admin_pack.router)
+    app.include_router(admin_knowledge.router)
 
 # s36: the MCP front door, mounted rather than run as its own service. The gate
 # wrapper authenticates a dpk_ key pinned to surface='mcp' before the JSON-RPC
@@ -354,6 +320,8 @@ async def health_db(request: Request) -> dict[str, str]:
     """
     if request.headers.get("x-client-channel") != "web":
         return {"status": "skipped", "env": settings.app_env}
+    if settings.db_disabled:
+        return {"status": "disabled", "env": settings.app_env}
     global _health_db_cache, _health_db_cache_at
     now = time.monotonic()
     if _health_db_cache is not None and now - _health_db_cache_at < _HEALTH_DB_MIN_INTERVAL_S:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -106,6 +107,8 @@ async def list_conversations(
     RLS already scopes rows; the explicit user_id filter keeps an admin's
     sidebar to their own threads even where admin read policies are broader.
     """
+    if settings.db_disabled:
+        return []
     async with rls_connection(user.id) as conn:
         rows = (
             (
@@ -142,6 +145,8 @@ async def conversation_messages(
     trace is persisted per run, not in messages.report, so it must be joined
     back here). The trace is gated to admins, matching /ask.
     """
+    if settings.db_disabled:
+        return []
     async with rls_connection(user.id) as conn:
         rows = (
             (
@@ -190,6 +195,9 @@ async def _open_conversation(
     # s32 W3 (decision Q4): what gets STORED is scrubbed; what the agent answers
     # is the question as asked. Masking upstream would change the question.
     stored = scrub_text(question) or question
+    if settings.db_disabled:
+        # s52: nothing to record; the id only threads the SSE frames together.
+        return conversation_id or str(uuid.uuid4()), "free"
     async with rls_connection(user.id) as conn:
         plan = (
             await conn.execute(text("SELECT plan FROM app.users WHERE id = :uid"), {"uid": user.id})
@@ -244,6 +252,8 @@ async def _persist_answer(
     ttfp_ms: int | None = None,
 ) -> tuple[str, str]:
     """tx2: record the assistant's answer + audit run; return (message_id, run_id)."""
+    if settings.db_disabled:
+        return str(uuid.uuid4()), str(uuid.uuid4())
     engine = result.get("engine", "stub")
     report = result.get("report")
     status = _run_status(result)

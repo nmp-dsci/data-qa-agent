@@ -34,6 +34,7 @@ with TestClient(app) as c:
     out["login_user"] = login.json()["user"]
     h = {"Authorization": f"Bearer {tok}"}
     out["me"] = c.get("/me", headers=h).json()
+    out["me_bogus"] = c.get("/me", headers={"Authorization": "Bearer bogus"}).status_code
     out["conversations"] = c.get("/conversations", headers=h).json()
     out["messages"] = c.get("/conversations/anything/messages", headers=h).json()
     out["event"] = c.post("/events", json={"event_type": "page_view"}).status_code
@@ -67,6 +68,9 @@ def child() -> dict[str, Any]:
         "ADMIN_RO_DATABASE_URL": "postgresql+asyncpg://x:x@127.0.0.1:1/x",
         "AGENT_RO_DATABASE_URL": "postgresql+asyncpg://x:x@127.0.0.1:1/x",
         "AGENT_URL": "",
+        # The deployed shape: google mode with no client id (no owner door).
+        "AUTH_MODE": "google",
+        "GOOGLE_CLIENT_ID": "",
     }
     proc = subprocess.run(
         [sys.executable, "-c", _CHILD],
@@ -92,6 +96,7 @@ def test_demo_login_and_me_need_no_users_table(child: dict[str, Any]) -> None:
     user = child["login_user"]
     assert user["username"] == "demo" and user["role"] == "user"
     assert child["me"]["id"] == user["id"]
+    assert child["me_bogus"] == 401
 
 
 def test_chat_replays_without_persisting(child: dict[str, Any]) -> None:

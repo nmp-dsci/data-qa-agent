@@ -8,7 +8,7 @@ dependencies (installed via the `agentsdk` extra) resolve:
     cd services/data-agent && uv run --extra llm --extra agentsdk python \
         ../../scripts/sdk_spike.py
 
-Requires the `db` service (docker compose) reachable on localhost:5434 — it is
+Requires the central Postgres (nmp-central-ai) reachable on localhost:5432 — it is
 NOT started or rebuilt by this script.
 """
 
@@ -38,12 +38,12 @@ os.environ.pop("DEEPSEEK_API_KEY", None)
 # agent.db builds its SQLAlchemy engine from settings.agent_database_url at
 # import time — point it at the host-mapped Postgres port before importing
 # anything under `agent`. Inside compose the db service is `db:5432`; from the
-# host it's published as localhost:5434 (see docker-compose.yml `db.ports`).
+# host it is localhost:5432 (the central platform's Postgres, database dataqa).
 # agent_ro / agent_pw are the read-only, RLS-scoped role's dev credentials
 # (config.py default) — same ones the running containers use.
 os.environ.setdefault(
     "AGENT_DATABASE_URL",
-    "postgresql+asyncpg://agent_ro:agent_pw@localhost:5434/dataqa",
+    "postgresql+asyncpg://agent_ro:agent_pw@localhost:5432/dataqa",
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -1,14 +1,15 @@
-.PHONY: help up down reset logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote platform-up mlflow-preflight loadtest redteam injection-suite ops-rollup rollback handover-poll demo-up dev-up demo-smoke demo-dbless-up demo-dbless-smoke export-exhibits
+.PHONY: help up down reset db-preflight db-smoke logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote platform-up mlflow-preflight loadtest redteam injection-suite ops-rollup rollback handover-poll demo-up dev-up demo-smoke demo-dbless-up demo-dbless-smoke export-exhibits
 
 help:
 	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
-	@echo "make up            - build + start the whole stack (db, migrate, pipeline, api, agent, web)"
-	@echo "make migrate       - run the Alembic migration job on its own (against a running db)"
-	@echo "make pipeline      - run the dlt + dbt pipeline on the SAMPLE data (against a running db)"
+	@echo "make up            - build + start the whole stack (migrate, pipeline, api, agent, web) on the central Postgres"
+	@echo "make migrate       - run the Alembic migration job on its own (against the central Postgres)"
+	@echo "make pipeline      - run the dlt + dbt pipeline on the SAMPLE data (against the central Postgres)"
 	@echo "make pipeline-full - run the pipeline on the FULL data/ CSVs (516MB/63MB — slower)"
 	@echo "make pipeline-docs - serve the dbt docs UI (lineage, raw->staging->marts) at localhost:8180"
 	@echo "make down          - stop the stack"
-	@echo "make reset         - stop and wipe the database volume (re-runs migrations on next up)"
+	@echo "make reset         - stop the stack and drop ONLY this project's schemas in database dataqa (asks; next up re-migrates)"
+	@echo "make db-smoke      - zero-LLM proof the central database serves this project (the platform's make check runs it)"
 	@echo "make logs          - tail logs"
 	@echo "make smoke         - run the end-to-end smoke test against a running stack"
 	@echo "make export-exhibits - s52: dump the demo's static exhibit JSON from the dev stack"
@@ -22,7 +23,7 @@ help:
 	@echo "make eval-pack-version - print the content hash of the golden pack"
 	@echo "make eval-lint     - zero-LLM-cost pack-lint (case shape, grader columns vs golden_sql)"
 	@echo ""
-	@echo "make platform-up   - start the central platform (nmp-central-ai: MLflow on :5000, Postgres, MinIO)"
+	@echo "make platform-up   - start the central platform (nmp-central-ai: MLflow :5000, Postgres :5432 with our database dataqa, MinIO)"
 	@echo "make mlflow-init   - s43/s50: ensure the data-qa/evals experiment exists on the central MLflow, print its id"
 	@echo "make register      - s43: mirror app.agent_versions into the MLflow model registry"
 	@echo "make promote       - s43: comparator gate; on PASS move @champion + record history"
@@ -58,8 +59,19 @@ pipeline-docs:
 	@echo "dbt docs UI: http://localhost:8180 (Ctrl+C to stop). Run 'make pipeline' first so target/ is fresh."
 	docker compose --profile docs run --rm --build --service-ports pipeline-docs
 
-up:
+up: db-preflight
 	docker compose up --build
+
+# Platform M3: the database is `dataqa` on nmp-central-ai's Postgres. Fail fast, not silent.
+db-preflight:
+	@bash -c 'exec 3<>/dev/tcp/localhost/$${POSTGRES_PORT:-5432}' 2>/dev/null || (echo "central Postgres down at localhost:$${POSTGRES_PORT:-5432}: run make platform-up"; exit 1)
+
+# Zero-LLM proof the central database serves this project, as every role: Alembic is at
+# head, marts.housing is readable as app_user, agent_ro cannot write, RLS still hides
+# user2's rows. URLs come from the env the platform's check_databases.py exports (or .env).
+db-smoke: db-preflight
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	uv run --with "psycopg[binary]>=3.2" python scripts/db_smoke.py
 
 # s40 M1: the queue seam + metrics stack. WORKERS=N scales the consumer-group
 # replicas; flipping back is `QUEUE_MODE=off docker compose up -d --no-deps
@@ -73,8 +85,13 @@ down:
 	# down too, whatever combination was up.
 	COMPOSE_PROFILES=queue,obs,docs docker compose down
 
-reset:
-	docker compose down -v
+# Platform D16: the database is shared infrastructure; a reset is schema-level inside
+# `dataqa` and never `DROP DATABASE` or `down -v`. The platform's `make db-backup DB=dataqa`
+# is the undo.
+reset: db-preflight
+	@read -p "Drop schemas app, raw, staging, marts in database dataqa (the platform keeps a backup target: make -C ../nmp-central-ai db-backup DB=dataqa)? [y/N] " a && [ "$$a" = "y" ] || { echo kept; exit 1; }
+	COMPOSE_PROFILES=queue,obs,docs,handover docker compose down
+	docker compose run --rm --no-deps --build migrate python -c "import os, psycopg; c = psycopg.connect(os.environ['ADMIN_DATABASE_URL'], autocommit=True); [c.execute(f'DROP SCHEMA IF EXISTS {s} CASCADE') for s in ('marts', 'staging', 'raw', 'app')]; print('dropped app, raw, staging, marts')"
 
 logs:
 	docker compose logs -f
@@ -324,7 +341,7 @@ rollback:
 # compose service (profiles: [handover]) runs this in a loop instead.
 handover-poll:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
-	export ADMIN_RO_DATABASE_URL="$${ADMIN_RO_DATABASE_URL:-postgresql+asyncpg://admin_ro:admin_pw@localhost:5434/dataqa}"; \
+	export ADMIN_RO_DATABASE_URL="$${ADMIN_RO_DATABASE_URL:-postgresql+asyncpg://admin_ro:admin_pw@localhost:5432/dataqa}"; \
 	cd services/data-agent && uv run python ../../scripts/handover_poll.py $(ARGS)
 
 # s48 template packs. The pack lives in Google Drive (Data Pilot/packs/<name>-v<n>)

@@ -202,10 +202,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The stack joins the external `nmp-central` network to reach the central
-      # MLflow (../nmp-central-ai). CI has no platform, so create the network
-      # empty: the services start, the OTLP exporter simply has nowhere to send.
-      - name: Create the platform network
-        run: docker network create nmp-central
+      # platform (../nmp-central-ai): MLflow and, since platform M3, the Postgres
+      # that holds this project's database. CI has no platform, so it gets the
+      # network plus a throwaway pgvector container aliased `postgres` on it
+      # (platform D18) with the same database, superuser and app roles the
+      # platform's registry would create. The OTLP exporter simply has nowhere
+      # to send; migrations and the pipeline run for real.
+      - name: Create the platform network and a throwaway Postgres
+        run: |
+          docker network create nmp-central
+          docker run -d --name ci-postgres --network nmp-central --network-alias postgres \
+            -e POSTGRES_USER=nmp -e POSTGRES_PASSWORD=nmp -e POSTGRES_DB=nmp \
+            --health-cmd "pg_isready -U nmp" --health-interval 3s --health-retries 30 \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' ci-postgres)" = healthy ] && break; sleep 3
+          done
+          docker exec ci-postgres psql -U nmp -d nmp -v ON_ERROR_STOP=1 -c "
+            CREATE ROLE app_user LOGIN PASSWORD 'app_pw' NOSUPERUSER NOBYPASSRLS;
+            CREATE ROLE agent_ro LOGIN PASSWORD 'agent_pw' NOSUPERUSER NOBYPASSRLS;
+            CREATE ROLE admin_ro LOGIN PASSWORD 'admin_pw' NOSUPERUSER BYPASSRLS;
+            CREATE DATABASE dataqa OWNER nmp;"
+          docker exec ci-postgres psql -U nmp -d dataqa -v ON_ERROR_STOP=1 -c "
+            CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
       - name: Build and start stack
         run: docker compose up -d --build
       # `up -d` returns once containers are started, not once uvicorn is
@@ -232,6 +251,8 @@ jobs:
         run: docker compose logs --no-color
       - name: Stop stack
         if: always()
-        run: docker compose down -v
+        run: |
+          docker compose down -v
+          docker rm -f ci-postgres
 
   # Journey evals (Phase 5) will expand the smoke job with pydantic_evals.

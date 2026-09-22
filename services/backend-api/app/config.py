@@ -13,12 +13,12 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     auth_mode: str = "dev"  # dev = local stub login; google = real Google OIDC sign-in
 
-    database_url: str = "postgresql+asyncpg://app_user:app_pw@db:5432/dataqa"
+    database_url: str = "postgresql+asyncpg://app_user:app_pw@postgres:5432/dataqa"
     # Elevated read-only role (BYPASSRLS, SELECT-only; migration 0012). Used by
     # exactly one thing in this service: the ops rollup, which aggregates across
     # ALL users and therefore cannot run under any single user's RLS context.
     # Never reachable from a request handler.
-    admin_ro_database_url: str = "postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa"
+    admin_ro_database_url: str = "postgresql+asyncpg://admin_ro:admin_pw@postgres:5432/dataqa"
     db_ssl: str = ""  # set to e.g. "require" in Azure (managed Postgres needs TLS)
     agent_url: str = "http://data-agent:8100"
     # Non-streaming /agent/ask hop timeout. Must be >= the longest legitimate
@@ -204,7 +204,7 @@ class Settings(BaseSettings):
     # Read-only role the local governed executor runs as (mirrors the
     # data-agent's own connection; RLS-scoped, SELECT-only). The admin variant
     # reuses admin_ro_database_url above.
-    agent_ro_database_url: str = "postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa"
+    agent_ro_database_url: str = "postgresql+asyncpg://agent_ro:agent_pw@postgres:5432/dataqa"
 
     # CloudFront origin cloaking (s38 P3): when set, every request must carry
     # X-Origin-Verify with this value or it 403s ("/health" excepted for the

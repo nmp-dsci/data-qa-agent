@@ -3,10 +3,12 @@ nsw_property:
   outputs:
     prod:
       type: postgres
-      host: "{{ env_var('DBT_HOST', 'db') }}"
+      # Defaults are the central platform's Postgres (nmp-central-ai, database dataqa,
+      # superuser nmp — platform D16); run.py derives them from ADMIN_DATABASE_URL.
+      host: "{{ env_var('DBT_HOST', 'postgres') }}"
       port: "{{ env_var('DBT_PORT', '5432') | int }}"
-      user: "{{ env_var('DBT_USER', 'postgres') }}"
-      password: "{{ env_var('DBT_PASSWORD', 'postgres') }}"
+      user: "{{ env_var('DBT_USER', 'nmp') }}"
+      password: "{{ env_var('DBT_PASSWORD', 'nmp') }}"
       dbname: "{{ env_var('DBT_DBNAME', 'dataqa') }}"
       schema: marts
       sslmode: "{{ env_var('PGSSLMODE', 'prefer') }}"

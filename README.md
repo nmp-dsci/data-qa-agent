@@ -12,8 +12,9 @@ The product is branded **Data Pilot** in the UI; the repository and services kee
 
 ## Quick start (fully local, no cloud)
 
-Requires Docker. One command boots the whole stack — Postgres+pgvector, the Alembic migration job, the
-dlt+dbt pipeline, backend-api, data-agent, frontend:
+Requires Docker and the portfolio's central platform (`make platform-up` starts `../nmp-central-ai`:
+Postgres+pgvector with this project's database `dataqa`, and MLflow). Then one command boots the stack —
+the Alembic migration job, the dlt+dbt pipeline, backend-api, data-agent, frontend:
 
 ```bash
 make up       # build + start everything (migrate + pipeline run first, then the services start)
@@ -51,7 +52,7 @@ uv run pytest -q  # unit tests (guardrails/NL->SQL) + journey evals (skip if sta
 (cd services/backend-api && uv run pytest -q)  # backend-api handler tests (needs the fastapi stack)
 make logs     # tail service logs
 make down     # stop the stack
-make reset    # stop AND wipe the db volume (re-seeds + reloads on next `make up`)
+make reset    # stop, then drop ONLY this project's schemas in database dataqa (asks; re-seeds + reloads on next `make up`)
 ```
 
 ## Architecture at a glance
@@ -65,7 +66,7 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
       :5230                     :8000                     :8100
                                    │                         │
                                    └──────► Postgres + pgvector (RLS) ◄──────┘
-                                                  :5434
+                                        central nmp-central-ai, database dataqa, :5432
 ```
 
 - **frontend** — login + chat UI in the **Flight Deck** cockpit brand (responsive desktop/mobile layout,
@@ -102,7 +103,7 @@ rest are started on demand by the command shown.
 | **8000** | **Backend API** — auth, RLS, orchestration, admin, integrations | <http://localhost:8000/health> | 8000 | `make up` |
 | **8100** | **Data agent** — NL→SQL, sandbox, page building | <http://localhost:8100/health> | 8100 | `make up` |
 | **5000** | **MLflow** (central, `../nmp-central-ai`) — traces (span waterfalls + tokens/cost), eval runs, agent registry | <http://localhost:5000> | 5000 | `make platform-up` |
-| **5434** | **Postgres** — `postgres`/`postgres`, db `dataqa` | `psql -h localhost -p 5434 -U postgres dataqa` | **5432** | `make up` |
+| **5432** | **Postgres** (central, `../nmp-central-ai`) — `nmp`/`nmp`, db `dataqa` | `make -C ../nmp-central-ai db-psql DB=dataqa` | 5432 | `make platform-up` |
 | **8180** | **dbt docs** — lineage graph, model SQL, column docs | <http://localhost:8180> | 8080 | `make pipeline-docs` |
 | **3000** | **Grafana** — queue-scaling dashboard (`obs` profile) | <http://localhost:3000> | 3000 | `make queue-up` |
 | **9090** | **Prometheus** — ad-hoc PromQL over queue/worker metrics (`obs` profile) | <http://localhost:9090> | 9090 | `make queue-up` |
@@ -134,7 +135,7 @@ is not always the port you use from your laptop:
 
 | From your machine | From another container |
 |-------------------|------------------------|
-| `localhost:5434` | `db:5432` ← the one that catches people out |
+| `localhost:5432` | `postgres:5432` (the central platform, over the external `nmp-central` network) |
 | `localhost:8000` | `backend-api:8000` |
 | `localhost:8100` | `data-agent:8100` |
 | `localhost:5000` | `mlflow:5000` (central platform, over the external `nmp-central` network) |
@@ -209,7 +210,7 @@ mart can't support its use case, not just if it's malformed.
 **Reviewing raw → staging → marts:** run `make pipeline` (or `-full`) then `make pipeline-docs` to serve the
 dbt docs UI at http://localhost:8180 — lineage graph, every model's SQL, and column descriptions (the same
 text `get_schema()` feeds the agent) for `raw` sources through `staging`/intermediate to `marts`. To inspect
-actual rows/counts at any layer, connect to Postgres directly (`localhost:5434`, schemas `raw`/`staging`/`marts`
+actual rows/counts at any layer, connect to Postgres directly (`localhost:5432`, database `dataqa`, schemas `raw`/`staging`/`marts`
 — see Ports below).
 
 ## Explore
@@ -458,12 +459,12 @@ query the answer rests on.
 
 ## Troubleshooting
 
-- **Port already in use** — the dev DB uses host port **5434** (5432/5433 were taken by other local
-  containers). If 5230/8000/8100 clash, change the left-hand side of the `ports:` mapping in
-  `docker-compose.yml`.
+- **`central Postgres down`** — `make up` preflights `localhost:5432`; run `make platform-up`. This stack
+  has no database container of its own (platform M3). If 5230/8000/8100 clash, change the left-hand side of
+  the `ports:` mapping in `docker-compose.yml`.
 - **Empty marts / no data** — the `pipeline` job builds the marts. Re-run it with `make pipeline` (sample) or
-  `make pipeline-full` (real data), or `make reset` then `make up` for a clean slate (wipes the volume so
-  migrations + pipeline re-run).
+  `make pipeline-full` (real data), or `make reset` then `make up` for a clean slate (drops this project's
+  schemas in `dataqa` so migrations + pipeline re-run; the database itself stays).
 - **Frontend can't reach the API** — CORS allows `http://localhost:5230`; if you change the frontend port,
   add the new origin to `EXTRA_CORS_ORIGINS` in `.env` (comma-separated) rather than editing
   `cors_origins` in `services/backend-api/app/config.py`.

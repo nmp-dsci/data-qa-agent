@@ -12,7 +12,7 @@ resolve:
     cd services/data-agent && uv run --extra llm --extra agentsdk python \
         ../../scripts/sdk_runtime_check.py
 
-Requires the `db` service (docker compose) reachable on localhost:5434 and a
+Requires the central Postgres (nmp-central-ai) reachable on localhost:5432 and a
 logged-in `claude` CLI (subscription auth) or CLAUDE_CODE_OAUTH_TOKEN. Nothing
 is rebuilt or restarted.
 """
@@ -36,10 +36,10 @@ os.environ.pop("ANTHROPIC_API_KEY", None)
 os.environ.pop("DEEPSEEK_API_KEY", None)
 
 # agent.db builds its engine from settings at import time: inside compose the DB
-# is db:5432, from the host it is published on localhost:5434.
+# is postgres:5432 (the central platform), from the host it is localhost:5432.
 os.environ.setdefault(
     "AGENT_DATABASE_URL",
-    "postgresql+asyncpg://agent_ro:agent_pw@localhost:5434/dataqa",
+    "postgresql+asyncpg://agent_ro:agent_pw@localhost:5432/dataqa",
 )
 os.environ["AGENT_RUNTIME"] = "agent_sdk"
 

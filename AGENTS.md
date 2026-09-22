@@ -75,9 +75,10 @@ and the local `make up` stack.)*
 
 **Built and working (Phase 0 slice + Phase 1 auth + Phase 2 migrations + Phase 2b pipeline + Phase 3 agent +
 Phase 3b tracking/admin).**
-`make up` boots
-the whole app on `localhost` with no Azure: Postgres+pgvector, a one-shot **Alembic migration job**, the
-**dlt+dbt pipeline job**, backend-api, data-agent, and frontend (see README for details). `migrate` runs
+`make platform-up && make up` boots
+the whole app on `localhost` with no Azure: the central Postgres+pgvector (nmp-central-ai, database
+`dataqa`), a one-shot **Alembic migration job**, the **dlt+dbt pipeline job**, backend-api, data-agent,
+and frontend (see README for details). `migrate` runs
 `alembic upgrade head` (schema + RLS + seed) then `pipeline` builds the growth marts from the committed sample;
 the services wait for both. `make smoke` runs the end-to-end test (login → ask top growth suburbs → response,
 SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/journeys.yaml` suite.
@@ -113,8 +114,18 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
   the same text `get_schema()` grounds the agent in, so agent capability and tested capability can't drift
   apart. Review raw → staging → marts with `make pipeline-docs` (dbt docs UI, lineage + column docs at
   `:8180`) or by querying Postgres directly (`raw`/`staging`/`marts` schemas).
-- **Note:** the dev DB publishes host port **5434** (5432/5433 were taken by other local containers); internal
-  networking still uses `db:5432`.
+- **Platform M3 (2026-09-22):** this stack runs **no Postgres of its own**. Its database is `dataqa` on the
+  central cluster run by `../nmp-central-ai` — one database per project (platform D13) — reached as
+  `postgres:5432` over the external `nmp-central` network from the containers and `localhost:5432` from the
+  host. The admin identity is the platform superuser `nmp` (D16); the app roles `app_user` / `agent_ro` /
+  `admin_ro`, their dev passwords, `admin_ro`'s `BYPASSRLS` and the per-role `statement_timeout`s are declared
+  in the platform registry and created by its `make db-init` (role attributes live on the cluster, not in a
+  database, so a dump cannot carry them). `make reset` drops only this project's four schemas; never
+  `DROP DATABASE`, never `down -v`. `make db-smoke` (`scripts/db_smoke.py`) is the zero-LLM proof the
+  platform's `make check` runs: Alembic at head, RLS hides user2's rows, `agent_ro` cannot write,
+  `admin_ro` bypasses RLS. The old compose `db` (:5434, 2.3 GB) was dumped, restored, verified row-for-row
+  and deleted (D14). CI gets a throwaway `pgvector/pgvector:pg16` service container aliased `postgres`
+  (D18). Contract: `../nmp-central-ai/PLATFORM.md`; runbook: `../nmp-central-ai/docs/runbooks/central-postgres.md`.
 
 ### Repo layout (as built)
 

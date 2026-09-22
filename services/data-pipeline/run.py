@@ -36,10 +36,10 @@ def _configure_connection() -> None:
     # userinfo verbatim, so percent-decode it — cloud passwords (s12) carry
     # URL-special characters and arrive encoded. libpq-based consumers (dlt)
     # decode the full URL themselves; dbt gets the parts, so we decode here.
-    os.environ.setdefault("DBT_HOST", parts.hostname or "db")
+    os.environ.setdefault("DBT_HOST", parts.hostname or "postgres")
     os.environ.setdefault("DBT_PORT", str(parts.port or 5432))
-    os.environ.setdefault("DBT_USER", unquote(parts.username or "postgres"))
-    os.environ.setdefault("DBT_PASSWORD", unquote(parts.password or "postgres"))
+    os.environ.setdefault("DBT_USER", unquote(parts.username or "nmp"))
+    os.environ.setdefault("DBT_PASSWORD", unquote(parts.password or "nmp"))
     os.environ.setdefault("DBT_DBNAME", parts.path.lstrip("/") or "dataqa")
 
 

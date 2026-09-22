@@ -9,12 +9,12 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     # Agent + regular SQL-editor users connect as a strictly read-only role; RLS
     # still applies (rows scoped to the user's datasets / own operational rows).
-    agent_database_url: str = "postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa"
+    agent_database_url: str = "postgresql+asyncpg://agent_ro:agent_pw@postgres:5432/dataqa"
     # Elevated read-only role for the admin SQL editor: BYPASSRLS + SELECT on every
     # schema, so an admin can query any table (incl. internal app.* tables) and see
     # all rows. Only role == "admin" requests route here; still SELECT-only. Created
     # by migration 0012_admin_ro_role.
-    admin_ro_database_url: str = "postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa"
+    admin_ro_database_url: str = "postgresql+asyncpg://admin_ro:admin_pw@postgres:5432/dataqa"
     db_ssl: str = ""  # set to "require" in Azure (managed Postgres needs TLS)
 
     # When set, every request except /health must carry a matching X-Agent-Token

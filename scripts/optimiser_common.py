@@ -46,7 +46,7 @@ WORKTREES_DIR = REPO_ROOT / ".worktrees"
 
 OPUS_MODEL = "claude-opus-5"
 DEFAULT_BASE_BRANCH = "eval-loop-review"
-DEFAULT_ADMIN_RO_URL = "postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa"
+DEFAULT_ADMIN_RO_URL = "postgresql+asyncpg://admin_ro:admin_pw@postgres:5432/dataqa"
 
 
 # ---------------------------------------------------------------------------

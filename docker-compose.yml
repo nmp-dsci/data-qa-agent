@@ -2,21 +2,13 @@
 # `docker compose up --build` boots the whole app on localhost.
 
 services:
-  db:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: dataqa
-    ports:
-      - "5434:5432"   # 5432/5433 are used by other local containers; internal net still uses db:5432
-    volumes:
-      - dbdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d dataqa"]
-      interval: 3s
-      timeout: 3s
-      retries: 30
+  # Platform M3 (2026-09-22): this stack runs NO Postgres of its own. Its database is
+  # `dataqa` on the central cluster run by ../nmp-central-ai — host `postgres:5432`
+  # over the external `nmp-central` network (`localhost:5432` from the host), one
+  # database per project (platform D13). `make platform-up` starts it. The admin
+  # identity is the platform superuser `nmp` (D16); app roles are created by the
+  # platform's `make db-init` from its registry, so db/init/*.sql's CREATE ROLE
+  # blocks are no-ops here. `make reset` drops only this project's schemas.
 
   # One-shot job: applies Alembic migrations (schema + RLS + seed). Runs the SAME
   # migrations as the Azure db-migrate job. Dataset data is loaded by `pipeline`.
@@ -25,11 +17,9 @@ services:
       context: .
       dockerfile: services/db-migrate/Dockerfile
     environment:
-      ADMIN_DATABASE_URL: postgresql://postgres:postgres@db:5432/dataqa
+      ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-postgresql://nmp:nmp@postgres:5432/dataqa}
     restart: "no"
-    depends_on:
-      db:
-        condition: service_healthy
+    networks: [default, nmp-central]
 
   # One-shot job: dlt ingests the CSVs into `raw`, then dbt builds the marts.
   # Defaults to the small committed sample; `make pipeline` loads the full CSVs.
@@ -38,7 +28,7 @@ services:
       context: .
       dockerfile: services/data-pipeline/Dockerfile
     environment:
-      ADMIN_DATABASE_URL: postgresql://postgres:postgres@db:5432/dataqa
+      ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-postgresql://nmp:nmp@postgres:5432/dataqa}
       PIPELINE_SOURCE: ${PIPELINE_SOURCE:-sample}
       # s32 W2: the pipeline records its own freshness (marts age + dbt pass) to
       # app.pipeline_runs through the backend, so the deck's freshness lamp is fed
@@ -51,6 +41,7 @@ services:
       - ./data:/data:ro
       - dbt_target:/app/dbt/target
     restart: "no"
+    networks: [default, nmp-central]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -74,6 +65,7 @@ services:
       - dbt_target:/app/dbt/target
     ports:
       - "8180:8080"
+    networks: [default, nmp-central]
 
   backend-api:
     build: ./services/backend-api
@@ -90,15 +82,15 @@ services:
       # auth/ask/events routers and never opens a database connection — the
       # shape the deployed demo runs (make demo-dbless-up). Default 0.
       DB_DISABLED: ${DB_DISABLED:-0}
-      DATABASE_URL: postgresql+asyncpg://app_user:app_pw@db:5432/dataqa
+      DATABASE_URL: postgresql+asyncpg://app_user:app_pw@postgres:5432/dataqa
       # Read-only executor role for demo mode's local SQL path (s38 P4) —
       # same role the data-agent connects as.
-      AGENT_RO_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa
+      AGENT_RO_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@postgres:5432/dataqa
       # Elevated read-only role (BYPASSRLS, SELECT-only; migration 0012). Used by
       # exactly one thing here: the /ops rollup, which aggregates across ALL users
       # and so cannot run under any single user's RLS context (an empty context
       # sees zero rows and would write a rollup of zeros).
-      ADMIN_RO_DATABASE_URL: postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa
+      ADMIN_RO_DATABASE_URL: postgresql+asyncpg://admin_ro:admin_pw@postgres:5432/dataqa
       AGENT_URL: http://data-agent:8100
       JWT_SECRET: dev-secret-change-me
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -175,10 +167,10 @@ services:
     # environment — one config surface, two entrypoints.
     environment: &agent-env
       APP_ENV: dev
-      AGENT_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@db:5432/dataqa
+      AGENT_DATABASE_URL: postgresql+asyncpg://agent_ro:agent_pw@postgres:5432/dataqa
       # Elevated read-only role for the admin SQL editor (BYPASSRLS, all schemas);
       # created by migration 0012. Only role==admin editor queries use it.
-      ADMIN_RO_DATABASE_URL: postgresql+asyncpg://admin_ro:admin_pw@db:5432/dataqa
+      ADMIN_RO_DATABASE_URL: postgresql+asyncpg://admin_ro:admin_pw@postgres:5432/dataqa
       # The dbt manifest lets get_schema() ground the LLM in the real marts.
       DBT_MANIFEST: /dbt-target/manifest.json
       # Provider is pluggable (Decision G): LLM_PROVIDER picks deepseek (default) or
@@ -403,13 +395,13 @@ services:
       - backend-api
 
 volumes:
-  dbdata:
   dbt_target:   # dbt manifest/catalog shared from pipeline -> data-agent
 
 networks:
   default: {}
   # The platform's external network, created by `make -C ../nmp-central-ai up`.
-  # Every service that talks to MLflow lists BOTH default and nmp-central —
-  # naming only nmp-central would detach it from this stack.
+  # Every service that talks to MLflow or to the database (postgres:5432) lists
+  # BOTH default and nmp-central — naming only nmp-central would detach it from
+  # this stack.
   nmp-central:
     external: true

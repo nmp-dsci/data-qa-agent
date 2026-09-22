@@ -91,7 +91,7 @@ down:
 reset: db-preflight
 	@read -p "Drop schemas app, raw, staging, marts in database dataqa (the platform keeps a backup target: make -C ../nmp-central-ai db-backup DB=dataqa)? [y/N] " a && [ "$$a" = "y" ] || { echo kept; exit 1; }
 	COMPOSE_PROFILES=queue,obs,docs,handover docker compose down
-	docker compose run --rm --no-deps --build migrate python -c "import os, psycopg; c = psycopg.connect(os.environ['ADMIN_DATABASE_URL'], autocommit=True); [c.execute(f'DROP SCHEMA IF EXISTS {s} CASCADE') for s in ('marts', 'staging', 'raw', 'app')]; print('dropped app, raw, staging, marts')"
+	docker compose run --rm --no-deps --build --entrypoint python migrate -c "import os, psycopg; c = psycopg.connect(os.environ['ADMIN_DATABASE_URL'], autocommit=True); [c.execute(f'DROP SCHEMA IF EXISTS {s} CASCADE') for s in ('marts', 'staging', 'raw', 'app')]; print('dropped app, raw, staging, marts')"
 
 logs:
 	docker compose logs -f

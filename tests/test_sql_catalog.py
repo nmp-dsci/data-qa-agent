@@ -16,8 +16,8 @@ def test_curated_catalog_has_core_tables() -> None:
     assert "staging.property_sales" in names
     assert "staging.property_rent" in names
     assert "staging.int_postcode_geo" in names
-    assert "raw.property_sales" in names
-    assert "raw.property_rent" in names
+    assert "propertyiq_staging.property_sales" in names
+    assert "propertyiq_staging.property_rent" in names
 
 
 def test_catalog_entries_are_well_formed() -> None:
@@ -35,14 +35,16 @@ def test_user_catalog_only_shows_marts_and_staging() -> None:
     catalog = get_catalog(role="user")
     assert catalog, "catalog must not be empty"
     assert {t["schema"] for t in catalog} <= {"marts", "staging"}
-    assert "raw.property_sales" not in {f"{t['schema']}.{t['table']}" for t in catalog}
+    names = {f"{t['schema']}.{t['table']}" for t in catalog}
+    assert "propertyiq_staging.property_sales" not in names
+    assert "propertyiq_staging.property_rent" not in names
 
 
-def test_admin_catalog_includes_raw_fallback_tables() -> None:
+def test_admin_catalog_includes_propertyiq_staging_fallback_tables() -> None:
     catalog = get_catalog(role="admin")
     names = {f"{t['schema']}.{t['table']}" for t in catalog}
-    assert "raw.property_sales" in names
-    assert "raw.property_rent" in names
+    assert "propertyiq_staging.property_sales" in names
+    assert "propertyiq_staging.property_rent" in names
 
 
 def test_admin_catalog_includes_app_tables() -> None:

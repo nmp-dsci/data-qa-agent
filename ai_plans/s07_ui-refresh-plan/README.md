@@ -25,7 +25,7 @@ source has no suburb. So "Hornsby suburb" resolves to **postcode 2077**, and the
 | `rent_trend_units.json` | Monthly median weekly rent for units, 1/2/3-bed, postcode 2077, from 2023-01 (123 rows) | **trend line** — the app's "today" style |
 
 Each file is self-describing: `question`, `resolved`, `source`, `sql`, `primary_chart` (encoding), `columns`, `rows`.
-Regenerate with the `sql` field against `marts.property_rent` (DB on `localhost:5434`, db `dataqa`).
+Regenerate with the `sql` field against `marts.property_rent` (DB on `localhost:5432`, db `dataqa`).
 
 ## The target rendering (visx)
 
@@ -40,7 +40,7 @@ and the frontend's visx components render them inside the answer's layout templa
 
 ## How to iterate
 
-1. Edit / regenerate the JSON here (SQL is in each file's `sql` field; DB on `localhost:5434`, db `dataqa`).
+1. Edit / regenerate the JSON here (SQL is in each file's `sql` field; DB on `localhost:5432`, db `dataqa`).
 2. Build the visx components (Bar, Line, Axis, Legend, Tile) in a small React sandbox that reads these rows.
 3. Screenshot the composition into the plan artifact's §03 worked example (replacing the hand-built SVG mock).
 4. Reuse the same components for the SQL editor's "result → chart" and the Admin KPI strip.

@@ -4,10 +4,11 @@ Run by the platform's `check_databases.py` (which exports this project's URLs) a
 `make db-smoke`. Checks, as each role the project uses:
 
   admin (ADMIN_DATABASE_URL, the platform superuser)  Alembic is at head; the four schemas exist
-  app_user (DATABASE_URL)                              can read marts.property_sales as user1 (rows > 0)
-                                                       and sees ZERO rows as user2 (RLS: no nsw_sales grant)
-  agent_ro (AGENT_RO_DATABASE_URL)                     can SELECT, cannot INSERT
-  admin_ro (ADMIN_RO_DATABASE_URL)                     sees every housing row (BYPASSRLS)
+  app_user (DATABASE_URL)                             can read marts.property_sales as user1
+                                                       (rows > 0) and sees ZERO rows as user2
+                                                       (RLS: no nsw_sales grant)
+  agent_ro (AGENT_RO_DATABASE_URL)                    can SELECT, cannot INSERT
+  admin_ro (ADMIN_RO_DATABASE_URL)                    sees every housing row (BYPASSRLS)
 
 Exit 1 with one line per failure. Stdlib + psycopg only (`uv run --with "psycopg[binary]"`).
 """
@@ -18,7 +19,7 @@ import os
 import sys
 from pathlib import Path
 
-import psycopg
+import psycopg  # type: ignore[import-not-found]
 
 SCHEMAS = ("app", "raw", "staging", "marts")
 VERSIONS = (

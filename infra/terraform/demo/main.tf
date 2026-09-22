@@ -172,8 +172,10 @@ resource "aws_apprunner_service" "demo" {
           # google with no client id: /auth/config advertises the demo door and
           # nothing else; dev-login stays 403. No GOOGLE_CLIENT_ID means no
           # owner door — there is no users table for it to provision into.
-          AUTH_MODE          = "google"
-          AGENT_URL          = ""
+          AUTH_MODE = "google"
+          # No AGENT_URL on purpose: demo mode never dials the agent (the
+          # agent_client choke point 501s first), and App Runner discards an
+          # empty value, so declaring "" made every apply an UpdateService.
           EXTRA_CORS_ORIGINS = "https://${aws_cloudfront_distribution.frontend.domain_name}"
         }
         # No secrets on purpose. JWT_SECRET is generated at process start when

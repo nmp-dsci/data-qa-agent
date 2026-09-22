@@ -286,6 +286,11 @@ async def _user_from_credentials(
             # passes, and neither can impersonate the other — HS256 tokens are
             # signature-checked against jwt_secret, RS256 against Google's JWKS.
             if settings.demo_mode:
+                # No client id means no owner door (the DB-less demo, s52):
+                # the HS256 session is the only credential, so a bad token
+                # is a plain 401 rather than "Google auth is not configured".
+                if not settings.google_client_id:
+                    return _dev_user(token)
                 try:
                     return _dev_user(token)
                 except HTTPException:

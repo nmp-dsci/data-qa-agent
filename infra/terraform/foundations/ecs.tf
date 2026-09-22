@@ -1,8 +1,8 @@
 # --------------------------------------------------------------------------
 # One-shot jobs (Fargate run-task): db-migrate (Alembic — also creates the
 # vector/pgcrypto extensions and rotates role passwords) and data-pipeline
-# (dlt ingest from S3 + dbt build). They run in the app subnets with public
-# IPs so they can pull from ECR / reach S3 without NAT. $0 when not running.
+# (dbt build over propertyiq_staging). They run in the app subnets with public
+# IPs so they can pull from ECR without NAT. $0 when not running.
 # Launch with scripts/run_job.sh.
 # --------------------------------------------------------------------------
 resource "aws_ecs_cluster" "main" {
@@ -66,25 +66,10 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
   policy = data.aws_iam_policy_document.ecs_execution_secrets.json
 }
 
-# ---- Task role for the pipeline (reads the source CSVs from S3) -----------
-resource "aws_iam_role" "pipeline_task" {
-  name               = "${local.name}-pipeline-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
-}
-
-data "aws_iam_policy_document" "pipeline_s3" {
-  statement {
-    effect    = "Allow"
-    actions   = ["s3:GetObject", "s3:ListBucket"]
-    resources = [aws_s3_bucket.source_data.arn, "${aws_s3_bucket.source_data.arn}/*"]
-  }
-}
-
-resource "aws_iam_role_policy" "pipeline_s3" {
-  name   = "read-source-data"
-  role   = aws_iam_role.pipeline_task.id
-  policy = data.aws_iam_policy_document.pipeline_s3.json
-}
+# The pipeline task needs no task role: since propertyiq_getdata plan s03 (P6)
+# it reads its inputs from the database (propertyiq_staging.* foreign tables,
+# migration 0040), not from S3. The source_data bucket in s3.tf is now unused
+# by this stack; retire it in its own change once the objects are archived.
 
 # ---- Task definitions -------------------------------------------------------
 resource "aws_ecs_task_definition" "migrate" {
@@ -128,9 +113,8 @@ resource "aws_ecs_task_definition" "pipeline" {
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = "1024"
-  memory                   = "4096" # ~3M rows; dlt buffers + dbt build headroom
+  memory                   = "2048" # dbt build only; no dlt buffers any more
   execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.pipeline_task.arn
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -142,8 +126,6 @@ resource "aws_ecs_task_definition" "pipeline" {
     image     = "${local.registry}/data-qa/data-pipeline:${var.image_tag}"
     essential = true
     environment = [
-      { name = "PIPELINE_SOURCE", value = "full" },
-      { name = "DATA_S3_BUCKET", value = aws_s3_bucket.source_data.id },
       { name = "PGSSLMODE", value = "require" }, # dbt: never fall back to plaintext
       # s32 W2: where to post the pipeline-run record (marts age + dbt pass), so
       # the deck's data-freshness lamp is fed by the job that changes the data.

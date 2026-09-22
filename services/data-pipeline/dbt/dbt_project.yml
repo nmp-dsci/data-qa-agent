@@ -23,9 +23,10 @@ models:
       +materialized: table
       # Agent-queryable: get_schema() grounds the LLM in any model tagged this
       # way, regardless of schema — not just schema == "marts". stg_sales and
-      # stg_rent are physically aliased to staging.property_sales/property_rent;
-      # int_postcode_geo (intermediate) sets the tag on
-      # itself, since it's now the suburb<->postcode resolver the agent needs.
+      # stg_rent are physically aliased to staging.property_sales/property_rent
+      # and are thin RLS-scoped copies of propertyiq_staging.* (see
+      # models/staging/_sources.yml); int_postcode_geo (intermediate) sets the
+      # tag on itself, since it's now the suburb<->postcode resolver the agent needs.
       +tags: ['agent_queryable']
     intermediate:
       +schema: staging
@@ -34,18 +35,3 @@ models:
       +schema: marts
       +materialized: table
       +tags: ['agent_queryable']
-
-seeds:
-  nsw_property:
-    # Reference data lands in staging (admin-owned; the marts that ref it apply
-    # their own RLS). postcode kept as text so leading-significant codes survive
-    # dbt's type inference (a bare '2000' must not become the integer 2000).
-    postcode_geo:
-      +schema: staging
-      +column_types:
-        postcode: text
-        sa2_name: text
-        sa3_name: text
-        sa4_name: text
-        gcc_name: text
-        state_name: text

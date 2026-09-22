@@ -207,7 +207,7 @@ jobs:
       # network plus a throwaway pgvector container aliased `postgres` on it
       # (platform D18) with the same database, superuser and app roles the
       # platform's registry would create. The OTLP exporter simply has nowhere
-      # to send; migrations and the pipeline run for real.
+      # to send; migrations and the dbt pipeline run for real.
       - name: Create the platform network and a throwaway Postgres
         run: |
           docker network create nmp-central
@@ -226,6 +226,23 @@ jobs:
             CREATE DATABASE dataqa OWNER nmp;"
           docker exec ci-postgres psql -U nmp -d dataqa -v ON_ERROR_STOP=1 -c "
             CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+      # The property + economic data comes from the sibling propertyiq_getdata
+      # project's database over postgres_fdw (migration 0040). CI stands in a
+      # `propertyiq` database with a 500-row extract of its staging layer
+      # (tests/fixtures/propertyiq_staging.sql, exported there by
+      # `propertyiq-getdata db export-fixture`) and the read-only role the
+      # user mapping expects.
+      - name: Stand in the propertyiq database with its staging fixture
+        run: |
+          docker exec ci-postgres psql -U nmp -d nmp -v ON_ERROR_STOP=1 -c "
+            CREATE ROLE propertyiq_ro LOGIN PASSWORD 'propertyiq_ro' NOSUPERUSER;"
+          docker exec ci-postgres psql -U nmp -d nmp -v ON_ERROR_STOP=1 -c "
+            CREATE DATABASE propertyiq OWNER nmp;"
+          docker exec -i ci-postgres psql -U nmp -d propertyiq -v ON_ERROR_STOP=1 < tests/fixtures/propertyiq_staging.sql
+          docker exec ci-postgres psql -U nmp -d propertyiq -v ON_ERROR_STOP=1 -c "
+            GRANT CONNECT ON DATABASE propertyiq TO propertyiq_ro;
+            GRANT USAGE ON SCHEMA staging TO propertyiq_ro;
+            GRANT SELECT ON ALL TABLES IN SCHEMA staging TO propertyiq_ro;"
       - name: Build and start stack
         run: docker compose up -d --build
       # `up -d` returns once containers are started, not once uvicorn is

@@ -1,9 +1,15 @@
-"""Pipeline entrypoint: dlt ingest -> dbt build.
+"""Pipeline entrypoint: dbt build over propertyiq's shared staging.
 
-Derives both dlt's and dbt's Postgres connection from a single ADMIN_DATABASE_URL
-(a privileged connection, so dbt-built marts are owned by the admin role and RLS
-applies to app_user/agent_ro). Runs the dlt ingestion, then `dbt build` (models +
-tests). Idempotent — safe to re-run.
+Nothing is ingested here any more: the NSW sales / rent data (and the ABS/RBA
+economic series) are landed and cleaned by the sibling ``propertyiq_getdata``
+project into database ``propertyiq`` on the central cluster, and reach this
+database as ``propertyiq_staging.*`` foreign tables (migration 0040). This job
+derives dbt's Postgres connection from ADMIN_DATABASE_URL (a privileged
+connection, so dbt-built marts are owned by the admin role and RLS applies to
+app_user/agent_ro) and runs `dbt build` (models + tests). Idempotent.
+
+Run it after propertyiq's weekly `db update`; the marts are only as fresh as
+propertyiq_staging.
 """
 
 from __future__ import annotations
@@ -29,8 +35,8 @@ def _configure_connection() -> None:
     )
     parts = urlparse(url)
 
-    # dlt destination (reads DESTINATION__POSTGRES__CREDENTIALS).
-    os.environ["DESTINATION__POSTGRES__CREDENTIALS"] = url
+    # Bare libpq URL for psycopg (wake-up probe, row counts).
+    os.environ["PIPELINE_DATABASE_URL"] = url
 
     # dbt profile (profiles.yml reads these env vars). urlparse returns the
     # userinfo verbatim, so percent-decode it — cloud passwords (s12) carry
@@ -47,11 +53,11 @@ def _wake_database() -> None:
     """Connect-with-retry until the DB accepts (Aurora auto-pause resume, s12).
 
     A paused Serverless v2 cluster refuses/times out the first connections
-    while it resumes (~15-60s). dlt/dbt don't retry, so absorb it here.
+    while it resumes (~15-60s). dbt doesn't retry, so absorb it here.
     """
-    import psycopg2  # dlt[postgres] ships it
+    import psycopg2  # dbt-postgres ships it
 
-    url = os.environ["DESTINATION__POSTGRES__CREDENTIALS"]
+    url = os.environ["PIPELINE_DATABASE_URL"]
     last: Exception | None = None
     for attempt in range(1, 25):
         try:
@@ -93,7 +99,7 @@ def _row_counts() -> dict[str, int]:
     tables = ("marts.property_sales", "marts.property_rent", "marts.property_yield")
     counts: dict[str, int] = {}
     try:
-        with psycopg2.connect(os.environ["DESTINATION__POSTGRES__CREDENTIALS"]) as conn:
+        with psycopg2.connect(os.environ["PIPELINE_DATABASE_URL"]) as conn:
             with conn.cursor() as cur:
                 for table in tables:
                     try:
@@ -148,7 +154,7 @@ def _record_run(*, status: str, started: float, dbt_dir: Path) -> None:
         "--row-counts",
         json.dumps(_row_counts()),
         "--source",
-        os.environ.get("PIPELINE_SOURCE", "sample"),
+        "propertyiq_staging",
     ]
     if passed is not None and total is not None:
         args += ["--dbt-pass", str(passed), "--dbt-total", str(total)]
@@ -165,13 +171,8 @@ def main() -> None:
     dbt_dir = HERE / "dbt"
 
     try:
-        # 1) dlt ingest (import after env is set so dlt picks up credentials).
-        import ingest
-
-        ingest.main()
-
-        # 2) dbt build (models + tests). Docs are generated so the agent can read
-        #    the manifest.
+        # dbt build (models + tests) over propertyiq_staging.*. Docs are
+        # generated so the agent can read the manifest.
         env = {**os.environ, "DBT_PROFILES_DIR": str(dbt_dir)}
         for cmd in (["dbt", "build"], ["dbt", "docs", "generate", "--no-compile"]):
             print(f"==> {' '.join(cmd)}")

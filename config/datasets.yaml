@@ -1,25 +1,26 @@
-# Dataset registry — the pipeline ingests these and the agent answers over them.
-# The two NSW datasets are kept unique. Raw, staging, and marts use matching
-# relation names (`property_sales`, `property_rent`) so lineage is visible.
+# Dataset registry — the datasets the agent answers over. The data itself is
+# landed and cleaned by ../propertyiq_getdata (database `propertyiq`, schema
+# `staging`) and read here as propertyiq_staging.* foreign tables (migration
+# 0040); staging and marts use matching relation names so lineage is visible.
 # The seed's source of truth is the Alembic migration (0002_property_market);
 # this file documents the intended registry + access.
 datasets:
   - slug: nsw_sales
     name: NSW property sales
-    source: data/nswgov_df.csv            # full data (local only); sample in data/samples/
+    source: propertyiq_staging.property_sales   # fdw -> propertyiq.staging (propertyiq_getdata nswgov)
     description: >
-      NSW Government residential sale prices. Powers raw.property_sales,
-      staging.property_sales, and marts.property_sales.
+      NSW Government residential sale prices. Powers staging.property_sales
+      and marts.property_sales.
     access:
       roles: [admin]      # admins see every dataset
       users: [user1]      # user1 granted; user2 excluded (demonstrates RLS)
 
   - slug: nsw_rent
     name: NSW rental bonds
-    source: data/rentboard_df.csv
+    source: propertyiq_staging.property_rent    # fdw -> propertyiq.staging (propertyiq_getdata rentboard)
     description: >
-      NSW Rental Bond Board lodgements. Powers raw.property_rent,
-      staging.property_rent, and marts.property_rent.
+      NSW Rental Bond Board lodgements. Powers staging.property_rent and
+      marts.property_rent.
     access:
       roles: [admin]
       users: [user1]      # user1 granted both datasets, so it can JOIN them

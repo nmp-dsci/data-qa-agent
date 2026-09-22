@@ -18,7 +18,7 @@ from typing import Any
 from .tools_explore import explore_grounding
 
 USER_VISIBLE_SCHEMAS = {"marts", "staging"}
-ADMIN_SCHEMA_ORDER = {"app": 0, "marts": 1, "staging": 2, "raw": 3}
+ADMIN_SCHEMA_ORDER = {"app": 0, "marts": 1, "staging": 2, "propertyiq_staging": 3, "raw": 4}
 
 SALES_MART = "marts.property_sales"
 RENT_MART = "marts.property_rent"
@@ -27,8 +27,6 @@ STG_RENT = "staging.property_rent"
 GEO_BRIDGE = "staging.int_postcode_geo"
 YIELD_MART = "marts.property_yield"
 GEO_DIM = "marts.dim_postcode_geo"
-RAW_SALES = "raw.property_sales"
-RAW_RENT = "raw.property_rent"
 
 # Dataset-neutral grounding: the generic half of the old property join hint.
 # Every dataset-specific quirk (suburb casing, "rent has no suburb", exact join
@@ -358,21 +356,28 @@ CURATED_CATALOG: list[dict[str, Any]] = [
         ],
     },
     {
-        "schema": "raw",
+        "schema": "propertyiq_staging",
         "table": "property_sales",
         "description": (
-            "Landing table loaded by dlt from the NSW Government property sales CSV. "
-            "Prefer staging.property_sales for governed, typed analysis."
+            "Foreign table over postgres_fdw: propertyiq's shared, typed record-grain "
+            "NSW sales table (RESIDENCE, $10k-$8M, 2010+). This project builds "
+            "staging.property_sales from it; prefer staging.property_sales for RLS-scoped "
+            "queries."
         ),
         "columns": [
+            {"name": "sale_id", "type": "bigint", "description": None},
             {"name": "property_id", "type": "text", "description": None},
-            {"name": "locality", "type": "text", "description": "raw suburb/locality"},
+            {"name": "dealing_no", "type": "text", "description": None},
+            {"name": "suburb", "type": "text", "description": None},
             {"name": "postcode", "type": "text", "description": None},
-            {"name": "contract_dt", "type": "text", "description": "raw contract date"},
-            {"name": "sale_price", "type": "text", "description": "raw sale price"},
-            {"name": "prop_purpose", "type": "text", "description": None},
-            {"name": "strata_no", "type": "text", "description": None},
-            {"name": "area_sqm", "type": "text", "description": None},
+            {"name": "property_type", "type": "text", "description": None},
+            {"name": "sale_date", "type": "date", "description": None},
+            {"name": "sale_year", "type": "integer", "description": None},
+            {"name": "sale_month", "type": "date", "description": None},
+            {"name": "settle_date", "type": "date", "description": None},
+            {"name": "sale_price", "type": "numeric", "description": None},
+            {"name": "area_sqm", "type": "numeric", "description": None},
+            {"name": "area_band", "type": "text", "description": None},
             {"name": "area_type", "type": "text", "description": None},
             {"name": "zoning", "type": "text", "description": None},
             {"name": "house_no", "type": "text", "description": None},
@@ -382,18 +387,87 @@ CURATED_CATALOG: list[dict[str, Any]] = [
         ],
     },
     {
-        "schema": "raw",
+        "schema": "propertyiq_staging",
         "table": "property_rent",
         "description": (
-            "Landing table loaded by dlt from the NSW Rental Bond Board CSV. "
-            "Prefer staging.property_rent for governed, typed analysis."
+            "Foreign table over postgres_fdw: propertyiq's shared, typed record-grain "
+            "NSW rental bond table. This project builds staging.property_rent from it; "
+            "prefer staging.property_rent for RLS-scoped queries."
         ),
         "columns": [
-            {"name": "lodgement_dt", "type": "text", "description": "raw lodgement date"},
+            {"name": "rent_id", "type": "bigint", "description": None},
+            {"name": "rent_date", "type": "date", "description": None},
+            {"name": "rent_year", "type": "integer", "description": None},
+            {"name": "rent_month", "type": "date", "description": None},
             {"name": "postcode", "type": "text", "description": None},
-            {"name": "property_type", "type": "text", "description": "raw source code"},
-            {"name": "bedrooms", "type": "text", "description": "raw bedroom count"},
-            {"name": "weekly_rent", "type": "text", "description": "raw weekly rent"},
+            {"name": "property_type_code", "type": "text", "description": None},
+            {"name": "property_type", "type": "text", "description": None},
+            {"name": "bedrooms", "type": "integer", "description": None},
+            {"name": "bedroom_band", "type": "text", "description": None},
+            {"name": "weekly_rent", "type": "numeric", "description": None},
+        ],
+    },
+    {
+        "schema": "propertyiq_staging",
+        "table": "geo_postcode",
+        "description": (
+            "Foreign table over postgres_fdw: postcode -> SA2/SA3/SA4/GCCSA/state (ABS ASGS)."
+        ),
+        "columns": [
+            {"name": "postcode", "type": "text", "description": None},
+            {"name": "sa2_name", "type": "text", "description": None},
+            {"name": "sa3_name", "type": "text", "description": None},
+            {"name": "sa4_name", "type": "text", "description": None},
+            {"name": "gcc_name", "type": "text", "description": None},
+            {"name": "state_name", "type": "text", "description": None},
+        ],
+    },
+    {
+        "schema": "propertyiq_staging",
+        "table": "econ_series",
+        "description": (
+            "Foreign table over postgres_fdw: ABS + RBA economic series, long format, "
+            "newest vintage per dataset. Join econ_headline_series on series_id to pick "
+            "headline measures by name."
+        ),
+        "columns": [
+            {"name": "source", "type": "text", "description": None},
+            {"name": "dataset", "type": "text", "description": None},
+            {"name": "series_id", "type": "text", "description": None},
+            {"name": "series_label", "type": "text", "description": None},
+            {"name": "dataflow", "type": "text", "description": None},
+            {"name": "freq", "type": "text", "description": None},
+            {"name": "time_period", "type": "text", "description": None},
+            {"name": "period_start", "type": "date", "description": None},
+            {"name": "value", "type": "numeric", "description": None},
+            {"name": "unit", "type": "text", "description": None},
+            {"name": "unit_mult", "type": "integer", "description": None},
+            {"name": "obs_status", "type": "text", "description": None},
+            {"name": "obs_comment", "type": "text", "description": None},
+            {"name": "region", "type": "text", "description": None},
+            {"name": "base_period", "type": "text", "description": None},
+            {"name": "asof", "type": "date", "description": None},
+            {"name": "dims", "type": "jsonb", "description": None},
+            {"name": "period_month", "type": "date", "description": None},
+            {"name": "period_quarter", "type": "date", "description": None},
+        ],
+    },
+    {
+        "schema": "propertyiq_staging",
+        "table": "econ_headline_series",
+        "description": (
+            "Foreign table over postgres_fdw: curated series_id -> measure/region/adjustment "
+            "map (unemployment_rate_pct, mean_dwelling_price_k, cash_rate_target_pct, ...)."
+        ),
+        "columns": [
+            {"name": "series_id", "type": "text", "description": None},
+            {"name": "dataset", "type": "text", "description": None},
+            {"name": "measure", "type": "text", "description": None},
+            {"name": "region", "type": "text", "description": None},
+            {"name": "adjustment", "type": "text", "description": None},
+            {"name": "freq", "type": "text", "description": None},
+            {"name": "unit", "type": "text", "description": None},
+            {"name": "description", "type": "text", "description": None},
         ],
     },
 ]
@@ -586,7 +660,7 @@ def _catalog_from_manifest(path: Path) -> list[dict[str, Any]]:
     for source in data.get("sources", {}).values():
         if source.get("resource_type") != "source":
             continue
-        if source.get("schema") != "raw":
+        if source.get("schema") != "propertyiq_staging":
             continue
         columns = [
             {
@@ -609,7 +683,7 @@ def _catalog_from_manifest(path: Path) -> list[dict[str, Any]]:
     existing = {(t["schema"], t["table"]) for t in tables}
     for table in CURATED_CATALOG:
         key = (table["schema"], table["table"])
-        if table["schema"] == "raw" and key not in existing:
+        if table["schema"] == "propertyiq_staging" and key not in existing:
             tables.append(table)
     if not tables:
         raise ValueError("no agent_queryable models in manifest")

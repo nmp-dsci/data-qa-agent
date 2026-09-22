@@ -14,15 +14,17 @@ The product is branded **Data Pilot** in the UI; the repository and services kee
 
 Requires Docker and the portfolio's central platform (`make platform-up` starts `../nmp-central-ai`:
 Postgres+pgvector with this project's database `dataqa`, and MLflow). Then one command boots the stack —
-the Alembic migration job, the dlt+dbt pipeline, backend-api, data-agent, frontend:
+the Alembic migration job, the dbt pipeline, backend-api, data-agent, frontend:
 
 ```bash
 make up       # build + start everything (migrate + pipeline run first, then the services start)
 ```
 
-On startup two one-shot jobs run in order: **`migrate`** (`alembic upgrade head` — schema + RLS + seed) then
-**`pipeline`** (dlt ingests the CSVs into `raw`, dbt builds the growth marts). By default the pipeline uses the
-small committed **sample** so `make up` is fast; load the full real datasets with `make pipeline-full`.
+On startup two one-shot jobs run in order: **`migrate`** (`alembic upgrade head` — schema + RLS + seed, and
+the `postgres_fdw` import of `propertyiq_staging.*`) then **`pipeline`** (dbt builds staging copies + the
+marts from those foreign tables). The data itself is landed and cleaned by the sibling
+[`propertyiq_getdata`](../propertyiq_getdata) project into database `propertyiq` on the same central
+Postgres (`propertyiq-getdata db update` there); this project ingests nothing.
 
 Then open **http://localhost:5230** and sign in as a test user:
 
@@ -38,13 +40,12 @@ Security isolates them.
 
 ### The data
 
-Two real NSW datasets (place the CSVs in `data/`, they are gitignored — too big to commit):
-
-- `data/nswgov_df.csv` — NSW Government property **sales** (~516 MB) → `marts.property_sales`
-- `data/rentboard_df.csv` — NSW Rental Bond Board **rent** (~63 MB) → `marts.property_rent`
-
-Small committed **samples** live in `data/samples/` (regenerate from the full files with `make samples`); they
-keep `make up` and CI fast while preserving suburbs present in both datasets across the growth window.
+This project ingests nothing itself. The sibling [`propertyiq_getdata`](../propertyiq_getdata) project lands
+the NSW Government property **sales** and Rental Bond Board **rent** CSVs (plus ABS/RBA series), cleans them
+to record grain, and writes them into database `propertyiq` on the central Postgres; migration 0040 imports
+that `staging` schema here as `propertyiq_staging.*` foreign tables over `postgres_fdw`. CI stands up a
+`propertyiq` database from a fixture (`tests/fixtures/propertyiq_staging.sql`, a 500-row extract exported by
+`propertyiq-getdata db export-fixture`) so `make up`/CI stay fast without needing the real upstream data.
 
 ```bash
 make smoke    # end-to-end test: login -> ask -> response, query audit, and RLS isolation
@@ -60,8 +61,8 @@ make reset    # stop, then drop ONLY this project's schemas in database dataqa (
 Three services + one database, matching the locked design (see `AGENTS.md` for the full picture):
 
 ```
-   data-pipeline (dlt + dbt)  ──build──►  marts.*
-        (raw → staging → marts)               ▲
+   data-pipeline (dbt)        ──build──►  marts.*
+   (propertyiq_staging → staging → marts)     ▲
 frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / DeepSeek)
       :5230                     :8000                     :8100
                                    │                         │
@@ -74,8 +75,9 @@ frontend (React+Vite)  →  backend-api (FastAPI)  →  data-agent (NL→SQL / D
   admin-only Golden Examples authoring page.
 - **backend-api** — validates the JWT, sets the per-request RLS context, orchestrates the agent, records
   conversations/messages/events.
-- **data-pipeline** — dlt ingests the CSVs into `raw`; dbt transforms `raw → staging → marts` (tests + docs),
-  building the two suburb-keyed growth marts with RLS applied by post-hooks.
+- **data-pipeline** — dbt transforms `propertyiq_staging → staging → marts` (tests + docs), building the
+  aggregate marts with RLS applied by post-hooks. Inputs are foreign tables over `postgres_fdw` into the
+  `propertyiq` database that `../propertyiq_getdata` fills.
 - **data-agent** — turns the question into a single read-only `SELECT` (JOINing the marts on `suburb` for the
   combined view), runs it under RLS, phrases the answer, and hands over a Google Slides deck backed by a
   Google Sheet when the answer warrants one. Offline stub by default; DeepSeek (or Claude) when a key is set,
@@ -108,7 +110,7 @@ rest are started on demand by the command shown.
 | **3000** | **Grafana** — queue-scaling dashboard (`obs` profile) | <http://localhost:3000> | 3000 | `make queue-up` |
 | **9090** | **Prometheus** — ad-hoc PromQL over queue/worker metrics (`obs` profile) | <http://localhost:9090> | 9090 | `make queue-up` |
 
-Two services run and exit rather than listening: **`migrate`** (Alembic) and **`pipeline`** (dlt + dbt).
+Two services run and exit rather than listening: **`migrate`** (Alembic) and **`pipeline`** (dbt).
 They publish no ports; `make up` waits for them to finish before the API starts.
 
 ### Application surfaces on the backend API
@@ -157,16 +159,15 @@ services/backend-api/   FastAPI: dev-auth (+ dev-mode session cookie), RLS conte
 services/data-agent/    NL→SQL stub + pluggable LLM path; read-only SQL under RLS with guardrails; eval
                         graders + LLM-as-judge (agent/eval_graders.py, agent/eval_judge.py); build
                         fingerprint (agent/version.py, GET /agent/version)
-services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
+services/data-pipeline/ dbt project (propertyiq_staging → staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
 frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore + golden authoring
                         + Evaluations (admin, read-only) + Settings (incl. admin key management) + event tracking
 db/init/                canonical schema/RLS/seed SQL applied by the 0001 Alembic baseline
 config/                 datasets.yaml (registry), users.seed.yaml (dev users)
-data/                   full NSW CSVs (gitignored) + data/samples/ (small committed samples)
 evals/                  journeys.yaml (user-journey evals) + cases/*.yaml (version-controlled golden pack,
                         the source of truth for `app.eval_cases` — see `make eval-export`/`eval-import`)
-scripts/                make_samples.py, smoke_test.py, build_poa_paths.py (Explore choropleth paths,
+scripts/                smoke_test.py, build_poa_paths.py (Explore choropleth paths,
                         see scripts/build_topojson.md), explore_parity.py + AWS deploy scripts
                         (aws_build_push, run_job, deploy_frontend, cloud_smoke); eval_pack.py, eval_run.py,
                         eval_compare.py, eval_diagnose.py — the eval loop's DB<->pack, runner, gate, and
@@ -190,28 +191,33 @@ infra/terraform/        AWS deployment (live) — see infra/terraform/README.md;
 docker-compose.yml      the local dev stack;  Makefile has the shortcuts
 ```
 
-## Data pipeline (dlt + dbt)
+## Data pipeline (dbt over propertyiq_staging)
 
-`services/data-pipeline/` is the `pipeline` job. `run.py` runs **dlt** (CSV → `raw.property_sales` / `raw.property_rent`) then
-`dbt build` over `services/data-pipeline/dbt/`:
+`services/data-pipeline/` is the `pipeline` job. `run.py` runs `dbt build` over `services/data-pipeline/dbt/`.
+There is no ingestion step: since propertyiq_getdata plan s03 the NSW sales / rent data (and the ABS/RBA
+economic series) are landed and cleaned to record grain by `../propertyiq_getdata` in database
+`propertyiq` on the central Postgres, and migration 0040 imports its `staging` schema here as
+`propertyiq_staging.*` foreign tables (`postgres_fdw`, read-only role `propertyiq_ro`). Re-run
+`make migrate` to pick up a new upstream table; run `make pipeline` after propertyiq's weekly `db update`.
 
-- `staging.property_sales` / `staging.property_rent` clean the raw rows; `int_postcode_geo` keeps the
-  suburb↔postcode bridge for rent lookups.
+- `staging.property_sales` / `staging.property_rent` are local, RLS-scoped copies of the foreign tables
+  (policies cannot attach to foreign tables); `int_postcode_geo` keeps the suburb↔postcode bridge for rent
+  lookups; `dim_postcode_geo` comes from `propertyiq_staging.geo_postcode`.
 - `marts.property_sales` and `marts.property_rent` are the two aggregate marts, one per staging table. They
   keep cleaned attributes plus additive metrics so the agent can re-aggregate and derive growth/yield later.
 - `dbt docs generate` writes the manifest the agent reads (`get_schema()`), grounding the LLM in the real marts.
 
-Run on the sample with `make pipeline`, on the full data with `make pipeline-full`. dbt tests run as part of
+Run it with `make pipeline`. dbt tests run as part of
 `dbt build` — structural (`not_null`, uniqueness in `dbt/tests/assert_*_unique_*.sql`) and use-case sanity
 checks (`dbt/tests/assert_*_has_coverage.sql`, `assert_growth_pct_*`, `assert_yield_pct_*`) that assert each
 mart actually has enough postcodes and sane values to answer the questions it's meant for — a build fails if a
 mart can't support its use case, not just if it's malformed.
 
-**Reviewing raw → staging → marts:** run `make pipeline` (or `-full`) then `make pipeline-docs` to serve the
+**Reviewing propertyiq_staging → staging → marts:** run `make pipeline` then `make pipeline-docs` to serve the
 dbt docs UI at http://localhost:8180 — lineage graph, every model's SQL, and column descriptions (the same
-text `get_schema()` feeds the agent) for `raw` sources through `staging`/intermediate to `marts`. To inspect
-actual rows/counts at any layer, connect to Postgres directly (`localhost:5432`, database `dataqa`, schemas `raw`/`staging`/`marts`
-— see Ports below).
+text `get_schema()` feeds the agent) for the `propertyiq_staging` source through `staging`/intermediate to
+`marts`. To inspect actual rows/counts at any layer, connect to Postgres directly (`localhost:5432`, database
+`dataqa`, schemas `staging`/`marts`, or database `propertyiq` for the foreign tables' origin — see Ports below).
 
 ## Explore
 
@@ -462,9 +468,10 @@ query the answer rests on.
 - **`central Postgres down`** — `make up` preflights `localhost:5432`; run `make platform-up`. This stack
   has no database container of its own (platform M3). If 5230/8000/8100 clash, change the left-hand side of
   the `ports:` mapping in `docker-compose.yml`.
-- **Empty marts / no data** — the `pipeline` job builds the marts. Re-run it with `make pipeline` (sample) or
-  `make pipeline-full` (real data), or `make reset` then `make up` for a clean slate (drops this project's
-  schemas in `dataqa` so migrations + pipeline re-run; the database itself stays).
+- **Empty marts / no data** — the `pipeline` job builds the marts from `propertyiq_staging.*`. If those are
+  empty, run `propertyiq-getdata db update` in `../propertyiq_getdata` first; then `make pipeline`, or
+  `make reset` then `make up` for a clean slate (drops this project's schemas in `dataqa` so migrations +
+  pipeline re-run; the database itself stays).
 - **Frontend can't reach the API** — CORS allows `http://localhost:5230`; if you change the frontend port,
   add the new origin to `EXTRA_CORS_ORIGINS` in `.env` (comma-separated) rather than editing
   `cors_origins` in `services/backend-api/app/config.py`.

@@ -21,15 +21,15 @@ services:
     restart: "no"
     networks: [default, nmp-central]
 
-  # One-shot job: dlt ingests the CSVs into `raw`, then dbt builds the marts.
-  # Defaults to the small committed sample; `make pipeline` loads the full CSVs.
+  # One-shot job: dbt builds staging (RLS copies) + marts from propertyiq_staging.*,
+  # the foreign tables migration 0040 imports from the propertyiq database that
+  # ../propertyiq_getdata fills (`db update` there). Nothing is ingested here.
   pipeline:
     build:
       context: .
       dockerfile: services/data-pipeline/Dockerfile
     environment:
       ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-postgresql://nmp:nmp@postgres:5432/dataqa}
-      PIPELINE_SOURCE: ${PIPELINE_SOURCE:-sample}
       # s32 W2: the pipeline records its own freshness (marts age + dbt pass) to
       # app.pipeline_runs through the backend, so the deck's freshness lamp is fed
       # by the job that changes the data. Best-effort: the pipeline runs BEFORE
@@ -38,7 +38,6 @@ services:
       OPS_API_URL: http://backend-api:8000
       OPS_INGEST_TOKEN: ${OPS_INGEST_TOKEN:-dev-ops-token}
     volumes:
-      - ./data:/data:ro
       - dbt_target:/app/dbt/target
     restart: "no"
     networks: [default, nmp-central]

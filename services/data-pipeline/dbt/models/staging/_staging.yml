@@ -4,11 +4,11 @@ models:
   - name: stg_sales
     description: >
       Record-grain NSW residential sales. Physical table:
-      staging.property_sales, matching raw.property_sales and
-      marts.property_sales for easy lineage. One row per sale, cleaned and
-      typed from raw.property_sales (dates parsed, postcode normalised,
-      non-market transfers filtered, house/unit derived). This is the clean,
-      verified mirror of raw.property_sales, kept as wide as relevant rather
+      staging.property_sales, a local RLS-scoped copy of
+      propertyiq_staging.property_sales (the shared clean layer published by
+      propertyiq_getdata; the cleaning rules live there). One row per sale,
+      cleaned and typed (dates parsed, postcode normalised, non-market
+      transfers filtered, house/unit derived), kept as wide as relevant rather
       than a curated subset. Most questions are better answered by
       marts.property_sales (a precomputed aggregate) — use this table only when a question is
       genuinely about individual records or a metric the marts don't carry:
@@ -61,18 +61,17 @@ models:
   - name: stg_rent
     description: >
       Record-grain NSW rental bond lodgements. Physical table:
-      staging.property_rent, matching raw.property_rent and marts.property_rent
-      for easy lineage. One row per bond, cleaned and typed from
-      raw.property_rent (all 5 raw columns are used; nothing was left out). Same
-      role as staging.property_sales — the clean mirror of raw.property_rent.
-      Most questions are better answered by marts.property_rent; use this table for
-      record-level questions raw.property_rent's own columns can answer, e.g.
+      staging.property_rent, a local RLS-scoped copy of
+      propertyiq_staging.property_rent (cleaning rules live in
+      propertyiq_getdata). One row per bond, cleaned and typed. Same role as
+      staging.property_sales. Most questions are better answered by
+      marts.property_rent; use this table for record-level questions, e.g.
       "2-bedroom vs 3-bedroom rent in a suburb". Always filter by postcode
       and/or rent_month first — this table is ~3M rows. Belongs to the
       `nsw_rent` dataset (RLS-scoped).
     columns:
       - name: rent_id
-        description: Surrogate key, unique per row (raw.property_rent has no natural id column, and two distinct bonds can legitimately share every other value).
+        description: Surrogate key, unique per row (the bond source has no natural id column, and two distinct bonds can legitimately share every other value).
         data_tests: [not_null, unique]
       - name: rent_date
         description: Full lodgement date.
@@ -103,7 +102,7 @@ models:
       sale records, with a sale count. Does NOT collapse to one suburb per
       postcode — postcode <-> suburb is not 1:1, so every locality is present.
       Use it to resolve a suburb name to its postcode(s), especially for rent
-      questions: marts.property_rent has no suburb (raw.property_rent has no locality), so
+      questions: marts.property_rent has no suburb (the bond source has no locality), so
       "rent in <suburb>" means looking the suburb up here to get its
       postcode(s), then querying rent by postcode. Belongs to the `nsw_sales`
       dataset (RLS-scoped, since it's derived from sales).

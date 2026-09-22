@@ -1,51 +1,25 @@
 version: 2
 
 sources:
-  - name: raw
-    description: Landing tables loaded by dlt from the NSW CSVs.
-    schema: raw
+  - name: propertyiq_staging
+    description: >
+      The shared clean layer published by propertyiq_getdata (database
+      `propertyiq` on the central cluster), imported here as foreign tables over
+      postgres_fdw by migration 0040. Typed, cleaned, record grain; column names
+      are propertyiq's contract (dbt/models/staging/_staging.yml there). This
+      project builds its marts and RLS on top and ingests nothing itself.
+    schema: propertyiq_staging
     tables:
       - name: property_sales
-        description: NSW Government property sales (dealing-level), one row per sale.
-        columns:
-          - name: property_id
-            data_type: text
-          - name: locality
-            data_type: text
-          - name: postcode
-            data_type: text
-          - name: contract_dt
-            data_type: text
-          - name: sale_price
-            data_type: text
-          - name: prop_purpose
-            data_type: text
-          - name: strata_no
-            data_type: text
-          - name: area_sqm
-            data_type: text
-          - name: area_type
-            data_type: text
-          - name: zoning
-            data_type: text
-          - name: house_no
-            data_type: text
-          - name: street_name
-            data_type: text
-          - name: unit_no
-            data_type: text
-          - name: prop_name
-            data_type: text
+        description: One row per residential NSW sale (RESIDENCE, $10k-$8M, 2010+), from NSW Valuer General weekly files.
       - name: property_rent
-        description: NSW Rental Bond Board lodgements, one row per bond.
-        columns:
-          - name: lodgement_dt
-            data_type: text
-          - name: postcode
-            data_type: text
-          - name: property_type
-            data_type: text
-          - name: bedrooms
-            data_type: text
-          - name: weekly_rent
-            data_type: text
+        description: One row per NSW rental bond lodgement (positive weekly rent, 2010+).
+      - name: geo_postcode
+        description: Postcode -> SA2/SA3/SA4/GCCSA/state (ABS ASGS).
+      - name: econ_series
+        description: >
+          ABS + RBA economic series, long format, newest vintage per dataset:
+          one row per (series_id, period_start). Join econ_headline_series on
+          series_id to pick headline measures by name.
+      - name: econ_headline_series
+        description: Curated series_id -> measure/region/adjustment map (unemployment_rate_pct, mean_dwelling_price_k, cash_rate_target_pct, ...).

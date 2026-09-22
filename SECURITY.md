@@ -41,7 +41,7 @@ rather than a pipeline (decision Q4).
 | Runaway model cost | Tiered per-user daily caps shared across `/ask` and the SQL assist; a request cap and a token ceiling per run | `app/limits.py`; cap hits recorded to the ops deck |
 | Prompt injection | The question is the only untrusted input, and it cannot reach SQL except through the guard above. A successful injection still cannot read another user's rows or write anything | `security/promptfoo/redteam.yaml` (`prompt-injection` class) |
 | Direct calls to the agent service | The agent's App Runner URL is public with the backend as its only intended caller; `AGENT_SHARED_TOKEN` middleware rejects everything else (except `/health`) | `agent/main.py` middleware |
-| Secrets in code or logs | Secrets live in AWS Secrets Manager, injected as env vars; Terraform generates them so no human handles them. Logfire's built-in scrubber plus `app/scrub.py` on persistence | `pii-exfil` red-team class; `tests/test_scrub.py` |
+| Secrets in code or logs | Local/foundations deployments: secrets live in AWS Secrets Manager, injected as env vars, Terraform-generated so no human handles them. The live demo (s52, `infra/terraform/demo/`) ships **no secrets at all** — `JWT_SECRET` is generated per process under `DB_DISABLED=1`. Logfire's built-in scrubber plus `app/scrub.py` on persistence | `pii-exfil` red-team class; `tests/test_scrub.py` |
 | Denials going unnoticed | Every guard refusal records `status='error'` on the run plus a `security_denied` event, surfaced on `/ops` | `_run_status` in `app/routers/ask.py` |
 
 ### Layered, not single-point

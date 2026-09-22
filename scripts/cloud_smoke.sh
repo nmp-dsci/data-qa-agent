@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Cloud smoke test — runs against the LIVE AWS deployment (no Google login
-# needed): health endpoints, auth config, the agent's token guard, a real
-# governed SQL query through the agent, and the CloudFront frontend.
+# Cloud smoke test — runs against the LIVE AWS demo deployment: backend health,
+# the demo door, a replayed answer, the DB-less contract (no database-backed
+# route is mounted), and the CloudFront frontend including the static exhibit
+# dump the tabs read from.
 #
 #   ./scripts/cloud_smoke.sh
 #
-# URLs default to the Terraform outputs; override via BACKEND_URL / AGENT_URL /
-# FRONTEND_URL. Needs AWS creds (SSO profile locally, OIDC in CI) to read the
-# agent shared token from Secrets Manager.
+# URLs default to the Terraform outputs; override via BACKEND_URL / FRONTEND_URL.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -16,12 +15,11 @@ AWS_REGION="${AWS_REGION:-ap-southeast-2}"
 export AWS_REGION
 if [ -n "$AWS_PROFILE" ]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
-TF_DIR="infra/terraform/foundations"
+TF_DIR="infra/terraform/demo"
 BACKEND_URL="${BACKEND_URL:-$(terraform -chdir="$TF_DIR" output -raw backend_api_url)}"
-# `-` not `:-`: an explicitly empty AGENT_URL means "no agent" (demo mode) and
-# must not fall through to the terraform lookup.
-AGENT_URL="${AGENT_URL-$(terraform -chdir="$TF_DIR" output -raw data_agent_url)}"
 FRONTEND_URL="${FRONTEND_URL:-$(terraform -chdir="$TF_DIR" output -raw cloudfront_domain)}"
+# One file the Evals tab reads; its name follows frontend/src/lib/exhibits.ts.
+EXHIBIT_PATH="${EXHIBIT_PATH:-exhibits/admin/eval-runs__limit=50.json}"
 
 PASS=0
 FAIL=0
@@ -36,74 +34,53 @@ check() { # name, expected, actual
   fi
 }
 
+json_field() { python3 -c 'import json,sys; print(json.load(sys.stdin)['"$1"'])'; }
+status_of() { curl -s -m 30 -o /dev/null -w '%{http_code}' "$@"; }
+
 echo "==> cloud smoke against:"
 echo "    backend:  $BACKEND_URL"
-echo "    agent:    $AGENT_URL"
 echo "    frontend: $FRONTEND_URL"
 
-# 1. Backend health + auth mode
+# 1. Backend health + the demo door
 check "backend /health ok" \
-  "ok" "$(curl -sf -m 30 "$BACKEND_URL/health" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-# s38: demo mode reports "demo" (the walk-in door) while google stays the
-# owner door — either is a healthy prod; "dev" or a blank would not be.
-AUTH_MODE="$(curl -sf -m 30 "$BACKEND_URL/auth/config" | python3 -c 'import json,sys; print(json.load(sys.stdin)["auth_mode"])' || echo "")"
-case "$AUTH_MODE" in google|demo) AUTH_OK="$AUTH_MODE" ;; *) AUTH_OK="google|demo" ;; esac
-check "backend auth_mode google|demo ($AUTH_MODE)" "$AUTH_OK" "$AUTH_MODE"
+  "ok" "$(curl -sf -m 30 "$BACKEND_URL/health" | json_field '"status"')"
+check "backend /health/db reports disabled (no database)" \
+  "disabled" "$(curl -sf -m 30 -H 'X-Client-Channel: web' "$BACKEND_URL/health/db" | json_field '"status"')"
+check "backend auth_mode demo" \
+  "demo" "$(curl -sf -m 30 "$BACKEND_URL/auth/config" | json_field '"auth_mode"')"
 check "backend /me rejects bad token (401)" \
-  "401" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer bogus' "$BACKEND_URL/me")"
+  "401" "$(status_of -H 'Authorization: Bearer bogus' "$BACKEND_URL/me")"
+check "backend dev-login is closed (403)" \
+  "403" "$(status_of -X POST -H 'Content-Type: application/json' -d '{"username":"admin"}' "$BACKEND_URL/auth/dev-login")"
 
-# 1b. The MCP surface (s36). Credential-free on purpose: the useful signal is
-#     401 vs 404. A 404 means the mount failed and the surface silently is not
-#     there — the exact failure that would otherwise deploy green, since nothing
-#     else in this script would touch it. A 200 would mean it is open to anyone.
+TOKEN="$(curl -sf -m 30 -X POST "$BACKEND_URL/auth/demo-login" | json_field '"access_token"' || echo "")"
+check "demo-login mints a session" "true" "$([ -n "$TOKEN" ] && echo true || echo false)"
+AUTH=(-H "Authorization: Bearer $TOKEN")
+
+# 2. A replayed answer end to end
+QUESTION="$(curl -sf -m 30 "${AUTH[@]}" "$BACKEND_URL/demo/questions" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["question"])' || echo "")"
+check "demo questions listed" "true" "$([ -n "$QUESTION" ] && echo true || echo false)"
+ANSWER="$(curl -sf -m 60 "${AUTH[@]}" -X POST -H 'Content-Type: application/json' \
+  -d "$(python3 -c 'import json,sys; print(json.dumps({"question": sys.argv[1]}))' "$QUESTION")" "$BACKEND_URL/ask" || echo "{}")"
+check "replay answers with a report" \
+  "true" "$(printf '%s' "$ANSWER" | python3 -c 'import json,sys; print(str(bool(json.load(sys.stdin).get("report"))).lower())')"
+check "conversation history is empty (nothing persisted)" \
+  "[]" "$(curl -sf -m 30 "${AUTH[@]}" "$BACKEND_URL/conversations")"
+
+# 3. The DB-less contract: database-backed surfaces are not mounted at all
+check "/sql not mounted (404)" "404" "$(status_of "${AUTH[@]}" -X POST -H 'Content-Type: application/json' -d '{"sql":"select 1"}' "$BACKEND_URL/sql")"
+check "/explore/datasets not mounted (404)" "404" "$(status_of "${AUTH[@]}" "$BACKEND_URL/explore/datasets")"
+check "/admin/eval-goldens not mounted (404)" "404" "$(status_of "${AUTH[@]}" "$BACKEND_URL/admin/eval-goldens")"
 check "backend /mcp mounted and gated (401)" \
-  "401" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' -X POST "$BACKEND_URL/mcp" \
-    -H 'Content-Type: application/json' \
-    -H 'Accept: application/json, text/event-stream' \
-    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+  "401" "$(status_of -X POST "$BACKEND_URL/mcp" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{}')"
 
-# 2+3. Agent health, token guard, and a governed query through its executor
-#    (agent -> guardrails -> Aurora over TLS). In demo mode (s38) there is no
-#    agent service at all — terraform's data_agent_url output is empty — so
-#    these are skipped rather than failed; the deploy after #34 destroyed the
-#    agent was the first to trip over this (2026-08-29).
-if [ -z "$AGENT_URL" ]; then
-  echo "  – agent checks skipped: demo mode, no data-agent service"
-else
-  check "agent /health ok" \
-    "ok" "$(curl -sf -m 30 "$AGENT_URL/health" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-  check "agent rejects unauthenticated (401)" \
-    "401" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$AGENT_URL/agent/config")"
-
-  # Proves the whole path without depending on RLS grants (a synthetic user
-  # legitimately sees 0 rows from the marts). Retries once after 60s: the
-  # first hit after idle can catch the Aurora resume.
-  TOKEN=$(aws secretsmanager get-secret-value --secret-id data-qa/agent-shared-token \
-    --query SecretString --output text)
-  SQL='{"sql": "select 1 as n", "user": {"id": "00000000-0000-0000-0000-000000000000", "role": "user"}}'
-  run_sql() {
-    curl -sf -m 120 -X POST "$AGENT_URL/agent/sql" \
-      -H "Content-Type: application/json" -H "X-Agent-Token: $TOKEN" -d "$SQL" \
-      | python3 -c 'import json,sys; d=json.load(sys.stdin); print("rows" if d.get("row_count",0) >= 1 and d.get("error") is None else "bad: %s" % d.get("error"))'
-  }
-  RESULT=$(run_sql || echo "request-failed")
-  if [ "$RESULT" != "rows" ]; then
-    echo "  … first agent query failed ($RESULT) — retrying in 60s (Aurora resume)"
-    sleep 60
-    RESULT=$(run_sql || echo "request-failed")
-  fi
-  check "agent SQL executor reaches Aurora" "rows" "$RESULT"
-fi
-
-# 4. Frontend serves from CloudFront (SPA fallback too)
-check "frontend 200" \
-  "200" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$FRONTEND_URL/")"
-check "frontend SPA fallback 200" \
-  "200" "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$FRONTEND_URL/chat")"
+# 4. Frontend serves from CloudFront (SPA fallback + the static exhibit dump)
+check "frontend 200" "200" "$(status_of "$FRONTEND_URL/")"
+check "frontend SPA fallback 200" "200" "$(status_of "$FRONTEND_URL/chat")"
+check "exhibit dump served ($EXHIBIT_PATH)" \
+  "true" "$(curl -sf -m 30 "$FRONTEND_URL/$EXHIBIT_PATH" | python3 -c 'import json,sys; json.load(sys.stdin); print("true")' 2>/dev/null || echo false)"
 
 echo "==> smoke: $PASS passed, $FAIL failed"
-# s32 W4: hand the counts to the caller so the deploy record carries "smoke 8/8"
-# rather than a bare pass/fail — the deck's timeline shows how much was checked.
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   {
     echo "passed=$PASS"

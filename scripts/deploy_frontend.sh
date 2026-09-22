@@ -20,7 +20,7 @@ if [ -n "$AWS_PROFILE" ]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
 : "${VITE_API_URL:?Set VITE_API_URL to the backend-api URL (baked into the bundle)}"
 
-TF_DIR="infra/terraform/foundations"
+TF_DIR="infra/terraform/demo"
 BUCKET="${FRONTEND_BUCKET:-$(terraform -chdir="$TF_DIR" output -raw frontend_bucket)}"
 DIST_ID="${CLOUDFRONT_DISTRIBUTION_ID:-$(terraform -chdir="$TF_DIR" output -raw cloudfront_distribution_id)}"
 
@@ -41,7 +41,13 @@ echo "==> syncing dist/ -> s3://$BUCKET"
 # few deploys' worth of stale chunks costs cents; deleting them breaks every
 # open session on every deploy.
 aws s3 sync frontend/dist "s3://$BUCKET" \
-  --exclude index.html --cache-control "public,max-age=31536000,immutable"
+  --exclude index.html --exclude "exhibits/*" \
+  --cache-control "public,max-age=31536000,immutable"
+# The exhibit dump (s52) is re-exported and redeployed under the SAME file
+# names, so it must not inherit the immutable year — five minutes keeps a
+# returning visitor from reading last month's evals.
+aws s3 sync frontend/dist/exhibits "s3://$BUCKET/exhibits" --delete \
+  --cache-control "public,max-age=300"
 aws s3 cp frontend/dist/index.html "s3://$BUCKET/index.html" \
   --cache-control "no-cache"
 

@@ -1,7 +1,8 @@
 name: Deploy (AWS)
 
-# The s12 push-button deploy: merge to main → build/push images → terraform
-# apply → run the migrate task → deploy the frontend → smoke-test the live URL.
+# Merge to main → build/push the demo image → terraform apply (demo stack) →
+# start an App Runner deployment → deploy the frontend → smoke-test the live
+# URL. Five minutes, no database, no migrations, no pipeline (s52).
 # Auth is GitHub OIDC into the data-qa-github-deploy IAM role (no stored keys —
 # the role + provider were created by infra/terraform/bootstrap). ci.yml stays
 # the PR gate; this only runs post-merge (or manually via workflow_dispatch).
@@ -12,11 +13,6 @@ on:
       - ".lavish/**"
       - "**.md"
   workflow_dispatch:
-    inputs:
-      skip_pipeline:
-        description: "Skip the dlt+dbt pipeline job (marts stay as-is) — for code-only redeploys"
-        type: boolean
-        default: false
 
 permissions:
   id-token: write # OIDC token for AWS
@@ -37,7 +33,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -47,97 +43,32 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Deploy telemetry (s32 W4). The runner cannot reach Aurora — its security
-      # group admits the ECS jobs, App Runner's egress ranges and operator CIDRs,
-      # not GitHub — so the record goes through backend-api's token-gated ops
-      # ingest endpoint. The token is read with the role we already assumed, so
-      # nothing has to be stored as a GitHub secret.
-      - name: Read the ops ingest token
-        id: ops
-        # Defense in depth beyond the internal guards below: deploy telemetry
-        # must never be the thing that fails a real deploy (the same principle
-        # scripts/ops_ingest.py itself follows by always exiting 0).
-        continue-on-error: true
-        run: |
-          # The job-level env sets AWS_PROFILE="" (empty, not unset) so the AWS
-          # CLI uses the OIDC-supplied credentials instead of a local SSO
-          # profile. The AWS CLI treats a SET-BUT-EMPTY AWS_PROFILE as a real
-          # profile name to look up ("The config profile () could not be
-          # found") rather than "no profile" — every other script this workflow
-          # calls (run_job.sh, wait_apprunner.sh, aws_build_push.sh,
-          # deploy_frontend.sh, cloud_smoke.sh) already guards against this;
-          # this inline step is the one place that ran a raw `aws` command
-          # without it, which broke every aws call below and skipped the
-          # entire deploy.
-          if [ -n "${AWS_PROFILE:-}" ]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
-          if ! url=$(aws apprunner list-services \
-            --query "ServiceSummaryList[?ServiceName=='data-qa-backend-api'].ServiceUrl | [0]" \
-            --output text 2>/tmp/ops_url_err); then
-            echo "::warning::Failed to look up backend-api's URL — deploy telemetry will not be recorded this run: $(cat /tmp/ops_url_err)"
-            url=""
-          fi
-          if [ -n "$url" ] && [ "$url" != "None" ]; then
-            if ! token=$(aws secretsmanager get-secret-value \
-              --secret-id data-qa/ops-ingest-token --query SecretString --output text 2>/tmp/ops_token_err); then
-              echo "::warning::Failed to read data-qa/ops-ingest-token from Secrets Manager — deploy telemetry will not be recorded this run: $(cat /tmp/ops_token_err)"
-              token=""
-            fi
-          else
-            token=""
-          fi
-          echo "::add-mask::$token"
-          echo "OPS_API_URL=https://$url" >> "$GITHUB_ENV"
-          echo "OPS_INGEST_TOKEN=$token" >> "$GITHUB_ENV"
-          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      # Records status=running. ops_ingest.py exits 0 even when the token is
-      # missing or the API is unreachable: deploy telemetry must never be the
-      # thing that fails a deploy.
-      - name: Record deploy start
-        run: python3 scripts/ops_ingest.py deploy --sha "$GITHUB_SHA" --actor "$GITHUB_ACTOR"
-
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build & push service images (linux/amd64)
+      - name: Build & push the demo image (linux/amd64)
         run: ./scripts/aws_build_push.sh
 
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false # plain stdout so -raw outputs work in scripts
 
-      # Pushing :latest (above) kicks off App Runner auto-deploys. UpdateService
-      # is rejected while one is in progress, so an apply that changes service
-      # config (e.g. instance sizing) raced them and failed with
-      # InvalidStateException: OPERATION_IN_PROGRESS (2026-07-21) — settle first.
-      - name: Wait for image auto-deploys to settle
-        run: ./scripts/wait_apprunner.sh "image auto-deploys, before terraform apply"
-
-      - name: Terraform apply (foundations)
-        working-directory: infra/terraform/foundations
+      - name: Terraform apply (demo)
+        working-directory: infra/terraform/demo
         run: |
           terraform init -input=false
           terraform apply -input=false -auto-approve
 
-      - name: Run database migrations (ECS one-shot)
-        run: ./scripts/run_job.sh migrate
-
-      # The marts must be rebuilt whenever the dbt models change, and nothing
-      # else does it: this workflow used to run only `migrate`, so prod marts
-      # silently froze at whatever the last manual pipeline run produced. That
-      # is exactly how prod went 12 days stale and `marts.property_yield` never
-      # got built — the Explore tab then 500'd on every load (UndefinedTableError)
-      # while dev, whose pipeline runs on every `make up`, was fine. Running it
-      # on every deploy costs ~15 minutes; a deploy that ships current code
-      # against stale marts costs an outage. workflow_dispatch can skip it for
-      # code-only redeploys.
-      - name: Run data pipeline (ECS one-shot, dlt + dbt)
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_pipeline }}
-        run: ./scripts/run_job.sh pipeline
-
-      - name: Wait for App Runner deployments
-        # Any apply-triggered service updates must finish so the smoke test
-        # hits the new code/config, not the old instances.
-        run: ./scripts/wait_apprunner.sh "apply-triggered updates, before smoke test"
+      # auto_deployments is off (it bills $1/service/month for the ECR trigger),
+      # so the release step is explicit: point the service at the image just
+      # pushed. UpdateService from the apply above may still be in flight, in
+      # which case start-deployment is rejected — settle first, then start.
+      - name: Start the App Runner deployment
+        run: |
+          unset AWS_PROFILE
+          ./scripts/wait_apprunner.sh "apply-triggered update, before start-deployment"
+          ARN=$(terraform -chdir=infra/terraform/demo output -raw apprunner_service_arn)
+          aws apprunner start-deployment --service-arn "$ARN" >/dev/null
+          ./scripts/wait_apprunner.sh "new image, before smoke test"
 
       - uses: actions/setup-node@v4
         with:
@@ -145,43 +76,9 @@ jobs:
 
       - name: Build & deploy frontend (S3 + CloudFront)
         run: |
-          VITE_API_URL=$(terraform -chdir=infra/terraform/foundations output -raw backend_api_url)
+          VITE_API_URL=$(terraform -chdir=infra/terraform/demo output -raw backend_api_url)
           export VITE_API_URL
           ./scripts/deploy_frontend.sh
 
       - name: Cloud smoke test (live URL)
-        id: smoke
         run: ./scripts/cloud_smoke.sh
-
-      # Close the deploy record either way. `if: always()` is the point: a deploy
-      # that failed is exactly the one the timeline needs to show, and a run that
-      # only records successes makes the deploy-success rate meaningless.
-      - name: Record deploy outcome
-        if: always()
-        # Same reasoning as the step above: this must degrade, never fail the job.
-        continue-on-error: true
-        run: |
-          if [ "${{ job.status }}" = "success" ]; then deploy_status=deployed; else deploy_status=failed; fi
-          smoke_args=""
-          if [ -n "${{ steps.smoke.outputs.total }}" ]; then
-            smoke_args="--smoke-passed ${{ steps.smoke.outputs.passed }} --smoke-total ${{ steps.smoke.outputs.total }}"
-          fi
-          # "Read the ops ingest token" can fail or be skipped (continue-on-error
-          # above, or the job failing before it ran), leaving `started` empty —
-          # the duration arithmetic below must not crash the way it did the
-          # first time this ran (a bash syntax error on `N -  `). Falling back
-          # to "now" reports a harmless 0s duration instead.
-          started="${{ steps.ops.outputs.started }}"
-          if [ -z "$started" ]; then started="$(date +%s)"; fi
-          # shellcheck disable=SC2086  # word splitting is intended for smoke_args
-          python3 scripts/ops_ingest.py deploy \
-            --sha "$GITHUB_SHA" --actor "$GITHUB_ACTOR" --status "$deploy_status" \
-            --duration-s "$(( $(date +%s) - started ))" \
-            $smoke_args \
-            --notes "${{ github.event_name }} · run ${{ github.run_number }}"
-
-      # Fold the deploy into the deck's windows now, so /ops reflects it on the
-      # next look rather than after the read-path staleness timer.
-      - name: Refresh the ops rollup
-        if: always()
-        run: python3 scripts/ops_ingest.py rollup

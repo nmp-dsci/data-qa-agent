@@ -1,11 +1,9 @@
-.PHONY: help up down reset db-preflight db-smoke logs ps samples migrate mcp-test mcp-smoke pipeline pipeline-full pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote platform-up mlflow-preflight loadtest redteam injection-suite ops-rollup rollback handover-poll demo-up dev-up demo-smoke demo-dbless-up demo-dbless-smoke export-exhibits
+.PHONY: help up down reset db-preflight db-smoke logs ps migrate mcp-test mcp-smoke pipeline pipeline-docs smoke e2e e2e-chat e2e-ops eval eval-diagnose eval-export eval-import eval-compare eval-pack-version eval-lint mlflow-init register promote platform-up mlflow-preflight loadtest redteam injection-suite ops-rollup rollback handover-poll demo-up dev-up demo-smoke demo-dbless-up demo-dbless-smoke export-exhibits
 
 help:
-	@echo "make samples       - (re)generate the small committed sample CSVs from the full data/"
 	@echo "make up            - build + start the whole stack (migrate, pipeline, api, agent, web) on the central Postgres"
 	@echo "make migrate       - run the Alembic migration job on its own (against the central Postgres)"
-	@echo "make pipeline      - run the dlt + dbt pipeline on the SAMPLE data (against the central Postgres)"
-	@echo "make pipeline-full - run the pipeline on the FULL data/ CSVs (516MB/63MB — slower)"
+	@echo "make pipeline      - dbt build over propertyiq_staging (fdw) -> staging/marts + RLS; run after propertyiq_getdata `db update`"
 	@echo "make pipeline-docs - serve the dbt docs UI (lineage, raw->staging->marts) at localhost:8180"
 	@echo "make down          - stop the stack"
 	@echo "make reset         - stop the stack and drop ONLY this project's schemas in database dataqa (asks; next up re-migrates)"
@@ -43,17 +41,11 @@ help:
 	@echo ""
 	@echo "Then open http://localhost:5230 and sign in as admin / user1 / user2."
 
-samples:
-	python3 scripts/make_samples.py
-
 migrate:
 	docker compose run --rm --build migrate
 
 pipeline:
 	docker compose run --rm --build pipeline
-
-pipeline-full:
-	docker compose run --rm --build -e PIPELINE_SOURCE=full pipeline
 
 pipeline-docs:
 	@echo "dbt docs UI: http://localhost:8180 (Ctrl+C to stop). Run 'make pipeline' first so target/ is fresh."

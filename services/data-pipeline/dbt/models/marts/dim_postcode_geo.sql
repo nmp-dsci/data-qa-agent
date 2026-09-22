@@ -11,7 +11,7 @@
 }}
 
 -- Postcode -> ABS geography rollups (SA2 / SA3 / SA4 / Greater-Capital / state),
--- sourced from the committed postcode_geo seed (ABS 2016 postcode correspondences,
+-- sourced from propertyiq's staging.geo_postcode (was this project's seed) (ABS 2016 postcode correspondences,
 -- one row per postcode). This is the geo dimension the Explore profiler and the
 -- agent roll a postcode up to a region by — the sales/rent/yield marts carry only
 -- postcode, so "rent by SA3" joins through here.
@@ -26,4 +26,4 @@ select
     sa4_name,
     gcc_name,
     state_name
-from {{ ref('postcode_geo') }}
+from {{ source('propertyiq_staging', 'geo_postcode') }}

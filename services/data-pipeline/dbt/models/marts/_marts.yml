@@ -4,7 +4,7 @@ models:
   - name: mart_property_sales
     description: >
       Aggregate mart for cleaned NSW residential sales. Physical table:
-      marts.property_sales, matching raw.property_sales and
+      marts.property_sales, matching propertyiq_staging.property_sales and
       staging.property_sales for easy lineage. One row per (postcode, suburb,
       property_type, area_band, zoning, month). Holds cleaned attributes plus
       additive aggregate metrics so consumers can re-aggregate to higher levels
@@ -50,7 +50,7 @@ models:
   - name: mart_property_rent
     description: >
       Aggregate mart for cleaned NSW rental bond lodgements. Physical table:
-      marts.property_rent, matching raw.property_rent and staging.property_rent
+      marts.property_rent, matching propertyiq_staging.property_rent and staging.property_rent
       for easy lineage. One row per (postcode, property_type, bedroom_band,
       month). Rent source data has no suburb, so the honest aggregate grain is
       postcode-level. Holds cleaned attributes plus additive aggregate metrics

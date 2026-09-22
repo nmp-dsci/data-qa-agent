@@ -36,7 +36,7 @@ Confirmed via the Lavish architecture review — these drive the build:
 | F | Agent framework | **Pydantic AI** (native tool-calling loop) |
 | G | Model provider | **Abstracted** — default Claude, DeepSeek as a config-swappable cost option |
 | H | Agent memory | **Postgres + pgvector** now, isolated by RLS |
-| I | Data pipeline | **dbt-core** (transforms) + **dlt** (CSV→Postgres ingestion) |
+| I | Data pipeline | **dbt-core** (transforms over `propertyiq_staging` fdw tables; dlt ingestion retired — propertyiq_getdata lands the data) |
 
 ## Target architecture (v1)
 
@@ -51,7 +51,7 @@ and the local `make up` stack.)*
 | **frontend** | React + Vite (TypeScript), Google Identity Services | Container App (or Static Web App) | Chat UI, sign-in, event tracking, admin dashboard, charts |
 | **backend-api** | FastAPI, SQLAlchemy, asyncpg | Container App (internal ingress) | JWT validation, RLS context, `/ask` + `/events`, orchestration |
 | **data-agent** | Pydantic AI, pluggable LLM, Logfire | Container App (no public ingress) | NL→SQL, analysis tools, memory, structured answers, guardrails |
-| **data-pipeline** | dbt-core (Postgres) + dlt | Container Apps Job (scheduled/triggered) | CSV→raw ingest, raw→marts transforms, tests, docs/manifest the agent reads |
+| **data-pipeline** | dbt-core (Postgres) | Container Apps Job (scheduled/triggered) | propertyiq_staging→marts transforms, tests, docs/manifest the agent reads |
 | **database** | PostgreSQL 16 + RLS + pgvector | PostgreSQL Flexible Server | Source of truth, per-user isolation, agent memory |
 | **identity** | OIDC / OAuth2 | Google Sign-in (external IdP, cloud-neutral) | Login, MFA, token issuance |
 | **secrets** | Managed Identity | Key Vault | DB creds, model API keys |
@@ -77,7 +77,7 @@ and the local `make up` stack.)*
 Phase 3b tracking/admin).**
 `make platform-up && make up` boots
 the whole app on `localhost` with no Azure: the central Postgres+pgvector (nmp-central-ai, database
-`dataqa`), a one-shot **Alembic migration job**, the **dlt+dbt pipeline job**, backend-api, data-agent,
+`dataqa`), a one-shot **Alembic migration job**, the **dbt pipeline job**, backend-api, data-agent,
 and frontend (see README for details). `migrate` runs
 `alembic upgrade head` (schema + RLS + seed) then `pipeline` builds the growth marts from the committed sample;
 the services wait for both. `make smoke` runs the end-to-end test (login → ask top growth suburbs → response,
@@ -101,11 +101,13 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
   (Decision G, `agent/provider.py`). Tools: `run_sql`, `make_chart` (Vega-Lite), `remember`; recall is
   programmatic (pgvector cosine search over `app.user_memories`, RLS-scoped) seeded into the system prompt
   every turn. Traced with Logfire (`LOGFIRE_TOKEN` optional — local-only tracing without it).
-- **Pipeline (Phase 2b):** the `pipeline` job (`services/data-pipeline/`) runs **dlt** (CSVs → `raw`) then
-  **dbt build** (`raw → staging → marts`, tests + docs). The two datasets `nsw_sales` / `nsw_rent` build
-  `marts.mart_sales_growth` / `marts.mart_rent_growth`, each one row per `suburb` and RLS-scoped by a dbt
-  post-hook, so the agent JOINs them on `suburb` for the "top growth suburbs" view. Runs on the small committed
-  sample by default (`data/samples/`); `make pipeline-full` loads the full CSVs (`data/*.csv`, gitignored).
+- **Pipeline (Phase 2b, re-based on propertyiq 2026-09-22):** the `pipeline` job (`services/data-pipeline/`)
+  runs **dbt build** (`propertyiq_staging → staging → marts`, tests + docs). The data is landed and cleaned by
+  `../propertyiq_getdata` into database `propertyiq` on the central Postgres (its `staging` = the shared,
+  app-agnostic record-grain layer); migration 0040 imports it here as `propertyiq_staging.*` foreign tables
+  over `postgres_fdw`. This project owns only its marts + RLS (post-hooks). dlt, the CSV inputs, the sample
+  CSVs and `PIPELINE_SOURCE` are gone; CI stands in a `propertyiq` database from
+  `tests/fixtures/propertyiq_staging.sql` (a 500-row extract exported by `propertyiq-getdata db export-fixture`).
   The agent reads the dbt manifest (`get_schema()`) to ground the LLM. Secrets come from `.env`, not Key Vault.
   dbt tests run as part of `build`: structural tests (`not_null`, uniqueness) plus use-case sanity tests
   (`dbt/tests/assert_*_has_coverage.sql`, `assert_growth_pct_*`, `assert_yield_pct_*`) that fail the pipeline if
@@ -133,7 +135,7 @@ SQL audit trail, RLS isolation of user2); `uv run pytest` also runs the `evals/j
 services/backend-api/   FastAPI: dev-auth + Google ID-token validation, RLS context, /ask, /events, admin, explore,
                         the webhook/Slack front doors and the MCP surface mounted at /mcp (app/mcp_surface.py)
 services/data-agent/    NL→SQL stub + Claude path, read-only SQL under RLS with guardrails, Explore grounding
-services/data-pipeline/ dlt ingestion + dbt project (staging → marts, tests, RLS post-hooks)
+services/data-pipeline/ dbt project (propertyiq_staging → staging → marts, tests, RLS post-hooks)
 services/db-migrate/    Alembic migrations (the `migrate` job; runs local + cloud)
 frontend/               React + Vite: login (dev stub or Google Sign-in) + chat + Explore tab + event tracking
 frontend/public/geo/    pre-built choropleth paths (poa_nsw.paths.json — see scripts/build_topojson.md)
@@ -712,13 +714,14 @@ File-driven so datasets are added by editing config, not code:
 
 ```
 data/incoming/         # drop CSVs here (e.g. housing.csv)
-config/datasets.yaml   # dataset registry: slug, csv path, description, access
+config/datasets.yaml   # dataset registry: slug, propertyiq_staging source, description, access
 config/users.seed.yaml # dev seed users: admin, user1, user2
 evals/journeys.yaml    # user-journey tests
 ```
 
-Flow: pipeline reads `datasets.yaml` → dlt ingests each CSV → `raw` → dbt → `marts`; a row is upserted into
-`datasets`, and `access` populates `dataset_access` so RLS enforces who can query it. The `nsw_yield` dataset
+Flow: `../propertyiq_getdata` lands + cleans → `propertyiq.staging` → (fdw, migration 0040) `propertyiq_staging.*`
+→ dbt → `staging` (RLS copies) → `marts`; migration 0002 seeds `datasets`, and `access` populates
+`dataset_access` so RLS enforces who can query it. The `nsw_yield` dataset
 (`marts.property_yield`, sales JOINed to rent by postcode/property_type/month, plus the `dim_postcode_geo`
 region-rollup mart) is registered directly by migration 0025 instead of the pipeline's dataset upsert, since
 it derives from the other two marts rather than its own CSV. App config

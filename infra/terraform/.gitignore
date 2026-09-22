@@ -17,3 +17,6 @@ override.tf.json
 *_override.tf.json
 
 # Keep the provider lock file committed (.terraform.lock.hcl) for reproducible runs
+
+# Saved plan files carry state/secrets; never commit them
+*.tfplan

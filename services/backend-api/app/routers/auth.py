@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -7,6 +10,8 @@ from sqlalchemy import text
 from ..auth import SESSION_COOKIE_NAME, CurrentUser, create_access_token, get_current_user
 from ..config import settings
 from ..db import rls_connection
+
+log = logging.getLogger("uvicorn.error")
 
 router = APIRouter(tags=["auth"])
 
@@ -141,7 +146,41 @@ async def demo_login(response: Response) -> TokenResponse:
     """
     if not settings.demo_mode:
         raise HTTPException(status_code=404, detail="Not found")
-    return await _session_for(settings.demo_username, response, "demo_login_success")
+    session = await _session_for(settings.demo_username, response, "demo_login_success")
+    await _sweep_demo_conversations(session.user.id)
+    return session
+
+
+_SWEEP_INTERVAL_S = 6 * 3600
+_last_sweep_monotonic: float | None = None
+
+
+async def _sweep_demo_conversations(demo_user_id: str) -> None:
+    """Clear the shared demo user's day-old chat residue, at most once per 6h.
+
+    Runs from the login path on purpose: a visitor has just woken Aurora, so
+    the sweep rides on that connection instead of a background timer resuming
+    a paused cluster four times a day for an empty demo (s52). Events and
+    query_runs are kept — they are the analytics tab's raw material.
+    """
+    global _last_sweep_monotonic
+    now = time.monotonic()
+    if _last_sweep_monotonic is not None and now - _last_sweep_monotonic < _SWEEP_INTERVAL_S:
+        return
+    _last_sweep_monotonic = now
+    try:
+        # RLS trap: an empty user context sees (and deletes) zero rows, so the
+        # delete has to run AS the demo user.
+        async with rls_connection(demo_user_id) as conn:
+            await conn.execute(
+                text(
+                    "DELETE FROM app.conversations WHERE user_id = :uid "
+                    "AND created_at < now() - interval '24 hours'"
+                ),
+                {"uid": demo_user_id},
+            )
+    except Exception as exc:  # noqa: BLE001 — housekeeping must never fail a login
+        log.warning("demo sweep skipped: %s", exc)
 
 
 @router.post("/auth/logout")

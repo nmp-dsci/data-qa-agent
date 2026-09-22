@@ -1,0 +1,416 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>s52 · AWS cost profile &amp; database options</title><style>
+/* Flight Deck / Night Flight tokens — frontend/src/styles.css:9-147 */
+:root {
+  --gray-950:#0a0d15; --gray-900:#111522; --gray-850:#171c2b; --gray-800:#1e2434;
+  --gray-700:#242b3d; --gray-600:#333d55; --gray-100:#eaecf3; --gray-300:#9aa4bb;
+  --gray-400:#7a84a0; --ink-code:#0a0d13;
+  --gold-500:#d9a84e; --gold-ink:#1a1204; --gold-200:#f2ca79;
+  --blue-400:#7fb0ff; --green-400:#9ece6a; --amber-400:#e0af68;
+  --red-400:#f2777a; --purple-400:#c58fff; --cyan-400:#7dcfff;
+  --bg:var(--gray-950); --panel:var(--gray-900); --panel-2:var(--gray-850);
+  --panel-3:var(--gray-800); --border:var(--gray-700); --border-2:var(--gray-600);
+  --text:var(--gray-100); --muted:var(--gray-300); --faint:var(--gray-400);
+  --accent:var(--gold-500); --accent-ink:var(--gold-ink); --accent-soft:var(--gold-200);
+  --accent-2:var(--blue-400); --code-bg:var(--ink-code);
+  --good:var(--green-400); --good-border:#33502f;
+  --warn:var(--amber-400); --warn-border:#6b5a2a;
+  --bad:var(--red-400); --bad-border:#6b2a2a;
+  --purple:var(--purple-400); --purple-border:#5a3a6b;
+  --info:var(--cyan-400); --info-border:#2f5a7a;
+  --radius-sm:6px; --radius:8px; --radius-lg:10px; --radius-xl:14px;
+  --sans:"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --elev-1:0 1px 2px rgba(0,0,0,.4);
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ee; --panel:#fff; --panel-2:#efece2; --panel-3:#e7e2d4;
+  --border:#ddd7c7; --border-2:#c9c1ac; --text:#23293a; --muted:#67604e;
+  --faint:#7d7663; --accent:#9a7328; --accent-ink:#fffaf0; --accent-soft:#7a5c22;
+  --accent-2:#2456c9; --code-bg:#f3f0e6; --good:#35803f; --good-border:#a9d3ae;
+  --warn:#8f6a12; --warn-border:#ddc48a; --bad:#c03535; --bad-border:#e3aaaa;
+  --purple:#7137c8; --purple-border:#cdb3ee; --info:#0d6e8c; --info-border:#a4cfdd;
+}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 96px}
+h1{font-size:34px;line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;font-weight:650}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 6px;font-weight:600;font-family:var(--mono)}
+h3{font-size:21px;margin:0 0 12px;letter-spacing:-.01em;font-weight:620}
+h4{font-size:15px;margin:0 0 8px;font-weight:620}
+p{margin:0 0 14px;color:var(--muted)}
+p.lede{font-size:17px;color:var(--text);max-width:72ch}
+strong{color:var(--text);font-weight:620}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1px 5px;color:var(--accent-soft);overflow-wrap:anywhere}
+section{margin:0 0 64px}
+.sec-head{border-top:1px solid var(--border);padding-top:18px;margin-bottom:24px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;box-shadow:var(--elev-1)}
+.card.tight{padding:14px 16px}
+.thesis{background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--border-2);border-left:3px solid var(--accent);border-radius:var(--radius-lg);padding:22px 24px;margin:28px 0 0}
+.thesis .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.thesis p{color:var(--text);font-size:16.5px;margin:0 0 10px}
+.thesis p:last-child{margin:0}
+.b{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;font-weight:600}
+.b-good{color:var(--good);border-color:var(--good-border);background:rgba(158,206,106,.08)}
+.b-warn{color:var(--warn);border-color:var(--warn-border);background:rgba(224,175,104,.08)}
+.b-bad{color:var(--bad);border-color:var(--bad-border);background:rgba(242,119,122,.08)}
+.b-info{color:var(--info);border-color:var(--info-border);background:rgba(125,207,255,.08)}
+.b-pur{color:var(--purple);border-color:var(--purple-border);background:rgba(197,143,255,.08)}
+.b-mut{color:var(--faint);border-color:var(--border-2)}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--border-2);white-space:nowrap;background:var(--panel-2)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--muted)}
+tbody tr:last-child td{border-bottom:none}
+td.n{color:var(--text);font-weight:600}
+td.num{font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+th.num{text-align:right}
+tr.dead td{opacity:.55}
+tr.sub td{background:var(--panel-2);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);padding:6px 14px}
+tfoot td{border-top:1px solid var(--border-2);font-weight:700;color:var(--text);background:var(--panel-2)}
+figure{margin:0 0 20px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{margin-top:14px;font-size:13px;color:var(--faint);border-top:1px solid var(--border);padding-top:12px}
+.svg-l{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;fill:var(--faint)}
+.svg-t{font-family:var(--sans);font-size:12px;fill:var(--text);font-weight:600}
+.svg-s{font-family:var(--sans);font-size:10.5px;fill:var(--muted)}
+.svg-m{font-family:var(--mono);font-size:10.5px;fill:var(--text)}
+.note{border-left:3px solid;border-radius:0 var(--radius) var(--radius) 0;padding:13px 16px;margin:0 0 16px;background:var(--panel-2);font-size:14px}
+.note p:last-child{margin-bottom:0}
+.n-bad{border-color:var(--bad)} .n-good{border-color:var(--good)} .n-warn{border-color:var(--warn)} .n-info{border-color:var(--info)}
+ul.clean{list-style:none;padding:0;margin:0 0 14px}
+ul.clean li{padding:5px 0 5px 20px;position:relative;color:var(--muted);font-size:14px}
+ul.clean li::before{content:"";position:absolute;left:4px;top:14px;width:5px;height:5px;border-radius:50%;background:var(--accent);opacity:.65}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;overflow-x:auto;margin:0 0 16px}
+pre code{background:none;border:none;padding:0;color:var(--gray-100);font-size:12.5px;line-height:1.6;display:block;white-space:pre}
+.cm{color:var(--faint)} .ck{color:var(--purple)} .cs{color:var(--good)} .cf{color:var(--accent-2)} .cd{color:var(--accent-soft)} .cb{color:var(--bad)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:12px;margin:22px 0 0}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px}
+.stat .v{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--text);letter-spacing:-.02em;line-height:1.1}
+.stat .l{font-size:12px;color:var(--faint);margin-top:6px}
+.stat.hot .v{color:var(--warn)} .stat.good .v{color:var(--good)}
+.opt-card{position:relative;padding-top:22px}
+.opt-card .tag{position:absolute;top:-11px;left:16px}
+.opt-card .price{font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:-.02em;color:var(--text);margin:4px 0 2px}
+.opt-card .price small{font-size:13px;color:var(--faint);font-weight:400;letter-spacing:0}
+.opt-card .delta{font-family:var(--mono);font-size:12.5px;margin-bottom:12px}
+.opt-card.rec{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+.opt-card.dead{opacity:.72}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;font-size:13.5px;margin:0 0 12px}
+.kv dt{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding-top:3px}
+.kv dd{margin:0;color:var(--muted)}
+.ms{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 20px}
+.ms-n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);background:var(--accent);width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;grid-row:span 2}
+.ms-n.gate{background:var(--bad);color:#fff}
+.ms-rail{border-left:1px dashed var(--border-2);margin:8px 0 0 17px;grid-column:1}
+.ms-b{padding:0 0 22px}
+.ms-b h4{margin-bottom:4px}
+.ms-b p{font-size:13.5px;margin-bottom:8px}
+form.q{background:var(--panel);border:1px solid var(--border-2);border-radius:var(--radius-lg);padding:20px;margin:0 0 16px}
+form.q h4{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+form.q .qid{font-family:var(--mono);font-size:11px;color:var(--accent);border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:1px 6px}
+form.q .qsub{font-size:13px;color:var(--faint);margin:0 0 14px}
+label.opt{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;cursor:pointer;background:var(--panel-2);transition:border-color .12s}
+label.opt:hover{border-color:var(--border-2)}
+label.opt:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--panel-2))}
+label.opt input{margin-top:3px;accent-color:var(--accent);flex-shrink:0}
+label.opt .ot{font-weight:620;color:var(--text);font-size:14px}
+label.opt .od{font-size:12.5px;color:var(--faint);display:block;margin-top:2px}
+button.send{font-family:var(--sans);font-weight:620;font-size:13.5px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius);padding:9px 18px;cursor:pointer}
+button.send:hover{background:var(--accent-soft)}
+.qstate{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin-left:12px}
+.qstate.on{color:var(--good)}
+.foot{border-top:1px solid var(--border);padding-top:16px;color:var(--faint);font-size:12.5px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+.toc a{font-family:var(--mono);font-size:11.5px;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:4px 10px}
+.toc a:hover{color:var(--text);border-color:var(--border-2)}
+.bar{display:grid;grid-template-columns:minmax(0,180px) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px;padding:5px 0}
+.bar .lab{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .trk{height:14px;background:var(--panel-3);border-radius:4px;overflow:hidden}
+.bar .fill{height:100%;border-radius:4px}
+.bar .val{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.f-db{background:var(--warn)} .f-ar{background:var(--accent-2)} .f-sec{background:var(--purple)} .f-net{background:var(--info)} .f-misc{background:var(--faint)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--faint);margin-top:8px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.legend .l-db::before{background:var(--warn)} .legend .l-ar::before{background:var(--accent-2)} .legend .l-sec::before{background:var(--purple)} .legend .l-net::before{background:var(--info)} .legend .l-misc::before{background:var(--faint)}
+</style></head><body><div class="wrap">
+
+<header>
+<h2>s52 · data-qa-agent · 2026-09-22</h2>
+<h1>AWS cost profile &amp; what "turn off the database" actually means</h1>
+<p class="lede">Real Cost Explorer numbers for account 089783391188, what keeps Aurora awake, why the demo can't simply run without Postgres today, and three routes to a cheaper site — down to the transcript-rag-agent shape (one App Runner, no VPC, no DB, no secrets).</p>
+<div class="stats">
+  <div class="stat"><div class="v">$41.07</div><div class="l">Sept 1–22 actual, whole account (incl. GST)</div></div>
+  <div class="stat"><div class="v">≈$55<small>/mo</small></div><div class="l">run-rate, all 4 demo sites (incl. GST)</div></div>
+  <div class="stat hot"><div class="v">≈$36<small>/mo</small></div><div class="l">data-qa-agent's share (Aurora + backend + plumbing)</div></div>
+  <div class="stat hot"><div class="v">$18.5<small>/mo</small></div><div class="l">Aurora line — 82% of it is a 6-hourly self-inflicted wake</div></div>
+  <div class="stat good"><div class="v">≈$5<small>/mo</small></div><div class="l">data-qa at transcript-rag-agent shape (Option C, replay + static exhibits)</div></div>
+</div>
+<div class="toc">
+  <a href="#profile">1 · Cost profile</a><a href="#wake">2 · Why Aurora is awake</a><a href="#deps">3 · What the demo needs Postgres for</a><a href="#options">4 · Options</a><a href="#blueprint">5 · Option C blueprint</a><a href="#account">6 · Account-wide extras</a><a href="#decide">7 · Decide</a>
+</div>
+<div class="thesis">
+  <div class="k">The short version</div>
+  <p><strong>The database is already "off" when idle</strong> — Aurora Serverless v2 is at min 0 ACU with a 1 h auto-pause. What you were paying for is the backend's own demo janitor waking it four times a day (<code>main.py:66-93</code> — <strong>now removed, uncommitted</strong>) and the plumbing that exists only because there is a database at all: a public IPv4, 12 Secrets Manager secrets, the ECS migrate/pipeline jobs, the VPC.</p>
+  <p><strong>Two honest levers.</strong> A 10-line fix ships today and takes data-qa from ~$36 to ~$17/mo. Getting to the transcript-rag-agent shape (~$5/mo, no cold-start hang, 5-minute deploys) means cutting the DB out of the demo path: SQL editor and Explore become dev-only, the goldens/evals/ops exhibits become a static JSON dump in S3, and the demo user stops being a database row — about a day. "Stop the cluster" is not a real option: RDS auto-restarts it after 7 days and the demo login breaks on the first visit.</p>
+</div>
+</header>
+
+<section id="profile">
+<div class="sec-head"><h2>1 · Cost profile</h2><h3>Where the money goes — Sept 1–22 actual, projected to a full month</h3></div>
+<p>Source: <code>aws ce get-cost-and-usage</code> grouped by usage type, 2026-09-01 → 09-22 (21.5 days), scaled ×1.395 for a 30-day month. Aug (31 days, includes half a month of the now-deleted 4 GB data-agent service and a late start for the Singapore demos) came to $53.08 — consistent with this run-rate. June/July were fully covered by credits.</p>
+<div class="card" style="margin-bottom:16px">
+  <div class="k" style="font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:10px">Run-rate by line item, $/mo ex-GST</div>
+  <div class="bar"><span class="lab">Aurora compute (ACU-h)</span><div class="trk"><div class="fill f-db" style="width:100%"></div></div><span class="val">$15.20</span></div>
+  <div class="bar"><span class="lab">App Runner · Singapore ×2</span><div class="trk"><div class="fill f-ar" style="width:55%"></div></div><span class="val">$8.30</span></div>
+  <div class="bar"><span class="lab">App Runner · Sydney ×2</span><div class="trk"><div class="fill f-ar" style="width:58%"></div></div><span class="val">$8.80</span></div>
+  <div class="bar"><span class="lab">Secrets Manager (12)</span><div class="trk"><div class="fill f-sec" style="width:32%"></div></div><span class="val">$4.80</span></div>
+  <div class="bar"><span class="lab">App Runner auto-deploy ×4</span><div class="trk"><div class="fill f-ar" style="width:26%"></div></div><span class="val">$4.00</span></div>
+  <div class="bar"><span class="lab">Public IPv4 (Aurora endpoint)</span><div class="trk"><div class="fill f-net" style="width:23%"></div></div><span class="val">$3.50</span></div>
+  <div class="bar"><span class="lab">Aurora storage I/O</span><div class="trk"><div class="fill f-db" style="width:20%"></div></div><span class="val">$3.00</span></div>
+  <div class="bar"><span class="lab">ECR image storage</span><div class="trk"><div class="fill f-misc" style="width:12%"></div></div><span class="val">$1.90</span></div>
+  <div class="bar"><span class="lab">Route 53 (dtreee.com)</span><div class="trk"><div class="fill f-misc" style="width:3%"></div></div><span class="val">$0.50</span></div>
+  <div class="bar"><span class="lab">Aurora storage + Fargate + misc</span><div class="trk"><div class="fill f-misc" style="width:3%"></div></div><span class="val">$0.50</span></div>
+  <div class="legend"><span class="l-db">Aurora</span><span class="l-ar">App Runner</span><span class="l-sec">Secrets</span><span class="l-net">Network</span><span class="l-misc">Other</span></div>
+</div>
+<div class="tw"><table>
+<thead><tr><th>Line item</th><th class="num">Sept MTD</th><th class="num">Run-rate /mo</th><th>Belongs to</th><th>What it is</th></tr></thead>
+<tbody>
+<tr class="sub"><td colspan="5">Database and everything that exists only because there is one</td></tr>
+<tr><td class="n">Aurora Serverless v2 compute</td><td class="num">$10.91</td><td class="num">$15.20</td><td><span class="b b-warn">data-qa</span></td><td>54.5 ACU-hours at ~$0.20/ACU-h. Awake 187 of 506 hours (37%) — see §2.</td></tr>
+<tr><td class="n">Aurora storage I/O</td><td class="num">$2.17</td><td class="num">$3.00</td><td><span class="b b-warn">data-qa</span></td><td>9.9M I/O requests. Mostly the pipeline rewriting 3.2M mart rows on every deploy, plus the janitor's scans.</td></tr>
+<tr><td class="n">Aurora storage</td><td class="num">$0.17</td><td class="num">$0.24</td><td><span class="b b-warn">data-qa</span></td><td>2.4 GB volume. One automated snapshot (1-day retention).</td></tr>
+<tr><td class="n">Public IPv4</td><td class="num">$2.48</td><td class="num">$3.50</td><td><span class="b b-warn">data-qa</span></td><td>54.79.73.12 on the RDS network interface — the "no NAT, public endpoint" decision in <code>network.tf</code>. $0.005/h whether the DB is paused or not.</td></tr>
+<tr><td class="n">Secrets Manager</td><td class="num">$3.29</td><td class="num">$4.80</td><td><span class="b b-warn">data-qa</span></td><td>12 secrets × $0.40. Five are DB URLs, four belong to the agent/LLM/Slack/Logfire side that demo mode never uses.</td></tr>
+<tr><td class="n">ECS Fargate</td><td class="num">$0.14</td><td class="num">$0.20</td><td><span class="b b-warn">data-qa</span></td><td>migrate + pipeline one-shot tasks on each merge to main.</td></tr>
+<tr class="sub"><td colspan="5">Compute that serves visitors</td></tr>
+<tr><td class="n">App Runner · data-qa-backend-api</td><td class="num">$2.20</td><td class="num">$3.10</td><td><span class="b b-warn">data-qa</span></td><td>0.25 vCPU / 512 MB, min 1 instance. Provisioned-memory charge; vCPU-active was $0.01 all month — nobody is visiting.</td></tr>
+<tr><td class="n">App Runner · yt-agent-demo</td><td class="num">$4.10</td><td class="num">$5.70</td><td><span class="b b-info">transcript-rag</span></td><td>0.5 vCPU / 1 GB, Sydney. The shape this page proposes copying.</td></tr>
+<tr><td class="n">App Runner · dabstep-demo</td><td class="num">$2.98</td><td class="num">$4.15</td><td><span class="b b-info">dabstep</span></td><td>0.5 vCPU / 1 GB, Singapore.</td></tr>
+<tr><td class="n">App Runner · convfinqa-demo</td><td class="num">$2.98</td><td class="num">$4.15</td><td><span class="b b-info">convfinqa</span></td><td>0.5 vCPU / 1 GB, Singapore.</td></tr>
+<tr><td class="n">App Runner auto-deployments</td><td class="num">$4.00</td><td class="num">$4.00</td><td><span class="b b-mut">all 4</span></td><td>$1/service/month flat for <code>auto_deployments_enabled = true</code>. CI could call <code>start-deployment</code> instead.</td></tr>
+<tr class="sub"><td colspan="5">Storage, DNS, tax</td></tr>
+<tr><td class="n">ECR</td><td class="num">$1.33</td><td class="num">$1.90</td><td><span class="b b-mut">mostly data-qa</span></td><td>~14 GB billed. <code>data-qa/data-agent</code> alone holds 25 GB of images for a service that no longer deploys; <code>data-pipeline</code> 15 GB.</td></tr>
+<tr><td class="n">Route 53</td><td class="num">$0.50</td><td class="num">$0.50</td><td><span class="b b-mut">shared</span></td><td>Hosted zone <code>dtreee.com</code>, 2 records. Not referenced by any of these stacks.</td></tr>
+<tr><td class="n">S3 / data transfer</td><td class="num">$0.05</td><td class="num">$0.07</td><td><span class="b b-mut">shared</span></td><td>tfstate bucket, frontend bucket, CloudFront origin fetches — effectively free.</td></tr>
+<tr><td class="n">GST</td><td class="num">$3.73</td><td class="num">$5.00</td><td><span class="b b-mut">—</span></td><td>10% on everything above.</td></tr>
+</tbody>
+<tfoot><tr><td>Total</td><td class="num">$41.07</td><td class="num">≈ $55</td><td colspan="2">data-qa ≈ $36 · transcript-rag ≈ $8 · dabstep ≈ $6 · convfinqa ≈ $6 (incl. GST, auto-deploy split per service)</td></tr></tfoot>
+</table></div>
+<div class="note n-info"><p><strong>The comparison you asked for.</strong> yt-agent-demo (transcript-rag-agent) costs ≈$8/mo all-in: one App Runner at 1 GB ($5.70), $1 auto-deploy, a little ECR, GST. data-qa-agent's backend service is <em>cheaper</em> than that ($3.10) — the other $33 is the database and its plumbing.</p></div>
+</section>
+
+<section id="wake">
+<div class="sec-head"><h2>2 · Why Aurora is awake</h2><h3>A 6-hourly heartbeat, not visitors</h3></div>
+<p>CloudWatch <code>ServerlessDatabaseCapacity</code>, hourly, Sept 1–22: the cluster wakes at ~00:55, 05:55, 11:55 and 17:55 UTC every single day, weekends included, then stays up for the full 1 h <code>seconds_until_auto_pause</code> window. Each wake burns ~0.6 ACU-h; four a day ≈ 2.5 ACU-h ≈ $0.50/day ≈ $15/mo.</p>
+<figure>
+<svg viewBox="0 0 1000 190" role="img" aria-label="Aurora hourly capacity on Sunday 13 Sept 2026">
+  <text x="0" y="14" class="svg-l">Sunday 2026-09-13 · hourly average ACU · UTC</text>
+  <line x1="40" y1="150" x2="990" y2="150" stroke="var(--border-2)"/>
+  <line x1="40" y1="50" x2="990" y2="50" stroke="var(--border)" stroke-dasharray="3 4"/>
+  <text x="0" y="54" class="svg-l">1.0</text><text x="0" y="154" class="svg-l">0</text>
+  <g>
+    <rect x="44" y="88" width="30" height="62" fill="var(--warn)" opacity=".9"/>
+    <rect x="242" y="144" width="30" height="6" fill="var(--warn)" opacity=".9"/>
+    <rect x="281" y="97" width="30" height="53" fill="var(--warn)" opacity=".9"/>
+    <rect x="479" y="145" width="30" height="5" fill="var(--warn)" opacity=".9"/>
+    <rect x="518" y="96" width="30" height="54" fill="var(--warn)" opacity=".9"/>
+    <rect x="716" y="145" width="30" height="5" fill="var(--warn)" opacity=".9"/>
+    <rect x="755" y="97" width="30" height="53" fill="var(--warn)" opacity=".9"/>
+    <rect x="953" y="145" width="30" height="5" fill="var(--warn)" opacity=".9"/>
+  </g>
+  <g class="svg-l">
+    <text x="44" y="168">00</text><text x="162" y="168">03</text><text x="281" y="168">06</text><text x="400" y="168">09</text><text x="518" y="168">12</text><text x="637" y="168">15</text><text x="755" y="168">18</text><text x="874" y="168">21</text><text x="953" y="168">23</text>
+  </g>
+  <g class="svg-s">
+    <text x="59" y="82" text-anchor="middle">0.62</text><text x="296" y="91" text-anchor="middle">0.53</text><text x="533" y="90" text-anchor="middle">0.54</text><text x="770" y="91" text-anchor="middle">0.53</text>
+  </g>
+  <text x="40" y="186" class="svg-s">The :55 sliver is the wake; the following full hour is the auto-pause window ticking down at ≥0.5 ACU. Nothing else touched the DB that day.</text>
+</svg>
+<figcaption>Every day in the window looks like this — 8–10 awake hours regardless of weekday. Aug shows the same 55 ACU-h. Visitor traffic is invisible against it: App Runner vCPU-active for the backend was $0.01 for the month.</figcaption>
+</figure>
+<div class="grid g2">
+  <div class="card">
+    <h4>The source: <code>services/backend-api/app/main.py:66-93</code></h4>
+<pre><code><span class="cd">_DEMO_RESET_INTERVAL_S</span> = 6 * 3600
+
+<span class="ck">async def</span> <span class="cf">_demo_reset_loop</span>():
+    <span class="ck">while</span> True:
+        <span class="ck">try</span>:
+            <span class="cm"># RLS trap: look the demo user id up first …</span>
+            <span class="ck">async with</span> rls_connection(None) <span class="ck">as</span> conn:
+                demo_id = (<span class="ck">await</span> conn.execute(text(
+                    <span class="cs">"SELECT id FROM app.users WHERE username = :u"</span>), …)).scalar()
+            <span class="ck">if</span> demo_id <span class="ck">is not</span> None:
+                <span class="ck">async with</span> rls_connection(str(demo_id)) <span class="ck">as</span> conn:
+                    <span class="ck">await</span> conn.execute(text(
+                        <span class="cs">"DELETE FROM app.conversations WHERE user_id = :uid "</span>
+                        <span class="cs">"AND created_at &lt; now() - interval '24 hours'"</span>), …)
+        <span class="ck">except</span> Exception <span class="ck">as</span> exc:
+            log.warning(<span class="cs">"demo reset skipped: %s"</span>, exc)
+        <span class="ck">await</span> asyncio.sleep(<span class="cd">_DEMO_RESET_INTERVAL_S</span>)   <span class="cb"># ← wakes a paused Aurora 4×/day</span></code></pre>
+    <p style="font-size:13.5px">The janitor was designed as an in-process singleton so demo deployments wouldn't need EventBridge — correct — but it runs whether or not anyone has used the demo, and each run resumes a paused cluster, which then bills for the next hour.</p>
+  </div>
+  <div class="card">
+    <h4>Done — janitor removed, sweep moved into demo-login <span class="b b-good">uncommitted</span></h4>
+    <ul class="clean">
+      <li><strong><code>main.py</code></strong> — <code>_demo_reset_loop</code>, its 6 h interval and the lifespan task are deleted. Nothing in the process touches Postgres on a timer any more.</li>
+      <li><strong><code>routers/auth.py</code></strong> — <code>demo_login</code> now calls <code>_sweep_demo_conversations(user_id)</code> after minting the session: the same 24 h <code>DELETE FROM app.conversations</code>, run <em>as</em> the demo user (RLS trap preserved), throttled to once per 6 h, fail-soft so housekeeping can never break a login.</li>
+      <li><strong>Net effect</strong> — a visitor has already woken Aurora when the sweep runs, so it costs nothing extra; an idle demo never wakes the cluster. Ruff, mypy and the backend suite (109 passed) are green.</li>
+      <li><strong>Optional next</strong> — pause window 3600 → 900 s in <code>aurora.tf</code>; not applied yet (trade-off: more ~15 s cold starts for first visitors).</li>
+    </ul>
+    <p style="font-size:13.5px"><strong>Expected once deployed:</strong> Aurora compute $15 → ≈$2.50 (deploys + a handful of real visits). I/O $3 → ≈$1.50. About <strong>$14/mo</strong> for ~10 lines of Python and one terraform number.</p>
+  </div>
+</div>
+</section>
+
+<section id="deps">
+<div class="sec-head"><h2>3 · What the demo needs Postgres for</h2><h3>Why "just switch it off" breaks the site</h3></div>
+<p>With <code>DEMO_MODE=1</code> the chat answers come from an 1.8 MB JSON replay pack baked into the image (<code>app/demo_pack/*.json</code>, 8 questions) — no DB. Everything around it still is: 16 of 18 routers import <code>rls_connection</code>.</p>
+<div class="tw"><table>
+<thead><tr><th>Walk-in demo path</th><th>Touches Postgres?</th><th>Tables</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td class="n">Demo login → <code>/auth/demo-login</code>, <code>/me</code></td><td><span class="b b-bad">yes</span></td><td><code>app.users</code> (mints the session from the demo user row)</td><td><code>routers/auth.py:63-76, 142-152, 170</code></td></tr>
+<tr><td class="n">Chat → <code>/ask</code>, <code>/ask/stream</code></td><td><span class="b b-warn">answer no · bookkeeping yes</span></td><td>reads <code>app.users.plan</code>; writes <code>app.conversations</code>, <code>app.messages</code>, <code>app.query_runs</code>, <code>app.artifact_snapshots</code></td><td><code>routers/ask.py:193-202, 237-330, 566, 675</code></td></tr>
+<tr><td class="n">SQL editor + schema catalog <span class="b b-info">→ dev only</span></td><td><span class="b b-bad">yes — live SQL</span></td><td><code>marts.*</code> (3.2M rows across 4 marts) under RLS via <code>set_config('app.current_user_id')</code>; audit row in <code>app.events</code>; <code>information_schema</code></td><td><code>sql_exec.py:28-34, 61-65</code> · <code>routers/sql.py:85, 267</code></td></tr>
+<tr><td class="n">Explore tab <span class="b b-info">→ dev only</span></td><td><span class="b b-bad">yes — live aggregation</span></td><td><code>marts.*</code>, dataset grants via <code>app.is_admin()</code> / <code>app.current_user_id()</code> — 20 call sites</td><td><code>app/explore/service.py:218-220</code> and siblings</td></tr>
+<tr><td class="n">Analytics events</td><td><span class="b b-warn">yes — writes</span></td><td><code>app.events</code></td><td><code>routers/events.py</code></td></tr>
+<tr><td class="n">Goldens / Evals / Ops / Architecture / Admin exhibits <span class="b b-info">→ S3 dump</span></td><td><span class="b b-bad">yes — reads</span></td><td>the whole <code>app.*</code> eval schema; shown read-only to demo visitors</td><td><code>App.tsx:111-115, 181-183</code></td></tr>
+<tr><td class="n">Startup + janitor</td><td><span class="b b-warn">yes, tolerant</span></td><td>manifest validation against marts; 6 h conversation sweep</td><td><code>main.py:69-93, 100-108</code></td></tr>
+<tr><td class="n"><code>/health</code>, replay pack load</td><td><span class="b b-good">no</span></td><td>—</td><td><code>main.py:118, 308</code></td></tr>
+<tr><td class="n">Deploy workflow</td><td><span class="b b-bad">yes</span></td><td>ECS <code>migrate</code> then <code>pipeline</code> (rebuilds the marts from S3 on every merge — the I/O line)</td><td><code>.github/workflows/deploy-aws.yml:122, 133</code></td></tr>
+</tbody></table></div>
+<div class="grid g2" style="margin-top:16px">
+  <div class="note n-bad"><p><strong>"Stop" is not "off".</strong> <code>aws rds stop-db-cluster</code> is allowed on Aurora but RDS <em>automatically restarts it after 7 days</em>, storage keeps billing, the public IP keeps billing, and the first visitor gets a 500 on demo-login. It would save ~$15/mo for one week at a time and then silently come back. Not a plan.</p></div>
+  <div class="note n-warn"><p><strong>Destroy needs a snapshot first.</strong> <code>aurora.tf:64-65</code> sets <code>skip_final_snapshot = true</code> and <code>deletion_protection = false</code>. A <code>terraform destroy</code> of the cluster loses the curated goldens, eval history, promotions audit and knowledge pages that only live in <code>app.*</code>. A manual snapshot of the 2.4 GB volume costs ≈$0.05/mo to keep. Option C includes it as step 0 — nothing gets destroyed without your explicit go.</p></div>
+</div>
+</section>
+
+<section id="options">
+<div class="sec-head"><h2>4 · Options</h2><h3>Three routes, one non-route</h3></div>
+<div class="grid g3" style="margin-bottom:20px">
+  <div class="card opt-card">
+    <span class="tag b b-good">A · Trim today</span>
+    <h4>Keep Aurora, stop waking it</h4>
+    <div class="price">≈$17<small>/mo data-qa</small></div>
+    <div class="delta" style="color:var(--good)">−$19/mo · −$230/yr</div>
+    <dl class="kv">
+      <dt>Effort</dt><dd>~2 h, one PR through no-mistakes</dd>
+      <dt>Changes</dt><dd>lazy janitor · pause 3600→900 s · drop the 4 agent-side secrets in demo mode · ECR lifecycle on dead repos · auto-deploy → CI <code>start-deployment</code></dd>
+      <dt>Keeps</dt><dd>everything: live SQL editor, Explore, owner door, goldens/evals exhibits, analytics</dd>
+      <dt>Still pays</dt><dd>public IPv4 $3.50, DB storage, 8 secrets, ~15 s cold start for the first visitor after a pause</dd>
+    </dl>
+  </div>
+  <div class="card opt-card dead">
+    <span class="tag b b-bad">B · Stop the cluster</span>
+    <h4>Not viable</h4>
+    <div class="price">≈$21<small>/mo, 1 week at a time</small></div>
+    <div class="delta" style="color:var(--bad)">auto-restarts after 7 days</div>
+    <dl class="kv">
+      <dt>Effort</dt><dd>one CLI call</dd>
+      <dt>Breaks</dt><dd>demo-login, SQL editor, Explore, all exhibits — the site 500s on first visit</dd>
+      <dt>Still pays</dt><dd>storage, IPv4, secrets, and full compute again from day 8</dd>
+    </dl>
+    <p style="font-size:13px">Listed only because it's what "turn off the database" literally maps to in RDS.</p>
+  </div>
+  <div class="card opt-card rec">
+    <span class="tag b b-pur">C · transcript-rag shape</span>
+    <h4>No VPC, no DB, no secrets — replay + static exhibits</h4>
+    <div class="price">≈$5<small>/mo data-qa</small></div>
+    <div class="delta" style="color:var(--good)">−$31/mo · −$370/yr · deploys 30 → 5 min</div>
+    <dl class="kv">
+      <dt>Effort</dt><dd>~1 day across 2 PRs (see §5) — down from 2–3 days once SQL editor and Explore are dev-only</dd>
+      <dt>Changes</dt><dd>constant demo user, no persistence · goldens/evals/ops/architecture exhibits exported once as JSON to the frontend S3 bucket · SQL editor + Explore hidden in demo (dev keeps Postgres) · ~72 terraform resources → ~8</dd>
+      <dt>Gains</dt><dd>no cold-start hang ever · no migrate/pipeline jobs · no secrets to rotate · backend stays at 0.25 vCPU / 512 MB (no DuckDB in memory)</dd>
+      <dt>Loses</dt><dd>live SQL/RLS demonstration in prod · owner-door analytics · live Explore in prod</dd>
+    </dl>
+  </div>
+</div>
+<div class="tw"><table>
+<thead><tr><th>data-qa line, $/mo ex-GST</th><th class="num">Today</th><th class="num">A · trim</th><th class="num">C · DB-less</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td class="n">Aurora compute</td><td class="num">15.20</td><td class="num">2.50</td><td class="num">0</td><td>A: only deploys (~4/mo × 1.5 ACU-h) and real visits wake it. C: gone.</td></tr>
+<tr><td class="n">Aurora I/O + storage</td><td class="num">3.25</td><td class="num">1.75</td><td class="num">0</td><td>A: pipeline rebuilds still write 3.2M rows per deploy. C: marts are a file in the image.</td></tr>
+<tr><td class="n">Public IPv4</td><td class="num">3.50</td><td class="num">3.50</td><td class="num">0</td><td>Tied to the public Aurora endpoint; only leaves with the DB (or a NAT, which costs more).</td></tr>
+<tr><td class="n">Secrets Manager</td><td class="num">4.80</td><td class="num">3.20</td><td class="num">0</td><td>A: <code>llm-api-key</code>, <code>logfire</code>, <code>slack ×2</code> counted out in demo mode. C: no secrets at all, like yt-agent.</td></tr>
+<tr><td class="n">App Runner backend</td><td class="num">3.10</td><td class="num">3.10</td><td class="num">3.10</td><td>Unchanged at 0.25 vCPU / 512 MB — with no DuckDB the replay backend needs nothing more.</td></tr>
+<tr><td class="n">Auto-deploy</td><td class="num">1.00</td><td class="num">0</td><td class="num">0</td><td>CI already pushes the image; call <code>start-deployment</code> instead of paying $1 for the ECR trigger.</td></tr>
+<tr><td class="n">ECR</td><td class="num">1.40</td><td class="num">0.60</td><td class="num">0.40</td><td>Expire <code>data-agent</code> (25 GB) and <code>data-pipeline</code> (15 GB) history.</td></tr>
+<tr><td class="n">Fargate jobs</td><td class="num">0.20</td><td class="num">0.20</td><td class="num">0</td><td>C: no ECS cluster.</td></tr>
+</tbody>
+<tfoot><tr><td>data-qa, incl. GST</td><td class="num">≈ $36</td><td class="num">≈ $17</td><td class="num">≈ $5</td><td>Account total would go ≈$55 → ≈$36 → ≈$23 with the other three demos untouched (or ≈$22 if their auto-deploy is switched off too).</td></tr></tfoot>
+</table></div>
+</section>
+
+<section id="blueprint">
+<div class="sec-head"><h2>5 · Option C blueprint</h2><h3>What "like transcript-rag-agent" means for this codebase</h3></div>
+<div class="grid g2" style="margin-bottom:20px">
+  <div class="card">
+    <h4>Target terraform — <code>infra/terraform/demo/main.tf</code></h4>
+    <p style="font-size:13.5px">Mirrors <code>transcript-rag-agent/infra/terraform/demo/main.tf</code>: ECR repo + lifecycle (keep 5) · IAM role for ECR pull · one App Runner service 0.25 vCPU / 512 MB with <code>DEMO_MODE=1</code> baked into the image · one 5xx alarm · the existing S3 + CloudFront frontend, which also hosts the exhibit dump.</p>
+    <p style="font-size:13.5px"><strong>Removed:</strong> <code>aurora.tf</code>, <code>network.tf</code> (VPC, subnets, IGW, 3 security groups), <code>secrets.tf</code> (7 random passwords, 12 secrets), <code>ecs.tf</code> (cluster, 2 task definitions, 3 roles), the App Runner instance role and its policies, <code>moved.tf</code>, the ops CloudWatch grant. <code>deploy-aws.yml</code> loses the migrate/pipeline/settle-wait steps.</p>
+  </div>
+  <div class="card">
+    <h4>Exhibits: one export, served from S3</h4>
+    <p style="font-size:13.5px">A <code>make export-exhibits</code> script reads the goldens, eval runs (incl. the s51 case drill-downs), promotions/registry, ops rollup and architecture payloads through the existing read endpoints and writes them as JSON under <code>exhibits/</code> in the frontend bucket. In demo mode the frontend's API client resolves those routes to the static files instead of the backend — the tabs render exactly as today, frozen at export time. Re-export whenever the local eval loop produces something worth showing.</p>
+    <p style="font-size:13.5px">SQL editor and Explore keep their Postgres implementation for <code>make up</code>; the demo nav simply doesn't show them (<code>App.tsx:111-115</code> already gates tabs by auth mode).</p>
+  </div>
+</div>
+<div class="ms">
+  <div class="ms-n gate">0</div><div class="ms-b"><h4>Snapshot Aurora, export goldens + exhibits</h4><p><code>aws rds create-db-cluster-snapshot</code> (2.4 GB, ≈$0.05/mo), <code>make export-goldens</code>, knowledge export to git, and the first <code>make export-exhibits</code> run. Gate: you confirm before anything is destroyed.</p></div>
+  <div class="ms-rail"></div>
+  <div class="ms-n">1</div><div class="ms-b"><h4>PR 1 — DB-less demo (~½ day)</h4><p><code>db_disabled</code> setting: <code>demo_login</code>/<code>/me</code> mint a constant <code>CurrentUser</code> from settings; <code>_open_conversation</code>, <code>_persist_answer</code>, <code>_log_event</code>, the login sweep and the startup manifest check become no-ops; goldens/evals/ops/admin/analytics/sql/explore routers 404 in demo. Frontend: exhibit routes → static JSON; SQL editor + Explore hidden in demo. Demo smoke (21 checks) must pass with <code>DATABASE_URL</code> unset.</p></div>
+  <div class="ms-rail"></div>
+  <div class="ms-n">2</div><div class="ms-b"><h4>PR 2 — infra swap (~½ day)</h4><p>New <code>demo/</code> terraform stack, deploy workflow reduced to build → push → <code>start-deployment</code> → cloud smoke. Apply the new stack first, cut CloudFront's API origin over, verify, then <code>terraform destroy</code> the old <code>foundations/</code> stack. Rollback is the snapshot + the old state file.</p></div>
+  <div class="ms-rail"></div>
+  <div class="ms-n">3</div><div class="ms-b"><h4>Risks to price in</h4><p><strong>Exhibit staleness</strong> (a manual export step — acceptable for a portfolio) · <strong>loss of the owner door</strong> (Google login for admin_emails goes; the eval loop stays a local/MLflow workflow, which it already is) · <strong>local dev unchanged</strong> — Postgres stays the dev backend, so the eval loop, RLS, SQL editor and Explore keep working exactly as now.</p></div>
+</div>
+</section>
+
+<section id="account">
+<div class="sec-head"><h2>6 · Account-wide extras</h2><h3>Independent of the database decision</h3></div>
+<div class="grid g3">
+  <div class="card tight"><h4>Auto-deploy flag — $4/mo</h4><p style="font-size:13.5px">All four App Runner services pay $1/mo for the ECR-push trigger. Each deploy workflow already pushes the image; replacing the trigger with <code>aws apprunner start-deployment</code> in CI removes the charge and makes the deploy step explicit. One-line change ×4 repos.</p></div>
+  <div class="card tight"><h4>ECR history — ~$1.3/mo</h4><p style="font-size:13.5px"><code>data-qa/data-agent</code> 25 GB and <code>data-pipeline</code> 15 GB of images the current deployment never pulls; <code>ap-southeast-1/tau2loop-demo</code> is a repo with no service. A "keep last 3" lifecycle policy on each is enough.</p></div>
+  <div class="card tight"><h4>Singapore vs Sydney</h4><p style="font-size:13.5px">dabstep and convfinqa run in ap-southeast-1, the others in ap-southeast-2. No cost difference, just two regions to remember when listing services. The billing alarm (<code>data-qa-billing-over-50usd</code>) is account-wide and is currently sitting just under its threshold.</p></div>
+</div>
+</section>
+
+<section id="decide">
+<div class="sec-head"><h2>7 · Decide</h2><h3>What should I do next?</h3></div>
+<form class="q" data-lavish-question="route" onsubmit="event.preventDefault(); const fd=new FormData(event.currentTarget); const r=fd.get('route'); if(!r) return; window.lavish.queuePrompt('AWS cost route decision: '+r+'. Proceed with that route as described in s52 §4/§5.', {tag:'choice', text:'Route: '+r, element:event.currentTarget, data:{question:'route', answer:r}}); event.currentTarget.querySelector('.qstate').textContent='queued ✓'; event.currentTarget.querySelector('.qstate').classList.add('on');">
+  <h4><span class="qid">Q1</span> Which route? <span class="qstate">not queued</span></h4>
+  <p class="qsub">Both A and C start with the same janitor fix; A alone is a same-day PR, C is a multi-day rebuild that ends in destroying the Aurora stack.</p>
+  <label class="opt"><input type="radio" name="route" value="A now, then C as a follow-up (recommended)"><span><span class="ot">A now, then C as a follow-up</span><span class="od">Ship the $19/mo trim today through no-mistakes; the DB-less rebuild (~1 day) follows as its own branch.</span></span></label>
+  <label class="opt"><input type="radio" name="route" value="A only"><span><span class="ot">A only — trim and keep Postgres</span><span class="od">Keep the live SQL/RLS demonstration and owner door; accept ≈$17/mo and the occasional cold start.</span></span></label>
+  <label class="opt"><input type="radio" name="route" value="C directly"><span><span class="ot">C directly — go DB-less now</span><span class="od">Skip the interim PR; start with the snapshot/export gate and PR 1.</span></span></label>
+  <label class="opt"><input type="radio" name="route" value="none — analysis only"><span><span class="ot">Nothing yet</span><span class="od">Keep this page as the record; no changes.</span></span></label>
+  <button class="send" type="submit">Queue answer</button>
+</form>
+<form class="q" data-lavish-question="scope-c" onsubmit="event.preventDefault(); const sel=[...event.currentTarget.querySelectorAll('input[name=c]:checked')].map(i=>i.value); const note=event.currentTarget.querySelector('textarea').value.trim(); window.lavish.queuePrompt('Option C scope choices: '+(sel.length?sel.join('; '):'none selected')+(note?'. Note: '+note:''), {tag:'scope', text:'C scope: '+sel.length+' choices', element:event.currentTarget, data:{question:'scope-c', answers:sel, note}}); event.currentTarget.querySelector('.qstate').textContent='queued ✓'; event.currentTarget.querySelector('.qstate').classList.add('on');">
+  <h4><span class="qid">Q2</span> If C: what stays in the demo? <span class="qstate">not queued</span></h4>
+  <p class="qsub">Each unchecked item is dropped from the DB-less build (less work, fewer parity risks). Skip this if you picked "A only".</p>
+  <label class="opt"><input type="checkbox" name="c" value="keep SQL editor on DuckDB"><span><span class="ot">SQL editor over the marts (DuckDB)</span><span class="od">Your annotation says dev-only — leave unchecked unless you change your mind; checking it adds the ~1 day DuckDB port back.</span></span></label>
+  <label class="opt"><input type="checkbox" name="c" value="keep Explore on DuckDB"><span><span class="ot">Explore tab (DuckDB)</span><span class="od">Your annotation says dev-only — leave unchecked.</span></span></label>
+  <label class="opt"><input type="checkbox" name="c" value="freeze goldens/evals/ops exhibits as static JSON" checked><span><span class="ot">Goldens / Evals / Ops / Architecture as a static S3 dump</span><span class="od">Exported once via <code>make export-exhibits</code> into the frontend bucket; otherwise those tabs are hidden in demo.</span></span></label>
+  <label class="opt"><input type="checkbox" name="c" value="keep owner door (Google login) — requires some persistence"><span><span class="ot">Keep the Google owner door</span><span class="od">Only meaningful if something admin-only remains; without a DB there is little to administer.</span></span></label>
+  <textarea placeholder="Anything else to keep or drop…" style="width:100%;min-height:60px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-family:var(--sans);font-size:13.5px;margin:4px 0 10px"></textarea>
+  <button class="send" type="submit">Queue answer</button>
+</form>
+<form class="q" data-lavish-question="extras" onsubmit="event.preventDefault(); const sel=[...event.currentTarget.querySelectorAll('input[name=x]:checked')].map(i=>({id:i.value,label:i.dataset.label})); window.lavish.queuePrompt('Also apply these account-wide trims and return an item-by-item receipt covering every submitted ID.', {tag:'tracked-batch', text:'Extras: '+sel.length+' items', element:event.currentTarget, data:{items:sel}}); event.currentTarget.querySelector('.qstate').textContent='queued ✓'; event.currentTarget.querySelector('.qstate').classList.add('on');">
+  <h4><span class="qid">Q3</span> Account-wide extras to include <span class="qstate">not queued</span></h4>
+  <p class="qsub">Tracked batch — I'll report each ID as done, deferred or rejected.</p>
+  <label class="opt"><input type="checkbox" name="x" value="X-1" data-label="Switch data-qa-backend-api auto-deploy off; CI calls start-deployment" checked><span><span class="ot">X-1 · data-qa auto-deploy → CI <code>start-deployment</code></span><span class="od">−$1/mo, same repo as the janitor fix.</span></span></label>
+  <label class="opt"><input type="checkbox" name="x" value="X-2" data-label="ECR lifecycle policies on data-agent / data-pipeline / db-migrate repos" checked><span><span class="ot">X-2 · ECR lifecycle on the dead/heavy repos</span><span class="od">−$1/mo, terraform in this repo.</span></span></label>
+  <label class="opt"><input type="checkbox" name="x" value="X-3" data-label="Same auto-deploy switch in yt-agent, dabstep, convfinqa repos"><span><span class="ot">X-3 · auto-deploy off in the other three demo repos</span><span class="od">−$3/mo, three small PRs outside this repo.</span></span></label>
+  <label class="opt"><input type="checkbox" name="x" value="X-4" data-label="Delete orphan ECR repo ap-southeast-1/tau2loop-demo"><span><span class="ot">X-4 · delete orphan <code>tau2loop-demo</code> ECR repo</span><span class="od">140 MB, no service — needs your confirmation since it's outside this project.</span></span></label>
+  <button class="send" type="submit">Queue selected</button>
+</form>
+<p style="font-size:13.5px">Queue your answers, then press <strong>Send to Agent</strong>. Nothing is destroyed, stopped or applied in AWS until you've answered Q1 — the only actions taken so far are read-only Cost Explorer, CloudWatch and describe calls.</p>
+</section>
+
+<div class="foot">Sources: <code>aws ce get-cost-and-usage</code> (SERVICE, USAGE_TYPE, RECORD_TYPE; 2026-06-01→10-01) · CloudWatch <code>AWS/RDS ServerlessDatabaseCapacity</code> hourly 2026-09-01→22 · <code>rds describe-db-clusters/instances</code> · <code>apprunner describe-service</code> ×4 · <code>ecr describe-images</code> · <code>secretsmanager list-secrets</code> · <code>ec2 describe-network-interfaces</code> · infra/terraform/foundations/*.tf · transcript-rag-agent/infra/terraform/demo/main.tf · services/backend-api/app (demo-mode DB touchpoints). Prices are ap-southeast-2 list, ex-GST unless stated.</div>
+</div></body></html>

@@ -56,43 +56,6 @@ log = logging.getLogger("uvicorn.error")
 _mcp_inner, mcp_gate = build_mcp_app()
 
 
-# s38 P3: the demo janitor. Every visitor shares one demo user, so their chat
-# residue accumulates; this clears conversations/messages older than a day.
-# Events and query_runs are deliberately KEPT — they are the analytics tab's
-# raw material (uniques, funnel, top questions) and are rate/size-capped at
-# write time instead. In-process rather than an EventBridge/ECS job: demo
-# deployments pin one instance, so a process task IS a singleton, and dev gets
-# the same behaviour for free.
-_DEMO_RESET_INTERVAL_S = 6 * 3600
-
-
-async def _demo_reset_loop() -> None:
-    while True:
-        try:
-            # RLS trap: an empty user context sees (and deletes) ZERO rows, so
-            # the janitor must run AS the demo user — look the id up first
-            # (app.users itself has no RLS) and delete inside that context.
-            async with rls_connection(None) as conn:
-                demo_id = (
-                    await conn.execute(
-                        text("SELECT id FROM app.users WHERE username = :u"),
-                        {"u": settings.demo_username},
-                    )
-                ).scalar()
-            if demo_id is not None:
-                async with rls_connection(str(demo_id)) as conn:
-                    await conn.execute(
-                        text(
-                            "DELETE FROM app.conversations WHERE user_id = :uid "
-                            "AND created_at < now() - interval '24 hours'"
-                        ),
-                        {"uid": str(demo_id)},
-                    )
-        except Exception as exc:  # noqa: BLE001 — janitor failure must never kill the app
-            log.warning("demo reset skipped: %s", exc)
-        await asyncio.sleep(_DEMO_RESET_INTERVAL_S)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Explore manifest check: fail loudly if a declared dim/metric drifted from an
@@ -116,15 +79,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # only disk read that will ever happen, but doing it here means even
         # the very first /ask never pays that cost inline.
         await asyncio.to_thread(demo_replay.load_pack)
-    reset_task = asyncio.create_task(_demo_reset_loop()) if settings.demo_mode else None
     # s40 M1 (D4): the Grafana queue-depth panel reads a gauge this poller
     # keeps fresh; scrapes then never block on Redis. Only runs in queue mode.
     if settings.queue_mode == "on":
         metrics.start_depth_poller()
     async with _mcp_inner.router.lifespan_context(_mcp_inner):
         yield
-    if reset_task is not None:
-        reset_task.cancel()
     await metrics.stop_depth_poller()
     await engine.dispose()
 

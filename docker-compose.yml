@@ -86,6 +86,10 @@ services:
       # the walk-in demo — replayed chat, local governed SQL executor, LLM
       # controls flagged. Default 0 keeps dev fully live.
       DEMO_MODE: ${DEMO_MODE:-0}
+      # s52: with DEMO_MODE=1 DB_DISABLED=1 the backend mounts only the
+      # auth/ask/events routers and never opens a database connection — the
+      # shape the deployed demo runs (make demo-dbless-up). Default 0.
+      DB_DISABLED: ${DB_DISABLED:-0}
       DATABASE_URL: postgresql+asyncpg://app_user:app_pw@db:5432/dataqa
       # Read-only executor role for demo mode's local SQL path (s38 P4) —
       # same role the data-agent connects as.

@@ -113,6 +113,11 @@ const ADMIN_ROUTES: View[] = ["goldens", "evals", "ops", "architecture", "admin"
 // (D4) — every mutation 403s server-side — but never Analytics, which is
 // about them, not for them.
 const DEMO_BLOCKED_ROUTES: View[] = ["analytics"];
+// s52: the deployed demo has no database, so the live-warehouse surfaces are
+// dev-only — hidden from the nav and palette (NavRail's devOnly flag) and
+// route-blocked here for EVERYONE in demo mode, owner included: a deep link
+// falls back to Chat the same way a blocked admin route does.
+const DEMO_HIDDEN_ROUTES: View[] = ["explore", "sql"];
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -174,6 +179,8 @@ export default function App() {
   useEffect(() => {
     const matched = ROUTES.find((r) => location.pathname.startsWith(`/${r}`));
     if (!matched) {
+      navigate("/chat", { replace: true });
+    } else if (user && authMode === "demo" && DEMO_HIDDEN_ROUTES.includes(matched)) {
       navigate("/chat", { replace: true });
     } else if (
       user &&
@@ -410,8 +417,13 @@ export default function App() {
 
   const commands: Command[] = [
     { id: "chat", label: "Go to Chat", hint: "navigate", run: () => setView("chat") },
-    { id: "explore", label: "Go to Explore", hint: "navigate", run: () => setView("explore") },
-    { id: "sql", label: "Go to SQL Editor", hint: "navigate", run: () => setView("sql") },
+    // s52: dev-only surfaces — absent in the (DB-less) demo, same as the rail.
+    ...(authMode !== "demo"
+      ? [
+          { id: "explore", label: "Go to Explore", hint: "navigate", run: () => setView("explore") },
+          { id: "sql", label: "Go to SQL Editor", hint: "navigate", run: () => setView("sql") },
+        ]
+      : []),
     ...(user?.role === "admin"
       ? [
           { id: "ops", label: "Go to Operations", hint: "navigate", run: () => setView("ops") },

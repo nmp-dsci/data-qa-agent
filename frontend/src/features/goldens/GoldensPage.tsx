@@ -34,6 +34,7 @@ import {
   updateGolden,
 } from "../../lib/api";
 import { Annunciator, Annunciators } from "../../ui/flightdeck";
+import { DemoGate } from "../../ui/DemoGate";
 import { SimpleTable } from "../../ui/SimpleTable";
 import { BuilderFilter } from "./BuilderFilter";
 import { GraderEditor } from "./GraderEditor";
@@ -43,6 +44,9 @@ import { graderColumns, graderIssue, pruneCheckpoints, pruneGrader } from "./gra
 // it silently locked nsw_yield — a registered dataset since migration 0025 —
 // out of golden authoring, and left every yield golden mis-tagged nsw_sales.
 const FALLBACK_DATASETS = ["nsw_sales", "nsw_rent"];
+// s52: what the ◆ chip says on the Goldens tab's warehouse-backed controls.
+const DEMO_WRITE_TITLE =
+  "Goldens are read-only in this demo — it ships a static snapshot with no warehouse. Run, save and delete all work in dev.";
 const TIERS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7"];
 
 interface Draft {
@@ -667,15 +671,19 @@ export function GoldensPage({
                 >
                   Format
                 </button>
-                <button
-                  type="button"
-                  style={btn(!!draft.golden_sql.trim() && busy !== "sql")}
-                  disabled={!draft.golden_sql.trim() || busy === "sql"}
-                  onClick={() => void runSql()}
-                  data-testid="golden-run-sql"
-                >
-                  {busy === "sql" ? "Running…" : "▶ Run SQL"}
-                </button>
+                {/* s52: the extract runs against the warehouse, which the demo
+                    does not have — the control stays visible but inert. */}
+                <DemoGate title={DEMO_WRITE_TITLE}>
+                  <button
+                    type="button"
+                    style={btn(!!draft.golden_sql.trim() && busy !== "sql")}
+                    disabled={!draft.golden_sql.trim() || busy === "sql"}
+                    onClick={() => void runSql()}
+                    data-testid="golden-run-sql"
+                  >
+                    {busy === "sql" ? "Running…" : "▶ Run SQL"}
+                  </button>
+                </DemoGate>
               </div>
               <textarea
                 data-testid="golden-sql"
@@ -728,26 +736,28 @@ export function GoldensPage({
             )}
 
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <button
-                type="button"
-                style={btn(busy !== "save")}
-                disabled={busy === "save"}
-                onClick={() => void save()}
-                data-testid="golden-save"
-              >
-                {busy === "save" ? "Saving…" : draft.id ? "Save golden" : "Create golden"}
-              </button>
-              {draft.id && (
+              <DemoGate title={DEMO_WRITE_TITLE}>
                 <button
                   type="button"
-                  style={btn(busy !== "delete")}
-                  disabled={busy === "delete"}
-                  onClick={() => void remove()}
-                  data-testid="golden-delete"
+                  style={btn(busy !== "save")}
+                  disabled={busy === "save"}
+                  onClick={() => void save()}
+                  data-testid="golden-save"
                 >
-                  {busy === "delete" ? "Deleting…" : "Delete"}
+                  {busy === "save" ? "Saving…" : draft.id ? "Save golden" : "Create golden"}
                 </button>
-              )}
+                {draft.id && (
+                  <button
+                    type="button"
+                    style={btn(busy !== "delete")}
+                    disabled={busy === "delete"}
+                    onClick={() => void remove()}
+                    data-testid="golden-delete"
+                  >
+                    {busy === "delete" ? "Deleting…" : "Delete"}
+                  </button>
+                )}
+              </DemoGate>
             </div>
           </div>
         </div>

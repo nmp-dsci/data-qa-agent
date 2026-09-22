@@ -51,17 +51,20 @@ const GLYPH = { size: 20, strokeWidth: 1.8 } as const;
 
 // adminOnly tabs open to demo visitors as read-only static exhibits (s38, D4);
 // adminStrict tabs never do — Analytics is ABOUT the visitors, so only the
-// owner (through the /login owner door) ever sees it.
+// owner (through the /login owner door) ever sees it. devOnly tabs (s52) need
+// the live warehouse, which the deployed demo no longer has — they vanish for
+// everyone in demo mode, owner included.
 const ITEMS: {
   view: View;
   label: string;
   icon: () => ReactElement;
   adminOnly?: boolean;
   adminStrict?: boolean;
+  devOnly?: boolean;
 }[] = [
   { view: "chat", label: "Chat", icon: () => <MessageSquare {...GLYPH} /> },
-  { view: "explore", label: "Explore", icon: () => <Compass {...GLYPH} /> },
-  { view: "sql", label: "SQL Editor", icon: () => <SquareTerminal {...GLYPH} /> },
+  { view: "explore", label: "Explore", icon: () => <Compass {...GLYPH} />, devOnly: true },
+  { view: "sql", label: "SQL Editor", icon: () => <SquareTerminal {...GLYPH} />, devOnly: true },
   { view: "goldens", label: "Golden Examples", icon: () => <Star {...GLYPH} />, adminOnly: true },
   // Sits next to Golden Examples: goldens are the specification, Evaluations is
   // the score against it (s24 M4) — hence a gauge.
@@ -94,7 +97,10 @@ const ITEMS: {
 
 export function navItems(isAdmin: boolean, demo = false) {
   return ITEMS.filter(
-    (i) => (!i.adminOnly || isAdmin || (demo && !i.adminStrict)) && (!i.adminStrict || isAdmin),
+    (i) =>
+      (!i.adminOnly || isAdmin || (demo && !i.adminStrict)) &&
+      (!i.adminStrict || isAdmin) &&
+      !(demo && i.devOnly),
   );
 }
 

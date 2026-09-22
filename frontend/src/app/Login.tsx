@@ -328,7 +328,8 @@ export function Login({
             <>
               <div className="login-div">portfolio demo</div>
               <div className="demo-chips" aria-hidden="true">
-                <span className="annunciator on">warehouse live</span>
+                {/* s52: the deployed demo carries no warehouse — say what it does carry. */}
+                <span className="annunciator on">workbench snapshot</span>
                 <span className="annunciator demo">agent replays recorded runs</span>
                 <span className="annunciator on">no account needed</span>
               </div>
@@ -342,8 +343,8 @@ export function Login({
                 Enter demo&ensp;→
               </button>
               <p className="demo-fine">
-                Explore &amp; the SQL editor run live against the warehouse; chat answers were
-                recorded from the full LLM build. Anonymous usage analytics only.{" "}
+                Chat answers were recorded from the full LLM build; the exhibit tabs are a
+                snapshot of the dev workbench. Anonymous usage analytics only.{" "}
                 <button type="button" className="owner-door" onClick={() => setOwnerOpen((o) => !o)}>
                   owner sign-in
                 </button>

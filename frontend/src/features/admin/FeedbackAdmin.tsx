@@ -56,6 +56,10 @@ export function FeedbackAdmin({
       }
       await onRefresh();
       setSelected(new Set());
+    } catch (e) {
+      // s38/s52: a demo visitor's write 403s (404 in the DB-less demo) — say
+      // so on the panel instead of leaking an unhandled rejection.
+      setStatusMsg((e as Error).message);
     } finally {
       setBusy(false);
     }

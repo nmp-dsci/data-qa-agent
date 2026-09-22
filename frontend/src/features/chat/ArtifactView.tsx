@@ -4,6 +4,7 @@
 // rendering entirely — no charts render in the browser any more.
 import { useState } from "react";
 import { AskResult } from "../../lib/api";
+import { isDemoMode } from "../../lib/auth";
 
 export function ArtifactView({
   result,
@@ -59,9 +60,12 @@ function SqlRowsFallback({
           <button className="link" onClick={() => setShowSql((s) => !s)}>
             {showSql ? "hide SQL" : "show SQL"}
           </button>
-          <button className="link" onClick={() => onOpenSql(result.sql ?? "")}>
-            open in SQL editor
-          </button>
+          {/* s52: the SQL editor is dev-only — the demo has no warehouse to open it on. */}
+          {!isDemoMode() && (
+            <button className="link" onClick={() => onOpenSql(result.sql ?? "")}>
+              open in SQL editor
+            </button>
+          )}
         </div>
       )}
       {showSql && result.sql && <pre className="sql">{result.sql}</pre>}

@@ -16,5 +16,15 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5230",
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      // PW_CHANNEL=chrome drives the installed Google Chrome instead of the
+      // bundled chromium — handy on a machine without `playwright install`.
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
+      },
+    },
+  ],
 });

@@ -1,3 +1,5 @@
+import { demoExhibits, fetchExhibit, setDemoExhibits } from "./exhibits";
+
 const API = (import.meta.env.VITE_API_URL as string) ?? "http://localhost:8000";
 
 // s29: while Aurora Serverless resumes from auto-pause the backend answers
@@ -419,9 +421,19 @@ function authHeaders(): Record<string, string> {
 }
 
 export async function getAuthConfig(): Promise<AuthConfig> {
-  const resp = await apiFetch(`${API}/auth/config`);
-  if (!resp.ok) throw new Error(`Could not load auth config (${resp.status})`);
-  return resp.json();
+  let cfg: AuthConfig;
+  try {
+    const resp = await apiFetch(`${API}/auth/config`);
+    if (!resp.ok) throw new Error(`Could not load auth config (${resp.status})`);
+    cfg = (await resp.json()) as AuthConfig;
+  } catch (e) {
+    // s52: the exhibit reads wait on this decision — settle it (as "not demo")
+    // so a failed config load degrades to normal API reads instead of hanging.
+    setDemoExhibits(false);
+    throw e;
+  }
+  setDemoExhibits(cfg.auth_mode === "demo");
+  return cfg;
 }
 
 export async function devLogin(username: string): Promise<{ access_token: string; user: User }> {
@@ -926,7 +938,7 @@ export interface AskState {
 }
 
 export async function getExploreDatasets(): Promise<ExploreDataset[]> {
-  const resp = await apiFetch(`${API}/explore/datasets`, { headers: authHeaders() });
+  const resp = await readFetch("/explore/datasets");
   if (!resp.ok) throw new Error(`Could not load datasets (${resp.status})`);
   const data = (await resp.json()) as { datasets: ExploreDataset[] };
   return data.datasets ?? [];
@@ -993,8 +1005,17 @@ export async function exploreTypeahead(
   return data.values ?? [];
 }
 
+/** s52: a read-only GET that, in demo mode, is served from the static exhibit
+ *  dump on the SPA's own origin (see lib/exhibits.ts) instead of the API —
+ *  the DB-less demo backend does not mount these routes at all. Dev and
+ *  Google-mode deployments are untouched. Never used for writes. */
+async function readFetch(path: string): Promise<Response> {
+  if (await demoExhibits()) return fetchExhibit(path);
+  return apiFetch(`${API}${path}`, { headers: authHeaders() });
+}
+
 async function adminGet<T>(path: string): Promise<T> {
-  const resp = await apiFetch(`${API}${path}`, { headers: authHeaders() });
+  const resp = await readFetch(path);
   if (!resp.ok) throw new Error(`Admin request failed (${resp.status})`);
   return resp.json();
 }
@@ -1165,7 +1186,7 @@ export interface MyAccess {
 }
 
 export async function getMyAccess(): Promise<MyAccess> {
-  const resp = await apiFetch(`${API}/me/access`, { headers: authHeaders() });
+  const resp = await readFetch("/me/access");
   if (!resp.ok) throw new Error(`Could not load access (${resp.status})`);
   return resp.json();
 }

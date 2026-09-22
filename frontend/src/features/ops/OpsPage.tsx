@@ -24,6 +24,7 @@ import {
   refreshOps,
 } from "../../lib/api";
 import { Annunciator, Annunciators, HudBox, InstrumentLabel } from "../../ui/flightdeck";
+import { DemoGate } from "../../ui/DemoGate";
 import { SimpleColumn, SimpleTable } from "../../ui/SimpleTable";
 
 const POLL_MS = 30_000;
@@ -533,9 +534,12 @@ export function OpsPage() {
               {w}
             </button>
           ))}
-          <button onClick={() => void doRefresh()} disabled={refreshing} className="chip">
-            {refreshing ? "refreshing…" : "refresh"}
-          </button>
+          {/* s52: the rollup is a static snapshot in the demo — nothing to recompute. */}
+          <DemoGate title="The ops deck is a snapshot in this demo — the rollup recomputes against the live database in dev.">
+            <button onClick={() => void doRefresh()} disabled={refreshing} className="chip">
+              {refreshing ? "refreshing…" : "refresh"}
+            </button>
+          </DemoGate>
         </div>
       </header>
 

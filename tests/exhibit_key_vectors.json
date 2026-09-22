@@ -1,0 +1,25 @@
+{
+  "_comment": "Shared vectors for the s52 exhibit key scheme. Pinned by BOTH frontend/scripts/test_exhibits.mjs (lib/exhibits.ts) and tests/test_export_exhibits.py (scripts/export_exhibits.py) so the two implementations cannot drift.",
+  "vectors": [
+    ["/admin/eval-runs?limit=50", "exhibits/admin/eval-runs__limit=50.json"],
+    ["/admin/eval-goldens/abc-123", "exhibits/admin/eval-goldens/abc-123.json"],
+    ["/architecture/content?kind=skill&name=period metric", "exhibits/architecture/content__kind=skill&name=period_metric.json"],
+    ["/architecture/content?kind=skill&name=period%20metric", "exhibits/architecture/content__kind=skill&name=period_metric.json"],
+    ["/architecture/content?kind=skill&name=period+metric", "exhibits/architecture/content__kind=skill&name=period_metric.json"],
+    ["/architecture/content?name=period+metric&kind=skill", "exhibits/architecture/content__kind=skill&name=period_metric.json"],
+    ["/architecture/content?kind=claude_md&name=", "exhibits/architecture/content__kind=claude_md&name=.json"],
+    ["/architecture/content?kind=knowledge&name=domains%2Fproperty-rent%2Fbedrooms.md", "exhibits/architecture/content__kind=knowledge&name=domains_property-rent_bedrooms.md.json"],
+    ["/admin/knowledge/domains%2Fproperty-rent%2Fbedrooms.md", "exhibits/admin/knowledge/domains/property-rent/bedrooms.md.json"],
+    ["/admin/knowledge", "exhibits/admin/knowledge.json"],
+    ["/admin/eval-goldens?dataset=nsw_sales", "exhibits/admin/eval-goldens__dataset=nsw_sales.json"],
+    ["/admin/eval-goldens", "exhibits/admin/eval-goldens.json"],
+    ["/admin/events?limit=2000&since=2026-09-15T01%3A28%3A24.352172%2B00%3A00", "exhibits/admin/events__limit=2000.json"],
+    ["/admin/query-runs?since=2026-09-15T01%3A28%3A24%2B00%3A00&limit=2000", "exhibits/admin/query-runs__limit=2000.json"],
+    ["/admin/query-runs", "exhibits/admin/query-runs.json"],
+    ["/admin/ops/summary?window=24h", "exhibits/admin/ops/summary__window=24h.json"],
+    ["/me/access", "exhibits/me/access.json"],
+    ["/explore/datasets", "exhibits/explore/datasets.json"],
+    ["/architecture", "exhibits/architecture.json"],
+    ["/weird/pa th/x?q=a/b&z=%C3%A9", "exhibits/weird/pa_th/x__q=a_b&z=_.json"]
+  ]
+}

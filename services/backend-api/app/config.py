@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -220,3 +222,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# s52: a DB-less demo deployment ships with no secrets at all. Sessions there
+# belong to one constant visitor and need only outlive a page load, so a
+# per-process signing key is enough — a redeploy simply shows the door again.
+# Only ever replaces the dev placeholder, so an explicit JWT_SECRET still wins.
+if settings.db_disabled and settings.jwt_secret == "dev-secret-change-me":
+    settings.jwt_secret = secrets.token_urlsafe(48)

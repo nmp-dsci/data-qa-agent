@@ -6,6 +6,13 @@ Run against a stack started with DEMO_MODE=1:
     DEMO_MODE=1 docker compose up -d backend-api   (or make demo-up)
     python scripts/demo_smoke.py
 
+s52 — the DB-less variant. With DB_DISABLED=1 in the environment the checks
+match the DB-less demo contract instead (services/backend-api/tests/
+test_db_disabled.py): no SQL, no admin reads (404, not 403), /health/db
+"disabled", empty conversations, events accepted, and the exhibit dump served
+by the FRONTEND origin (FRONTEND_URL, default http://localhost:5230):
+    make demo-dbless-up && make demo-dbless-smoke
+
 Uses only the stdlib. API base follows the same env vars as smoke_test.py.
 """
 
@@ -18,7 +25,11 @@ import urllib.error
 import urllib.request
 
 API = os.environ.get("SMOKE_API_URL", f"http://localhost:{os.environ.get('API_HOST_PORT', '8000')}")
+FRONTEND = os.environ.get("FRONTEND_URL", "http://localhost:5230").rstrip("/")
 TIMEOUT = int(os.environ.get("SMOKE_TIMEOUT_S", "60"))
+DB_DISABLED = os.environ.get("DB_DISABLED", "0") not in ("", "0", "false", "no")
+# The list-length the Evaluations tab asks for (EvalsPage -> getEvalRuns()).
+EVAL_RUNS_LIMIT = int(os.environ.get("SMOKE_EVAL_RUNS_LIMIT", "50"))
 
 _passed = 0
 _failed = 0
@@ -51,7 +62,110 @@ def req(method: str, path: str, body: dict | None = None, token: str | None = No
             return e.code, None
 
 
+def fetch_static(url: str):
+    """Return (status, content-type, parsed-json-or-None) for a frontend-origin GET."""
+    r = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(r, timeout=TIMEOUT) as resp:
+            ctype = resp.headers.get("content-type", "")
+            raw = resp.read()
+            try:
+                return resp.status, ctype, json.loads(raw)
+            except Exception:  # noqa: BLE001
+                return resp.status, ctype, None
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("content-type", ""), None
+    except urllib.error.URLError as e:
+        return 0, str(e.reason), None
+
+
+def main_db_disabled() -> None:
+    print(f"demo smoke (DB-less, s52) against {API}; exhibits from {FRONTEND}")
+
+    print("1. the demo door, with no database behind it")
+    status, cfg = req("GET", "/auth/config")
+    check("auth config reports demo", status == 200 and cfg.get("auth_mode") == "demo")
+    status, health = req("GET", "/health/db")
+    check(
+        "/health/db reports disabled (no wake, no spinner)",
+        status == 200 and (health or {}).get("status") == "disabled",
+        f"(status={(health or {}).get('status')})",
+    )
+    status, login = req("POST", "/auth/demo-login")
+    check("demo-login mints a session", status == 200 and bool(login.get("access_token")))
+    if status != 200:
+        sys.exit("cannot continue without a session — is DEMO_MODE=1 DB_DISABLED=1 on the backend?")
+    tok = login["access_token"]
+    check("session is the constant demo visitor", login["user"]["username"] == "demo")
+    status, me = req("GET", "/me", token=tok)
+    check("/me answers from the token alone", status == 200 and me.get("id") == login["user"]["id"])
+
+    print("2. the chip rail + replayed chat")
+    status, chips = req("GET", "/demo/questions")
+    check(
+        "questions endpoint serves the pack",
+        status == 200 and len(chips or []) >= 5,
+        f"(count={len(chips or [])})",
+    )
+    chip_q = chips[0]["question"]
+    status, ans = req("POST", "/ask", {"question": chip_q}, tok)
+    check(
+        "exact chip question answers",
+        status == 200 and ans.get("engine") == "demo_replay",
+        f"(engine={ans.get('engine') if ans else None})",
+    )
+    check("replay carries the recorded report", bool(ans.get("report")))
+
+    print("3. nothing persists, nothing DB-backed is mounted")
+    status, convs = req("GET", "/conversations", token=tok)
+    check("conversations is empty", status == 200 and convs == [], f"(status={status})")
+    status, _ = req(
+        "POST",
+        "/events",
+        {"event_type": "demo_landing_view", "session_id": "smoke", "payload": {"visitor_id": "s"}},
+    )
+    check("event accepted (and dropped)", status == 201, f"(status={status})")
+    for path in ("/admin/eval-goldens", "/explore/datasets", "/me/access", "/analytics/summary"):
+        status, _ = req("GET", path, token=tok)
+        check(f"GET {path} is 404 (router not mounted)", status == 404, f"(status={status})")
+    status, _ = req("POST", "/sql", {"sql": "select 1"}, tok)
+    check("POST /sql is 404", status == 404, f"(status={status})")
+    status, _ = req("POST", "/admin/eval-goldens", {"question": "x", "dataset": "nsw_rent"}, tok)
+    check("golden create is 404 (not 403)", status == 404, f"(status={status})")
+
+    print("4. the exhibit tabs read the static dump from the frontend origin")
+    key = f"exhibits/admin/eval-runs__limit={EVAL_RUNS_LIMIT}.json"
+    status, ctype, body = fetch_static(f"{FRONTEND}/{key}")
+    check(
+        f"{key} is served as JSON",
+        status == 200 and "json" in ctype and isinstance(body, list),
+        f"(status={status}, type={ctype!r}, runs={len(body) if isinstance(body, list) else None})",
+    )
+    for key in (
+        "exhibits/admin/eval-goldens__dataset=nsw_sales.json",
+        "exhibits/admin/ops/summary__window=24h.json",
+        "exhibits/architecture.json",
+        "exhibits/me/access.json",
+    ):
+        status, ctype, body = fetch_static(f"{FRONTEND}/{key}")
+        check(f"{key} is served as JSON", status == 200 and "json" in ctype and body is not None)
+    status, ctype, _ = fetch_static(f"{FRONTEND}/exhibits/admin/does-not-exist.json")
+    check(
+        "a missing exhibit is not served as JSON (SPA fallback or 404)",
+        status != 200 or "json" not in ctype,
+        f"(status={status}, type={ctype!r})",
+    )
+
+    print()
+    if _failed:
+        sys.exit(f"DEMO SMOKE (DB-less) FAILED ✗  ({_passed} passed, {_failed} failed)")
+    print(f"DEMO SMOKE (DB-less) PASSED ✓  ({_passed} checks)")
+
+
 def main() -> None:
+    if DB_DISABLED:
+        main_db_disabled()
+        return
     print(f"demo smoke against {API}")
 
     print("1. the demo door")

@@ -27,8 +27,18 @@ VERSIONS = (
 )
 
 
+# Host-side defaults for the central platform (localhost:5432, database dataqa); the same
+# values the platform's registry declares. Env (or .env via make) overrides, e.g. in CI.
+DEFAULTS = {
+    "ADMIN_DATABASE_URL": "postgresql://nmp:nmp@localhost:5432/dataqa",
+    "DATABASE_URL": "postgresql://app_user:app_pw@localhost:5432/dataqa",
+    "AGENT_RO_DATABASE_URL": "postgresql://agent_ro:agent_pw@localhost:5432/dataqa",
+    "ADMIN_RO_DATABASE_URL": "postgresql://admin_ro:admin_pw@localhost:5432/dataqa",
+}
+
+
 def url(var: str) -> str:
-    raw = os.environ.get(var)
+    raw = os.environ.get(var) or DEFAULTS.get(var)
     if not raw:
         sys.exit(f"{var} is not set — `make -C ../nmp-central-ai db-urls` prints the .env block")
     return raw.replace("postgresql+asyncpg://", "postgresql://").replace(

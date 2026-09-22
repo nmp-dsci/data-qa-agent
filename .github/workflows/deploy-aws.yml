@@ -63,11 +63,13 @@ jobs:
       # pushed. UpdateService from the apply above may still be in flight, in
       # which case start-deployment is rejected — settle first, then start.
       - name: Start the App Runner deployment
+        # AWS_PROFILE stays set-but-empty for the scripts (they unset it
+        # themselves; an UNSET var makes them default to the local SSO profile,
+        # which CI does not have) and is dropped only for the raw aws call.
         run: |
-          unset AWS_PROFILE
           ./scripts/wait_apprunner.sh "apply-triggered update, before start-deployment"
           ARN=$(terraform -chdir=infra/terraform/demo output -raw apprunner_service_arn)
-          aws apprunner start-deployment --service-arn "$ARN" >/dev/null
+          env -u AWS_PROFILE aws apprunner start-deployment --service-arn "$ARN" >/dev/null
           ./scripts/wait_apprunner.sh "new image, before smoke test"
 
       - uses: actions/setup-node@v4

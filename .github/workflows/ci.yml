@@ -235,7 +235,8 @@ jobs:
       - name: Stand in the propertyiq database with its staging fixture
         run: |
           docker exec ci-postgres psql -U nmp -d nmp -v ON_ERROR_STOP=1 -c "
-            CREATE ROLE propertyiq_ro LOGIN PASSWORD 'propertyiq_ro' NOSUPERUSER;
+            CREATE ROLE propertyiq_ro LOGIN PASSWORD 'propertyiq_ro' NOSUPERUSER;"
+          docker exec ci-postgres psql -U nmp -d nmp -v ON_ERROR_STOP=1 -c "
             CREATE DATABASE propertyiq OWNER nmp;"
           docker exec -i ci-postgres psql -U nmp -d propertyiq -v ON_ERROR_STOP=1 < tests/fixtures/propertyiq_staging.sql
           docker exec ci-postgres psql -U nmp -d propertyiq -v ON_ERROR_STOP=1 -c "
